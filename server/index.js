@@ -3,9 +3,11 @@ import cors from "cors";
 import crypto from "crypto";
 import { Pool } from "pg";
 
+const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes("localhost")
+  connectionString: databaseUrl,
+  ssl: databaseUrl.includes("localhost")
     ? false
     : { rejectUnauthorized: false },
 });

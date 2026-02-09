@@ -1,8 +1,16 @@
 # DashSimple
 
-A single-page dashboard UI with an Express + SQLite API.
+A single-page dashboard UI with an Express + Postgres (Supabase) API.
 
 ## Local Development
+
+Set environment variables (copy `.env.example` and fill values):
+
+```bash
+DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres"
+AUTH_SECRET="change-me"
+POSTBACK_SECRET="change-me"
+```
 
 Install dependencies:
 
@@ -30,9 +38,15 @@ Output: `dist/`
 
 ## Deploy (Netlify + Render)
 
+### Supabase (Database)
+1. Create a Supabase project.
+2. Copy the Postgres connection string (Settings → Database → Connection string → URI).
+3. Use that value for `DATABASE_URL` (or `SUPABASE_DB_URL`).
+
 ### Render (API)
 - Build command: `npm install`
 - Start command: `node server/index.js`
+- Add env var `DATABASE_URL` (Supabase connection string)
 - Render provides `PORT` automatically
 
 ### Netlify (Frontend)
