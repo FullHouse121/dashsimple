@@ -454,9 +454,9 @@ const selectConversionTotals = db.prepare(
 );
 
 const selectInstallTotalsByDevice = db.prepare(
-  `SELECT date, device, buyer, COUNT(*) as installs
+  `SELECT date, device, COUNT(*) as installs
    FROM install_events
-   GROUP BY date, device, buyer`
+   GROUP BY date, device`
 );
 
 const insertDeviceStat = db.prepare(
@@ -913,14 +913,8 @@ app.get("/api/media-stats", (req, res) => {
 app.get("/api/device-stats", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const viewerBuyer = resolveViewerBuyer(req.user);
-  let rows = selectDeviceStats.all(limit);
-  let installTotals = selectInstallTotalsByDevice.all();
-
-  if (viewerBuyer) {
-    rows = rows.filter((row) => row.buyer === viewerBuyer);
-    installTotals = installTotals.filter((row) => row.buyer === viewerBuyer);
-  }
+  const rows = selectDeviceStats.all(limit);
+  const installTotals = selectInstallTotalsByDevice.all();
   const installMap = new Map();
 
   installTotals.forEach((row) => {
