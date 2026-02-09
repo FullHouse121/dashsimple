@@ -85,6 +85,12 @@ db.exec(`
   );
 `);
 
+const domainColumns = db.prepare("PRAGMA table_info(domains)").all();
+const hasDomainOwner = domainColumns.some((col) => col.name === "owner_id");
+if (!hasDomainOwner) {
+  db.exec("ALTER TABLE domains ADD COLUMN owner_id INTEGER;");
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS campaigns (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -394,15 +400,29 @@ const selectMediaBuyerById = db.prepare(
 const deleteMediaBuyer = db.prepare(`DELETE FROM media_buyers WHERE id = ?`);
 
 const insertDomain = db.prepare(
-  `INSERT INTO domains (domain, status)
-   VALUES (@domain, @status)`
+  `INSERT INTO domains (domain, status, owner_id)
+   VALUES (@domain, @status, @owner_id)`
 );
 
 const selectDomains = db.prepare(
-  `SELECT id, domain, status
+  `SELECT id, domain, status, owner_id
    FROM domains
    ORDER BY domain ASC, id DESC
    LIMIT ?`
+);
+
+const selectDomainsByOwner = db.prepare(
+  `SELECT id, domain, status, owner_id
+   FROM domains
+   WHERE owner_id = ?
+   ORDER BY domain ASC, id DESC
+   LIMIT ?`
+);
+
+const selectDomainById = db.prepare(
+  `SELECT id, owner_id
+   FROM domains
+   WHERE id = ?`
 );
 
 const deleteDomain = db.prepare(`DELETE FROM domains WHERE id = ?`);
@@ -1174,20 +1194,18 @@ app.delete("/api/media-buyers/:id", (req, res) => {
 });
 
 app.get("/api/domains", (req, res) => {
-  if (!isLeadership(req.user)) {
-    return res.status(403).json({ error: "Forbidden." });
-  }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectDomains.all(limit);
-  res.json(rows);
+  if (isLeadership(req.user)) {
+    const rows = selectDomains.all(limit);
+    return res.json(rows);
+  }
+  const rows = selectDomainsByOwner.all(req.user.id, limit);
+  return res.json(rows);
 });
 
 app.post("/api/domains", (req, res) => {
-  if (!isLeadership(req.user)) {
-    return res.status(403).json({ error: "Forbidden." });
-  }
-  const { domain, status } = req.body ?? {};
+  const { domain, status, ownerId } = req.body ?? {};
 
   if (!domain || !status) {
     return res.status(400).json({ error: "Domain and status are required." });
@@ -1196,6 +1214,11 @@ app.post("/api/domains", (req, res) => {
   const payload = {
     domain: String(domain).trim(),
     status,
+    owner_id: isLeadership(req.user)
+      ? ownerId
+        ? Number(ownerId)
+        : null
+      : req.user.id,
   };
 
   const info = insertDomain.run(payload);
@@ -1203,12 +1226,16 @@ app.post("/api/domains", (req, res) => {
 });
 
 app.delete("/api/domains/:id", (req, res) => {
-  if (!isLeadership(req.user)) {
-    return res.status(403).json({ error: "Forbidden." });
-  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid domain id." });
+  }
+  const domain = selectDomainById.get(id);
+  if (!domain) {
+    return res.status(404).json({ error: "Domain not found." });
+  }
+  if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
   }
   deleteDomain.run(id);
   res.json({ ok: true });
