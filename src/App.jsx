@@ -60,6 +60,18 @@ const navItems = [
   { key: "roles", label: "Roles", icon: ShieldCheck },
   { key: "profile", label: "Profile", icon: User },
   { key: "api", label: "API", icon: Plug },
+  {
+    key: "segmentation",
+    label: "Segmentation",
+    icon: MousePointerClick,
+    href: "https://visionary-fox-61c06d.netlify.app/",
+  },
+  {
+    key: "calculator",
+    label: "Calculator",
+    icon: SlidersHorizontal,
+    href: "https://mellow-medovik-a46551.netlify.app/",
+  },
 ];
 
 const navSections = [
@@ -69,6 +81,7 @@ const navSections = [
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["api"] },
+  { title: "Tools", items: ["segmentation", "calculator"] },
 ];
 
 const countryOptions = [
@@ -210,6 +223,9 @@ const translations = {
     Domains: "Alan Adları",
     API: "API",
     Profile: "Profil",
+    Tools: "Araçlar",
+    Segmentation: "Segmentasyon",
+    Calculator: "Hesaplayıcı",
     Overview: "Genel Bakış",
     Performance: "Performans",
     Operations: "Operasyonlar",
@@ -5800,13 +5816,18 @@ export default function App() {
                 const item = navItemMap[key];
                 if (!item) return null;
                 const Icon = item.icon;
-                const isActive = activeView === item.key || (activeView === "home" && item.key === "home");
+                const isActive =
+                  !item.href && (activeView === item.key || (activeView === "home" && item.key === "home"));
+                const isExternal = Boolean(item.href);
                 return (
                   <a
                     key={item.label}
                     className={`nav-item${isActive ? " active" : ""}`}
-                    href="#"
+                    href={item.href || "#"}
+                    target={isExternal ? "_blank" : undefined}
+                    rel={isExternal ? "noreferrer" : undefined}
                     onClick={(event) => {
+                      if (isExternal) return;
                       event.preventDefault();
                       setActiveView(item.key);
                     }}
