@@ -385,6 +385,12 @@ const selectMediaBuyers = db.prepare(
    LIMIT ?`
 );
 
+const selectMediaBuyerById = db.prepare(
+  `SELECT id, name, role, country, approach, game, email, contact, status
+   FROM media_buyers
+   WHERE id = ?`
+);
+
 const deleteMediaBuyer = db.prepare(`DELETE FROM media_buyers WHERE id = ?`);
 
 const insertDomain = db.prepare(
@@ -448,9 +454,9 @@ const selectConversionTotals = db.prepare(
 );
 
 const selectInstallTotalsByDevice = db.prepare(
-  `SELECT date, device, COUNT(*) as installs
+  `SELECT date, device, buyer, COUNT(*) as installs
    FROM install_events
-   GROUP BY date, device`
+   GROUP BY date, device, buyer`
 );
 
 const insertDeviceStat = db.prepare(
@@ -479,6 +485,12 @@ const selectUsers = db.prepare(
    FROM users
    ORDER BY id DESC
    LIMIT ?`
+);
+
+const selectUserById = db.prepare(
+  `SELECT id, username, role, buyer_id, verified
+   FROM users
+   WHERE id = ?`
 );
 
 const selectUserByUsername = db.prepare(
@@ -646,6 +658,47 @@ const verifyPassword = (password, stored) => {
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
 };
 
+const authSecret =
+  process.env.AUTH_SECRET || process.env.POSTBACK_SECRET || "dev-auth-secret";
+const authTtlSeconds = Number.parseInt(process.env.AUTH_TTL_SECONDS || "604800", 10);
+
+const encodeToken = (payload) => {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", authSecret).update(body).digest("base64url");
+  return `${body}.${signature}`;
+};
+
+const decodeToken = (token) => {
+  if (!token) return null;
+  const [body, signature] = token.split(".");
+  if (!body || !signature) return null;
+  const expected = crypto.createHmac("sha256", authSecret).update(body).digest("base64url");
+  const sigBuffer = Buffer.from(signature);
+  const expBuffer = Buffer.from(expected);
+  if (sigBuffer.length !== expBuffer.length) return null;
+  if (!crypto.timingSafeEqual(sigBuffer, expBuffer)) return null;
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+  } catch (error) {
+    return null;
+  }
+  const exp = Number(payload?.exp || 0);
+  if (exp && exp < Math.floor(Date.now() / 1000)) return null;
+  return payload;
+};
+
+const isLeadership = (user) => user?.role === "Boss" || user?.role === "Team Leader";
+
+const resolveViewerBuyer = (user) => {
+  if (!user || isLeadership(user)) return null;
+  if (user.buyerId) {
+    const record = selectMediaBuyerById.get(user.buyerId);
+    if (record?.name) return record.name;
+  }
+  return user.username || "";
+};
+
 const userSeed = [
   {
     username: "Yilmachine",
@@ -711,7 +764,25 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/")) return next();
+  if (req.path === "/api/auth/login") return next();
+  if (req.path.startsWith("/api/postbacks/")) return next();
+
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : header;
+  const user = decodeToken(token);
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+  req.user = user;
+  return next();
+});
+
 app.get("/api/expenses", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = selectExpenses.all(limit);
@@ -719,6 +790,9 @@ app.get("/api/expenses", (req, res) => {
 });
 
 app.post("/api/expenses", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const {
     date,
     country,
@@ -755,9 +829,16 @@ app.post("/api/expenses", (req, res) => {
 app.get("/api/media-stats", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectMediaStats.all(limit);
-  const installTotals = selectInstallTotals.all();
-  const conversionTotals = selectConversionTotals.all();
+  const viewerBuyer = resolveViewerBuyer(req.user);
+  let rows = selectMediaStats.all(limit);
+  let installTotals = selectInstallTotals.all();
+  let conversionTotals = selectConversionTotals.all();
+
+  if (viewerBuyer) {
+    rows = rows.filter((row) => row.buyer === viewerBuyer);
+    installTotals = installTotals.filter((row) => row.buyer === viewerBuyer);
+    conversionTotals = conversionTotals.filter((row) => row.buyer === viewerBuyer);
+  }
   const installMap = new Map();
   const conversionMap = new Map();
   installTotals.forEach((row) => {
@@ -832,14 +913,21 @@ app.get("/api/media-stats", (req, res) => {
 app.get("/api/device-stats", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectDeviceStats.all(limit);
-  const installTotals = selectInstallTotalsByDevice.all();
+  const viewerBuyer = resolveViewerBuyer(req.user);
+  let rows = selectDeviceStats.all(limit);
+  let installTotals = selectInstallTotalsByDevice.all();
+
+  if (viewerBuyer) {
+    rows = rows.filter((row) => row.buyer === viewerBuyer);
+    installTotals = installTotals.filter((row) => row.buyer === viewerBuyer);
+  }
   const installMap = new Map();
 
   installTotals.forEach((row) => {
     const device = normalizeDevice(row.device);
     const key = `${row.date}|${device}`;
-    installMap.set(key, Number(row.installs) || 0);
+    const current = installMap.get(key) || 0;
+    installMap.set(key, current + (Number(row.installs) || 0));
   });
 
   const aggregated = new Map();
@@ -903,8 +991,16 @@ app.get("/api/device-stats", (req, res) => {
 });
 
 app.post("/api/media-stats", (req, res) => {
-  const { date, buyer, country, spend, clicks, installs, registers, ftds, redeposits } =
+  let { date, buyer, country, spend, clicks, installs, registers, ftds, redeposits } =
     req.body ?? {};
+
+  if (!isLeadership(req.user)) {
+    const viewerBuyer = resolveViewerBuyer(req.user);
+    if (!viewerBuyer) {
+      return res.status(403).json({ error: "No buyer assigned." });
+    }
+    buyer = viewerBuyer;
+  }
 
   if (!date || !buyer || clicks === undefined || registers === undefined || ftds === undefined) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -956,10 +1052,18 @@ app.get("/api/goals", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = selectGoals.all(limit);
-  res.json(rows);
+  if (isLeadership(req.user)) {
+    return res.json(rows);
+  }
+  const viewerBuyer = resolveViewerBuyer(req.user);
+  const filtered = rows.filter((row) => row.is_global || row.buyer === viewerBuyer);
+  return res.json(filtered);
 });
 
 app.post("/api/goals", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const {
     buyer,
     country,
@@ -1004,6 +1108,9 @@ app.post("/api/goals", (req, res) => {
 });
 
 app.delete("/api/goals/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid goal id." });
@@ -1015,11 +1122,21 @@ app.delete("/api/goals/:id", (req, res) => {
 app.get("/api/media-buyers", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectMediaBuyers.all(limit);
-  res.json(rows);
+  if (isLeadership(req.user)) {
+    const rows = selectMediaBuyers.all(limit);
+    return res.json(rows);
+  }
+  if (!req.user?.buyerId) {
+    return res.json([]);
+  }
+  const record = selectMediaBuyerById.get(req.user.buyerId);
+  return res.json(record ? [record] : []);
 });
 
 app.post("/api/media-buyers", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const {
     name,
     role,
@@ -1051,6 +1168,9 @@ app.post("/api/media-buyers", (req, res) => {
 });
 
 app.delete("/api/media-buyers/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid media buyer id." });
@@ -1060,6 +1180,9 @@ app.delete("/api/media-buyers/:id", (req, res) => {
 });
 
 app.get("/api/domains", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = selectDomains.all(limit);
@@ -1067,6 +1190,9 @@ app.get("/api/domains", (req, res) => {
 });
 
 app.post("/api/domains", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { domain, status } = req.body ?? {};
 
   if (!domain || !status) {
@@ -1083,6 +1209,9 @@ app.post("/api/domains", (req, res) => {
 });
 
 app.delete("/api/domains/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid domain id." });
@@ -1092,6 +1221,9 @@ app.delete("/api/domains/:id", (req, res) => {
 });
 
 app.get("/api/campaigns", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = selectCampaigns.all(limit);
@@ -1099,6 +1231,9 @@ app.get("/api/campaigns", (req, res) => {
 });
 
 app.post("/api/campaigns", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { keitaroId = "", name, buyer, country = "", domain = "" } = req.body ?? {};
   if (!name || !buyer) {
     return res.status(400).json({ error: "Campaign name and buyer are required." });
@@ -1122,6 +1257,9 @@ app.post("/api/campaigns", (req, res) => {
 });
 
 app.delete("/api/campaigns/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid campaign id." });
@@ -1200,11 +1338,18 @@ app.all("/api/postbacks/redeposit", handleConversionPostback("redeposit"));
 app.get("/api/users", (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectUsers.all(limit);
-  res.json(rows);
+  if (isLeadership(req.user)) {
+    const rows = selectUsers.all(limit);
+    return res.json(rows);
+  }
+  const record = selectUserById.get(req.user.id);
+  return res.json(record ? [record] : []);
 });
 
 app.post("/api/users", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { username, password, role, buyerId } = req.body ?? {};
 
   if (!username || !password || !role) {
@@ -1231,6 +1376,9 @@ app.post("/api/users", (req, res) => {
 });
 
 app.delete("/api/users/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid user id." });
@@ -1251,8 +1399,17 @@ app.post("/api/auth/login", (req, res) => {
     return res.status(401).json({ error: "Invalid credentials." });
   }
 
+  const token = encodeToken({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    buyerId: user.buyer_id,
+    exp: Math.floor(Date.now() / 1000) + (Number.isFinite(authTtlSeconds) ? authTtlSeconds : 604800),
+  });
+
   res.json({
     ok: true,
+    token,
     user: {
       id: user.id,
       username: user.username,
@@ -1272,6 +1429,9 @@ app.get("/api/roles", (req, res) => {
 });
 
 app.post("/api/roles", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { name, permissions = [] } = req.body ?? {};
 
   if (!name) {
@@ -1297,6 +1457,9 @@ app.post("/api/roles", (req, res) => {
 });
 
 app.put("/api/roles/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid role id." });
@@ -1320,6 +1483,9 @@ app.put("/api/roles/:id", (req, res) => {
 });
 
 app.delete("/api/roles/:id", (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid role id." });
@@ -1333,6 +1499,9 @@ app.delete("/api/roles/:id", (req, res) => {
 });
 
 app.post("/api/keitaro/test", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { baseUrl, apiKey } = req.body ?? {};
 
   if (!baseUrl || !apiKey) {
@@ -1360,6 +1529,9 @@ app.post("/api/keitaro/test", async (req, res) => {
 });
 
 app.post("/api/keitaro/sync", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const { baseUrl, apiKey, reportPath, payload, mapping, replaceExisting, target } = req.body ?? {};
 
   if (!baseUrl || !apiKey || !payload) {

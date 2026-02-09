@@ -49,6 +49,21 @@ import {
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
+const apiFetch = (url, options = {}) => {
+  const headers = { ...(options.headers || {}) };
+  if (typeof window !== "undefined") {
+    try {
+      const stored = JSON.parse(localStorage.getItem("dash-auth") || "null");
+      if (stored?.token && !headers.Authorization) {
+        headers.Authorization = `Bearer ${stored.token}`;
+      }
+    } catch (error) {
+      // ignore storage issues
+    }
+  }
+  return fetch(url, { ...options, headers });
+};
+
 const navItems = [
   { key: "home", label: "Home", icon: Home },
   { key: "streams", label: "Goals", icon: Target },
@@ -2346,7 +2361,7 @@ function StatisticsDashboard() {
   const fetchStats = React.useCallback(async () => {
     try {
       setStatsState({ loading: true, error: null });
-      const response = await fetch("/api/media-stats?limit=300");
+      const response = await apiFetch("/api/media-stats?limit=300");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -2373,7 +2388,7 @@ function StatisticsDashboard() {
   const handleStatsSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/media-stats", {
+      const response = await apiFetch("/api/media-stats", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(statsForm),
@@ -2952,7 +2967,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const fetchDeviceStats = React.useCallback(async () => {
     try {
       setDeviceState({ loading: true, error: null });
-      const response = await fetch("/api/device-stats?limit=500");
+      const response = await apiFetch("/api/device-stats?limit=500");
       if (!response.ok) {
         throw new Error("Failed to load device stats.");
       }
@@ -3352,7 +3367,7 @@ function GoalsDashboard({ authUser }) {
   const fetchGoals = React.useCallback(async () => {
     try {
       setGoalState({ loading: true, error: null });
-      const response = await fetch("/api/goals?limit=200");
+      const response = await apiFetch("/api/goals?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load goals.");
       }
@@ -3366,7 +3381,7 @@ function GoalsDashboard({ authUser }) {
 
   const fetchGoalStats = React.useCallback(async () => {
     try {
-      const response = await fetch("/api/media-stats?limit=500");
+      const response = await apiFetch("/api/media-stats?limit=500");
       if (!response.ok) return;
       const data = await response.json();
       setStatsEntries(data);
@@ -3378,7 +3393,7 @@ function GoalsDashboard({ authUser }) {
   const fetchTeamMembers = React.useCallback(async () => {
     try {
       setTeamState({ loading: true, error: null });
-      const response = await fetch("/api/media-buyers?limit=200");
+      const response = await apiFetch("/api/media-buyers?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load media buyers.");
       }
@@ -3407,7 +3422,7 @@ function GoalsDashboard({ authUser }) {
   const handleGoalSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/goals", {
+      const response = await apiFetch("/api/goals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(goalForm),
@@ -3426,7 +3441,7 @@ function GoalsDashboard({ authUser }) {
   const handleTeamSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/media-buyers", {
+      const response = await apiFetch("/api/media-buyers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(teamForm),
@@ -3444,7 +3459,7 @@ function GoalsDashboard({ authUser }) {
 
   const handleGoalDelete = async (id) => {
     try {
-      const response = await fetch(`/api/goals/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
       if (!response.ok) {
         throw new Error("Failed to delete goal.");
       }
@@ -3456,7 +3471,7 @@ function GoalsDashboard({ authUser }) {
 
   const handleTeamDelete = async (id) => {
     try {
-      const response = await fetch(`/api/media-buyers/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/media-buyers/${id}`, { method: "DELETE" });
       if (!response.ok) {
         throw new Error("Failed to delete media buyer.");
       }
@@ -3844,7 +3859,7 @@ function DomainsDashboard() {
   const fetchDomains = React.useCallback(async () => {
     try {
       setDomainState({ loading: true, error: null });
-      const response = await fetch("/api/domains?limit=200");
+      const response = await apiFetch("/api/domains?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load domains.");
       }
@@ -3863,7 +3878,7 @@ function DomainsDashboard() {
   const handleDomainSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/domains", {
+      const response = await apiFetch("/api/domains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(domainForm),
@@ -3881,7 +3896,7 @@ function DomainsDashboard() {
 
   const handleDomainDelete = async (id) => {
     try {
-      const response = await fetch(`/api/domains/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/domains/${id}`, { method: "DELETE" });
       if (!response.ok) {
         throw new Error("Failed to delete domain.");
       }
@@ -4023,7 +4038,7 @@ function RolesDashboard({ authUser }) {
   const fetchRoles = React.useCallback(async () => {
     try {
       setRoleState({ loading: true, error: null });
-      const response = await fetch("/api/roles?limit=200");
+      const response = await apiFetch("/api/roles?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load roles.");
       }
@@ -4042,7 +4057,7 @@ function RolesDashboard({ authUser }) {
   const fetchUsers = React.useCallback(async () => {
     try {
       setUserState({ loading: true, error: null });
-      const response = await fetch("/api/users?limit=200");
+      const response = await apiFetch("/api/users?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load users.");
       }
@@ -4057,7 +4072,7 @@ function RolesDashboard({ authUser }) {
   const fetchBuyers = React.useCallback(async () => {
     try {
       setTeamState({ loading: true, error: null });
-      const response = await fetch("/api/media-buyers?limit=300");
+      const response = await apiFetch("/api/media-buyers?limit=300");
       if (!response.ok) {
         throw new Error("Failed to load media buyers.");
       }
@@ -4096,7 +4111,7 @@ function RolesDashboard({ authUser }) {
     if (role.name === "Boss" || role.name === "Team Leader") return;
     setSavingId(role.id);
     try {
-      const response = await fetch(`/api/roles/${role.id}`, {
+      const response = await apiFetch(`/api/roles/${role.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permissions: role.permissions }),
@@ -4115,7 +4130,7 @@ function RolesDashboard({ authUser }) {
 
   const handleRoleDelete = async (roleId) => {
     try {
-      const response = await fetch(`/api/roles/${roleId}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/roles/${roleId}`, { method: "DELETE" });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to delete role.");
@@ -4129,7 +4144,7 @@ function RolesDashboard({ authUser }) {
   const handleUserSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/users", {
+      const response = await apiFetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(userForm),
@@ -4147,7 +4162,7 @@ function RolesDashboard({ authUser }) {
 
   const handleUserDelete = async (userId) => {
     try {
-      const response = await fetch(`/api/users/${userId}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/users/${userId}`, { method: "DELETE" });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to delete user.");
@@ -4162,7 +4177,7 @@ function RolesDashboard({ authUser }) {
     event.preventDefault();
     if (!isLeadership) return;
     try {
-      const response = await fetch("/api/media-buyers", {
+      const response = await apiFetch("/api/media-buyers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(teamForm),
@@ -4181,7 +4196,7 @@ function RolesDashboard({ authUser }) {
   const handleTeamDelete = async (id) => {
     if (!isLeadership) return;
     try {
-      const response = await fetch(`/api/media-buyers/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/media-buyers/${id}`, { method: "DELETE" });
       if (!response.ok) {
         throw new Error("Failed to delete media buyer.");
       }
@@ -4567,9 +4582,9 @@ function ProfileDashboard({ authUser }) {
     try {
       setProfileState({ loading: true, error: null });
       const [usersRes, rolesRes, buyersRes] = await Promise.all([
-        fetch("/api/users?limit=300"),
-        fetch("/api/roles?limit=200"),
-        fetch("/api/media-buyers?limit=300"),
+        apiFetch("/api/users?limit=300"),
+        apiFetch("/api/roles?limit=200"),
+        apiFetch("/api/media-buyers?limit=300"),
       ]);
 
       const users = usersRes.ok ? await usersRes.json() : [];
@@ -5000,7 +5015,7 @@ function KeitaroApiView() {
   const fetchCampaigns = React.useCallback(async () => {
     try {
       setCampaignState({ loading: true, error: null });
-      const response = await fetch("/api/campaigns?limit=200");
+      const response = await apiFetch("/api/campaigns?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load campaigns.");
       }
@@ -5027,7 +5042,7 @@ function KeitaroApiView() {
   const handleCampaignSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/campaigns", {
+      const response = await apiFetch("/api/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(campaignForm),
@@ -5045,7 +5060,7 @@ function KeitaroApiView() {
 
   const handleCampaignDelete = async (id) => {
     try {
-      const response = await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/campaigns/${id}`, { method: "DELETE" });
       if (!response.ok) {
         throw new Error("Failed to delete campaign.");
       }
@@ -5067,7 +5082,7 @@ function KeitaroApiView() {
   const handleTest = async () => {
     setTestState({ loading: true, ok: null, message: "" });
     try {
-      const response = await fetch("/api/keitaro/test", {
+      const response = await apiFetch("/api/keitaro/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ baseUrl, apiKey }),
@@ -5094,7 +5109,7 @@ function KeitaroApiView() {
     }
 
     try {
-      const response = await fetch("/api/keitaro/sync", {
+      const response = await apiFetch("/api/keitaro/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -5598,7 +5613,7 @@ export default function App() {
     let cancelled = false;
     const loadPermissions = async () => {
       try {
-        const response = await fetch("/api/roles?limit=200");
+        const response = await apiFetch("/api/roles?limit=200");
         if (!response.ok) return;
         const data = await response.json();
         const role = data.find((item) => item.name === authUser.role);
@@ -5681,10 +5696,16 @@ export default function App() {
     }
   }, [authUser]);
 
+  React.useEffect(() => {
+    if (authUser && !authUser.token) {
+      setAuthUser(null);
+    }
+  }, [authUser]);
+
   const handleLogin = async (username, password) => {
     setAuthState({ loading: true, error: null });
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await apiFetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -5693,7 +5714,7 @@ export default function App() {
       if (!response.ok) {
         throw new Error(data?.error || "Invalid credentials.");
       }
-      setAuthUser(data.user);
+      setAuthUser({ ...data.user, token: data.token });
       setAuthState({ loading: false, error: null });
     } catch (error) {
       const message = error.message || "Invalid credentials.";
@@ -5745,7 +5766,7 @@ export default function App() {
   const fetchEntries = React.useCallback(async () => {
     try {
       setEntryState({ loading: true, error: null });
-      const response = await fetch("/api/expenses?limit=200");
+      const response = await apiFetch("/api/expenses?limit=200");
       if (!response.ok) {
         throw new Error("Failed to load expenses.");
       }
@@ -5764,7 +5785,7 @@ export default function App() {
   const handleEntrySubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await fetch("/api/expenses", {
+      const response = await apiFetch("/api/expenses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
