@@ -646,16 +646,65 @@ const verifyPassword = (password, stored) => {
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
 };
 
-const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-if (userCount === 0) {
-  insertUser.run({
-    username: "boss",
-    password_hash: hashPassword("boss123"),
+const userSeed = [
+  {
+    username: "Yilmachine",
     role: "Boss",
-    buyer_id: null,
-    verified: 1,
-  });
-}
+    password_hash:
+      "d4c72f621a705e7c1ae13ddcc1b6659d:1e6c2a9bac7ac9c27819cb8e6267f7b1be27e1a1248093e26dcfb1d860cb699236ac17499d7fdac570815aa9184b035b8371f7fb6734bd903879754e8aa8dd2e",
+  },
+  {
+    username: "Leomarketing",
+    role: "Team Leader",
+    password_hash:
+      "8bc8e011af19826c280bf9d044a1bfc8:067de2b46064a1f0c5b94dce80b34ea755665f26928b9c538f15bb150ef0226d4ac01c2c941247c51632ea7a58c280d5c38eab45f3a9a0704b7a6a75c56b0331",
+  },
+  {
+    username: "Sara",
+    role: "Media Buyer Junior",
+    password_hash:
+      "ba5d92ae0ec08f728044bccd4854b465:4474ac939f47fb02b4a2d242048523fd12ac78c6e3e8e4e8c161659908e88660c0718a51e442527fc619e70478aef9d9e19c1cec700d501c7550a182b852f42c",
+  },
+  {
+    username: "Matheus",
+    role: "Media Buyer Junior",
+    password_hash:
+      "f5d67125135702236b916fbfa8e73181:df875fbc1dfbd978014ca2a1d6fc268ed3b8185c61d580bc6ed2ec256cad5e18c584774d99f2bf5902be23821b631440892da2eaee949d397a7c2cbe743a8999",
+  },
+  {
+    username: "Leticia",
+    role: "Media Buyer Junior",
+    password_hash:
+      "caaf76d260f3be2a26ee03ea55bb0a79:399284d22473cda46da4e65eabec257e59327f123d8657f70cf34c00e4e7d7fc375dc8c655107a7721b16e6d0b96687825335499c56576480477741f915b3c93",
+  },
+  {
+    username: "Carvalho",
+    role: "Media Buyer Junior",
+    password_hash:
+      "8c5f285134155495c677224c6f3855b3:11997f1820cb30bf25ef2275f6763a9a105d5891f9005f4695795763f0ad43574c1225ab7aa2f84ba67894c3d5598aff1f142ec2df7b6d69a46ac3540e1d1a52",
+  },
+  {
+    username: "Enzo",
+    role: "Media Buyer Junior",
+    password_hash:
+      "0b182635ad82d54373aa0cb2f8389367:f91a6d1800007e29e1e510c2ce086ab7e4a1b3251aaca2a2f06bca9790a146f9e053e18959049186d51510a950604f72872f98960e4f035fab1a1992eea1fd3e",
+  },
+  {
+    username: "Akku",
+    role: "Media Buyer Junior",
+    password_hash:
+      "fa2937f577cdc2717fe360dd6a9bd032:893c4e551b17916e37bd476b3cd2630ae26a6466c6856bca14660a02581b02a1e897095c6d64e487bb59111339a8b1470096893d05dfe57c300e39f5c90e87b0",
+  },
+];
+
+const insertUserSeed = db.prepare(
+  `INSERT OR IGNORE INTO users (username, password_hash, role, buyer_id, verified)
+   VALUES (@username, @password_hash, @role, @buyer_id, @verified)`
+);
+
+userSeed.forEach((user) => {
+  insertUserSeed.run({ ...user, buyer_id: null, verified: 1 });
+});
 
 const app = express();
 app.use(cors());
