@@ -1,203 +1,167 @@
 import express from "express";
 import cors from "cors";
-import Database from "better-sqlite3";
-import path from "path";
-import { fileURLToPath } from "url";
 import crypto from "crypto";
+import { Pool } from "pg";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dbPath = path.join(__dirname, "finance.db");
-const db = new Database(dbPath);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes("localhost")
+    ? false
+    : { rejectUnauthorized: false },
+});
 
-// Initialize table
-// NOTE: Keep column names stable for future migrations.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    country TEXT NOT NULL,
-    category TEXT NOT NULL,
-    reference TEXT,
-    billing_type TEXT NOT NULL,
-    amount REAL NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+const query = (text, params) => pool.query(text, params);
+const getRow = async (text, params) => {
+  const { rows } = await query(text, params);
+  return rows[0] || null;
+};
+const getRows = async (text, params) => {
+  const { rows } = await query(text, params);
+  return rows;
+};
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS media_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    buyer TEXT NOT NULL,
-    country TEXT,
-    spend REAL,
-    clicks INTEGER NOT NULL,
-    installs INTEGER,
-    registers INTEGER NOT NULL,
-    ftds INTEGER NOT NULL,
-    redeposits INTEGER,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+const initDb = async () => {
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      country TEXT NOT NULL,
+      category TEXT NOT NULL,
+      reference TEXT,
+      billing_type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      status TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS media_stats (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      buyer TEXT NOT NULL,
+      country TEXT,
+      spend REAL,
+      clicks INTEGER NOT NULL,
+      installs INTEGER,
+      registers INTEGER NOT NULL,
+      ftds INTEGER NOT NULL,
+      redeposits INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS goals (
+      id SERIAL PRIMARY KEY,
+      buyer TEXT NOT NULL,
+      country TEXT,
+      period TEXT NOT NULL,
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      clicks_target INTEGER,
+      registers_target INTEGER,
+      ftds_target INTEGER,
+      spend_target REAL,
+      r2d_target REAL,
+      is_global INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS media_buyers (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      country TEXT,
+      approach TEXT,
+      game TEXT,
+      email TEXT,
+      contact TEXT,
+      status TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS domains (
+      id SERIAL PRIMARY KEY,
+      domain TEXT NOT NULL,
+      status TEXT NOT NULL,
+      owner_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS campaigns (
+      id SERIAL PRIMARY KEY,
+      keitaro_id TEXT,
+      name TEXT NOT NULL,
+      buyer TEXT NOT NULL,
+      country TEXT,
+      domain TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS install_events (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      campaign_id TEXT,
+      buyer TEXT NOT NULL,
+      country TEXT,
+      domain TEXT,
+      device TEXT,
+      click_id TEXT,
+      source TEXT,
+      raw TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS conversion_events (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      campaign_id TEXT,
+      buyer TEXT NOT NULL,
+      country TEXT,
+      domain TEXT,
+      device TEXT,
+      click_id TEXT,
+      source TEXT,
+      raw TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS device_stats (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      device TEXT NOT NULL,
+      buyer TEXT,
+      country TEXT,
+      spend REAL,
+      revenue REAL,
+      clicks INTEGER NOT NULL,
+      registers INTEGER NOT NULL,
+      ftds INTEGER NOT NULL,
+      redeposits INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL,
+      buyer_id INTEGER,
+      verified INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS roles (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      permissions TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_keitaro_id
+      ON campaigns (keitaro_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_install_events_date_buyer_country
+      ON install_events (date, buyer, country);`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
+      ON install_events (click_id, campaign_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_conversion_events_date_buyer_country
+      ON conversion_events (date, buyer, country);`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
+      ON device_stats (date, device, buyer, country);`,
+  ];
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS goals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    buyer TEXT NOT NULL,
-    country TEXT,
-    period TEXT NOT NULL,
-    date_from TEXT NOT NULL,
-    date_to TEXT NOT NULL,
-    clicks_target INTEGER,
-    registers_target INTEGER,
-    ftds_target INTEGER,
-    spend_target REAL,
-    r2d_target REAL,
-    is_global INTEGER NOT NULL DEFAULT 0,
-    notes TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS media_buyers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    country TEXT,
-    approach TEXT,
-    game TEXT,
-    email TEXT,
-    contact TEXT,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS domains (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    domain TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-const domainColumns = db.prepare("PRAGMA table_info(domains)").all();
-const hasDomainOwner = domainColumns.some((col) => col.name === "owner_id");
-if (!hasDomainOwner) {
-  db.exec("ALTER TABLE domains ADD COLUMN owner_id INTEGER;");
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS campaigns (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    keitaro_id TEXT,
-    name TEXT NOT NULL,
-    buyer TEXT NOT NULL,
-    country TEXT,
-    domain TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS install_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    campaign_id TEXT,
-    buyer TEXT NOT NULL,
-    country TEXT,
-    domain TEXT,
-    device TEXT,
-    click_id TEXT,
-    source TEXT,
-    raw TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS conversion_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    event_type TEXT NOT NULL,
-    campaign_id TEXT,
-    buyer TEXT NOT NULL,
-    country TEXT,
-    domain TEXT,
-    device TEXT,
-    click_id TEXT,
-    source TEXT,
-    raw TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS device_stats (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    device TEXT NOT NULL,
-    buyer TEXT,
-    country TEXT,
-    spend REAL,
-    revenue REAL,
-    clicks INTEGER NOT NULL,
-    registers INTEGER NOT NULL,
-    ftds INTEGER NOT NULL,
-    redeposits INTEGER,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_keitaro_id
-  ON campaigns (keitaro_id);
-`);
-
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_install_events_date_buyer_country
-  ON install_events (date, buyer, country);
-`);
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
-  ON install_events (click_id, campaign_id);
-`);
-
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_conversion_events_date_buyer_country
-  ON conversion_events (date, buyer, country);
-`);
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
-  ON device_stats (date, device, buyer, country);
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,
-    buyer_id INTEGER,
-    verified INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS roles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    permissions TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+  for (const statement of statements) {
+    await query(statement);
+  }
+};
 
 const allPermissions = [
   "dashboard",
@@ -235,20 +199,19 @@ const roleSeed = [
   },
 ];
 
-const insertRoleSeed = db.prepare(
-  `INSERT OR IGNORE INTO roles (name, permissions)
-   VALUES (@name, @permissions)`
-);
-const roleCount = db.prepare("SELECT COUNT(*) as count FROM roles").get().count;
-if (roleCount === 0) {
-  roleSeed.forEach((role) => {
-    insertRoleSeed.run({ name: role.name, permissions: JSON.stringify(role.permissions) });
-  });
-}
-const ensureRolePermissions = (name, permissions) => {
-  const row = db.prepare("SELECT id, permissions FROM roles WHERE name = ?").get(name);
+const insertRoleSeed = async (role) => {
+  await query(
+    `INSERT INTO roles (name, permissions)
+     VALUES ($1, $2)
+     ON CONFLICT (name) DO NOTHING`,
+    [role.name, JSON.stringify(role.permissions)]
+  );
+};
+
+const ensureRolePermissions = async (name, permissions) => {
+  const row = await getRow("SELECT id, permissions FROM roles WHERE name = $1", [name]);
   if (!row) {
-    insertRoleSeed.run({ name, permissions: JSON.stringify(permissions) });
+    await insertRoleSeed({ name, permissions });
     return;
   }
   let current = [];
@@ -259,293 +222,397 @@ const ensureRolePermissions = (name, permissions) => {
   }
   const merged = Array.from(new Set([...current, ...permissions]));
   if (merged.length !== current.length) {
-    db.prepare("UPDATE roles SET permissions = ? WHERE id = ?").run(JSON.stringify(merged), row.id);
+    await query("UPDATE roles SET permissions = $1 WHERE id = $2", [
+      JSON.stringify(merged),
+      row.id,
+    ]);
   }
 };
-roleSeed.filter((role) => ["Boss", "Team Leader"].includes(role.name)).forEach((role) => {
-  ensureRolePermissions(role.name, role.permissions);
-});
 
-const goalColumns = db.prepare("PRAGMA table_info(goals)").all();
-const hasR2dTarget = goalColumns.some((col) => col.name === "r2d_target");
-if (!hasR2dTarget) {
-  db.exec("ALTER TABLE goals ADD COLUMN r2d_target REAL;");
-}
-const hasGoalCountry = goalColumns.some((col) => col.name === "country");
-if (!hasGoalCountry) {
-  db.exec("ALTER TABLE goals ADD COLUMN country TEXT;");
-}
+const seedRoles = async () => {
+  for (const role of roleSeed) {
+    await insertRoleSeed(role);
+  }
+  for (const role of roleSeed.filter((item) => ["Boss", "Team Leader"].includes(item.name))) {
+    await ensureRolePermissions(role.name, role.permissions);
+  }
+};
 
-const mediaBuyerColumns = db.prepare("PRAGMA table_info(media_buyers)").all();
-const hasBuyerApproach = mediaBuyerColumns.some((col) => col.name === "approach");
-if (!hasBuyerApproach) {
-  db.exec("ALTER TABLE media_buyers ADD COLUMN approach TEXT;");
-}
-const hasBuyerGame = mediaBuyerColumns.some((col) => col.name === "game");
-if (!hasBuyerGame) {
-  db.exec("ALTER TABLE media_buyers ADD COLUMN game TEXT;");
-}
+const insertExpense = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO expenses (date, country, category, reference, billing_type, amount, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      payload.date,
+      payload.country,
+      payload.category,
+      payload.reference,
+      payload.billing_type,
+      payload.amount,
+      payload.status,
+    ]
+  );
+  return rows[0];
+};
 
-const userColumns = db.prepare("PRAGMA table_info(users)").all();
-const hasUserVerified = userColumns.some((col) => col.name === "verified");
-if (!hasUserVerified) {
-  db.exec("ALTER TABLE users ADD COLUMN verified INTEGER NOT NULL DEFAULT 1;");
-}
+const selectExpenses = async (limit) =>
+  getRows(
+    `SELECT id, date, country, category, reference, billing_type, amount, status
+     FROM expenses
+     ORDER BY date DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-// Lightweight migration for older databases missing the country column.
-const mediaColumns = db.prepare("PRAGMA table_info(media_stats)").all();
-const hasCountry = mediaColumns.some((col) => col.name === "country");
-if (!hasCountry) {
-  db.exec("ALTER TABLE media_stats ADD COLUMN country TEXT;");
-}
-const hasRedeps = mediaColumns.some((col) => col.name === "redeposits");
-if (!hasRedeps) {
-  db.exec("ALTER TABLE media_stats ADD COLUMN redeposits INTEGER;");
-}
+const insertMediaStat = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO media_stats (date, buyer, country, spend, clicks, installs, registers, ftds, redeposits)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`,
+    [
+      payload.date,
+      payload.buyer,
+      payload.country,
+      payload.spend,
+      payload.clicks,
+      payload.installs,
+      payload.registers,
+      payload.ftds,
+      payload.redeposits,
+    ]
+  );
+  return rows[0];
+};
 
-const installColumns = db.prepare("PRAGMA table_info(install_events)").all();
-const hasInstallDevice = installColumns.some((col) => col.name === "device");
-if (!hasInstallDevice) {
-  db.exec("ALTER TABLE install_events ADD COLUMN device TEXT;");
-}
-const hasInstallDomain = installColumns.some((col) => col.name === "domain");
-if (!hasInstallDomain) {
-  db.exec("ALTER TABLE install_events ADD COLUMN domain TEXT;");
-}
+const selectMediaStats = async (limit) =>
+  getRows(
+    `SELECT id, date, buyer, country, spend, clicks, installs, registers, ftds, redeposits
+     FROM media_stats
+     ORDER BY date DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const conversionColumns = db.prepare("PRAGMA table_info(conversion_events)").all();
-const hasConversionDomain = conversionColumns.some((col) => col.name === "domain");
-if (!hasConversionDomain) {
-  db.exec("ALTER TABLE conversion_events ADD COLUMN domain TEXT;");
-}
-const hasConversionDevice = conversionColumns.some((col) => col.name === "device");
-if (!hasConversionDevice) {
-  db.exec("ALTER TABLE conversion_events ADD COLUMN device TEXT;");
-}
+const insertGoal = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO goals (buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING id`,
+    [
+      payload.buyer,
+      payload.country,
+      payload.period,
+      payload.date_from,
+      payload.date_to,
+      payload.clicks_target,
+      payload.registers_target,
+      payload.ftds_target,
+      payload.spend_target,
+      payload.r2d_target,
+      payload.is_global,
+      payload.notes,
+    ]
+  );
+  return rows[0];
+};
 
-const deviceColumns = db.prepare("PRAGMA table_info(device_stats)").all();
-const hasDeviceRedeps = deviceColumns.some((col) => col.name === "redeposits");
-if (!hasDeviceRedeps) {
-  db.exec("ALTER TABLE device_stats ADD COLUMN redeposits INTEGER;");
-}
+const selectGoals = async (limit) =>
+  getRows(
+    `SELECT id, buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes
+     FROM goals
+     ORDER BY date_from DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const campaignColumns = db.prepare("PRAGMA table_info(campaigns)").all();
-const hasCampaignDomain = campaignColumns.some((col) => col.name === "domain");
-if (!hasCampaignDomain) {
-  db.exec("ALTER TABLE campaigns ADD COLUMN domain TEXT;");
-}
+const deleteGoal = async (id) =>
+  query(`DELETE FROM goals WHERE id = $1`, [id]);
 
-const goalsColumns = db.prepare("PRAGMA table_info(goals)").all();
-const hasGoalsGlobal = goalsColumns.some((col) => col.name === "is_global");
-if (!hasGoalsGlobal) {
-  db.exec("ALTER TABLE goals ADD COLUMN is_global INTEGER NOT NULL DEFAULT 0;");
-}
+const insertMediaBuyer = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id`,
+    [
+      payload.name,
+      payload.role,
+      payload.country,
+      payload.approach,
+      payload.game,
+      payload.email,
+      payload.contact,
+      payload.status,
+    ]
+  );
+  return rows[0];
+};
 
-const insertExpense = db.prepare(
-  `INSERT INTO expenses (date, country, category, reference, billing_type, amount, status)
-   VALUES (@date, @country, @category, @reference, @billing_type, @amount, @status)`
-);
+const selectMediaBuyers = async (limit) =>
+  getRows(
+    `SELECT id, name, role, country, approach, game, email, contact, status
+     FROM media_buyers
+     ORDER BY name ASC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const selectExpenses = db.prepare(
-  `SELECT id, date, country, category, reference, billing_type, amount, status
-   FROM expenses
-   ORDER BY date DESC, id DESC
-   LIMIT ?`
-);
+const selectMediaBuyerById = async (id) =>
+  getRow(
+    `SELECT id, name, role, country, approach, game, email, contact, status
+     FROM media_buyers
+     WHERE id = $1`,
+    [id]
+  );
 
-const insertMediaStat = db.prepare(
-  `INSERT INTO media_stats (date, buyer, country, spend, clicks, installs, registers, ftds, redeposits)
-   VALUES (@date, @buyer, @country, @spend, @clicks, @installs, @registers, @ftds, @redeposits)`
-);
+const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id = $1`, [id]);
 
-const selectMediaStats = db.prepare(
-  `SELECT id, date, buyer, country, spend, clicks, installs, registers, ftds, redeposits
-   FROM media_stats
-   ORDER BY date DESC, id DESC
-   LIMIT ?`
-);
+const insertDomain = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO domains (domain, status, owner_id)
+     VALUES ($1, $2, $3)
+     RETURNING id`,
+    [payload.domain, payload.status, payload.owner_id]
+  );
+  return rows[0];
+};
 
-const insertGoal = db.prepare(
-  `INSERT INTO goals (buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes)
-   VALUES (@buyer, @country, @period, @date_from, @date_to, @clicks_target, @registers_target, @ftds_target, @spend_target, @r2d_target, @is_global, @notes)`
-);
+const selectDomains = async (limit) =>
+  getRows(
+    `SELECT id, domain, status, owner_id
+     FROM domains
+     ORDER BY domain ASC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const selectGoals = db.prepare(
-  `SELECT id, buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes
-   FROM goals
-   ORDER BY date_from DESC, id DESC
-   LIMIT ?`
-);
+const selectDomainsByOwner = async (ownerId, limit) =>
+  getRows(
+    `SELECT id, domain, status, owner_id
+     FROM domains
+     WHERE owner_id = $1
+     ORDER BY domain ASC, id DESC
+     LIMIT $2`,
+    [ownerId, limit]
+  );
 
-const deleteGoal = db.prepare(`DELETE FROM goals WHERE id = ?`);
+const selectDomainById = async (id) =>
+  getRow(`SELECT id, owner_id FROM domains WHERE id = $1`, [id]);
 
-const insertMediaBuyer = db.prepare(
-  `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status)
-   VALUES (@name, @role, @country, @approach, @game, @email, @contact, @status)`
-);
+const deleteDomain = async (id) => query(`DELETE FROM domains WHERE id = $1`, [id]);
 
-const selectMediaBuyers = db.prepare(
-  `SELECT id, name, role, country, approach, game, email, contact, status
-   FROM media_buyers
-   ORDER BY name ASC, id DESC
-   LIMIT ?`
-);
+const insertCampaign = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO campaigns (keitaro_id, name, buyer, country, domain)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [
+      payload.keitaro_id,
+      payload.name,
+      payload.buyer,
+      payload.country,
+      payload.domain,
+    ]
+  );
+  return rows[0];
+};
 
-const selectMediaBuyerById = db.prepare(
-  `SELECT id, name, role, country, approach, game, email, contact, status
-   FROM media_buyers
-   WHERE id = ?`
-);
+const selectCampaigns = async (limit) =>
+  getRows(
+    `SELECT id, keitaro_id, name, buyer, country, domain
+     FROM campaigns
+     ORDER BY id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const deleteMediaBuyer = db.prepare(`DELETE FROM media_buyers WHERE id = ?`);
+const selectCampaignByKey = async (keitaroId, name) =>
+  getRow(
+    `SELECT id, keitaro_id, name, buyer, country, domain
+     FROM campaigns
+     WHERE keitaro_id = $1 OR name = $2
+     LIMIT 1`,
+    [keitaroId, name]
+  );
 
-const insertDomain = db.prepare(
-  `INSERT INTO domains (domain, status, owner_id)
-   VALUES (@domain, @status, @owner_id)`
-);
+const deleteCampaign = async (id) => query(`DELETE FROM campaigns WHERE id = $1`, [id]);
 
-const selectDomains = db.prepare(
-  `SELECT id, domain, status, owner_id
-   FROM domains
-   ORDER BY domain ASC, id DESC
-   LIMIT ?`
-);
+const insertInstallEvent = async (payload) => {
+  await query(
+    `INSERT INTO install_events (date, campaign_id, buyer, country, domain, device, click_id, source, raw)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [
+      payload.date,
+      payload.campaign_id,
+      payload.buyer,
+      payload.country,
+      payload.domain,
+      payload.device,
+      payload.click_id,
+      payload.source,
+      payload.raw,
+    ]
+  );
+};
 
-const selectDomainsByOwner = db.prepare(
-  `SELECT id, domain, status, owner_id
-   FROM domains
-   WHERE owner_id = ?
-   ORDER BY domain ASC, id DESC
-   LIMIT ?`
-);
+const insertConversionEvent = async (payload) => {
+  await query(
+    `INSERT INTO conversion_events (date, event_type, campaign_id, buyer, country, domain, device, click_id, source, raw)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      payload.date,
+      payload.event_type,
+      payload.campaign_id,
+      payload.buyer,
+      payload.country,
+      payload.domain,
+      payload.device,
+      payload.click_id,
+      payload.source,
+      payload.raw,
+    ]
+  );
+};
 
-const selectDomainById = db.prepare(
-  `SELECT id, owner_id
-   FROM domains
-   WHERE id = ?`
-);
+const selectInstallTotals = async () =>
+  getRows(
+    `SELECT date, buyer, country, COUNT(*) as installs
+     FROM install_events
+     GROUP BY date, buyer, country`
+  );
 
-const deleteDomain = db.prepare(`DELETE FROM domains WHERE id = ?`);
+const selectConversionTotals = async () =>
+  getRows(
+    `SELECT date, buyer, country,
+      SUM(CASE WHEN event_type = 'ftd' THEN 1 ELSE 0 END) AS ftds,
+      SUM(CASE WHEN event_type = 'redeposit' THEN 1 ELSE 0 END) AS redeposits,
+      SUM(CASE WHEN event_type = 'registration' THEN 1 ELSE 0 END) AS registers
+     FROM conversion_events
+     GROUP BY date, buyer, country`
+  );
 
-const insertCampaign = db.prepare(
-  `INSERT INTO campaigns (keitaro_id, name, buyer, country, domain)
-   VALUES (@keitaro_id, @name, @buyer, @country, @domain)`
-);
+const selectInstallTotalsByDevice = async () =>
+  getRows(
+    `SELECT date, device, COUNT(*) as installs
+     FROM install_events
+     GROUP BY date, device`
+  );
 
-const selectCampaigns = db.prepare(
-  `SELECT id, keitaro_id, name, buyer, country, domain
-   FROM campaigns
-   ORDER BY id DESC
-   LIMIT ?`
-);
+const insertDeviceStat = async (payload) => {
+  await query(
+    `INSERT INTO device_stats (date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      payload.date,
+      payload.device,
+      payload.buyer,
+      payload.country,
+      payload.spend,
+      payload.revenue,
+      payload.clicks,
+      payload.registers,
+      payload.ftds,
+      payload.redeposits,
+    ]
+  );
+};
 
-const selectCampaignByKey = db.prepare(
-  `SELECT id, keitaro_id, name, buyer, country, domain
-   FROM campaigns
-   WHERE keitaro_id = ? OR name = ?
-   LIMIT 1`
-);
+const selectDeviceStats = async (limit) =>
+  getRows(
+    `SELECT id, date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
+     FROM device_stats
+     ORDER BY date DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const deleteCampaign = db.prepare(`DELETE FROM campaigns WHERE id = ?`);
+const deleteDeviceStat = async (date, device, buyer, country) =>
+  query(
+    `DELETE FROM device_stats WHERE date = $1 AND device = $2 AND buyer = $3 AND country = $4`,
+    [date, device, buyer, country]
+  );
 
-const insertInstallEvent = db.prepare(
-  `INSERT INTO install_events (date, campaign_id, buyer, country, domain, device, click_id, source, raw)
-   VALUES (@date, @campaign_id, @buyer, @country, @domain, @device, @click_id, @source, @raw)`
-);
+const insertUser = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO users (username, password_hash, role, buyer_id, verified)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [
+      payload.username,
+      payload.password_hash,
+      payload.role,
+      payload.buyer_id,
+      payload.verified,
+    ]
+  );
+  return rows[0];
+};
 
-const insertConversionEvent = db.prepare(
-  `INSERT INTO conversion_events (date, event_type, campaign_id, buyer, country, domain, device, click_id, source, raw)
-   VALUES (@date, @event_type, @campaign_id, @buyer, @country, @domain, @device, @click_id, @source, @raw)`
-);
+const selectUsers = async (limit) =>
+  getRows(
+    `SELECT id, username, role, buyer_id, verified
+     FROM users
+     ORDER BY id DESC
+     LIMIT $1`,
+    [limit]
+  );
 
-const selectInstallTotals = db.prepare(
-  `SELECT date, buyer, country, COUNT(*) as installs
-   FROM install_events
-   GROUP BY date, buyer, country`
-);
+const selectUserById = async (id) =>
+  getRow(
+    `SELECT id, username, role, buyer_id, verified
+     FROM users
+     WHERE id = $1`,
+    [id]
+  );
 
-const selectConversionTotals = db.prepare(
-  `SELECT date, buyer, country,
-    SUM(CASE WHEN event_type = 'ftd' THEN 1 ELSE 0 END) AS ftds,
-    SUM(CASE WHEN event_type = 'redeposit' THEN 1 ELSE 0 END) AS redeposits,
-    SUM(CASE WHEN event_type = 'registration' THEN 1 ELSE 0 END) AS registers
-   FROM conversion_events
-   GROUP BY date, buyer, country`
-);
+const selectUserByUsername = async (username) =>
+  getRow(
+    `SELECT id, username, password_hash, role, buyer_id
+     FROM users
+     WHERE username = $1`,
+    [username]
+  );
 
-const selectInstallTotalsByDevice = db.prepare(
-  `SELECT date, device, COUNT(*) as installs
-   FROM install_events
-   GROUP BY date, device`
-);
+const deleteUser = async (id) => query(`DELETE FROM users WHERE id = $1`, [id]);
 
-const insertDeviceStat = db.prepare(
-  `INSERT INTO device_stats (date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits)
-   VALUES (@date, @device, @buyer, @country, @spend, @revenue, @clicks, @registers, @ftds, @redeposits)`
-);
+const insertRole = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO roles (name, permissions)
+     VALUES ($1, $2)
+     RETURNING id`,
+    [payload.name, payload.permissions]
+  );
+  return rows[0];
+};
 
-const selectDeviceStats = db.prepare(
-  `SELECT id, date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
-   FROM device_stats
-   ORDER BY date DESC, id DESC
-   LIMIT ?`
-);
+const selectRoles = async (limit) =>
+  getRows(
+    `SELECT id, name, permissions
+     FROM roles
+     ORDER BY id ASC
+     LIMIT $1`,
+    [limit]
+  );
 
-const deleteDeviceStat = db.prepare(
-  `DELETE FROM device_stats WHERE date = ? AND device = ? AND buyer = ? AND country = ?`
-);
+const selectRoleById = async (id) =>
+  getRow(`SELECT id, name FROM roles WHERE id = $1`, [id]);
 
-const insertUser = db.prepare(
-  `INSERT INTO users (username, password_hash, role, buyer_id, verified)
-   VALUES (@username, @password_hash, @role, @buyer_id, @verified)`
-);
+const updateRole = async (payload) =>
+  query(
+    `UPDATE roles
+     SET permissions = $1
+     WHERE id = $2`,
+    [payload.permissions, payload.id]
+  );
 
-const selectUsers = db.prepare(
-  `SELECT id, username, role, buyer_id, verified
-   FROM users
-   ORDER BY id DESC
-   LIMIT ?`
-);
+const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
-const selectUserById = db.prepare(
-  `SELECT id, username, role, buyer_id, verified
-   FROM users
-   WHERE id = ?`
-);
-
-const selectUserByUsername = db.prepare(
-  `SELECT id, username, password_hash, role, buyer_id
-   FROM users
-   WHERE username = ?`
-);
-
-const deleteUser = db.prepare(`DELETE FROM users WHERE id = ?`);
-
-const insertRole = db.prepare(
-  `INSERT INTO roles (name, permissions)
-   VALUES (@name, @permissions)`
-);
-
-const selectRoles = db.prepare(
-  `SELECT id, name, permissions
-   FROM roles
-   ORDER BY id ASC
-   LIMIT ?`
-);
-
-const selectRoleById = db.prepare(`SELECT id, name FROM roles WHERE id = ?`);
-
-const updateRole = db.prepare(
-  `UPDATE roles
-   SET permissions = @permissions
-   WHERE id = @id`
-);
-
-const deleteRole = db.prepare(`DELETE FROM roles WHERE id = ?`);
-
-const deleteMediaStat = db.prepare(
-  `DELETE FROM media_stats WHERE date = ? AND buyer = ? AND country = ?`
-);
+const deleteMediaStat = async (date, buyer, country) =>
+  query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
+    date,
+    buyer,
+    country,
+  ]);
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
 
@@ -593,7 +660,7 @@ const normalizeDevice = (value) => {
   return raw;
 };
 
-const resolvePostbackContext = (payload) => {
+const resolvePostbackContext = async (payload) => {
   const campaignId =
     payload.campaign_id ||
     payload.campaignId ||
@@ -626,7 +693,7 @@ const resolvePostbackContext = (payload) => {
 
   let mapped = null;
   if (campaignId) {
-    mapped = selectCampaignByKey.get(String(campaignId).trim(), String(campaignId).trim());
+    mapped = await selectCampaignByKey(String(campaignId).trim(), String(campaignId).trim());
   }
   if (!buyer && mapped?.buyer) buyer = mapped.buyer;
   if (!country && mapped?.country) country = mapped.country;
@@ -710,10 +777,10 @@ const decodeToken = (token) => {
 
 const isLeadership = (user) => user?.role === "Boss" || user?.role === "Team Leader";
 
-const resolveViewerBuyer = (user) => {
+const resolveViewerBuyer = async (user) => {
   if (!user || isLeadership(user)) return null;
   if (user.buyerId) {
-    const record = selectMediaBuyerById.get(user.buyerId);
+    const record = await selectMediaBuyerById(user.buyerId);
     if (record?.name) return record.name;
   }
   return user.username || "";
@@ -770,14 +837,16 @@ const userSeed = [
   },
 ];
 
-const insertUserSeed = db.prepare(
-  `INSERT OR IGNORE INTO users (username, password_hash, role, buyer_id, verified)
-   VALUES (@username, @password_hash, @role, @buyer_id, @verified)`
-);
-
-userSeed.forEach((user) => {
-  insertUserSeed.run({ ...user, buyer_id: null, verified: 1 });
-});
+const seedUsers = async () => {
+  for (const user of userSeed) {
+    await query(
+      `INSERT INTO users (username, password_hash, role, buyer_id, verified)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (username) DO NOTHING`,
+      [user.username, user.password_hash, user.role, null, 1]
+    );
+  }
+};
 
 const app = express();
 app.use(cors());
@@ -799,17 +868,17 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.get("/api/expenses", (req, res) => {
+app.get("/api/expenses", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectExpenses.all(limit);
+  const rows = await selectExpenses(limit);
   res.json(rows);
 });
 
-app.post("/api/expenses", (req, res) => {
+app.post("/api/expenses", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -842,17 +911,17 @@ app.post("/api/expenses", (req, res) => {
     status,
   };
 
-  const info = insertExpense.run(payload);
-  res.status(201).json({ id: info.lastInsertRowid });
+  const info = await insertExpense(payload);
+  res.status(201).json({ id: info.id });
 });
 
-app.get("/api/media-stats", (req, res) => {
+app.get("/api/media-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const viewerBuyer = resolveViewerBuyer(req.user);
-  let rows = selectMediaStats.all(limit);
-  let installTotals = selectInstallTotals.all();
-  let conversionTotals = selectConversionTotals.all();
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  let rows = await selectMediaStats(limit);
+  let installTotals = await selectInstallTotals();
+  let conversionTotals = await selectConversionTotals();
 
   if (viewerBuyer) {
     rows = rows.filter((row) => row.buyer === viewerBuyer);
@@ -930,11 +999,11 @@ app.get("/api/media-stats", (req, res) => {
   res.json(merged.slice(0, limit));
 });
 
-app.get("/api/device-stats", (req, res) => {
+app.get("/api/device-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectDeviceStats.all(limit);
-  const installTotals = selectInstallTotalsByDevice.all();
+  const rows = await selectDeviceStats(limit);
+  const installTotals = await selectInstallTotalsByDevice();
   const installMap = new Map();
 
   installTotals.forEach((row) => {
@@ -1004,12 +1073,12 @@ app.get("/api/device-stats", (req, res) => {
   res.json(merged.slice(0, limit));
 });
 
-app.post("/api/media-stats", (req, res) => {
+app.post("/api/media-stats", async (req, res) => {
   let { date, buyer, country, spend, clicks, installs, registers, ftds, redeposits } =
     req.body ?? {};
 
   if (!isLeadership(req.user)) {
-    const viewerBuyer = resolveViewerBuyer(req.user);
+    const viewerBuyer = await resolveViewerBuyer(req.user);
     if (!viewerBuyer) {
       return res.status(403).json({ error: "No buyer assigned." });
     }
@@ -1058,23 +1127,23 @@ app.post("/api/media-stats", (req, res) => {
     redeposits: parsedRedeps,
   };
 
-  const info = insertMediaStat.run(payload);
-  res.status(201).json({ id: info.lastInsertRowid });
+  const info = await insertMediaStat(payload);
+  res.status(201).json({ id: info.id });
 });
 
-app.get("/api/goals", (req, res) => {
+app.get("/api/goals", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectGoals.all(limit);
+  const rows = await selectGoals(limit);
   if (isLeadership(req.user)) {
     return res.json(rows);
   }
-  const viewerBuyer = resolveViewerBuyer(req.user);
+  const viewerBuyer = await resolveViewerBuyer(req.user);
   const filtered = rows.filter((row) => row.is_global || row.buyer === viewerBuyer);
   return res.json(filtered);
 });
 
-app.post("/api/goals", (req, res) => {
+app.post("/api/goals", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1117,11 +1186,11 @@ app.post("/api/goals", (req, res) => {
     notes,
   };
 
-  const info = insertGoal.run(payload);
-  res.status(201).json({ id: info.lastInsertRowid });
+  const info = await insertGoal(payload);
+  res.status(201).json({ id: info.id });
 });
 
-app.delete("/api/goals/:id", (req, res) => {
+app.delete("/api/goals/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1129,25 +1198,25 @@ app.delete("/api/goals/:id", (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid goal id." });
   }
-  deleteGoal.run(id);
+  await deleteGoal(id);
   res.json({ ok: true });
 });
 
-app.get("/api/media-buyers", (req, res) => {
+app.get("/api/media-buyers", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   if (isLeadership(req.user)) {
-    const rows = selectMediaBuyers.all(limit);
+    const rows = await selectMediaBuyers(limit);
     return res.json(rows);
   }
   if (!req.user?.buyerId) {
     return res.json([]);
   }
-  const record = selectMediaBuyerById.get(req.user.buyerId);
+  const record = await selectMediaBuyerById(req.user.buyerId);
   return res.json(record ? [record] : []);
 });
 
-app.post("/api/media-buyers", (req, res) => {
+app.post("/api/media-buyers", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1177,11 +1246,11 @@ app.post("/api/media-buyers", (req, res) => {
     status,
   };
 
-  const info = insertMediaBuyer.run(payload);
-  res.status(201).json({ id: info.lastInsertRowid });
+  const info = await insertMediaBuyer(payload);
+  res.status(201).json({ id: info.id });
 });
 
-app.delete("/api/media-buyers/:id", (req, res) => {
+app.delete("/api/media-buyers/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1189,22 +1258,22 @@ app.delete("/api/media-buyers/:id", (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid media buyer id." });
   }
-  deleteMediaBuyer.run(id);
+  await deleteMediaBuyer(id);
   res.json({ ok: true });
 });
 
-app.get("/api/domains", (req, res) => {
+app.get("/api/domains", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   if (isLeadership(req.user)) {
-    const rows = selectDomains.all(limit);
+    const rows = await selectDomains(limit);
     return res.json(rows);
   }
-  const rows = selectDomainsByOwner.all(req.user.id, limit);
+  const rows = await selectDomainsByOwner(req.user.id, limit);
   return res.json(rows);
 });
 
-app.post("/api/domains", (req, res) => {
+app.post("/api/domains", async (req, res) => {
   const { domain, status, ownerId } = req.body ?? {};
 
   if (!domain || !status) {
@@ -1221,37 +1290,37 @@ app.post("/api/domains", (req, res) => {
       : req.user.id,
   };
 
-  const info = insertDomain.run(payload);
-  res.status(201).json({ id: info.lastInsertRowid });
+  const info = await insertDomain(payload);
+  res.status(201).json({ id: info.id });
 });
 
-app.delete("/api/domains/:id", (req, res) => {
+app.delete("/api/domains/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid domain id." });
   }
-  const domain = selectDomainById.get(id);
+  const domain = await selectDomainById(id);
   if (!domain) {
     return res.status(404).json({ error: "Domain not found." });
   }
   if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  deleteDomain.run(id);
+  await deleteDomain(id);
   res.json({ ok: true });
 });
 
-app.get("/api/campaigns", (req, res) => {
+app.get("/api/campaigns", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectCampaigns.all(limit);
+  const rows = await selectCampaigns(limit);
   res.json(rows);
 });
 
-app.post("/api/campaigns", (req, res) => {
+app.post("/api/campaigns", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1261,23 +1330,23 @@ app.post("/api/campaigns", (req, res) => {
   }
 
   try {
-    const info = insertCampaign.run({
+    const info = await insertCampaign({
       keitaro_id: String(keitaroId || "").trim() || null,
       name: String(name).trim(),
       buyer: String(buyer).trim(),
       country: String(country || "").trim(),
       domain: String(domain || "").trim() || null,
     });
-    res.status(201).json({ id: info.lastInsertRowid });
+    res.status(201).json({ id: info.id });
   } catch (error) {
-    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE") {
+    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE" || error?.code === "23505") {
       return res.status(409).json({ error: "Campaign already exists." });
     }
     res.status(500).json({ error: "Failed to create campaign." });
   }
 });
 
-app.delete("/api/campaigns/:id", (req, res) => {
+app.delete("/api/campaigns/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1285,21 +1354,21 @@ app.delete("/api/campaigns/:id", (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid campaign id." });
   }
-  deleteCampaign.run(id);
+  await deleteCampaign(id);
   res.json({ ok: true });
 });
 
-app.all("/api/postbacks/install", (req, res) => {
+app.all("/api/postbacks/install", async (req, res) => {
   const payload = { ...(req.query || {}), ...(req.body || {}) };
   const secret = String(payload.key || payload.token || payload.secret || "");
   if (postbackSecret && secret !== postbackSecret) {
     return res.status(401).json({ error: "Invalid postback key." });
   }
 
-  const context = resolvePostbackContext(payload);
+  const context = await resolvePostbackContext(payload);
 
   try {
-    insertInstallEvent.run({
+    await insertInstallEvent({
       date: context.date,
       campaign_id: context.campaign_id,
       buyer: context.buyer,
@@ -1311,7 +1380,7 @@ app.all("/api/postbacks/install", (req, res) => {
       raw: JSON.stringify(payload),
     });
   } catch (error) {
-    if (error?.code !== "SQLITE_CONSTRAINT_UNIQUE") {
+    if (error?.code !== "SQLITE_CONSTRAINT_UNIQUE" && error?.code !== "23505") {
       return res.status(500).json({ error: "Failed to store install." });
     }
   }
@@ -1319,7 +1388,7 @@ app.all("/api/postbacks/install", (req, res) => {
   res.json({ ok: true });
 });
 
-const handleConversionPostback = (eventType) => (req, res) => {
+const handleConversionPostback = (eventType) => async (req, res) => {
   const payload = { ...(req.query || {}), ...(req.body || {}) };
   const secret = String(payload.key || payload.token || payload.secret || "");
   if (postbackSecret && secret !== postbackSecret) {
@@ -1330,10 +1399,10 @@ const handleConversionPostback = (eventType) => (req, res) => {
     return res.status(400).json({ error: "Invalid event type." });
   }
 
-  const context = resolvePostbackContext(payload);
+  const context = await resolvePostbackContext(payload);
 
   try {
-    insertConversionEvent.run({
+    await insertConversionEvent({
       date: context.date,
       event_type: eventType,
       campaign_id: context.campaign_id,
@@ -1356,18 +1425,18 @@ app.all("/api/postbacks/ftd", handleConversionPostback("ftd"));
 app.all("/api/postbacks/registration", handleConversionPostback("registration"));
 app.all("/api/postbacks/redeposit", handleConversionPostback("redeposit"));
 
-app.get("/api/users", (req, res) => {
+app.get("/api/users", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   if (isLeadership(req.user)) {
-    const rows = selectUsers.all(limit);
+    const rows = await selectUsers(limit);
     return res.json(rows);
   }
-  const record = selectUserById.get(req.user.id);
+  const record = await selectUserById(req.user.id);
   return res.json(record ? [record] : []);
 });
 
-app.post("/api/users", (req, res) => {
+app.post("/api/users", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1386,17 +1455,17 @@ app.post("/api/users", (req, res) => {
   };
 
   try {
-    const info = insertUser.run(payload);
-    res.status(201).json({ id: info.lastInsertRowid });
+    const info = await insertUser(payload);
+    res.status(201).json({ id: info.id });
   } catch (error) {
-    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE") {
+    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE" || error?.code === "23505") {
       return res.status(409).json({ error: "Username already exists." });
     }
     res.status(500).json({ error: "Failed to create user." });
   }
 });
 
-app.delete("/api/users/:id", (req, res) => {
+app.delete("/api/users/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1404,18 +1473,18 @@ app.delete("/api/users/:id", (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid user id." });
   }
-  deleteUser.run(id);
+  await deleteUser(id);
   res.json({ ok: true });
 });
 
-app.post("/api/auth/login", (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body ?? {};
 
   if (!username || !password) {
     return res.status(400).json({ error: "Username and password are required." });
   }
 
-  const user = selectUserByUsername.get(String(username).trim());
+  const user = await selectUserByUsername(String(username).trim());
   if (!user || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: "Invalid credentials." });
   }
@@ -1440,16 +1509,17 @@ app.post("/api/auth/login", (req, res) => {
   });
 });
 
-app.get("/api/roles", (req, res) => {
+app.get("/api/roles", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = selectRoles
-    .all(limit)
-    .map((row) => ({ ...row, permissions: JSON.parse(row.permissions || "[]") }));
+  const rows = (await selectRoles(limit)).map((row) => ({
+    ...row,
+    permissions: JSON.parse(row.permissions || "[]"),
+  }));
   res.json(rows);
 });
 
-app.post("/api/roles", (req, res) => {
+app.post("/api/roles", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1464,20 +1534,20 @@ app.post("/api/roles", (req, res) => {
   }
 
   try {
-    const info = insertRole.run({
+    const info = await insertRole({
       name: String(name).trim(),
       permissions: JSON.stringify(permissions),
     });
-    res.status(201).json({ id: info.lastInsertRowid });
+    res.status(201).json({ id: info.id });
   } catch (error) {
-    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE") {
+    if (error?.code === "SQLITE_CONSTRAINT_UNIQUE" || error?.code === "23505") {
       return res.status(409).json({ error: "Role already exists." });
     }
     res.status(500).json({ error: "Failed to create role." });
   }
 });
 
-app.put("/api/roles/:id", (req, res) => {
+app.put("/api/roles/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1491,7 +1561,7 @@ app.put("/api/roles/:id", (req, res) => {
     return res.status(400).json({ error: "Permissions must be an array." });
   }
 
-  const role = selectRoleById.get(id);
+  const role = await selectRoleById(id);
   if (!role) {
     return res.status(404).json({ error: "Role not found." });
   }
@@ -1499,11 +1569,11 @@ app.put("/api/roles/:id", (req, res) => {
   const finalPermissions =
     role.name === "Boss" || role.name === "Team Leader" ? allPermissions : permissions;
 
-  updateRole.run({ id, permissions: JSON.stringify(finalPermissions) });
+  await updateRole({ id, permissions: JSON.stringify(finalPermissions) });
   res.json({ ok: true });
 });
 
-app.delete("/api/roles/:id", (req, res) => {
+app.delete("/api/roles/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
@@ -1511,11 +1581,11 @@ app.delete("/api/roles/:id", (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid role id." });
   }
-  const role = selectRoleById.get(id);
+  const role = await selectRoleById(id);
   if (role?.name === "Boss" || role?.name === "Team Leader") {
     return res.status(403).json({ error: "Protected role cannot be deleted." });
   }
-  deleteRole.run(id);
+  await deleteRole(id);
   res.json({ ok: true });
 });
 
@@ -1592,11 +1662,11 @@ app.post("/api/keitaro/sync", async (req, res) => {
     let inserted = 0;
     let skipped = 0;
 
-    rows.forEach((row) => {
+    for (const row of rows) {
       const date = normalizeDate(readRowValue(row, map.dateField));
       if (!date) {
         skipped += 1;
-        return;
+        continue;
       }
 
       const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
@@ -1608,14 +1678,14 @@ app.post("/api/keitaro/sync", async (req, res) => {
       const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
 
       if (syncTarget === "device") {
-      const device = normalizeDevice(readRowValue(row, map.deviceField));
+        const device = normalizeDevice(readRowValue(row, map.deviceField));
         const revenue = numberFromValue(readRowValue(row, map.revenueField));
 
         if (replaceExisting) {
-          deleteDeviceStat.run(date, device, buyer, country);
+          await deleteDeviceStat(date, device, buyer, country);
         }
 
-        insertDeviceStat.run({
+        await insertDeviceStat({
           date,
           device,
           buyer,
@@ -1631,10 +1701,10 @@ app.post("/api/keitaro/sync", async (req, res) => {
         const installs = numberFromValue(readRowValue(row, map.installsField));
 
         if (replaceExisting) {
-          deleteMediaStat.run(date, buyer, country);
+          await deleteMediaStat(date, buyer, country);
         }
 
-        insertMediaStat.run({
+        await insertMediaStat({
           date,
           buyer,
           country,
@@ -1648,7 +1718,7 @@ app.post("/api/keitaro/sync", async (req, res) => {
       }
 
       inserted += 1;
-    });
+    }
 
     res.json({ ok: true, total: rows.length, inserted, skipped });
   } catch (error) {
@@ -1657,6 +1727,16 @@ app.post("/api/keitaro/sync", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5174;
-app.listen(PORT, () => {
-  console.log(`Finance API running on http://localhost:${PORT}`);
+const startServer = async () => {
+  await initDb();
+  await seedRoles();
+  await seedUsers();
+  app.listen(PORT, () => {
+    console.log(`Finance API running on http://localhost:${PORT}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error("Failed to start server:", error);
+  process.exit(1);
 });
