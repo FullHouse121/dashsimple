@@ -290,6 +290,12 @@ const translations = {
     "Domains Registry": "Alan Adı Kaydı",
     "Track every domain in use and keep its status updated.":
       "Kullanımdaki tüm alan adlarını takip edin ve durumunu güncel tutun.",
+    Game: "Oyun",
+    Owner: "Sahip",
+    Platform: "Platform",
+    "PWA Group": "PWA Grup",
+    "Link Group": "Link Grup",
+    "ZM apps": "ZM uygulamaları",
     "Keitaro Connection": "Keitaro Bağlantısı",
     "Connect your tracker and validate the Admin API key.":
       "Takip sisteminizi bağlayın ve Admin API anahtarını doğrulayın.",
@@ -3858,9 +3864,16 @@ function GoalsDashboard({ authUser }) {
   );
 }
 
-function DomainsDashboard() {
+function DomainsDashboard({ authUser }) {
   const { t } = useLanguage();
-  const [domainForm, setDomainForm] = React.useState({ domain: "", status: "Active" });
+  const ownerRole = authUser?.role || roleOptions[0];
+  const [domainForm, setDomainForm] = React.useState(() => ({
+    domain: "",
+    status: "Active",
+    game: "",
+    platform: "PWA Group",
+    ownerRole,
+  }));
   const [domains, setDomains] = React.useState([]);
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
 
@@ -3869,8 +3882,12 @@ function DomainsDashboard() {
   };
 
   const resetDomainForm = () => {
-    setDomainForm({ domain: "", status: "Active" });
+    setDomainForm({ domain: "", status: "Active", game: "", platform: "PWA Group", ownerRole });
   };
+
+  React.useEffect(() => {
+    setDomainForm((prev) => ({ ...prev, ownerRole }));
+  }, [ownerRole]);
 
   const fetchDomains = React.useCallback(async () => {
     try {
@@ -3957,6 +3974,29 @@ function DomainsDashboard() {
               ))}
             </select>
           </div>
+          <div className="field">
+            <label>{t("Game")}</label>
+            <input
+              value={domainForm.game}
+              onChange={updateDomainForm("game")}
+              placeholder={t("e.g. Crash, Roulette")}
+              required
+            />
+          </div>
+          <div className="field">
+            <label>{t("Platform")}</label>
+            <select value={domainForm.platform} onChange={updateDomainForm("platform")} required>
+              {["PWA Group", "Link Group", "ZM apps"].map((platform) => (
+                <option key={platform} value={platform}>
+                  {t(platform)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>{t("Owner")}</label>
+            <input value={t(domainForm.ownerRole || ownerRole)} disabled />
+          </div>
           <div className="form-actions">
             <button className="ghost" type="button" onClick={resetDomainForm}>
               {t("Reset")}
@@ -3979,6 +4019,9 @@ function DomainsDashboard() {
               <thead>
                 <tr>
                   <th>{t("Domain")}</th>
+                  <th>{t("Game")}</th>
+                  <th>{t("Platform")}</th>
+                  <th>{t("Owner")}</th>
                   <th>{t("Status")}</th>
                   <th />
                 </tr>
@@ -3987,6 +4030,9 @@ function DomainsDashboard() {
                 {domains.map((domain) => (
                   <tr key={domain.id}>
                     <td>{domain.domain}</td>
+                    <td>{domain.game || "—"}</td>
+                    <td>{domain.platform || "—"}</td>
+                    <td>{domain.owner_role ? t(domain.owner_role) : "—"}</td>
                     <td>
                       <span className={`status-pill status-${domain.status?.toLowerCase() || "inactive"}`}>
                         {t(domain.status)}
@@ -5978,7 +6024,7 @@ export default function App() {
         ) : isGoals ? (
           <GoalsDashboard authUser={authUser} />
         ) : isDomains ? (
-          <DomainsDashboard />
+          <DomainsDashboard authUser={authUser} />
         ) : isProfile ? (
           <ProfileDashboard authUser={authUser} />
         ) : isRoles ? (

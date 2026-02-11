@@ -80,6 +80,9 @@ const initDb = async () => {
       id SERIAL PRIMARY KEY,
       domain TEXT NOT NULL,
       status TEXT NOT NULL,
+      game TEXT,
+      platform TEXT,
+      owner_role TEXT,
       owner_id INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
@@ -158,6 +161,9 @@ const initDb = async () => {
       ON conversion_events (date, buyer, country);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
       ON device_stats (date, device, buyer, country);`,
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
   ];
 
   for (const statement of statements) {
@@ -371,17 +377,24 @@ const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id 
 
 const insertDomain = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO domains (domain, status, owner_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO domains (domain, status, game, platform, owner_role, owner_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING id`,
-    [payload.domain, payload.status, payload.owner_id]
+    [
+      payload.domain,
+      payload.status,
+      payload.game,
+      payload.platform,
+      payload.owner_role,
+      payload.owner_id,
+    ]
   );
   return rows[0];
 };
 
 const selectDomains = async (limit) =>
   getRows(
-    `SELECT id, domain, status, owner_id
+    `SELECT id, domain, status, game, platform, owner_role, owner_id
      FROM domains
      ORDER BY domain ASC, id DESC
      LIMIT $1`,
@@ -390,7 +403,7 @@ const selectDomains = async (limit) =>
 
 const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT id, domain, status, owner_id
+    `SELECT id, domain, status, game, platform, owner_role, owner_id
      FROM domains
      WHERE owner_id = $1
      ORDER BY domain ASC, id DESC
@@ -1369,15 +1382,22 @@ app.get("/api/domains", async (req, res) => {
 });
 
 app.post("/api/domains", async (req, res) => {
-  const { domain, status, ownerId } = req.body ?? {};
+  const { domain, status, ownerId, game, platform } = req.body ?? {};
 
   if (!domain || !status) {
     return res.status(400).json({ error: "Domain and status are required." });
   }
 
+  if (!game || !platform) {
+    return res.status(400).json({ error: "Game and platform are required." });
+  }
+
   const payload = {
     domain: String(domain).trim(),
     status,
+    game: String(game).trim(),
+    platform: String(platform).trim(),
+    owner_role: req.user?.role || "",
     owner_id: isLeadership(req.user)
       ? ownerId
         ? Number(ownerId)

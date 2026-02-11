@@ -1330,11 +1330,11 @@ select {
 }
 
 .domain-form {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .domain-form .field:first-child {
-  grid-column: auto;
+  grid-column: span 2;
 }
 
 .role-form {
@@ -1770,6 +1770,10 @@ select {
 
 .form-grid .field:nth-child(4) {
   grid-column: 1 / -1;
+}
+
+.domain-form .field:nth-child(4) {
+  grid-column: auto;
 }
 
 .form-actions {
