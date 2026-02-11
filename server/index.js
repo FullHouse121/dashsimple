@@ -630,6 +630,7 @@ const deleteMediaStat = async (date, buyer, country) =>
   ]);
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
+const keitaroCronSecret = process.env.KEITARO_CRON_SECRET || "";
 const fxBase = String(process.env.FX_BASE || "USD").toUpperCase();
 const fxTarget = String(process.env.FX_TARGET || "USD").toUpperCase();
 const fxProvider = String(process.env.FX_PROVIDER || "google").toLowerCase();
@@ -642,7 +643,10 @@ const fxCache = {
   fetchedAt: 0,
 };
 
-const normalizeBaseUrl = (value) => String(value || "").replace(/\/+$/, "");
+const normalizeBaseUrl = (value) => {
+  const trimmed = String(value || "").replace(/\/+$/, "");
+  return trimmed.endsWith("/admin") ? trimmed.slice(0, -6) : trimmed;
+};
 const normalizePath = (value) => {
   if (!value) return "";
   return value.startsWith("/") ? value : `/${value}`;
@@ -665,6 +669,12 @@ const normalizeDate = (value) => {
   const text = String(value);
   const match = text.match(/\d{4}-\d{2}-\d{2}/);
   return match ? match[0] : null;
+};
+
+const formatIsoDate = (value) => {
+  if (!(value instanceof Date)) return "";
+  if (Number.isNaN(value.getTime())) return "";
+  return value.toISOString().slice(0, 10);
 };
 
 const normalizeDevice = (value) => {
@@ -755,6 +765,70 @@ const buildAuthHeaders = (apiKey) => {
     return { Authorization: key };
   }
   return { "Api-Key": key };
+};
+
+const defaultKeitaroMapping = {
+  dateField: "day",
+  buyerField: "campaign_group",
+  countryField: "country",
+  spendField: "cost",
+  revenueField: "revenue",
+  clicksField: "clicks",
+  installsField: "installs",
+  registersField: "registrations",
+  ftdsField: "ftds",
+  redepositsField: "redeposits",
+  deviceField: "device",
+};
+
+const parseJsonEnv = (value, fallback = null) => {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const parseBooleanEnv = (value, fallback) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const text = String(value).toLowerCase();
+  if (["1", "true", "yes", "y"].includes(text)) return true;
+  if (["0", "false", "no", "n"].includes(text)) return false;
+  return fallback;
+};
+
+const applyKeitaroRange = (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const rangeDaysRaw = process.env.KEITARO_RANGE_DAYS;
+  const rangeDays = Number.parseInt(rangeDaysRaw || "", 10);
+  const rangeFrom = process.env.KEITARO_RANGE_FROM || "";
+  const rangeTo = process.env.KEITARO_RANGE_TO || "";
+
+  let from = rangeFrom;
+  let to = rangeTo;
+
+  if ((!from || !to) && Number.isFinite(rangeDays) && rangeDays > 0) {
+    const today = new Date();
+    const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (rangeDays - 1));
+    from = formatIsoDate(start);
+    to = formatIsoDate(end);
+  }
+
+  if (!from || !to) return payload;
+
+  const existingRange = payload.range && typeof payload.range === "object" ? payload.range : {};
+  return {
+    ...payload,
+    range: {
+      ...existingRange,
+      interval: "custom",
+      from,
+      to,
+    },
+  };
 };
 
 const isValidCurrencyCode = (code) => /^[A-Z]{3}$/.test(code);
@@ -965,6 +1039,7 @@ app.use((req, res, next) => {
   if (!req.path.startsWith("/api/")) return next();
   if (req.path === "/api/auth/login") return next();
   if (req.path.startsWith("/api/postbacks/")) return next();
+  if (req.path === "/api/keitaro/cron") return next();
 
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : header;
@@ -1713,6 +1788,119 @@ app.delete("/api/roles/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+const runKeitaroSync = async ({
+  baseUrl,
+  apiKey,
+  reportPath,
+  payload,
+  mapping,
+  replaceExisting,
+  target,
+}) => {
+  if (!baseUrl || !apiKey || !payload) {
+    const error = new Error("Base URL, API key, and payload are required.");
+    error.status = 400;
+    throw error;
+  }
+
+  const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
+    reportPath || "/admin_api/v1/report/build"
+  )}`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(apiKey),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = new Error(
+      data?.error || data?.message || "Failed to build report."
+    );
+    error.status = response.status;
+    throw error;
+  }
+
+  const rows = Array.isArray(data)
+    ? data
+    : data?.rows || data?.data?.rows || data?.result || [];
+
+  if (!Array.isArray(rows)) {
+    const error = new Error("Unexpected report response format.");
+    error.status = 400;
+    throw error;
+  }
+
+  const map = mapping || {};
+  const syncTarget = target === "device" ? "device" : "overall";
+  let inserted = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const date = normalizeDate(readRowValue(row, map.dateField));
+    if (!date) {
+      skipped += 1;
+      continue;
+    }
+
+    const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
+    const country = String(readRowValue(row, map.countryField) || "");
+    const spend = numberFromValue(readRowValue(row, map.spendField));
+    const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
+    const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
+    const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
+    const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
+
+    if (syncTarget === "device") {
+      const device = normalizeDevice(readRowValue(row, map.deviceField));
+      const revenue = numberFromValue(readRowValue(row, map.revenueField));
+
+      if (replaceExisting) {
+        await deleteDeviceStat(date, device, buyer, country);
+      }
+
+      await insertDeviceStat({
+        date,
+        device,
+        buyer,
+        country,
+        spend,
+        revenue,
+        clicks: Number(clicks) || 0,
+        registers: Number(registers) || 0,
+        ftds: Number(ftds) || 0,
+        redeposits: Number(redeposits) || 0,
+      });
+    } else {
+      const installs = numberFromValue(readRowValue(row, map.installsField));
+
+      if (replaceExisting) {
+        await deleteMediaStat(date, buyer, country);
+      }
+
+      await insertMediaStat({
+        date,
+        buyer,
+        country,
+        spend,
+        clicks: Number(clicks) || 0,
+        installs: installs === null ? null : Number(installs) || 0,
+        registers: Number(registers) || 0,
+        ftds: Number(ftds) || 0,
+        redeposits: Number(redeposits) || 0,
+      });
+    }
+
+    inserted += 1;
+  }
+
+  return { total: rows.length, inserted, skipped };
+};
+
 app.post("/api/keitaro/test", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -1743,110 +1931,67 @@ app.post("/api/keitaro/test", async (req, res) => {
   }
 });
 
+app.all("/api/keitaro/cron", async (req, res) => {
+  const secret = String(req.headers["x-cron-secret"] || req.query.secret || "");
+  if (keitaroCronSecret && secret !== keitaroCronSecret) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+
+  const baseUrl = process.env.KEITARO_BASE_URL;
+  const apiKey = process.env.KEITARO_API_KEY;
+  const reportPath = process.env.KEITARO_REPORT_PATH || "/admin_api/v1/report/build";
+  const payloadRaw = process.env.KEITARO_REPORT_PAYLOAD;
+  const mapping = parseJsonEnv(process.env.KEITARO_MAPPING, defaultKeitaroMapping);
+  const target = process.env.KEITARO_TARGET || "overall";
+  const replaceExisting = parseBooleanEnv(process.env.KEITARO_REPLACE, true);
+
+  if (!baseUrl || !apiKey || !payloadRaw) {
+    return res.status(400).json({
+      error: "KEITARO_BASE_URL, KEITARO_API_KEY, and KEITARO_REPORT_PAYLOAD are required.",
+    });
+  }
+
+  const payload = applyKeitaroRange(parseJsonEnv(payloadRaw));
+  if (!payload) {
+    return res.status(400).json({ error: "KEITARO_REPORT_PAYLOAD must be valid JSON." });
+  }
+
+  try {
+    const result = await runKeitaroSync({
+      baseUrl,
+      apiKey,
+      reportPath,
+      payload,
+      mapping,
+      replaceExisting,
+      target,
+    });
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message || "Sync failed." });
+  }
+});
+
 app.post("/api/keitaro/sync", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
   const { baseUrl, apiKey, reportPath, payload, mapping, replaceExisting, target } = req.body ?? {};
 
-  if (!baseUrl || !apiKey || !payload) {
-    return res.status(400).json({ error: "Base URL, API key, and payload are required." });
-  }
-
-  const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
-    reportPath || "/admin_api/v1/report/build"
-  )}`;
-
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...buildAuthHeaders(apiKey),
-      },
-      body: JSON.stringify(payload),
+    const result = await runKeitaroSync({
+      baseUrl,
+      apiKey,
+      reportPath,
+      payload,
+      mapping,
+      replaceExisting,
+      target,
     });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error || data?.message || "Failed to build report.",
-      });
-    }
 
-    const rows = Array.isArray(data)
-      ? data
-      : data?.rows || data?.data?.rows || data?.result || [];
-
-    if (!Array.isArray(rows)) {
-      return res.status(400).json({ error: "Unexpected report response format." });
-    }
-
-    const map = mapping || {};
-    const syncTarget = target === "device" ? "device" : "overall";
-    let inserted = 0;
-    let skipped = 0;
-
-    for (const row of rows) {
-      const date = normalizeDate(readRowValue(row, map.dateField));
-      if (!date) {
-        skipped += 1;
-        continue;
-      }
-
-      const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
-      const country = String(readRowValue(row, map.countryField) || "");
-      const spend = numberFromValue(readRowValue(row, map.spendField));
-      const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
-      const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
-      const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
-      const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
-
-      if (syncTarget === "device") {
-        const device = normalizeDevice(readRowValue(row, map.deviceField));
-        const revenue = numberFromValue(readRowValue(row, map.revenueField));
-
-        if (replaceExisting) {
-          await deleteDeviceStat(date, device, buyer, country);
-        }
-
-        await insertDeviceStat({
-          date,
-          device,
-          buyer,
-          country,
-          spend,
-          revenue,
-          clicks: Number(clicks) || 0,
-          registers: Number(registers) || 0,
-          ftds: Number(ftds) || 0,
-          redeposits: Number(redeposits) || 0,
-        });
-      } else {
-        const installs = numberFromValue(readRowValue(row, map.installsField));
-
-        if (replaceExisting) {
-          await deleteMediaStat(date, buyer, country);
-        }
-
-        await insertMediaStat({
-          date,
-          buyer,
-          country,
-          spend,
-          clicks: Number(clicks) || 0,
-          installs: installs === null ? null : Number(installs) || 0,
-          registers: Number(registers) || 0,
-          ftds: Number(ftds) || 0,
-          redeposits: Number(redeposits) || 0,
-        });
-      }
-
-      inserted += 1;
-    }
-
-    res.json({ ok: true, total: rows.length, inserted, skipped });
+    res.json({ ok: true, ...result });
   } catch (error) {
-    res.status(500).json({ error: error.message || "Sync failed." });
+    res.status(error.status || 500).json({ error: error.message || "Sync failed." });
   }
 });
 

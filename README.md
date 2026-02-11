@@ -52,7 +52,20 @@ Output: `dist/`
 - Start command: `node server/index.js`
 - Add env var `DATABASE_URL` (Supabase connection string)
 - Optional FX env vars: `FX_BASE`, `FX_TARGET`, `FX_PROVIDER`, `FX_TTL_SECONDS`
+- Optional Keitaro cron env vars: `KEITARO_BASE_URL`, `KEITARO_API_KEY`, `KEITARO_REPORT_PAYLOAD`,
+  `KEITARO_REPORT_PATH`, `KEITARO_MAPPING`, `KEITARO_TARGET`, `KEITARO_REPLACE`, `KEITARO_RANGE_DAYS`,
+  `KEITARO_CRON_SECRET`
 - Render provides `PORT` automatically
+
+### Keitaro Cron Sync (Render Cron Job)
+1. Set env vars on the API service:
+   - `KEITARO_BASE_URL` (tracker root, no `/admin`)
+   - `KEITARO_API_KEY`
+   - `KEITARO_REPORT_PAYLOAD` (JSON from Keitaro report build)
+   - `KEITARO_CRON_SECRET` (any random string)
+2. Create a Render Cron Job that calls:
+   - `POST https://YOUR-RENDER-APP.onrender.com/api/keitaro/cron?secret=KEITARO_CRON_SECRET`
+3. Choose the schedule you want (e.g. every 15 minutes).
 
 ### Netlify (Frontend)
 - Build command: `npm run build`
