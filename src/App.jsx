@@ -703,11 +703,27 @@ const tooltipStyle = {
   boxShadow: "0 12px 20px rgba(0,0,0,0.4)",
 };
 
-const formatCurrency = (value) =>
-  `$${Number(value).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+let activeFxRate = 1;
+
+const setActiveFxRate = (rate) => {
+  if (!Number.isFinite(rate) || rate <= 0) return;
+  activeFxRate = rate;
+};
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const formatCurrency = (value, rate = activeFxRate) => {
+  if (value === null || value === undefined || value === "" || Number.isNaN(value)) return "—";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  const fxRate = Number.isFinite(rate) ? rate : 1;
+  return currencyFormatter.format(numeric * fxRate);
+};
 
 const formatAxis = (value) => {
   if (value === 0) return "0k";
@@ -5627,6 +5643,30 @@ export default function App() {
       }
     };
     loadPermissions();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser]);
+
+  React.useEffect(() => {
+    if (!authUser) return;
+    let cancelled = false;
+    const loadFxRate = async () => {
+      try {
+        const response = await apiFetch("/api/fx");
+        if (!response.ok) return;
+        const data = await response.json();
+        const rate = Number(data?.rate);
+        if (!cancelled && Number.isFinite(rate) && rate > 0) {
+          setActiveFxRate(rate);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setActiveFxRate(1);
+        }
+      }
+    };
+    loadFxRate();
     return () => {
       cancelled = true;
     };

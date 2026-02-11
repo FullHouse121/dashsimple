@@ -10,6 +10,10 @@ Set environment variables (copy `.env.example` and fill values):
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/postgres"
 AUTH_SECRET="change-me"
 POSTBACK_SECRET="change-me"
+FX_BASE="USD"
+FX_TARGET="USD"
+FX_PROVIDER="google"
+FX_TTL_SECONDS="3600"
 ```
 
 Install dependencies:
@@ -47,6 +51,7 @@ Output: `dist/`
 - Build command: `npm install`
 - Start command: `node server/index.js`
 - Add env var `DATABASE_URL` (Supabase connection string)
+- Optional FX env vars: `FX_BASE`, `FX_TARGET`, `FX_PROVIDER`, `FX_TTL_SECONDS`
 - Render provides `PORT` automatically
 
 ### Netlify (Frontend)

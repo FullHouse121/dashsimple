@@ -617,6 +617,17 @@ const deleteMediaStat = async (date, buyer, country) =>
   ]);
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
+const fxBase = String(process.env.FX_BASE || "USD").toUpperCase();
+const fxTarget = String(process.env.FX_TARGET || "USD").toUpperCase();
+const fxProvider = String(process.env.FX_PROVIDER || "google").toLowerCase();
+const fxTtlSeconds = Number.parseInt(process.env.FX_TTL_SECONDS || "3600", 10);
+const fxCache = {
+  rate: 1,
+  base: fxBase,
+  target: fxTarget,
+  provider: fxProvider,
+  fetchedAt: 0,
+};
 
 const normalizeBaseUrl = (value) => String(value || "").replace(/\/+$/, "");
 const normalizePath = (value) => {
@@ -731,6 +742,88 @@ const buildAuthHeaders = (apiKey) => {
     return { Authorization: key };
   }
   return { "Api-Key": key };
+};
+
+const isValidCurrencyCode = (code) => /^[A-Z]{3}$/.test(code);
+
+const fetchGoogleRate = async (base, target) => {
+  if (!isValidCurrencyCode(base) || !isValidCurrencyCode(target)) {
+    throw new Error("Invalid currency code.");
+  }
+  const url = `https://www.google.com/finance/quote/${base}-${target}`;
+  const response = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+  if (!response.ok) {
+    throw new Error(`Google rate request failed (${response.status}).`);
+  }
+  const html = await response.text();
+  const match =
+    html.match(/data-last-price=\"([0-9.]+)\"/) ||
+    html.match(/class=\"YMlKec fxKbKc\"[^>]*>([^<]+)</);
+  if (!match) {
+    throw new Error("Google rate not found.");
+  }
+  const rate = Number(String(match[1]).replace(/,/g, ""));
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid Google rate.");
+  }
+  return rate;
+};
+
+const fetchHostRate = async (base, target) => {
+  const url = `https://api.exchangerate.host/latest?base=${base}&symbols=${target}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`FX rate request failed (${response.status}).`);
+  }
+  const data = await response.json().catch(() => null);
+  const rate = data?.rates?.[target];
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Invalid FX rate.");
+  }
+  return Number(rate);
+};
+
+const getFxRate = async () => {
+  const base = fxBase;
+  const target = fxTarget;
+  const now = Date.now();
+
+  if (base === target) {
+    return { rate: 1, base, target, provider: "fixed", fetchedAt: now };
+  }
+
+  if (
+    fxCache.base === base &&
+    fxCache.target === target &&
+    fxCache.rate &&
+    now - fxCache.fetchedAt < fxTtlSeconds * 1000
+  ) {
+    return { rate: fxCache.rate, base, target, provider: fxCache.provider, fetchedAt: fxCache.fetchedAt };
+  }
+
+  let rate;
+  let provider = fxProvider;
+
+  if (fxProvider === "google") {
+    try {
+      rate = await fetchGoogleRate(base, target);
+    } catch (error) {
+      provider = "exchangerate.host";
+      rate = await fetchHostRate(base, target);
+    }
+  } else {
+    rate = await fetchHostRate(base, target);
+  }
+
+  fxCache.rate = rate;
+  fxCache.base = base;
+  fxCache.target = target;
+  fxCache.provider = provider;
+  fxCache.fetchedAt = now;
+
+  return { rate, base, target, provider, fetchedAt: now };
 };
 
 const hashPassword = (password) => {
@@ -1509,6 +1602,15 @@ app.post("/api/auth/login", async (req, res) => {
       buyerId: user.buyer_id,
     },
   });
+});
+
+app.get("/api/fx", async (req, res) => {
+  try {
+    const data = await getFxRate();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Failed to load FX rate." });
+  }
 });
 
 app.get("/api/roles", async (req, res) => {
