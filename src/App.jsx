@@ -109,6 +109,7 @@ const countryOptions = [
   "Brazil",
   "Canada",
   "Chile",
+  "China",
   "Colombia",
   "Costa Rica",
   "Ecuador",
@@ -116,6 +117,7 @@ const countryOptions = [
   "Estonia",
   "France",
   "Germany",
+  "Guyana",
   "India",
   "Iran",
   "Iraq",
@@ -133,7 +135,9 @@ const countryOptions = [
   "Sweden",
   "Switzerland",
   "Tunisia",
+  "Turkey",
   "Ukraine",
+  "United Arab Emirates",
   "United States",
   "Venezuela",
   "Vietnam",
@@ -143,7 +147,17 @@ const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
 const statusOptions = ["Requested", "Done", "Expired"];
 const approachOptions = ["All", "Organic", "Paid Social", "Influencers", "Search"];
-const buyerOptions = ["DeusInsta", "NovaMedia", "PrimeLab"];
+const priorityBuyers = [
+  "Leo",
+  "Leticia",
+  "Carvalho",
+  "Akku",
+  "Enzo",
+  "Matheus",
+  "Sara",
+  "ZM apps",
+];
+const buyerOptions = ["All", ...priorityBuyers];
 const roleOptions = [
   "Boss",
   "Team Leader",
@@ -365,6 +379,7 @@ const translations = {
     "Latest manual entries saved in the database.": "Veritabanına kaydedilen son manuel girişler.",
     "No entries yet. Add your first expense above.": "Henüz kayıt yok. İlk giderinizi yukarıdan ekleyin.",
     "Loading entries…": "Kayıtlar yükleniyor…",
+    "Loading media stats…": "Medya istatistikleri yükleniyor…",
     "Monthly Expenses": "Aylık Giderler",
     "Total spend": "Toplam Harcama",
     "Average / month": "Aylık Ortalama",
@@ -382,6 +397,11 @@ const translations = {
     "Last 7 days": "Son 7 gün",
     "Conversion rate": "Dönüşüm oranı",
     "Daily conversion rates": "Günlük dönüşüm oranları",
+    "Spend by date": "Tarihe Göre Harcama",
+    "Daily spend trend for the selected period.": "Seçilen dönemdeki günlük harcama trendi.",
+    "Spend per FTD": "FTD Başına Harcama",
+    "Spend per Redeposit": "Redepozit Başına Harcama",
+    "Total Spend": "Toplam Harcama",
     "Revenue by date": "Tarihe Göre Gelir",
     "Daily revenue trend for the selected period.": "Seçilen dönemdeki günlük gelir trendi.",
     "Revenue per FTD": "FTD Başına Gelir",
@@ -746,6 +766,19 @@ const toGradientId = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 const axisTickStyle = { fill: "#8b909a", fontSize: 11 };
 const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const formatIsoDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const getDefaultDateRange = () => {
+  const today = new Date();
+  const end = new Date(today);
+  const start = new Date(today);
+  start.setDate(today.getDate() - 6);
+  return { from: formatIsoDate(start), to: formatIsoDate(end) };
+};
 const formatShortDate = (value) => {
   if (!value) return "";
   const parts = value.split("-");
@@ -755,40 +788,6 @@ const formatShortDate = (value) => {
   return `${parts[2]} ${month}`;
 };
 
-const homePrimaryStats = [
-  { label: "Clicks", value: "209.65", icon: MousePointerClick, meta: "Last 7 days" },
-  { label: "Install", value: "28", icon: Download, meta: "Last 7 days" },
-  { label: "Register", value: "40", icon: UserPlus, meta: "Last 7 days" },
-  { label: "FTD", value: "2", icon: CreditCard, meta: "Last 7 days" },
-];
-
-const homeSecondaryStats = [
-  { label: "Click2Install", value: "32%", icon: MousePointerClick, meta: "Conversion rate" },
-  { label: "Click2Register", value: "18%", icon: UserPlus, meta: "Conversion rate" },
-  { label: "Install2Reg", value: "44%", icon: Download, meta: "Conversion rate" },
-  { label: "Reg2Dep", value: "9%", icon: CreditCard, meta: "Conversion rate" },
-];
-
-const homeChartData = [
-  { day: "31 Jan", c2i: 34, c2r: 18, i2r: 46, r2d: 10 },
-  { day: "01 Feb", c2i: 31, c2r: 17, i2r: 42, r2d: 8 },
-  { day: "02 Feb", c2i: 36, c2r: 20, i2r: 48, r2d: 11 },
-  { day: "03 Feb", c2i: 29, c2r: 16, i2r: 38, r2d: 7 },
-  { day: "04 Feb", c2i: 37, c2r: 21, i2r: 50, r2d: 12 },
-  { day: "05 Feb", c2i: 35, c2r: 19, i2r: 47, r2d: 10 },
-  { day: "06 Feb", c2i: 27, c2r: 14, i2r: 34, r2d: 6 },
-];
-
-const homeRevenueData = [
-  { date: "2026-01-31", revenue: 1840, ftds: 7, redeposits: 3 },
-  { date: "2026-02-01", revenue: 1765, ftds: 6, redeposits: 2 },
-  { date: "2026-02-02", revenue: 1985, ftds: 8, redeposits: 3 },
-  { date: "2026-02-03", revenue: 1650, ftds: 5, redeposits: 2 },
-  { date: "2026-02-04", revenue: 2145, ftds: 9, redeposits: 4 },
-  { date: "2026-02-05", revenue: 2010, ftds: 8, redeposits: 3 },
-  { date: "2026-02-06", revenue: 1585, ftds: 5, redeposits: 2 },
-];
-
 const homeChartSeries = [
   { key: "c2i", label: "Click2Install", color: "var(--blue)", width: 2.2 },
   { key: "c2r", label: "Click2Register", color: "var(--purple)", width: 2 },
@@ -797,62 +796,57 @@ const homeChartSeries = [
 ];
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-
-const geoMarkers = [
-  {
-    name: "Brazil",
-    iso: "BRA",
-    coordinates: [-51.9253, -14.235],
-    color: "var(--green)",
-    ftdRate: 28,
-    reg2depRate: 14,
-  },
-  {
-    name: "United States",
-    iso: "USA",
-    coordinates: [-98.5795, 39.8283],
-    color: "var(--blue)",
-    ftdRate: 24,
-    reg2depRate: 11,
-  },
-  {
-    name: "Sweden",
-    iso: "SWE",
-    coordinates: [18.6435, 60.1282],
-    color: "var(--purple)",
-    ftdRate: 30,
-    reg2depRate: 18,
-  },
-  {
-    name: "Chile",
-    iso: "CHL",
-    coordinates: [-71.543, -35.6751],
-    color: "var(--yellow)",
-    ftdRate: 22,
-    reg2depRate: 9,
-  },
-  {
-    name: "Netherlands",
-    iso: "NLD",
-    coordinates: [5.2913, 52.1326],
-    color: "var(--pink)",
-    ftdRate: 26,
-    reg2depRate: 12,
-  },
-];
-
-const homeFunnelData = [
-  { name: "Clicks", value: 209.65, color: "var(--blue)" },
-  { name: "Install", value: 28, color: "var(--purple)" },
-  { name: "Register", value: 40, color: "var(--green)" },
-  { name: "FTD", value: 2, color: "var(--orange)" },
-];
-
-const homeConversionData = [
-  { name: "Click2Install", value: 32, color: "var(--blue)" },
-  { name: "Click2Register", value: 18, color: "var(--purple)" },
-  { name: "Install2Reg", value: 44, color: "var(--green)" },
-  { name: "Reg2Dep", value: 9, color: "var(--orange)" },
+const geoReference = {
+  Argentina: { iso: "ARG", coordinates: [-63.6167, -38.4161] },
+  Australia: { iso: "AUS", coordinates: [133.7751, -25.2744] },
+  Azerbaijan: { iso: "AZE", coordinates: [47.5769, 40.1431] },
+  Albania: { iso: "ALB", coordinates: [20.1683, 41.1533] },
+  Algeria: { iso: "DZA", coordinates: [1.6596, 28.0339] },
+  Bolivia: { iso: "BOL", coordinates: [-63.5887, -16.2902] },
+  Brazil: { iso: "BRA", coordinates: [-51.9253, -14.235] },
+  Canada: { iso: "CAN", coordinates: [-106.3468, 56.1304] },
+  Chile: { iso: "CHL", coordinates: [-71.543, -35.6751] },
+  Colombia: { iso: "COL", coordinates: [-74.2973, 4.5709] },
+  "Costa Rica": { iso: "CRI", coordinates: [-83.7534, 9.7489] },
+  Ecuador: { iso: "ECU", coordinates: [-78.1834, -1.8312] },
+  Egypt: { iso: "EGY", coordinates: [30.8025, 26.8206] },
+  Estonia: { iso: "EST", coordinates: [25.0136, 58.5953] },
+  France: { iso: "FRA", coordinates: [2.2137, 46.2276] },
+  Germany: { iso: "DEU", coordinates: [10.4515, 51.1657] },
+  India: { iso: "IND", coordinates: [78.9629, 20.5937] },
+  Iran: { iso: "IRN", coordinates: [53.688, 32.4279] },
+  Iraq: { iso: "IRQ", coordinates: [43.6793, 33.2232] },
+  Japan: { iso: "JPN", coordinates: [138.2529, 36.2048] },
+  Morocco: { iso: "MAR", coordinates: [-7.0926, 31.7917] },
+  "New Zealand": { iso: "NZL", coordinates: [174.8859, -40.9006] },
+  Nigeria: { iso: "NGA", coordinates: [8.6753, 9.082] },
+  Norway: { iso: "NOR", coordinates: [8.4689, 60.472] },
+  Paraguay: { iso: "PRY", coordinates: [-58.4438, -23.4425] },
+  Peru: { iso: "PER", coordinates: [-75.0152, -9.19] },
+  Poland: { iso: "POL", coordinates: [19.1451, 51.9194] },
+  Romania: { iso: "ROU", coordinates: [24.9668, 45.9432] },
+  Russia: { iso: "RUS", coordinates: [105.3188, 61.524] },
+  "South Korea": { iso: "KOR", coordinates: [127.7669, 35.9078] },
+  Sweden: { iso: "SWE", coordinates: [18.6435, 60.1282] },
+  Switzerland: { iso: "CHE", coordinates: [8.2275, 46.8182] },
+  Tunisia: { iso: "TUN", coordinates: [9.5375, 33.8869] },
+  Ukraine: { iso: "UKR", coordinates: [31.1656, 48.3794] },
+  "United States": { iso: "USA", coordinates: [-98.5795, 39.8283] },
+  Venezuela: { iso: "VEN", coordinates: [-66.5897, 6.4238] },
+  Vietnam: { iso: "VNM", coordinates: [108.2772, 14.0583] },
+  China: { iso: "CHN", coordinates: [104.1954, 35.8617] },
+  Turkey: { iso: "TUR", coordinates: [35.2433, 38.9637] },
+  Guyana: { iso: "GUY", coordinates: [-58.9302, 4.8604] },
+  Netherlands: { iso: "NLD", coordinates: [5.2913, 52.1326] },
+  "United Arab Emirates": { iso: "ARE", coordinates: [53.8478, 23.4241] },
+};
+const geoPalette = [
+  "var(--green)",
+  "var(--blue)",
+  "var(--purple)",
+  "var(--yellow)",
+  "var(--pink)",
+  "var(--orange)",
 ];
 
 function CurrencyTooltip({ active, payload, label }) {
@@ -1024,7 +1018,7 @@ function ChartTooltip({ active, payload, label, visibleKeys }) {
   );
 }
 
-function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
+function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters }) {
   const { t } = useLanguage();
   const [hoverSeries, setHoverSeries] = React.useState(null);
   const [selectedSeries, setSelectedSeries] = React.useState([]);
@@ -1032,94 +1026,68 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const [selectedGeo, setSelectedGeo] = React.useState(null);
   const [activeRateIndex, setActiveRateIndex] = React.useState(null);
   const [geoMetric, setGeoMetric] = React.useState("combined");
+  const [homeRows, setHomeRows] = React.useState([]);
+  const [homeState, setHomeState] = React.useState({ loading: true, error: null });
 
-  const geoMetrics = React.useMemo(
-    () =>
-      geoMarkers.map((marker) => ({
-        ...marker,
-        combined: Math.round((marker.ftdRate + marker.reg2depRate) / 2),
-      })),
+  const loadHomeStats = React.useCallback(async () => {
+    try {
+      setHomeState({ loading: true, error: null });
+      const response = await apiFetch("/api/media-stats?limit=500");
+      if (!response.ok) {
+        throw new Error("Failed to load media buyer stats.");
+      }
+      const data = await response.json();
+      setHomeRows(Array.isArray(data) ? data : []);
+      setHomeState({ loading: false, error: null });
+    } catch (error) {
+      setHomeState({ loading: false, error: error.message || "Failed to load stats." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadHomeStats();
+  }, [loadHomeStats]);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      loadHomeStats();
+    };
+    window.addEventListener("keitaro:sync", handleSync);
+    return () => window.removeEventListener("keitaro:sync", handleSync);
+  }, [loadHomeStats]);
+
+  const buyerFilter = filters?.buyer || "All";
+  const countryFilter = filters?.country || "All";
+  const normalizedPriorityBuyers = React.useMemo(
+    () => priorityBuyers.map((buyer) => buyer.toLowerCase()),
     []
   );
-  const geoMetricKey = geoMetric === "combined" ? "combined" : geoMetric;
-  const geoSorted = React.useMemo(
-    () => [...geoMetrics].sort((a, b) => b[geoMetricKey] - a[geoMetricKey]),
-    [geoMetrics, geoMetricKey]
-  );
-  const metricValues = geoSorted.map((item) => item[geoMetricKey]);
-  const metricMax = metricValues.length ? Math.max(...metricValues) : 0;
-  const metricMin = metricValues.length ? Math.min(...metricValues) : 0;
-  const activeGeo = selectedGeo ?? hoverGeo;
-  const activeGeoData = geoMetrics.find((marker) => marker.iso === activeGeo) || null;
-  const topGeo = geoSorted[0] || null;
-  const focusGeo = activeGeoData || topGeo;
-  const mapGeo = focusGeo || topGeo;
-  const mapIso = mapGeo?.iso;
-  const mapColor = mapGeo?.color || "var(--green)";
 
-  const geoMetricOptions = [
-    { value: "combined", label: t("Combined") },
-    { value: "ftdRate", label: t("FTD rate") },
-    { value: "reg2depRate", label: t("Reg2Dep rate") },
-  ];
-
-  const activeGeoName = focusGeo?.name;
-  const avgRate = Math.round(
-    homeConversionData.reduce((sum, item) => sum + item.value, 0) / homeConversionData.length
-  );
-  const donutValue =
-    activeRateIndex !== null ? `${homeConversionData[activeRateIndex].value}%` : `${avgRate}%`;
-  const donutLabel =
-    activeRateIndex !== null ? t(homeConversionData[activeRateIndex].name) : t("Avg rate");
-
-  const handleSeriesToggle = (key) => {
-    setSelectedSeries((prev) =>
-      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
-    );
+  const sum = (value) => Number(value || 0);
+  const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
+  const toPercent = (num, denom) => {
+    const value = safeDivide(num, denom);
+    return value === null ? null : value * 100;
   };
-
-  const effectiveHover = selectedSeries.length ? null : hoverSeries;
-  const tooltipVisibleKeys = selectedSeries.length
-    ? selectedSeries
-    : effectiveHover
-    ? [effectiveHover]
-    : null;
-
-  const isSeriesActive = (key) => {
-    if (selectedSeries.length) return selectedSeries.includes(key);
-    if (effectiveHover) return effectiveHover === key;
-    return true;
+  const fmtPercent = (value) =>
+    value === null || Number.isNaN(value) ? "—" : `${value.toFixed(2)}%`;
+  const fmtCount = (value) => {
+    if (value === null || value === undefined) return "—";
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "—";
+    return Number.isInteger(numeric) ? numeric.toLocaleString() : numeric.toFixed(2);
   };
-
-  const isSeriesMuted = (key) => {
-    if (selectedSeries.length) return !selectedSeries.includes(key);
-    if (effectiveHover) return effectiveHover !== key;
-    return false;
+  const matchesBuyer = (buyer) => {
+    const normalizedBuyer = String(buyer || "").toLowerCase();
+    if (!normalizedBuyer) return false;
+    const isAllowed = normalizedPriorityBuyers.some((name) => normalizedBuyer.includes(name));
+    if (!isAllowed) return false;
+    if (buyerFilter === "All") return true;
+    const normalizedFilter = String(buyerFilter || "").toLowerCase();
+    return normalizedBuyer.includes(normalizedFilter);
   };
-
-  const handleGeoEnter = (iso) => {
-    if (!selectedGeo) setHoverGeo(iso);
-  };
-
-  const handleGeoLeave = () => {
-    if (!selectedGeo) setHoverGeo(null);
-  };
-
-  const handleGeoToggle = (iso) => {
-    setSelectedGeo((prev) => (prev === iso ? null : iso));
-    setHoverGeo(null);
-  };
-
-  const funnelData = React.useMemo(
-    () =>
-      homeFunnelData.map((entry) => ({
-        ...entry,
-        value: Number.isFinite(entry.value) ? Math.round(entry.value) : entry.value,
-      })),
-    []
-  );
-  const funnelMax = Math.max(0, ...funnelData.map((entry) => entry.value || 0));
-  const funnelDomainMax = funnelMax > 0 ? Math.ceil(funnelMax / 50) * 50 : 10;
+  const matchesCountry = (country) =>
+    countryFilter === "All" || String(country || "") === countryFilter;
 
   const toDateString = (date) => {
     const year = date.getFullYear();
@@ -1165,33 +1133,129 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
   };
 
   const periodRange = getPeriodRange(period);
-  const revenueFiltered = homeRevenueData.filter((item) => {
-    if (!periodRange.from || !periodRange.to) return true;
-    return item.date >= periodRange.from && item.date <= periodRange.to;
-  });
-  const revenueTotals = revenueFiltered.reduce(
+
+  const filteredRows = React.useMemo(() => {
+    return homeRows.filter((row) => {
+      if (!matchesBuyer(row.buyer)) return false;
+      if (!matchesCountry(row.country)) return false;
+      if (periodRange.from && periodRange.to) {
+        if (!row.date) return false;
+        if (row.date < periodRange.from || row.date > periodRange.to) return false;
+      }
+      return true;
+    });
+  }, [homeRows, buyerFilter, countryFilter, periodRange.from, periodRange.to, normalizedPriorityBuyers]);
+
+  const totals = React.useMemo(
+    () =>
+      filteredRows.reduce(
+        (acc, row) => ({
+          spend: acc.spend + sum(row.spend),
+          clicks: acc.clicks + sum(row.clicks),
+          installs: acc.installs + sum(row.installs),
+          registers: acc.registers + sum(row.registers),
+          ftds: acc.ftds + sum(row.ftds),
+          redeposits: acc.redeposits + sum(row.redeposits),
+        }),
+        { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0 }
+      ),
+    [filteredRows]
+  );
+
+  const c2i = toPercent(totals.installs, totals.clicks);
+  const c2r = toPercent(totals.registers, totals.clicks);
+  const i2r = toPercent(totals.registers, totals.installs);
+  const r2d = toPercent(totals.ftds, totals.registers);
+  const periodLabel =
+    period === "Custom range" && periodRange.from && periodRange.to
+      ? `${periodRange.from} → ${periodRange.to}`
+      : t(period);
+
+  const homePrimaryStats = [
+    { label: "Clicks", value: fmtCount(totals.clicks), icon: MousePointerClick, meta: periodLabel },
+    { label: "Install", value: fmtCount(totals.installs), icon: Download, meta: periodLabel },
+    { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel },
+    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel },
+  ];
+
+  const homeSecondaryStats = [
+    { label: "Click2Install", value: fmtPercent(c2i), icon: MousePointerClick, meta: "Conversion rate" },
+    { label: "Click2Register", value: fmtPercent(c2r), icon: UserPlus, meta: "Conversion rate" },
+    { label: "Install2Reg", value: fmtPercent(i2r), icon: Download, meta: "Conversion rate" },
+    { label: "Reg2Dep", value: fmtPercent(r2d), icon: CreditCard, meta: "Conversion rate" },
+  ];
+
+  const chartData = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const key = row.date;
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, {
+          date: key,
+          clicks: 0,
+          installs: 0,
+          registers: 0,
+          ftds: 0,
+        });
+      }
+      const current = map.get(key);
+      current.clicks += sum(row.clicks);
+      current.installs += sum(row.installs);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((row) => ({
+        day: formatShortDate(row.date),
+        c2i: toPercent(row.installs, row.clicks),
+        c2r: toPercent(row.registers, row.clicks),
+        i2r: toPercent(row.registers, row.installs),
+        r2d: toPercent(row.ftds, row.registers),
+      }));
+  }, [filteredRows]);
+
+  const spendSeries = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const key = row.date;
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, { date: key, spend: 0, ftds: 0, redeposits: 0 });
+      }
+      const current = map.get(key);
+      current.spend += sum(row.spend);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredRows]);
+
+  const spendTotals = spendSeries.reduce(
     (acc, item) => ({
-      revenue: acc.revenue + item.revenue,
+      spend: acc.spend + item.spend,
       ftds: acc.ftds + item.ftds,
       redeposits: acc.redeposits + item.redeposits,
     }),
-    { revenue: 0, ftds: 0, redeposits: 0 }
+    { spend: 0, ftds: 0, redeposits: 0 }
   );
+
   const avg = (values) =>
-    values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-  const dailyRevenuePerFtd = revenueFiltered
+    values.length ? values.reduce((sumValue, value) => sumValue + value, 0) / values.length : null;
+  const dailySpendPerFtd = spendSeries
     .filter((item) => item.ftds > 0)
-    .map((item) => item.revenue / item.ftds);
-  const dailyRevenuePerRedeposit = revenueFiltered
+    .map((item) => item.spend / item.ftds);
+  const dailySpendPerRedeposit = spendSeries
     .filter((item) => item.redeposits > 0)
-    .map((item) => item.revenue / item.redeposits);
-  const dailyCrFtdToRedeposit = revenueFiltered
+    .map((item) => item.spend / item.redeposits);
+  const dailyCrFtdToRedeposit = spendSeries
     .filter((item) => item.ftds > 0)
     .map((item) => (item.redeposits / item.ftds) * 100);
 
   const benchmark = {
-    revenuePerFtd: avg(dailyRevenuePerFtd),
-    revenuePerRedeposit: avg(dailyRevenuePerRedeposit),
+    spendPerFtd: avg(dailySpendPerFtd),
+    spendPerRedeposit: avg(dailySpendPerRedeposit),
     ftdToRedepositCr: avg(dailyCrFtdToRedeposit),
   };
 
@@ -1205,22 +1269,153 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
     return { tone: "neutral", label: t("On target") };
   };
 
-  const revenuePerFtd =
-    revenueTotals.ftds > 0 ? revenueTotals.revenue / revenueTotals.ftds : null;
-  const revenuePerRedeposit =
-    revenueTotals.redeposits > 0 ? revenueTotals.revenue / revenueTotals.redeposits : null;
+  const spendPerFtd = spendTotals.ftds > 0 ? spendTotals.spend / spendTotals.ftds : null;
+  const spendPerRedeposit =
+    spendTotals.redeposits > 0 ? spendTotals.spend / spendTotals.redeposits : null;
   const ftdToRedepositCr =
-    revenueTotals.ftds > 0 ? (revenueTotals.redeposits / revenueTotals.ftds) * 100 : null;
+    spendTotals.ftds > 0 ? (spendTotals.redeposits / spendTotals.ftds) * 100 : null;
 
-  const revenuePerFtdStatus = classifyMetric(revenuePerFtd, benchmark.revenuePerFtd);
-  const revenuePerRedepositStatus = classifyMetric(
-    revenuePerRedeposit,
-    benchmark.revenuePerRedeposit
+  const spendPerFtdStatus = classifyMetric(spendPerFtd, benchmark.spendPerFtd);
+  const spendPerRedepositStatus = classifyMetric(
+    spendPerRedeposit,
+    benchmark.spendPerRedeposit
   );
   const ftdToRedepositStatus = classifyMetric(ftdToRedepositCr, benchmark.ftdToRedepositCr);
 
+  const funnelData = React.useMemo(
+    () => [
+      { name: "Clicks", value: totals.clicks, color: "var(--blue)" },
+      { name: "Install", value: totals.installs, color: "var(--purple)" },
+      { name: "Register", value: totals.registers, color: "var(--green)" },
+      { name: "FTD", value: totals.ftds, color: "var(--orange)" },
+    ],
+    [totals]
+  );
+  const funnelMax = Math.max(0, ...funnelData.map((entry) => entry.value || 0));
+  const funnelDomainMax = funnelMax > 0 ? Math.ceil(funnelMax / 50) * 50 : 10;
+
+  const conversionData = React.useMemo(
+    () => [
+      { name: "Click2Install", value: c2i ? Math.round(c2i) : 0, color: "var(--blue)" },
+      { name: "Click2Register", value: c2r ? Math.round(c2r) : 0, color: "var(--purple)" },
+      { name: "Install2Reg", value: i2r ? Math.round(i2r) : 0, color: "var(--green)" },
+      { name: "Reg2Dep", value: r2d ? Math.round(r2d) : 0, color: "var(--orange)" },
+    ],
+    [c2i, c2r, i2r, r2d]
+  );
+
+  const avgRate = conversionData.length
+    ? Math.round(conversionData.reduce((sumValue, item) => sumValue + item.value, 0) / conversionData.length)
+    : 0;
+  const donutValue =
+    activeRateIndex !== null ? `${conversionData[activeRateIndex].value}%` : `${avgRate}%`;
+  const donutLabel =
+    activeRateIndex !== null ? t(conversionData[activeRateIndex].name) : t("Avg rate");
+
+  const geoMetrics = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const country = String(row.country || "").trim();
+      if (!country) return;
+      if (!map.has(country)) {
+        map.set(country, { clicks: 0, registers: 0, ftds: 0 });
+      }
+      const current = map.get(country);
+      current.clicks += sum(row.clicks);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+    });
+    return Array.from(map.entries()).map(([country, stats], index) => {
+      const ftdRate = toPercent(stats.ftds, stats.clicks) ?? 0;
+      const reg2depRate = toPercent(stats.ftds, stats.registers) ?? 0;
+      const ref = geoReference[country] || {};
+      return {
+        name: country,
+        iso: ref.iso || country,
+        coordinates: ref.coordinates || null,
+        color: geoPalette[index % geoPalette.length],
+        ftdRate: Math.round(ftdRate),
+        reg2depRate: Math.round(reg2depRate),
+      };
+    });
+  }, [filteredRows]);
+
+  const geoMetricKey = geoMetric === "combined" ? "combined" : geoMetric;
+  const geoMetricsWithCombined = React.useMemo(
+    () =>
+      geoMetrics.map((marker) => ({
+        ...marker,
+        combined: Math.round((marker.ftdRate + marker.reg2depRate) / 2),
+      })),
+    [geoMetrics]
+  );
+  const geoSorted = React.useMemo(
+    () => [...geoMetricsWithCombined].sort((a, b) => b[geoMetricKey] - a[geoMetricKey]),
+    [geoMetricsWithCombined, geoMetricKey]
+  );
+  const metricValues = geoSorted.map((item) => item[geoMetricKey]);
+  const metricMax = metricValues.length ? Math.max(...metricValues) : 0;
+  const activeGeo = selectedGeo ?? hoverGeo;
+  const activeGeoData = geoMetricsWithCombined.find((marker) => marker.iso === activeGeo) || null;
+  const topGeo = geoSorted[0] || null;
+  const focusGeo = activeGeoData || topGeo;
+  const mapGeo = focusGeo || topGeo;
+  const mapIso = mapGeo?.iso && mapGeo.iso.length === 3 ? mapGeo.iso : null;
+  const mapColor = mapGeo?.color || "var(--green)";
+
+  const geoMetricOptions = [
+    { value: "combined", label: t("Combined") },
+    { value: "ftdRate", label: t("FTD rate") },
+    { value: "reg2depRate", label: t("Reg2Dep rate") },
+  ];
+
+  const activeGeoName = focusGeo?.name;
+
+  const handleSeriesToggle = (key) => {
+    setSelectedSeries((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
+
+  const effectiveHover = selectedSeries.length ? null : hoverSeries;
+  const tooltipVisibleKeys = selectedSeries.length
+    ? selectedSeries
+    : effectiveHover
+    ? [effectiveHover]
+    : null;
+
+  const isSeriesActive = (key) => {
+    if (selectedSeries.length) return selectedSeries.includes(key);
+    if (effectiveHover) return effectiveHover === key;
+    return true;
+  };
+
+  const isSeriesMuted = (key) => {
+    if (selectedSeries.length) return !selectedSeries.includes(key);
+    if (effectiveHover) return effectiveHover !== key;
+    return false;
+  };
+
+  const handleGeoEnter = (iso) => {
+    if (!selectedGeo) setHoverGeo(iso);
+  };
+
+  const handleGeoLeave = () => {
+    if (!selectedGeo) setHoverGeo(null);
+  };
+
+  const handleGeoToggle = (iso) => {
+    setSelectedGeo((prev) => (prev === iso ? null : iso));
+    setHoverGeo(null);
+  };
+
+
   return (
     <>
+      {homeState.loading && homeRows.length === 0 ? (
+        <div className="empty-state">{t("Loading media stats…")}</div>
+      ) : null}
+      {homeState.error ? <div className="empty-state error">{homeState.error}</div> : null}
       <section className="cards">
         {homePrimaryStats.map((stat, idx) => {
           const Icon = stat.icon;
@@ -1286,7 +1481,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
           </div>
           <div className="chart">
             <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={homeChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   {homeChartSeries.map((series) => (
                     <linearGradient
@@ -1379,33 +1574,33 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
             <div className="revenue-blocks">
               <div className="revenue-head">
                 <div>
-                  <h4>{t("Revenue by date")}</h4>
-                  <p>{t("Daily revenue trend for the selected period.")}</p>
+                  <h4>{t("Spend by date")}</h4>
+                  <p>{t("Daily spend trend for the selected period.")}</p>
                 </div>
                 <div className="revenue-total">
-                  <span>{t("Total Revenue")}</span>
-                  <strong>{formatCurrency(revenueTotals.revenue)}</strong>
+                  <span>{t("Total Spend")}</span>
+                  <strong>{formatCurrency(spendTotals.spend)}</strong>
                 </div>
               </div>
               <div className="revenue-grid">
-                <div className={`revenue-card ${revenuePerFtdStatus.tone}`}>
+                <div className={`revenue-card ${spendPerFtdStatus.tone}`}>
                   <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Revenue per FTD")}</span>
-                    <span className={`revenue-chip ${revenuePerFtdStatus.tone}`}>
-                      {revenuePerFtdStatus.label}
+                    <span className="revenue-date">{t("Spend per FTD")}</span>
+                    <span className={`revenue-chip ${spendPerFtdStatus.tone}`}>
+                      {spendPerFtdStatus.label}
                     </span>
                   </div>
-                  <strong>{revenuePerFtd === null ? "—" : formatCurrency(revenuePerFtd)}</strong>
+                  <strong>{spendPerFtd === null ? "—" : formatCurrency(spendPerFtd)}</strong>
                 </div>
-                <div className={`revenue-card ${revenuePerRedepositStatus.tone}`}>
+                <div className={`revenue-card ${spendPerRedepositStatus.tone}`}>
                   <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Revenue per Redeposit")}</span>
-                    <span className={`revenue-chip ${revenuePerRedepositStatus.tone}`}>
-                      {revenuePerRedepositStatus.label}
+                    <span className="revenue-date">{t("Spend per Redeposit")}</span>
+                    <span className={`revenue-chip ${spendPerRedepositStatus.tone}`}>
+                      {spendPerRedepositStatus.label}
                     </span>
                   </div>
                   <strong>
-                    {revenuePerRedeposit === null ? "—" : formatCurrency(revenuePerRedeposit)}
+                    {spendPerRedeposit === null ? "—" : formatCurrency(spendPerRedeposit)}
                   </strong>
                 </div>
                 <div className={`revenue-card ${ftdToRedepositStatus.tone}`}>
@@ -1505,7 +1700,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
                       })
                     }
                   </Geographies>
-                  {mapGeo ? (
+                  {mapGeo?.coordinates ? (
                     <Marker
                       key={mapGeo.name}
                       coordinates={mapGeo.coordinates}
@@ -1682,7 +1877,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
               <ResponsiveContainer width="100%" height={240}>
                 <PieChart>
                   <Pie
-                    data={homeConversionData}
+                    data={conversionData}
                     dataKey="value"
                     nameKey="name"
                     innerRadius={68}
@@ -1697,7 +1892,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
                     onMouseLeave={() => setActiveRateIndex(null)}
                     activeIndex={activeRateIndex ?? undefined}
                   >
-                    {homeConversionData.map((entry) => (
+                    {conversionData.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
@@ -1710,7 +1905,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange }) {
               </div>
             </div>
             <div className="legend">
-              {homeConversionData.map((item, index) => (
+              {conversionData.map((item, index) => (
                 <button
                   type="button"
                   className={`legend-item is-interactive${
@@ -2431,7 +2626,9 @@ function StatisticsDashboard() {
   const filteredEntries =
     buyerFilter === "All"
       ? statsEntries
-      : statsEntries.filter((row) => row.buyer === buyerFilter);
+      : statsEntries.filter((row) =>
+          String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
+        );
 
   const sum = (value) => Number(value || 0);
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
@@ -5615,20 +5812,23 @@ export default function App() {
       return "EN";
     }
   });
-  const [filters, setFilters] = React.useState({
-    dateFrom: "2026-02-01",
-    dateTo: "2026-02-07",
-    country: "All",
-    approach: "All",
-    buyer: "DeusInsta",
-    category: "All",
-    billing: "All",
-    status: "All",
+  const [filters, setFilters] = React.useState(() => {
+    const range = getDefaultDateRange();
+    return {
+      dateFrom: range.from,
+      dateTo: range.to,
+      country: "All",
+      approach: "All",
+      buyer: "All",
+      category: "All",
+      billing: "All",
+      status: "All",
+    };
   });
   const [period, setPeriod] = React.useState("This Month");
-  const [customRange, setCustomRange] = React.useState({
-    from: "2026-02-01",
-    to: "2026-02-07",
+  const [customRange, setCustomRange] = React.useState(() => {
+    const range = getDefaultDateRange();
+    return { from: range.from, to: range.to };
   });
   const [entry, setEntry] = React.useState({
     date: "2026-02-07",
@@ -5826,7 +6026,15 @@ export default function App() {
   }, [filtersOpen]);
 
   const updateFilter = (key) => (event) => {
-    setFilters((prev) => ({ ...prev, [key]: event.target.value }));
+    const value = event.target.value;
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    if (key === "dateFrom" || key === "dateTo") {
+      setCustomRange((prev) => ({
+        ...prev,
+        [key === "dateFrom" ? "from" : "to"]: value,
+      }));
+      setPeriod("Custom range");
+    }
   };
 
   const handleCustomRange = (key, value) => {
@@ -6048,6 +6256,7 @@ export default function App() {
             setPeriod={setPeriod}
             customRange={customRange}
             onCustomChange={handleCustomRange}
+            filters={filters}
           />
         )}
       </main>
