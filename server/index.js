@@ -40,6 +40,7 @@ const initDb = async () => {
       date TEXT NOT NULL,
       buyer TEXT NOT NULL,
       country TEXT,
+      city TEXT,
       spend REAL,
       revenue REAL,
       ftd_revenue REAL,
@@ -54,6 +55,7 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS city TEXT;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
       buyer TEXT NOT NULL,
@@ -300,6 +302,7 @@ const insertMediaStat = async (payload) => {
       date,
       buyer,
       country,
+      city,
       spend,
       revenue,
       ftd_revenue,
@@ -310,12 +313,13 @@ const insertMediaStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING id`,
     [
       payload.date,
       payload.buyer,
       payload.country,
+      payload.city,
       payload.spend,
       payload.revenue,
       payload.ftd_revenue,
@@ -332,7 +336,7 @@ const insertMediaStat = async (payload) => {
 
 const selectMediaStats = async (limit) =>
   getRows(
-    `SELECT id, date, buyer, country, spend, revenue, ftd_revenue, redeposit_revenue,
+    `SELECT id, date, buyer, country, city, spend, revenue, ftd_revenue, redeposit_revenue,
             clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
@@ -694,12 +698,19 @@ const updateRole = async (payload) =>
 
 const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
-const deleteMediaStat = async (date, buyer, country) =>
-  query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
+const deleteMediaStat = async (date, buyer, country, city) => {
+  if (city) {
+    return query(
+      `DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3 AND city = $4`,
+      [date, buyer, country, city]
+    );
+  }
+  return query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
     date,
     buyer,
     country,
   ]);
+};
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
 const keitaroCronSecret = process.env.KEITARO_CRON_SECRET || "";
@@ -843,6 +854,7 @@ const defaultKeitaroMapping = {
   dateField: "day",
   buyerField: "campaign_group",
   countryField: "country",
+  cityField: "city",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -1208,9 +1220,12 @@ app.get("/api/media-stats", async (req, res) => {
 
   const existingKeys = new Set();
   const merged = rows.map((row) => {
-    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}|${row.city || ""}`;
     existingKeys.add(key);
-    const installs = installMap.has(key) ? installMap.get(key) : row.installs ?? 0;
+    const mapKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const shouldMergeExternal = !row.city;
+    const installs =
+      shouldMergeExternal && installMap.has(mapKey) ? installMap.get(mapKey) : row.installs ?? 0;
     const ftdRevenue =
       row.ftd_revenue === undefined || row.ftd_revenue === null
         ? null
@@ -1240,15 +1255,17 @@ app.get("/api/media-stats", async (req, res) => {
   const mergedKeys = new Set(existingKeys);
 
   installTotals.forEach((row) => {
-    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const key = `${baseKey}|`;
     if (mergedKeys.has(key)) return;
-    const conversions = conversionMap.get(key);
+    const conversions = conversionMap.get(baseKey);
     mergedKeys.add(key);
     merged.push({
       id: null,
       date: row.date,
       buyer: row.buyer,
       country: row.country,
+      city: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
@@ -1262,7 +1279,8 @@ app.get("/api/media-stats", async (req, res) => {
   });
 
   conversionTotals.forEach((row) => {
-    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const key = `${baseKey}|`;
     if (mergedKeys.has(key)) return;
     mergedKeys.add(key);
     merged.push({
@@ -1270,12 +1288,13 @@ app.get("/api/media-stats", async (req, res) => {
       date: row.date,
       buyer: row.buyer,
       country: row.country,
+      city: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
       redepositRevenue: null,
       clicks: 0,
-      installs: installMap.get(key) || 0,
+      installs: installMap.get(baseKey) || 0,
       registers: Number(row.registers) || 0,
       ftds: Number(row.ftds) || 0,
       redeposits: Number(row.redeposits) || 0,
@@ -1350,6 +1369,7 @@ app.post("/api/media-stats", async (req, res) => {
     date,
     buyer,
     country,
+    city,
     spend,
     revenue,
     ftdRevenue,
@@ -1436,6 +1456,7 @@ app.post("/api/media-stats", async (req, res) => {
     date,
     buyer,
     country: country || "",
+    city: city || null,
     spend: parsedSpend,
     revenue: parsedRevenue,
     ftd_revenue: parsedFtdRevenue,
@@ -1986,6 +2007,7 @@ const runKeitaroSync = async ({
 
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
+    const city = String(readRowValue(row, map.cityField) || "").trim();
     const spend = numberFromValue(readRowValue(row, map.spendField));
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
@@ -2041,13 +2063,14 @@ const runKeitaroSync = async ({
       const installs = numberFromValue(readRowValue(row, map.installsField));
 
       if (replaceExisting) {
-        await deleteMediaStat(date, buyer, country);
+        await deleteMediaStat(date, buyer, country, city || null);
       }
 
       await insertMediaStat({
         date,
         buyer,
         country,
+        city: city || null,
         spend,
         revenue,
         ftd_revenue: ftdRevenue,

@@ -872,6 +872,7 @@ const defaultKeitaroMapping = {
   dateField: "day",
   buyerField: "campaign_group",
   countryField: "country",
+  cityField: "city",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -2157,7 +2158,7 @@ function GeosDashboard({ filters }) {
   const loadGeos = React.useCallback(async () => {
     try {
       setGeoState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=500");
+      const response = await apiFetch("/api/media-stats?limit=5000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -2278,8 +2279,502 @@ function GeosDashboard({ filters }) {
     });
   }, [filteredRows]);
 
+  const cityTotals = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const city = String(row.city || "Unknown").trim() || "Unknown";
+      if (!map.has(city)) {
+        map.set(city, {
+          city,
+          revenue: 0,
+          ftds: 0,
+          redeposits: 0,
+          clicks: 0,
+          registers: 0,
+        });
+      }
+      const current = map.get(city);
+      const ftdRevenueValue = Number.isFinite(Number(row.ftdRevenue ?? row.ftd_revenue))
+        ? Number(row.ftdRevenue ?? row.ftd_revenue)
+        : 0;
+      const redepositRevenueValue = Number.isFinite(
+        Number(row.redepositRevenue ?? row.redeposit_revenue)
+      )
+        ? Number(row.redepositRevenue ?? row.redeposit_revenue)
+        : 0;
+      let revenueValue =
+        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+      if (!Number.isFinite(revenueValue)) {
+        revenueValue = null;
+      }
+      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
+        revenueValue = ftdRevenueValue + redepositRevenueValue;
+      }
+
+      if (Number.isFinite(revenueValue)) {
+        current.revenue += revenueValue;
+      }
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.clicks += sum(row.clicks);
+      current.registers += sum(row.registers);
+    });
+    return Array.from(map.values())
+      .filter((row) => row.city !== "Unknown")
+      .sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+  }, [filteredRows]);
+
+  const geoSummary = React.useMemo(
+    () =>
+      geoTotals.reduce(
+        (acc, row) => ({
+          revenue: acc.revenue + (row.hasRevenue ? row.revenue : 0),
+          clicks: acc.clicks + row.clicks,
+          registers: acc.registers + row.registers,
+          ftds: acc.ftds + row.ftds,
+          redeposits: acc.redeposits + row.redeposits,
+        }),
+        { revenue: 0, clicks: 0, registers: 0, ftds: 0, redeposits: 0 }
+      ),
+    [geoTotals]
+  );
+
+  const geoChartRows = geoTotals.filter((row) => row.country && row.country !== "Unknown");
+  const geoRevenueData = geoChartRows.slice(0, 8);
+  const geoArppuData = geoChartRows
+    .map((row) => ({
+      country: row.country,
+      arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
+    }))
+    .filter((row) => row.arppu > 0)
+    .sort((a, b) => b.arppu - a.arppu)
+    .slice(0, 8);
+  const geoLtvData = geoChartRows
+    .map((row) => ({
+      country: row.country,
+      ltv: row.redeposits > 0 ? row.revenue / row.redeposits : 0,
+    }))
+    .filter((row) => row.ltv > 0)
+    .sort((a, b) => b.ltv - a.ltv)
+    .slice(0, 8);
+
+  const cityRevenueData = cityTotals.slice(0, 8);
+  const cityArppuData = cityTotals
+    .map((row) => ({
+      city: row.city,
+      arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
+    }))
+    .filter((row) => row.arppu > 0)
+    .sort((a, b) => b.arppu - a.arppu)
+    .slice(0, 8);
+  const cityLtvData = cityTotals
+    .map((row) => ({
+      city: row.city,
+      ltv: row.redeposits > 0 ? row.revenue / row.redeposits : 0,
+    }))
+    .filter((row) => row.ltv > 0)
+    .sort((a, b) => b.ltv - a.ltv)
+    .slice(0, 8);
+
+  const topGeoArppu = geoArppuData[0] || null;
+  const topGeoLtv = geoLtvData[0] || null;
+  const topGeoRevenue = geoRevenueData[0] || null;
+  const topCityArppu = cityArppuData[0] || null;
+  const topCityLtv = cityLtvData[0] || null;
+
   return (
     <>
+      {!geoState.loading && !geoState.error && geoTotals.length ? (
+        <>
+          <section className="cards">
+            {[
+              {
+                label: "Total Revenue",
+                value: formatCurrency(geoSummary.revenue),
+                icon: Wallet,
+                meta: t("Filtered range"),
+              },
+              {
+                label: "Total FTDs",
+                value: geoSummary.ftds.toLocaleString(),
+                icon: CreditCard,
+                meta: t("Filtered range"),
+              },
+              {
+                label: "Total Redeposits",
+                value: geoSummary.redeposits.toLocaleString(),
+                icon: CreditCard,
+                meta: t("Filtered range"),
+              },
+              {
+                label: "Top GEO Revenue",
+                value: topGeoRevenue ? formatCurrency(topGeoRevenue.revenue) : "—",
+                icon: Trophy,
+                meta: topGeoRevenue ? topGeoRevenue.country : t("No data"),
+              },
+              {
+                label: "Top GEO ARPPU",
+                value: topGeoArppu ? formatCurrency(topGeoArppu.arppu) : "—",
+                icon: Trophy,
+                meta: topGeoArppu ? topGeoArppu.country : t("No data"),
+              },
+              {
+                label: "Top GEO LTV",
+                value: topGeoLtv ? formatCurrency(topGeoLtv.ltv) : "—",
+                icon: Trophy,
+                meta: topGeoLtv ? topGeoLtv.country : t("No data"),
+              },
+              {
+                label: "Top City ARPPU",
+                value: topCityArppu ? formatCurrency(topCityArppu.arppu) : "—",
+                icon: MapIcon,
+                meta: topCityArppu ? topCityArppu.city : t("No data"),
+              },
+              {
+                label: "Top City LTV",
+                value: topCityLtv ? formatCurrency(topCityLtv.ltv) : "—",
+                icon: MapIcon,
+                meta: topCityLtv ? topCityLtv.city : t("No data"),
+              },
+            ].map((stat, idx) => {
+              const Icon = stat.icon;
+              return (
+                <motion.div
+                  key={stat.label}
+                  className="card"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.08, duration: 0.5 }}
+                >
+                  <div className="card-head">
+                    <Icon size={20} />
+                    {t(stat.label)}
+                  </div>
+                  <div className="card-value">{stat.value}</div>
+                  <div className="card-meta">{t(stat.meta)}</div>
+                </motion.div>
+              );
+            })}
+          </section>
+
+          <section className="panels geo-charts">
+            <motion.div
+              className="panel"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("Top GEOs by Revenue")}</h3>
+                  <p className="panel-subtitle">{t("Best performing GEOs by total revenue.")}</p>
+                </div>
+              </div>
+              <div className="chart chart-surface">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart
+                    data={geoRevenueData}
+                    layout="vertical"
+                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                    barCategoryGap={12}
+                  >
+                    <defs>
+                      <linearGradient id="geoRevenue" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
+                        <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      tickFormatter={(value) => formatCurrency(value)}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="country"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      width={110}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(value) => [formatCurrency(value), t("Revenue")]}
+                    />
+                    <Bar dataKey="revenue" fill="url(#geoRevenue)" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="panel"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.05 }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("ARPPU by GEO")}</h3>
+                  <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
+                </div>
+              </div>
+              <div className="chart chart-surface">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart
+                    data={geoArppuData}
+                    layout="vertical"
+                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                    barCategoryGap={12}
+                  >
+                    <defs>
+                      <linearGradient id="geoArppu" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
+                        <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      tickFormatter={(value) => formatCurrency(value)}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="country"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      width={110}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(value) => [formatCurrency(value), t("ARPPU")]}
+                    />
+                    <Bar dataKey="arppu" fill="url(#geoArppu)" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="panel"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("LTV (2+ Deposits) by GEO")}</h3>
+                  <p className="panel-subtitle">{t("Approximate: Revenue / Redeposits.")}</p>
+                </div>
+              </div>
+              <div className="chart chart-surface">
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart
+                    data={geoLtvData}
+                    layout="vertical"
+                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                    barCategoryGap={12}
+                  >
+                    <defs>
+                      <linearGradient id="geoLtv" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
+                        <stop offset="95%" stopColor="var(--orange)" stopOpacity={0.25} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      tickFormatter={(value) => formatCurrency(value)}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="country"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      width={110}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(value) => [formatCurrency(value), t("LTV")]}
+                    />
+                    <Bar dataKey="ltv" fill="url(#geoLtv)" radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          </section>
+
+          <section className="panels geo-charts">
+          <motion.div
+            className="panel"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Top Cities by Revenue")}</h3>
+                <p className="panel-subtitle">{t("Best performing cities by total revenue.")}</p>
+              </div>
+            </div>
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={cityRevenueData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                  barCategoryGap={12}
+                >
+                  <defs>
+                    <linearGradient id="geoCityRevenue" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="city"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    width={110}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [formatCurrency(value), t("Revenue")]}
+                  />
+                  <Bar dataKey="revenue" fill="url(#geoCityRevenue)" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+
+          <motion.div
+            className="panel"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.05 }}
+          >
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("ARPPU by City")}</h3>
+                <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
+              </div>
+            </div>
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={cityArppuData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                  barCategoryGap={12}
+                >
+                  <defs>
+                    <linearGradient id="geoCityArppu" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="city"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    width={110}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [formatCurrency(value), t("ARPPU")]}
+                  />
+                  <Bar dataKey="arppu" fill="url(#geoCityArppu)" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+
+          <motion.div
+            className="panel"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("LTV (2+ Deposits) by City")}</h3>
+                <p className="panel-subtitle">{t("Approximate: Revenue / Redeposits.")}</p>
+              </div>
+            </div>
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={cityLtvData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
+                  barCategoryGap={12}
+                >
+                  <defs>
+                    <linearGradient id="geoCityLtv" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="var(--orange)" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="city"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    width={110}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [formatCurrency(value), t("LTV")]}
+                  />
+                  <Bar dataKey="ltv" fill="url(#geoCityLtv)" radius={[0, 8, 8, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+          </section>
+        </>
+      ) : null}
+
       <section className="entries-section">
         <motion.div
           className="panel form-panel"
@@ -6076,6 +6571,10 @@ function KeitaroApiView() {
               <div className="field">
                 <label>{t("Country Field")}</label>
                 <input value={mapping.countryField} onChange={handleMappingChange("countryField")} />
+              </div>
+              <div className="field">
+                <label>{t("City Field")}</label>
+                <input value={mapping.cityField || ""} onChange={handleMappingChange("cityField")} />
               </div>
               <div className="field">
                 <label>{t("Spend Field")}</label>
