@@ -41,7 +41,7 @@ import {
   Smartphone,
   Trash2,
   Globe,
-  Map,
+  Map as MapIcon,
   ShieldCheck,
   User,
   Lock,
@@ -67,7 +67,7 @@ const apiFetch = (url, options = {}) => {
 
 const navItems = [
   { key: "home", label: "Home", icon: Home },
-  { key: "geos", label: "GEOS", icon: Map },
+  { key: "geos", label: "GEOS", icon: MapIcon },
   { key: "streams", label: "Goals", icon: Target },
   { key: "finances", label: "Finances", icon: Wallet },
   { key: "utm", label: "UTM Builder", icon: Link2 },
