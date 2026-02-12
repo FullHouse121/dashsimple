@@ -42,6 +42,8 @@ const initDb = async () => {
       country TEXT,
       spend REAL,
       revenue REAL,
+      ftd_revenue REAL,
+      redeposit_revenue REAL,
       clicks INTEGER NOT NULL,
       installs INTEGER,
       registers INTEGER NOT NULL,
@@ -50,6 +52,8 @@ const initDb = async () => {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS revenue REAL;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
       buyer TEXT NOT NULL,
@@ -283,8 +287,21 @@ const selectExpenses = async (limit) =>
 
 const insertMediaStat = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO media_stats (date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    `INSERT INTO media_stats (
+      date,
+      buyer,
+      country,
+      spend,
+      revenue,
+      ftd_revenue,
+      redeposit_revenue,
+      clicks,
+      installs,
+      registers,
+      ftds,
+      redeposits
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING id`,
     [
       payload.date,
@@ -292,6 +309,8 @@ const insertMediaStat = async (payload) => {
       payload.country,
       payload.spend,
       payload.revenue,
+      payload.ftd_revenue,
+      payload.redeposit_revenue,
       payload.clicks,
       payload.installs,
       payload.registers,
@@ -304,7 +323,8 @@ const insertMediaStat = async (payload) => {
 
 const selectMediaStats = async (limit) =>
   getRows(
-    `SELECT id, date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits
+    `SELECT id, date, buyer, country, spend, revenue, ftd_revenue, redeposit_revenue,
+            clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
@@ -782,9 +802,11 @@ const defaultKeitaroMapping = {
   countryField: "country",
   spendField: "cost",
   revenueField: "revenue",
+  ftdRevenueField: "custom_conversion_8_revenue",
+  redepositRevenueField: "custom_conversion_7_revenue",
   clicksField: "clicks",
   installsField: "installs",
-  registersField: "registrations",
+  registersField: "regs",
   ftdsField: "ftds",
   redepositsField: "redeposits",
   deviceField: "device",
@@ -1140,7 +1162,30 @@ app.get("/api/media-stats", async (req, res) => {
     const key = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
     existingKeys.add(key);
     const installs = installMap.has(key) ? installMap.get(key) : row.installs ?? 0;
-    return { ...row, installs, revenue: row.revenue ?? null };
+    const ftdRevenue =
+      row.ftd_revenue === undefined || row.ftd_revenue === null
+        ? null
+        : Number(row.ftd_revenue);
+    const redepositRevenue =
+      row.redeposit_revenue === undefined || row.redeposit_revenue === null
+        ? null
+        : Number(row.redeposit_revenue);
+    let revenue =
+      row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+    if (!Number.isFinite(revenue)) {
+      revenue = null;
+    }
+    if (revenue === null && (Number.isFinite(ftdRevenue) || Number.isFinite(redepositRevenue))) {
+      revenue = (Number.isFinite(ftdRevenue) ? ftdRevenue : 0) +
+        (Number.isFinite(redepositRevenue) ? redepositRevenue : 0);
+    }
+    return {
+      ...row,
+      installs,
+      ftdRevenue,
+      redepositRevenue,
+      revenue,
+    };
   });
 
   const mergedKeys = new Set(existingKeys);
@@ -1157,6 +1202,8 @@ app.get("/api/media-stats", async (req, res) => {
       country: row.country,
       spend: null,
       revenue: null,
+      ftdRevenue: null,
+      redepositRevenue: null,
       clicks: 0,
       installs: Number(row.installs) || 0,
       registers: conversions?.registers || 0,
@@ -1176,6 +1223,8 @@ app.get("/api/media-stats", async (req, res) => {
       country: row.country,
       spend: null,
       revenue: null,
+      ftdRevenue: null,
+      redepositRevenue: null,
       clicks: 0,
       installs: installMap.get(key) || 0,
       registers: Number(row.registers) || 0,
@@ -1268,8 +1317,22 @@ app.get("/api/device-stats", async (req, res) => {
 });
 
 app.post("/api/media-stats", async (req, res) => {
-  let { date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits } =
-    req.body ?? {};
+  let {
+    date,
+    buyer,
+    country,
+    spend,
+    revenue,
+    ftdRevenue,
+    redepositRevenue,
+    ftd_revenue,
+    redeposit_revenue,
+    clicks,
+    installs,
+    registers,
+    ftds,
+    redeposits,
+  } = req.body ?? {};
 
   if (!isLeadership(req.user)) {
     const viewerBuyer = await resolveViewerBuyer(req.user);
@@ -1284,7 +1347,19 @@ app.post("/api/media-stats", async (req, res) => {
   }
 
   const parsedSpend = spend === undefined || spend === null || spend === "" ? null : Number(spend);
-  const parsedRevenue =
+  const parsedFtdRevenue =
+    ftdRevenue === undefined || ftdRevenue === null || ftdRevenue === ""
+      ? ftd_revenue === undefined || ftd_revenue === null || ftd_revenue === ""
+        ? null
+        : Number(ftd_revenue)
+      : Number(ftdRevenue);
+  const parsedRedepositRevenue =
+    redepositRevenue === undefined || redepositRevenue === null || redepositRevenue === ""
+      ? redeposit_revenue === undefined || redeposit_revenue === null || redeposit_revenue === ""
+        ? null
+        : Number(redeposit_revenue)
+      : Number(redepositRevenue);
+  let parsedRevenue =
     revenue === undefined || revenue === null || revenue === "" ? null : Number(revenue);
   const parsedClicks = Number(clicks);
   const parsedInstalls =
@@ -1306,6 +1381,20 @@ app.post("/api/media-stats", async (req, res) => {
   if (parsedRevenue !== null && !Number.isFinite(parsedRevenue)) {
     return res.status(400).json({ error: "Revenue must be a number." });
   }
+  if (parsedFtdRevenue !== null && !Number.isFinite(parsedFtdRevenue)) {
+    return res.status(400).json({ error: "FTD revenue must be a number." });
+  }
+  if (parsedRedepositRevenue !== null && !Number.isFinite(parsedRedepositRevenue)) {
+    return res.status(400).json({ error: "Redeposit revenue must be a number." });
+  }
+  if (
+    parsedRevenue === null &&
+    (parsedFtdRevenue !== null || parsedRedepositRevenue !== null)
+  ) {
+    parsedRevenue =
+      (parsedFtdRevenue !== null ? parsedFtdRevenue : 0) +
+      (parsedRedepositRevenue !== null ? parsedRedepositRevenue : 0);
+  }
 
   if (parsedInstalls !== null && !Number.isFinite(parsedInstalls)) {
     return res.status(400).json({ error: "Installs must be a number." });
@@ -1320,6 +1409,8 @@ app.post("/api/media-stats", async (req, res) => {
     country: country || "",
     spend: parsedSpend,
     revenue: parsedRevenue,
+    ftd_revenue: parsedFtdRevenue,
+    redeposit_revenue: parsedRedepositRevenue,
     clicks: parsedClicks,
     installs: parsedInstalls,
     registers: parsedRegisters,
@@ -1867,15 +1958,22 @@ const runKeitaroSync = async ({
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
     const spend = numberFromValue(readRowValue(row, map.spendField));
-    const revenue = numberFromValue(readRowValue(row, map.revenueField));
+    const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
+    const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
+    let revenue = numberFromValue(readRowValue(row, map.revenueField));
     const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
     const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
     const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
     const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
 
+    if (revenue === null && (ftdRevenue !== null || redepositRevenue !== null)) {
+      revenue =
+        (ftdRevenue !== null ? ftdRevenue : 0) +
+        (redepositRevenue !== null ? redepositRevenue : 0);
+    }
+
     if (syncTarget === "device") {
       const device = normalizeDevice(readRowValue(row, map.deviceField));
-      const revenue = numberFromValue(readRowValue(row, map.revenueField));
 
       if (replaceExisting) {
         await deleteDeviceStat(date, device, buyer, country);
@@ -1906,6 +2004,8 @@ const runKeitaroSync = async ({
         country,
         spend,
         revenue,
+        ftd_revenue: ftdRevenue,
+        redeposit_revenue: redepositRevenue,
         clicks: Number(clicks) || 0,
         installs: installs === null ? null : Number(installs) || 0,
         registers: Number(registers) || 0,

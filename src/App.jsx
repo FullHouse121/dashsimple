@@ -350,6 +350,8 @@ const translations = {
     "Registers Field": "Kayıt Alanı",
     "FTDs Field": "FTD Alanı",
     "Redeposits Field": "Redepozit Alanı",
+    "FTD Revenue Field": "FTD Gelir Alanı",
+    "Redeposit Revenue Field": "Redepozit Gelir Alanı",
     Name: "İsim",
     Role: "Rol",
     Country: "Ülke",
@@ -409,6 +411,8 @@ const translations = {
     "Daily revenue trend for the selected period.": "Seçilen dönemdeki günlük gelir trendi.",
     "Revenue per FTD": "FTD Başına Gelir",
     "Revenue per Redeposit": "Redepozit Başına Gelir",
+    "FTD Revenue": "FTD Geliri",
+    "Redeposit Revenue": "Redepozit Geliri",
     "FTD to Redeposit CR": "FTD → Redepozit Dönüşümü",
     "Above avg": "Ortalamanın Üstü",
     "Below avg": "Ortalamanın Altı",
@@ -718,7 +722,16 @@ const defaultKeitaroPayload = `{
     "to": "2026-02-07"
   },
   "grouping": ["day", "campaign_group", "country"],
-  "metrics": ["clicks", "regs", "ftds", "redeposits", "revenue", "cost"]
+  "metrics": [
+    "clicks",
+    "regs",
+    "ftds",
+    "redeposits",
+    "custom_conversion_8_revenue",
+    "custom_conversion_7_revenue",
+    "revenue",
+    "cost"
+  ]
 }`;
 
 const defaultKeitaroMapping = {
@@ -727,6 +740,8 @@ const defaultKeitaroMapping = {
   countryField: "country",
   spendField: "cost",
   revenueField: "revenue",
+  ftdRevenueField: "custom_conversion_8_revenue",
+  redepositRevenueField: "custom_conversion_7_revenue",
   clicksField: "clicks",
   installsField: "installs",
   registersField: "regs",
@@ -1078,6 +1093,22 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   );
 
   const sum = (value) => Number(value || 0);
+  const readNumeric = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+  const readFtdRevenue = (row) =>
+    readNumeric(row?.ftdRevenue ?? row?.ftd_revenue ?? 0);
+  const readRedepositRevenue = (row) =>
+    readNumeric(row?.redepositRevenue ?? row?.redeposit_revenue ?? 0);
+  const readTotalRevenue = (row) => {
+    const direct = row?.revenue;
+    if (direct !== undefined && direct !== null && direct !== "") {
+      const numeric = Number(direct);
+      if (Number.isFinite(numeric)) return numeric;
+    }
+    return readFtdRevenue(row) + readRedepositRevenue(row);
+  };
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
   const toPercent = (num, denom) => {
     const value = safeDivide(num, denom);
@@ -1236,10 +1267,19 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
       const key = row.date;
       if (!key) return;
       if (!map.has(key)) {
-        map.set(key, { date: key, revenue: 0, ftds: 0, redeposits: 0 });
+        map.set(key, {
+          date: key,
+          revenue: 0,
+          ftdRevenue: 0,
+          redepositRevenue: 0,
+          ftds: 0,
+          redeposits: 0,
+        });
       }
       const current = map.get(key);
-      current.revenue += sum(row.revenue);
+      current.revenue += readTotalRevenue(row);
+      current.ftdRevenue += readFtdRevenue(row);
+      current.redepositRevenue += readRedepositRevenue(row);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
     });
@@ -1249,27 +1289,29 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   const revenueTotals = revenueSeries.reduce(
     (acc, item) => ({
       revenue: acc.revenue + item.revenue,
+      ftdRevenue: acc.ftdRevenue + item.ftdRevenue,
+      redepositRevenue: acc.redepositRevenue + item.redepositRevenue,
       ftds: acc.ftds + item.ftds,
       redeposits: acc.redeposits + item.redeposits,
     }),
-    { revenue: 0, ftds: 0, redeposits: 0 }
+    { revenue: 0, ftdRevenue: 0, redepositRevenue: 0, ftds: 0, redeposits: 0 }
   );
 
   const avg = (values) =>
     values.length ? values.reduce((sumValue, value) => sumValue + value, 0) / values.length : null;
-  const dailyRevenuePerFtd = revenueSeries
-    .filter((item) => item.ftds > 0)
-    .map((item) => item.revenue / item.ftds);
-  const dailyRevenuePerRedeposit = revenueSeries
-    .filter((item) => item.redeposits > 0)
-    .map((item) => item.revenue / item.redeposits);
+  const dailyFtdRevenue = revenueSeries
+    .filter((item) => item.ftdRevenue > 0)
+    .map((item) => item.ftdRevenue);
+  const dailyRedepositRevenue = revenueSeries
+    .filter((item) => item.redepositRevenue > 0)
+    .map((item) => item.redepositRevenue);
   const dailyCrFtdToRedeposit = revenueSeries
     .filter((item) => item.ftds > 0)
     .map((item) => (item.redeposits / item.ftds) * 100);
 
   const benchmark = {
-    revenuePerFtd: avg(dailyRevenuePerFtd),
-    revenuePerRedeposit: avg(dailyRevenuePerRedeposit),
+    ftdRevenue: avg(dailyFtdRevenue),
+    redepositRevenue: avg(dailyRedepositRevenue),
     ftdToRedepositCr: avg(dailyCrFtdToRedeposit),
   };
 
@@ -1283,17 +1325,15 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
     return { tone: "neutral", label: t("On target") };
   };
 
-  const revenuePerFtd =
-    revenueTotals.ftds > 0 ? revenueTotals.revenue / revenueTotals.ftds : null;
-  const revenuePerRedeposit =
-    revenueTotals.redeposits > 0 ? revenueTotals.revenue / revenueTotals.redeposits : null;
+  const ftdRevenueTotal = revenueTotals.ftdRevenue;
+  const redepositRevenueTotal = revenueTotals.redepositRevenue;
   const ftdToRedepositCr =
     revenueTotals.ftds > 0 ? (revenueTotals.redeposits / revenueTotals.ftds) * 100 : null;
 
-  const revenuePerFtdStatus = classifyMetric(revenuePerFtd, benchmark.revenuePerFtd);
-  const revenuePerRedepositStatus = classifyMetric(
-    revenuePerRedeposit,
-    benchmark.revenuePerRedeposit
+  const ftdRevenueStatus = classifyMetric(ftdRevenueTotal, benchmark.ftdRevenue);
+  const redepositRevenueStatus = classifyMetric(
+    redepositRevenueTotal,
+    benchmark.redepositRevenue
   );
   const ftdToRedepositStatus = classifyMetric(ftdToRedepositCr, benchmark.ftdToRedepositCr);
 
@@ -1599,24 +1639,28 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
                 </div>
               </div>
               <div className="revenue-grid">
-                <div className={`revenue-card ${revenuePerFtdStatus.tone}`}>
+                <div className={`revenue-card ${ftdRevenueStatus.tone}`}>
                   <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Revenue per FTD")}</span>
-                    <span className={`revenue-chip ${revenuePerFtdStatus.tone}`}>
-                      {revenuePerFtdStatus.label}
-                    </span>
-                  </div>
-                  <strong>{revenuePerFtd === null ? "—" : formatCurrency(revenuePerFtd)}</strong>
-                </div>
-                <div className={`revenue-card ${revenuePerRedepositStatus.tone}`}>
-                  <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Revenue per Redeposit")}</span>
-                    <span className={`revenue-chip ${revenuePerRedepositStatus.tone}`}>
-                      {revenuePerRedepositStatus.label}
+                    <span className="revenue-date">{t("FTD Revenue")}</span>
+                    <span className={`revenue-chip ${ftdRevenueStatus.tone}`}>
+                      {ftdRevenueStatus.label}
                     </span>
                   </div>
                   <strong>
-                    {revenuePerRedeposit === null ? "—" : formatCurrency(revenuePerRedeposit)}
+                    {Number.isFinite(ftdRevenueTotal) ? formatCurrency(ftdRevenueTotal) : "—"}
+                  </strong>
+                </div>
+                <div className={`revenue-card ${redepositRevenueStatus.tone}`}>
+                  <div className="revenue-card-head">
+                    <span className="revenue-date">{t("Redeposit Revenue")}</span>
+                    <span className={`revenue-chip ${redepositRevenueStatus.tone}`}>
+                      {redepositRevenueStatus.label}
+                    </span>
+                  </div>
+                  <strong>
+                    {Number.isFinite(redepositRevenueTotal)
+                      ? formatCurrency(redepositRevenueTotal)
+                      : "—"}
                   </strong>
                 </div>
                 <div className={`revenue-card ${ftdToRedepositStatus.tone}`}>
@@ -2042,6 +2086,8 @@ function GeosDashboard({ filters }) {
           spend: 0,
           revenue: 0,
           hasRevenue: false,
+          ftdRevenue: 0,
+          redepositRevenue: 0,
           clicks: 0,
           installs: 0,
           registers: 0,
@@ -2050,8 +2096,22 @@ function GeosDashboard({ filters }) {
         });
       }
       const current = map.get(country);
-      const revenueValue =
+      const ftdRevenueValue = Number.isFinite(Number(row.ftdRevenue ?? row.ftd_revenue))
+        ? Number(row.ftdRevenue ?? row.ftd_revenue)
+        : 0;
+      const redepositRevenueValue = Number.isFinite(
+        Number(row.redepositRevenue ?? row.redeposit_revenue)
+      )
+        ? Number(row.redepositRevenue ?? row.redeposit_revenue)
+        : 0;
+      let revenueValue =
         row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+      if (!Number.isFinite(revenueValue)) {
+        revenueValue = null;
+      }
+      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
+        revenueValue = ftdRevenueValue + redepositRevenueValue;
+      }
 
       current.spend += sum(row.spend);
       current.clicks += sum(row.clicks);
@@ -2059,6 +2119,8 @@ function GeosDashboard({ filters }) {
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
+      current.ftdRevenue = (current.ftdRevenue || 0) + ftdRevenueValue;
+      current.redepositRevenue = (current.redepositRevenue || 0) + redepositRevenueValue;
       if (Number.isFinite(revenueValue)) {
         current.revenue += revenueValue;
         current.hasRevenue = true;
@@ -5784,6 +5846,20 @@ function KeitaroApiView() {
               <div className="field">
                 <label>{t("Revenue Field")}</label>
                 <input value={mapping.revenueField} onChange={handleMappingChange("revenueField")} />
+              </div>
+              <div className="field">
+                <label>{t("FTD Revenue Field")}</label>
+                <input
+                  value={mapping.ftdRevenueField || ""}
+                  onChange={handleMappingChange("ftdRevenueField")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Redeposit Revenue Field")}</label>
+                <input
+                  value={mapping.redepositRevenueField || ""}
+                  onChange={handleMappingChange("redepositRevenueField")}
+                />
               </div>
               <div className="field">
                 <label>{t("Clicks Field")}</label>
