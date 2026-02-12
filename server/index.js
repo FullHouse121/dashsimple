@@ -1993,10 +1993,11 @@ const runKeitaroSync = async ({
     const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
     const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
 
-    if (revenue === null && (ftdRevenue !== null || redepositRevenue !== null)) {
-      revenue =
-        (ftdRevenue !== null ? ftdRevenue : 0) +
-        (redepositRevenue !== null ? redepositRevenue : 0);
+    const derivedRevenue =
+      (ftdRevenue !== null ? ftdRevenue : 0) +
+      (redepositRevenue !== null ? redepositRevenue : 0);
+    if ((revenue === null || revenue === 0) && derivedRevenue > 0) {
+      revenue = derivedRevenue;
     }
 
     if (syncTarget === "device") {

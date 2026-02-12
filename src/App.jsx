@@ -1241,11 +1241,18 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
     readNumeric(row?.redepositRevenue ?? row?.redeposit_revenue ?? 0);
   const readTotalRevenue = (row) => {
     const direct = row?.revenue;
+    const ftdValue = readFtdRevenue(row);
+    const redepositValue = readRedepositRevenue(row);
     if (direct !== undefined && direct !== null && direct !== "") {
       const numeric = Number(direct);
-      if (Number.isFinite(numeric)) return numeric;
+      if (Number.isFinite(numeric)) {
+        if (numeric === 0 && (ftdValue > 0 || redepositValue > 0)) {
+          return ftdValue + redepositValue;
+        }
+        return numeric;
+      }
     }
-    return readFtdRevenue(row) + readRedepositRevenue(row);
+    return ftdValue + redepositValue;
   };
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
   const toPercent = (num, denom) => {
