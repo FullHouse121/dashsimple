@@ -132,6 +132,8 @@ const initDb = async () => {
       id SERIAL PRIMARY KEY,
       date TEXT NOT NULL,
       device TEXT NOT NULL,
+      os TEXT,
+      os_version TEXT,
       buyer TEXT,
       country TEXT,
       spend REAL,
@@ -165,8 +167,11 @@ const initDb = async () => {
       ON install_events (click_id, campaign_id);`,
     `CREATE INDEX IF NOT EXISTS idx_conversion_events_date_buyer_country
       ON conversion_events (date, buyer, country);`,
+    `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os TEXT;`,
+    `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os_version TEXT;`,
+    `DROP INDEX IF EXISTS idx_device_stats_key;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
-      ON device_stats (date, device, buyer, country);`,
+      ON device_stats (date, device, os, os_version, buyer, country);`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
@@ -544,11 +549,26 @@ const selectInstallTotalsByDevice = async () =>
 
 const insertDeviceStat = async (payload) => {
   await query(
-    `INSERT INTO device_stats (date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    `INSERT INTO device_stats (
+      date,
+      device,
+      os,
+      os_version,
+      buyer,
+      country,
+      spend,
+      revenue,
+      clicks,
+      registers,
+      ftds,
+      redeposits
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       payload.date,
       payload.device,
+      payload.os,
+      payload.os_version,
       payload.buyer,
       payload.country,
       payload.spend,
@@ -563,17 +583,23 @@ const insertDeviceStat = async (payload) => {
 
 const selectDeviceStats = async (limit) =>
   getRows(
-    `SELECT id, date, device, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
+    `SELECT id, date, device, os, os_version, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
      FROM device_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
     [limit]
   );
 
-const deleteDeviceStat = async (date, device, buyer, country) =>
+const deleteDeviceStat = async (date, device, buyer, country, os = null, osVersion = null) =>
   query(
-    `DELETE FROM device_stats WHERE date = $1 AND device = $2 AND buyer = $3 AND country = $4`,
-    [date, device, buyer, country]
+    `DELETE FROM device_stats
+     WHERE date = $1
+       AND device = $2
+       AND buyer = $3
+       AND country = $4
+       AND ($5::text IS NULL OR os = $5)
+       AND ($6::text IS NULL OR os_version = $6)`,
+    [date, device, buyer, country, os, osVersion]
   );
 
 const insertUser = async (payload) => {
@@ -810,6 +836,8 @@ const defaultKeitaroMapping = {
   ftdsField: "ftds",
   redepositsField: "redeposits",
   deviceField: "device",
+  osField: "os",
+  osVersionField: "os_version",
 };
 
 const parseJsonEnv = (value, fallback = null) => {
@@ -1246,25 +1274,20 @@ app.get("/api/device-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = await selectDeviceStats(limit);
-  const installTotals = await selectInstallTotalsByDevice();
-  const installMap = new Map();
-
-  installTotals.forEach((row) => {
-    const device = normalizeDevice(row.device);
-    const key = `${row.date}|${device}`;
-    const current = installMap.get(key) || 0;
-    installMap.set(key, current + (Number(row.installs) || 0));
-  });
 
   const aggregated = new Map();
   rows.forEach((row) => {
     const device = normalizeDevice(row.device);
-    const key = `${row.date}|${device}`;
+    const os = String(row.os || "");
+    const osVersion = String(row.os_version || "");
+    const key = `${row.date}|${device}|${os}|${osVersion}`;
     if (!aggregated.has(key)) {
       aggregated.set(key, {
         id: row.id,
         date: row.date,
         device,
+        os,
+        os_version: osVersion,
         buyer: row.buyer || "",
         country: row.country || "",
         spend: 0,
@@ -1273,7 +1296,7 @@ app.get("/api/device-stats", async (req, res) => {
         registers: 0,
         ftds: 0,
         redeposits: 0,
-        installs: 0,
+        installs: row.installs ? Number(row.installs) : 0,
       });
     }
     const current = aggregated.get(key);
@@ -1283,27 +1306,8 @@ app.get("/api/device-stats", async (req, res) => {
     current.registers += Number(row.registers || 0);
     current.ftds += Number(row.ftds || 0);
     current.redeposits += Number(row.redeposits || 0);
-  });
-
-  installMap.forEach((installs, key) => {
-    if (aggregated.has(key)) {
-      aggregated.get(key).installs = installs;
-    } else {
-      const [date, device] = key.split("|");
-      aggregated.set(key, {
-        id: null,
-        date,
-        device,
-        buyer: "",
-        country: "",
-        spend: 0,
-        revenue: 0,
-        clicks: 0,
-        registers: 0,
-        ftds: 0,
-        redeposits: 0,
-        installs,
-      });
+    if (row.installs) {
+      current.installs += Number(row.installs || 0);
     }
   });
 
@@ -1974,14 +1978,18 @@ const runKeitaroSync = async ({
 
     if (syncTarget === "device") {
       const device = normalizeDevice(readRowValue(row, map.deviceField));
+      const os = String(readRowValue(row, map.osField) || "").trim();
+      const osVersion = String(readRowValue(row, map.osVersionField) || "").trim();
 
       if (replaceExisting) {
-        await deleteDeviceStat(date, device, buyer, country);
+        await deleteDeviceStat(date, device, buyer, country, os || null, osVersion || null);
       }
 
       await insertDeviceStat({
         date,
         device,
+        os: os || null,
+        os_version: osVersion || null,
         buyer,
         country,
         spend,

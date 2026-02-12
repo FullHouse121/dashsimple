@@ -352,6 +352,10 @@ const translations = {
     "Redeposits Field": "Redepozit Alanı",
     "FTD Revenue Field": "FTD Gelir Alanı",
     "Redeposit Revenue Field": "Redepozit Gelir Alanı",
+    "OS Field": "OS Alanı",
+    "OS Version Field": "OS Sürümü Alanı",
+    OS: "OS",
+    "OS Version": "OS Sürümü",
     Name: "İsim",
     Role: "Rol",
     Country: "Ülke",
@@ -748,6 +752,8 @@ const defaultKeitaroMapping = {
   ftdsField: "ftds",
   redepositsField: "redeposits",
   deviceField: "device",
+  osField: "os",
+  osVersionField: "os_version",
 };
 
 const tooltipStyle = {
@@ -3504,11 +3510,25 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const sum = (value) => Number(value || 0);
   const deviceMap = new Map();
 
+  const getDeviceKey = (row) => {
+    const device = row.device || "Unknown";
+    const os = row.os || row.os_version || row.osVersion || "";
+    const osVersion = row.os_version || row.osVersion || "";
+    return `${device}||${os}||${osVersion}`;
+  };
+
   deviceEntries.forEach((row) => {
     const device = row.device || "Unknown";
-    if (!deviceMap.has(device)) {
-      deviceMap.set(device, {
+    const os = row.os || row.os_version || row.osVersion || "";
+    const osVersion = row.os_version || row.osVersion || "";
+    const key = getDeviceKey(row);
+    if (!deviceMap.has(key)) {
+      deviceMap.set(key, {
+        key,
         device,
+        os,
+        osVersion,
+        label: [device, os, osVersion].filter(Boolean).join(" · "),
         clicks: 0,
         installs: 0,
         registers: 0,
@@ -3517,7 +3537,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         revenue: 0,
       });
     }
-    const current = deviceMap.get(device);
+    const current = deviceMap.get(key);
     current.clicks += sum(row.clicks);
     current.installs += sum(row.installs);
     current.registers += sum(row.registers);
@@ -3544,7 +3564,11 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const avgCr = totals.clicks ? (totals.ftds / totals.clicks) * 100 : 0;
 
   const chartData = deviceData.map((row) => ({
-    device: row.device,
+    key: row.key,
+    device: row.label || row.device,
+    deviceRaw: row.device,
+    os: row.os,
+    osVersion: row.osVersion,
     revenue: row.revenue,
     clicks: row.clicks,
     installs: row.installs,
@@ -3565,13 +3589,13 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         {[
           {
             label: "Top Revenue Device",
-            value: topRevenueDevice?.device || "—",
+            value: topRevenueDevice?.label || topRevenueDevice?.device || "—",
             icon: Wallet,
             meta: topRevenueDevice ? `${t("Revenue")}: ${formatCurrency(topRevenueDevice.revenue)}` : t("No data"),
           },
           {
             label: "Top Buyer Device",
-            value: topBuyerDevice?.device || "—",
+            value: topBuyerDevice?.label || topBuyerDevice?.device || "—",
             icon: Target,
             meta: topBuyerDevice ? `${t("FTDs")}: ${topBuyerDevice.ftds}` : t("No data"),
           },
@@ -3780,6 +3804,8 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                 <thead>
                   <tr>
                     <th>{t("Device")}</th>
+                    <th>{t("OS")}</th>
+                    <th>{t("OS Version")}</th>
                     <th>{t("Clicks")}</th>
                     <th>{t("Installs")}</th>
                     <th>{t("Registers")}</th>
@@ -3789,17 +3815,22 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {chartData.map((row) => (
-                    <tr key={row.device}>
-                      <td>{row.device}</td>
-                      <td>{row.clicks.toLocaleString()}</td>
-                      <td>{row.installs.toLocaleString()}</td>
-                      <td>{deviceMap.get(row.device)?.registers.toLocaleString() || "0"}</td>
-                      <td>{deviceMap.get(row.device)?.ftds.toLocaleString() || "0"}</td>
-                      <td>{formatCurrency(row.revenue)}</td>
-                      <td>{`${row.cr.toFixed(2)}%`}</td>
-                    </tr>
-                  ))}
+                  {chartData.map((row) => {
+                    const stats = deviceMap.get(row.key);
+                    return (
+                      <tr key={row.key}>
+                        <td>{row.device}</td>
+                        <td>{row.os || "—"}</td>
+                        <td>{row.osVersion || "—"}</td>
+                        <td>{row.clicks.toLocaleString()}</td>
+                        <td>{row.installs.toLocaleString()}</td>
+                        <td>{stats?.registers.toLocaleString() || "0"}</td>
+                        <td>{stats?.ftds.toLocaleString() || "0"}</td>
+                        <td>{formatCurrency(row.revenue)}</td>
+                        <td>{`${row.cr.toFixed(2)}%`}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -5884,6 +5915,17 @@ function KeitaroApiView() {
               <div className="field">
                 <label>{t("Device Field")}</label>
                 <input value={mapping.deviceField} onChange={handleMappingChange("deviceField")} />
+              </div>
+              <div className="field">
+                <label>{t("OS Field")}</label>
+                <input value={mapping.osField || ""} onChange={handleMappingChange("osField")} />
+              </div>
+              <div className="field">
+                <label>{t("OS Version Field")}</label>
+                <input
+                  value={mapping.osVersionField || ""}
+                  onChange={handleMappingChange("osVersionField")}
+                />
               </div>
             </div>
           </div>
