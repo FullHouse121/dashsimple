@@ -240,6 +240,99 @@ const FlagTR = () => (
   </svg>
 );
 
+const AndroidIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="6" y="9" width="12" height="9" rx="2" fill="currentColor" />
+    <rect x="8" y="6" width="8" height="4" rx="2" fill="currentColor" />
+    <circle cx="10" cy="10.5" r="1" fill="#0b0f0c" />
+    <circle cx="14" cy="10.5" r="1" fill="#0b0f0c" />
+    <path d="M7 4 L5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M17 4 L19 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const AppleIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="currentColor"
+      d="M16.9 13.1c0 3.1-2.1 5.9-4.3 5.9-1 0-1.4-.6-2.6-.6-1.2 0-1.7.6-2.7.6-2.1 0-4.6-2.5-4.6-5.8 0-2.3 1.4-4.3 3.6-4.3 1.1 0 2 .6 2.6.6.6 0 1.7-.7 2.9-.7.5 0 2.2.1 3.4 1.6-.1.1-2 1-2 3.3 0 2.6 2.3 3.4 2.7 3.4z"
+    />
+    <path
+      fill="currentColor"
+      d="M14.7 4.1c-.6.7-1.6 1.3-2.6 1.2-.1-1 .3-2 .9-2.7.6-.7 1.7-1.2 2.6-1.2.1 1-.3 2-.9 2.7z"
+    />
+  </svg>
+);
+
+const WindowsIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="3" width="8" height="8" fill="currentColor" />
+    <rect x="13" y="3" width="8" height="8" fill="currentColor" />
+    <rect x="3" y="13" width="8" height="8" fill="currentColor" />
+    <rect x="13" y="13" width="8" height="8" fill="currentColor" />
+  </svg>
+);
+
+const LinuxIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="8" r="4" fill="currentColor" />
+    <rect x="7" y="12" width="10" height="8" rx="4" fill="currentColor" />
+    <circle cx="10" cy="7.5" r="0.8" fill="#0b0f0c" />
+    <circle cx="14" cy="7.5" r="0.8" fill="#0b0f0c" />
+  </svg>
+);
+
+const ChromeIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
+    <circle cx="12" cy="12" r="4" fill="currentColor" />
+  </svg>
+);
+
+const DesktopIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="12" rx="2" fill="currentColor" />
+    <rect x="9" y="18" width="6" height="2" fill="currentColor" />
+  </svg>
+);
+
+const MobileIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="7" y="3" width="10" height="18" rx="2" fill="currentColor" />
+    <circle cx="12" cy="18" r="1" fill="#0b0f0c" />
+  </svg>
+);
+
+const TabletIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="5" y="3" width="14" height="18" rx="2" fill="currentColor" />
+    <circle cx="12" cy="18" r="1" fill="#0b0f0c" />
+  </svg>
+);
+
+const UnknownIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" fill="currentColor" />
+    <path
+      d="M12 7c-1.6 0-2.6.9-2.6 2.2h1.8c.1-.5.4-.8.9-.8.6 0 1 .4 1 1 0 .7-.6 1-1.3 1.4-.8.4-1.3.9-1.3 2v.4h1.8v-.3c0-.6.4-.8 1-.9.8-.2 1.8-.7 1.8-2.4 0-1.7-1.3-2.6-3.1-2.6zm-.9 8.5c0 .6.5 1.1 1.1 1.1s1.1-.5 1.1-1.1-.5-1.1-1.1-1.1-1.1.5-1.1 1.1z"
+      fill="#0b0f0c"
+    />
+  </svg>
+);
+
+const getOsIconComponent = (value) => {
+  const label = String(value || "").toLowerCase();
+  if (label.includes("android")) return AndroidIcon;
+  if (label.includes("ios") || label.includes("iphone") || label.includes("ipad") || label.includes("mac")) return AppleIcon;
+  if (label.includes("windows")) return WindowsIcon;
+  if (label.includes("linux")) return LinuxIcon;
+  if (label.includes("chrome")) return ChromeIcon;
+  if (label.includes("tablet")) return TabletIcon;
+  if (label.includes("mobile") || label.includes("phone")) return MobileIcon;
+  if (label.includes("desktop")) return DesktopIcon;
+  return UnknownIcon;
+};
+
 const languageOptions = [
   { code: "EN", label: "English", Flag: FlagEN },
   { code: "TR", label: "Türkçe", Flag: FlagTR },
@@ -596,19 +689,20 @@ const translations = {
     "Avg CR": "Ort. Dönüşüm",
     "Device view": "Cihaz görünümü",
     "FTD / Clicks": "FTD / Tıklamalar",
-    "Top Revenue Device": "En Yüksek Gelirli Cihaz",
-    "Top Buyer Device": "En Çok Satın Alan Cihaz",
-    "Top Device Models": "En İyi Cihaz Modelleri",
+    "Top OS": "En İyi OS",
+    "Top OS Version": "En İyi OS Sürümü",
+    "Top OS Installs": "En İyi OS Kurulum",
+    "Top OS CR": "En İyi OS Dönüşüm",
     "No data": "Veri yok",
-    "Revenue by Device": "Cihaza Göre Gelir",
-    "Clicks by Device": "Cihaza Göre Tıklamalar",
-    "Installs by Device": "Cihaza Göre Kurulumlar",
-    "CR by Device": "Cihaza Göre Dönüşüm Oranı",
-    "Track revenue contribution by device type.":
-      "Cihaz türüne göre gelir katkısını takip edin.",
-    "Clicks volume grouped by device.": "Cihaza göre gruplanmış tıklama hacmi.",
-    "Install postbacks grouped by device.": "Cihaza göre gruplanmış kurulum postback'leri.",
-    "FTD conversion rate by device.": "Cihaza göre FTD dönüşüm oranı.",
+    "Revenue by OS": "OS'a Göre Gelir",
+    "Click by OS": "OS'a Göre Tıklama",
+    "Install By OS": "OS'a Göre Kurulum",
+    "CR by OS": "OS'a Göre Dönüşüm Oranı",
+    "Track revenue contribution by OS.":
+      "OS'a göre gelir katkısını takip edin.",
+    "Clicks volume grouped by OS.": "OS'a göre gruplanmış tıklama hacmi.",
+    "Install postbacks grouped by OS.": "OS'a göre gruplanmış kurulum postback'leri.",
+    "FTD conversion rate by OS.": "OS'a göre FTD dönüşüm oranı.",
     "Device Breakdown": "Cihaz Dağılımı",
     "Clicks, installs, revenue, and CR by device.":
       "Cihaza göre tıklamalar, kurulumlar, gelir ve dönüşüm oranı.",
@@ -3558,40 +3652,46 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   });
 
   const deviceData = Array.from(deviceMap.values()).sort((a, b) => b.revenue - a.revenue);
-  const topRevenueDevice = deviceData[0] || null;
-  const modelMap = new Map();
+
+  const osMap = new Map();
   deviceData.forEach((row) => {
-    const model = row.deviceModel || "Unknown";
-    if (!modelMap.has(model)) {
-      modelMap.set(model, { model, revenue: 0, clicks: 0, ftds: 0 });
+    const osName = row.os || row.device || "Unknown";
+    const key = osName.toLowerCase();
+    if (!osMap.has(key)) {
+      osMap.set(key, { key, name: osName, revenue: 0, clicks: 0, installs: 0, ftds: 0 });
     }
-    const current = modelMap.get(model);
+    const current = osMap.get(key);
     current.revenue += row.revenue || 0;
     current.clicks += row.clicks || 0;
+    current.installs += row.installs || 0;
     current.ftds += row.ftds || 0;
   });
-  const topModels = Array.from(modelMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
-  const topModelsValue = topModels[0]?.model || "—";
-  const topModelsMeta = topModels.length
-    ? topModels
-        .map((item, idx) => `${idx + 1}. ${item.model} (${formatCurrency(item.revenue)})`)
-        .join(" · ")
-    : t("No data");
-  const totals = deviceData.reduce(
-    (acc, row) => ({
-      clicks: acc.clicks + row.clicks,
-      installs: acc.installs + row.installs,
-      registers: acc.registers + row.registers,
-      ftds: acc.ftds + row.ftds,
-      spend: acc.spend + row.spend,
-      revenue: acc.revenue + row.revenue,
-    }),
-    { clicks: 0, installs: 0, registers: 0, ftds: 0, spend: 0, revenue: 0 }
-  );
+  const osData = Array.from(osMap.values()).sort((a, b) => b.revenue - a.revenue);
+  const topOs = osData[0] || null;
 
-  const avgCr = totals.clicks ? (totals.ftds / totals.clicks) * 100 : 0;
+  const osVersionMap = new Map();
+  deviceData.forEach((row) => {
+    const osName = row.os || row.device || "Unknown";
+    const version = row.osVersion || "Unknown";
+    const key = `${osName}||${version}`;
+    const label = version && version !== "Unknown" ? `${osName} ${version}`.trim() : osName;
+    if (!osVersionMap.has(key)) {
+      osVersionMap.set(key, { key, label, os: osName, version, revenue: 0, clicks: 0, installs: 0, ftds: 0 });
+    }
+    const current = osVersionMap.get(key);
+    current.revenue += row.revenue || 0;
+    current.clicks += row.clicks || 0;
+    current.installs += row.installs || 0;
+    current.ftds += row.ftds || 0;
+  });
+  const osVersionData = Array.from(osVersionMap.values()).sort((a, b) => b.revenue - a.revenue);
+  const topOsVersion = osVersionData[0] || null;
+  const topOsVersionCr =
+    topOsVersion && topOsVersion.clicks
+      ? (topOsVersion.ftds / topOsVersion.clicks) * 100
+      : 0;
 
-  const chartData = deviceData.map((row) => ({
+  const deviceChartData = deviceData.map((row) => ({
     key: row.key,
     device: row.label || row.device,
     deviceRaw: row.device,
@@ -3599,6 +3699,15 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     osIcon: row.osIcon,
     os: row.os,
     osVersion: row.osVersion,
+    revenue: row.revenue,
+    clicks: row.clicks,
+    installs: row.installs,
+    cr: row.clicks ? (row.ftds / row.clicks) * 100 : 0,
+  }));
+
+  const osChartData = osData.map((row) => ({
+    key: row.key,
+    os: row.name,
     revenue: row.revenue,
     clicks: row.clicks,
     installs: row.installs,
@@ -3613,29 +3722,36 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     },
   ];
 
+  const TopOsIcon = getOsIconComponent(topOs?.name);
+
   return (
     <>
       <section className="cards">
         {[
           {
-            label: "Top Revenue Device",
-            value: topRevenueDevice?.label || topRevenueDevice?.device || "—",
+            label: "Top OS",
+            value: topOs?.name || "—",
+            iconNode: <TopOsIcon size={18} />,
+            meta: topOs ? `${t("Revenue")}: ${formatCurrency(topOs.revenue)}` : t("No data"),
+          },
+          {
+            label: "Top OS Version",
+            value: topOsVersion?.label || "—",
             icon: Wallet,
-            meta: topRevenueDevice ? `${t("Revenue")}: ${formatCurrency(topRevenueDevice.revenue)}` : t("No data"),
+            meta: topOsVersion ? `${t("Revenue")}: ${formatCurrency(topOsVersion.revenue)}` : t("No data"),
           },
           {
-            label: "Top Device Models",
-            value: topModelsValue,
-            icon: Target,
-            meta: topModelsMeta,
-          },
-          {
-            label: "Total Installs",
-            value: totals.installs.toLocaleString(),
+            label: "Top OS Installs",
+            value: topOsVersion ? Number(topOsVersion.installs || 0).toLocaleString() : "0",
             icon: Download,
-            meta: "Device view",
+            meta: topOsVersion ? topOsVersion.label : t("No data"),
           },
-          { label: "Avg CR", value: `${avgCr.toFixed(2)}%`, icon: Target, meta: "FTD / Clicks" },
+          {
+            label: "Top OS CR",
+            value: `${topOsVersionCr.toFixed(2)}%`,
+            icon: Target,
+            meta: topOsVersion ? `${t("FTD / Clicks")} · ${topOsVersion.label}` : t("No data"),
+          },
         ].map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -3647,7 +3763,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
               transition={{ delay: idx * 0.08, duration: 0.5 }}
             >
               <div className="card-head">
-                <Icon size={18} />
+                {stat.iconNode || (Icon ? <Icon size={18} /> : null)}
                 {t(stat.label)}
               </div>
               <div className="card-value">{stat.value}</div>
@@ -3666,8 +3782,8 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Revenue by Device")}</h3>
-              <p className="panel-subtitle">{t("Track revenue contribution by device type.")}</p>
+              <h3 className="panel-title">{t("Revenue by OS")}</h3>
+              <p className="panel-subtitle">{t("Track revenue contribution by OS.")}</p>
             </div>
             <PeriodSelect
               value={period}
@@ -3678,7 +3794,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="deviceRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
@@ -3686,13 +3802,13 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="device" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
                   width={60}
                   tick={axisTickStyle}
-                  domain={valueDomain(chartData, "revenue")}
+                  domain={valueDomain(osChartData, "revenue")}
                   tickFormatter={(value) => formatCurrency(value)}
                 />
                 <Tooltip
@@ -3713,13 +3829,13 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Clicks by Device")}</h3>
-              <p className="panel-subtitle">{t("Clicks volume grouped by device.")}</p>
+              <h3 className="panel-title">{t("Click by OS")}</h3>
+              <p className="panel-subtitle">{t("Clicks volume grouped by OS.")}</p>
             </div>
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="deviceClicks" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.9} />
@@ -3727,7 +3843,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="device" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <Tooltip
                   contentStyle={tooltipStyle}
@@ -3747,13 +3863,13 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Installs by Device")}</h3>
-              <p className="panel-subtitle">{t("Install postbacks grouped by device.")}</p>
+              <h3 className="panel-title">{t("Install By OS")}</h3>
+              <p className="panel-subtitle">{t("Install postbacks grouped by OS.")}</p>
             </div>
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="deviceInstalls" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
@@ -3761,7 +3877,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="device" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <Tooltip
                   contentStyle={tooltipStyle}
@@ -3781,13 +3897,13 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("CR by Device")}</h3>
-              <p className="panel-subtitle">{t("FTD conversion rate by device.")}</p>
+              <h3 className="panel-title">{t("CR by OS")}</h3>
+              <p className="panel-subtitle">{t("FTD conversion rate by OS.")}</p>
             </div>
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={chartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
                 <defs>
                   <linearGradient id="deviceCr" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
@@ -3795,7 +3911,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="device" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
                 <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} domain={[0, 100]} />
                 <Tooltip
                   contentStyle={tooltipStyle}
@@ -3826,7 +3942,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
             <div className="empty-state">{t("Loading device stats…")}</div>
           ) : deviceState.error ? (
             <div className="empty-state error">{deviceState.error}</div>
-          ) : chartData.length === 0 ? (
+          ) : deviceChartData.length === 0 ? (
             <div className="empty-state">{t("No device data available yet.")}</div>
           ) : (
             <div className="table-wrap">
@@ -3846,7 +3962,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {chartData.map((row) => {
+                  {deviceChartData.map((row) => {
                     const stats = deviceMap.get(row.key);
                     return (
                       <tr key={row.key}>
