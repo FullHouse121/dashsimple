@@ -41,6 +41,7 @@ import {
   Smartphone,
   Trash2,
   Globe,
+  Map,
   ShieldCheck,
   User,
   Lock,
@@ -66,6 +67,7 @@ const apiFetch = (url, options = {}) => {
 
 const navItems = [
   { key: "home", label: "Home", icon: Home },
+  { key: "geos", label: "GEOS", icon: Map },
   { key: "streams", label: "Goals", icon: Target },
   { key: "finances", label: "Finances", icon: Wallet },
   { key: "utm", label: "UTM Builder", icon: Link2 },
@@ -90,7 +92,7 @@ const navItems = [
 ];
 
 const navSections = [
-  { title: "Overview", items: ["home", "streams"] },
+  { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "devices"] },
   { title: "Operations", items: ["finances", "utm", "domains"] },
   { title: "Administration", items: ["roles"] },
@@ -168,6 +170,7 @@ const roleOptions = [
 
 const permissionOptions = [
   { key: "dashboard", label: "Home Dashboard" },
+  { key: "geos", label: "GEOS" },
   { key: "goals", label: "Goals" },
   { key: "finances", label: "Finances" },
   { key: "utm", label: "UTM Builder" },
@@ -416,6 +419,16 @@ const translations = {
     "Top GEO": "En İyi GEO",
     "Highest FTD conversion rate and Reg2Dep conversion rate":
       "En yüksek FTD dönüşüm oranı ve Reg2Dep dönüşüm oranı",
+    GEOS: "GEO",
+    "GEO Report": "GEO Raporu",
+    "Performance by country for the selected filters.":
+      "Seçilen filtrelere göre ülke performansı.",
+    "Loading geo report…": "GEO raporu yükleniyor…",
+    "No geo data yet.": "Henüz GEO verisi yok.",
+    Spend: "Harcama",
+    Redeposits: "Redepozitler",
+    ARPPU: "ARPPU",
+    LTV: "LTV",
     "Metric:": "Metrik:",
     "FTD rate + Reg2Dep rate": "FTD oranı + Reg2Dep oranı",
     "Active GEO:": "Aktif GEO:",
@@ -1924,6 +1937,203 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
         </motion.div>
       </section>
 
+    </>
+  );
+}
+
+function GeosDashboard({ filters }) {
+  const { t } = useLanguage();
+  const [geoRows, setGeoRows] = React.useState([]);
+  const [geoState, setGeoState] = React.useState({ loading: true, error: null });
+
+  const loadGeos = React.useCallback(async () => {
+    try {
+      setGeoState({ loading: true, error: null });
+      const response = await apiFetch("/api/media-stats?limit=500");
+      if (!response.ok) {
+        throw new Error("Failed to load media buyer stats.");
+      }
+      const data = await response.json();
+      setGeoRows(Array.isArray(data) ? data : []);
+      setGeoState({ loading: false, error: null });
+    } catch (error) {
+      setGeoState({ loading: false, error: error.message || "Failed to load stats." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadGeos();
+  }, [loadGeos]);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      loadGeos();
+    };
+    window.addEventListener("keitaro:sync", handleSync);
+    return () => window.removeEventListener("keitaro:sync", handleSync);
+  }, [loadGeos]);
+
+  const buyerFilter = filters?.buyer || "All";
+  const countryFilter = filters?.country || "All";
+  const dateFrom = filters?.dateFrom;
+  const dateTo = filters?.dateTo;
+  const normalizedPriorityBuyers = React.useMemo(
+    () => priorityBuyers.map((buyer) => buyer.toLowerCase()),
+    []
+  );
+
+  const sum = (value) => Number(value || 0);
+  const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
+  const toPercent = (num, denom) => {
+    const value = safeDivide(num, denom);
+    return value === null ? null : value * 100;
+  };
+  const fmtPercent = (value) =>
+    value === null || Number.isNaN(value) ? "—" : `${value.toFixed(2)}%`;
+  const fmtCost = (value) =>
+    value === null || Number.isNaN(value) ? "—" : formatCurrency(value);
+
+  const matchesBuyer = (buyer) => {
+    const normalizedBuyer = String(buyer || "").toLowerCase();
+    if (!normalizedBuyer) return false;
+    const isAllowed = normalizedPriorityBuyers.some((name) => normalizedBuyer.includes(name));
+    if (!isAllowed) return false;
+    if (buyerFilter === "All") return true;
+    const normalizedFilter = String(buyerFilter || "").toLowerCase();
+    return normalizedBuyer.includes(normalizedFilter);
+  };
+
+  const filteredRows = React.useMemo(() => {
+    return geoRows.filter((row) => {
+      if (!matchesBuyer(row.buyer)) return false;
+      if (countryFilter !== "All" && String(row.country || "") !== countryFilter) return false;
+      if (dateFrom && row.date && row.date < dateFrom) return false;
+      if (dateTo && row.date && row.date > dateTo) return false;
+      return true;
+    });
+  }, [geoRows, buyerFilter, countryFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
+
+  const geoTotals = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const country = String(row.country || "Unknown");
+      if (!map.has(country)) {
+        map.set(country, {
+          country,
+          spend: 0,
+          revenue: 0,
+          hasRevenue: false,
+          clicks: 0,
+          installs: 0,
+          registers: 0,
+          ftds: 0,
+          redeposits: 0,
+        });
+      }
+      const current = map.get(country);
+      const revenueValue =
+        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+
+      current.spend += sum(row.spend);
+      current.clicks += sum(row.clicks);
+      current.installs += sum(row.installs);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      if (Number.isFinite(revenueValue)) {
+        current.revenue += revenueValue;
+        current.hasRevenue = true;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const revenueSort = (b.revenue || 0) - (a.revenue || 0);
+      if (revenueSort !== 0) return revenueSort;
+      return (b.clicks || 0) - (a.clicks || 0);
+    });
+  }, [filteredRows]);
+
+  return (
+    <>
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("GEO Report")}</h3>
+              <p className="panel-subtitle">
+                {t("Performance by country for the selected filters.")}
+              </p>
+            </div>
+          </div>
+          {geoState.loading ? (
+            <div className="empty-state">{t("Loading geo report…")}</div>
+          ) : geoState.error ? (
+            <div className="empty-state error">{geoState.error}</div>
+          ) : geoTotals.length === 0 ? (
+            <div className="empty-state">{t("No geo data yet.")}</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="entries-table stats-table">
+                <thead>
+                  <tr>
+                    <th>{t("Country")}</th>
+                    <th>{t("Spend")}</th>
+                    <th>{t("Revenue")}</th>
+                    <th>{t("Clicks")}</th>
+                    <th>{t("Installs")}</th>
+                    <th>{t("Registers")}</th>
+                    <th>{t("FTDs")}</th>
+                    <th>{t("Redeposits")}</th>
+                    <th>{t("ARPPU")}</th>
+                    <th>{t("LTV")}</th>
+                    <th>{t("C2R")}</th>
+                    <th>{t("C2FTD")}</th>
+                    <th>{t("R2D")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {geoTotals.map((row) => {
+                    const revenueValue = row.hasRevenue ? row.revenue : null;
+                    const arppu =
+                      revenueValue !== null && row.ftds > 0
+                        ? revenueValue / row.ftds
+                        : null;
+                    const ltv =
+                      revenueValue !== null && row.redeposits > 0
+                        ? revenueValue / row.redeposits
+                        : null;
+                    const c2r = toPercent(row.registers, row.clicks);
+                    const c2f = toPercent(row.ftds, row.clicks);
+                    const r2d = toPercent(row.ftds, row.registers);
+
+                    return (
+                      <tr key={row.country}>
+                        <td>{row.country}</td>
+                        <td>{row.spend ? formatCurrency(row.spend) : "—"}</td>
+                        <td>{row.hasRevenue ? formatCurrency(row.revenue) : "—"}</td>
+                        <td>{row.clicks.toLocaleString()}</td>
+                        <td>{row.installs ? row.installs.toLocaleString() : "—"}</td>
+                        <td>{row.registers.toLocaleString()}</td>
+                        <td>{row.ftds.toLocaleString()}</td>
+                        <td>{row.redeposits ? row.redeposits.toLocaleString() : "—"}</td>
+                        <td>{fmtCost(arppu)}</td>
+                        <td>{fmtCost(ltv)}</td>
+                        <td>{fmtPercent(c2r)}</td>
+                        <td>{fmtPercent(c2f)}</td>
+                        <td>{fmtPercent(r2d)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.div>
+      </section>
     </>
   );
 }
@@ -5844,6 +6054,7 @@ export default function App() {
 
   const isFinances = activeView === "finances";
   const isHome = activeView === "home";
+  const isGeos = activeView === "geos";
   const isUtm = activeView === "utm";
   const isStats = activeView === "statistics";
   const isApi = activeView === "api";
@@ -5853,11 +6064,12 @@ export default function App() {
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isProfile = activeView === "profile";
-  const showFilters = isFinances || isHome;
+  const showFilters = isFinances || isHome || isGeos;
 
   const viewPermissionMap = React.useMemo(
     () => ({
       home: "dashboard",
+      geos: "geos",
       streams: "goals",
       finances: "finances",
       utm: "utm",
@@ -6237,6 +6449,8 @@ export default function App() {
           <ProfileDashboard authUser={authUser} />
         ) : isRoles ? (
           <RolesDashboard authUser={authUser} />
+        ) : isGeos ? (
+          <GeosDashboard filters={filters} />
         ) : isApi ? (
           <KeitaroApiView />
         ) : isStats ? (

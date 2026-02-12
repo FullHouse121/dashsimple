@@ -41,6 +41,7 @@ const initDb = async () => {
       buyer TEXT NOT NULL,
       country TEXT,
       spend REAL,
+      revenue REAL,
       clicks INTEGER NOT NULL,
       installs INTEGER,
       registers INTEGER NOT NULL,
@@ -48,6 +49,7 @@ const initDb = async () => {
       redeposits INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS revenue REAL;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
       buyer TEXT NOT NULL,
@@ -177,6 +179,7 @@ const allPermissions = [
   "finances",
   "utm",
   "statistics",
+  "geos",
   "devices",
   "domains",
   "api",
@@ -195,15 +198,15 @@ const roleSeed = [
   },
   {
     name: "Media Buyer Senior",
-    permissions: ["dashboard", "utm", "statistics", "goals"],
+    permissions: ["dashboard", "utm", "statistics", "geos", "goals"],
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics"],
+    permissions: ["dashboard", "utm", "statistics", "geos"],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics"],
+    permissions: ["dashboard", "statistics", "geos"],
   },
 ];
 
@@ -241,6 +244,11 @@ const seedRoles = async () => {
   for (const role of roleSeed) {
     await insertRoleSeed(role);
   }
+  for (const role of roleSeed) {
+    if (role.permissions.includes("statistics")) {
+      await ensureRolePermissions(role.name, ["geos"]);
+    }
+  }
   for (const role of roleSeed.filter((item) => ["Boss", "Team Leader"].includes(item.name))) {
     await ensureRolePermissions(role.name, role.permissions);
   }
@@ -275,14 +283,15 @@ const selectExpenses = async (limit) =>
 
 const insertMediaStat = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO media_stats (date, buyer, country, spend, clicks, installs, registers, ftds, redeposits)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO media_stats (date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       payload.date,
       payload.buyer,
       payload.country,
       payload.spend,
+      payload.revenue,
       payload.clicks,
       payload.installs,
       payload.registers,
@@ -295,7 +304,7 @@ const insertMediaStat = async (payload) => {
 
 const selectMediaStats = async (limit) =>
   getRows(
-    `SELECT id, date, buyer, country, spend, clicks, installs, registers, ftds, redeposits
+    `SELECT id, date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
@@ -1131,7 +1140,7 @@ app.get("/api/media-stats", async (req, res) => {
     const key = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
     existingKeys.add(key);
     const installs = installMap.has(key) ? installMap.get(key) : row.installs ?? 0;
-    return { ...row, installs };
+    return { ...row, installs, revenue: row.revenue ?? null };
   });
 
   const mergedKeys = new Set(existingKeys);
@@ -1147,6 +1156,7 @@ app.get("/api/media-stats", async (req, res) => {
       buyer: row.buyer,
       country: row.country,
       spend: null,
+      revenue: null,
       clicks: 0,
       installs: Number(row.installs) || 0,
       registers: conversions?.registers || 0,
@@ -1165,6 +1175,7 @@ app.get("/api/media-stats", async (req, res) => {
       buyer: row.buyer,
       country: row.country,
       spend: null,
+      revenue: null,
       clicks: 0,
       installs: installMap.get(key) || 0,
       registers: Number(row.registers) || 0,
@@ -1257,7 +1268,7 @@ app.get("/api/device-stats", async (req, res) => {
 });
 
 app.post("/api/media-stats", async (req, res) => {
-  let { date, buyer, country, spend, clicks, installs, registers, ftds, redeposits } =
+  let { date, buyer, country, spend, revenue, clicks, installs, registers, ftds, redeposits } =
     req.body ?? {};
 
   if (!isLeadership(req.user)) {
@@ -1273,6 +1284,8 @@ app.post("/api/media-stats", async (req, res) => {
   }
 
   const parsedSpend = spend === undefined || spend === null || spend === "" ? null : Number(spend);
+  const parsedRevenue =
+    revenue === undefined || revenue === null || revenue === "" ? null : Number(revenue);
   const parsedClicks = Number(clicks);
   const parsedInstalls =
     installs === undefined || installs === null || installs === "" ? null : Number(installs);
@@ -1290,6 +1303,9 @@ app.post("/api/media-stats", async (req, res) => {
   if (parsedSpend !== null && !Number.isFinite(parsedSpend)) {
     return res.status(400).json({ error: "Spend must be a number." });
   }
+  if (parsedRevenue !== null && !Number.isFinite(parsedRevenue)) {
+    return res.status(400).json({ error: "Revenue must be a number." });
+  }
 
   if (parsedInstalls !== null && !Number.isFinite(parsedInstalls)) {
     return res.status(400).json({ error: "Installs must be a number." });
@@ -1303,6 +1319,7 @@ app.post("/api/media-stats", async (req, res) => {
     buyer,
     country: country || "",
     spend: parsedSpend,
+    revenue: parsedRevenue,
     clicks: parsedClicks,
     installs: parsedInstalls,
     registers: parsedRegisters,
@@ -1850,6 +1867,7 @@ const runKeitaroSync = async ({
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
     const spend = numberFromValue(readRowValue(row, map.spendField));
+    const revenue = numberFromValue(readRowValue(row, map.revenueField));
     const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
     const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
     const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
@@ -1887,6 +1905,7 @@ const runKeitaroSync = async ({
         buyer,
         country,
         spend,
+        revenue,
         clicks: Number(clicks) || 0,
         installs: installs === null ? null : Number(installs) || 0,
         registers: Number(registers) || 0,
