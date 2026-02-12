@@ -718,7 +718,7 @@ const defaultKeitaroPayload = `{
     "to": "2026-02-07"
   },
   "grouping": ["day", "campaign_group", "country"],
-  "metrics": ["clicks", "registrations", "ftds", "redeposits", "cost"]
+  "metrics": ["clicks", "regs", "ftds", "redeposits", "revenue", "cost"]
 }`;
 
 const defaultKeitaroMapping = {
@@ -729,7 +729,7 @@ const defaultKeitaroMapping = {
   revenueField: "revenue",
   clicksField: "clicks",
   installsField: "installs",
-  registersField: "registrations",
+  registersField: "regs",
   ftdsField: "ftds",
   redepositsField: "redeposits",
   deviceField: "device",
