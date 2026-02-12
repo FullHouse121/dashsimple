@@ -598,6 +598,7 @@ const translations = {
     "FTD / Clicks": "FTD / Tıklamalar",
     "Top Revenue Device": "En Yüksek Gelirli Cihaz",
     "Top Buyer Device": "En Çok Satın Alan Cihaz",
+    "Top Device Models": "En İyi Cihaz Modelleri",
     "No data": "Veri yok",
     "Revenue by Device": "Cihaza Göre Gelir",
     "Clicks by Device": "Cihaza Göre Tıklamalar",
@@ -3558,7 +3559,24 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
 
   const deviceData = Array.from(deviceMap.values()).sort((a, b) => b.revenue - a.revenue);
   const topRevenueDevice = deviceData[0] || null;
-  const topBuyerDevice = [...deviceData].sort((a, b) => b.ftds - a.ftds)[0] || null;
+  const modelMap = new Map();
+  deviceData.forEach((row) => {
+    const model = row.deviceModel || "Unknown";
+    if (!modelMap.has(model)) {
+      modelMap.set(model, { model, revenue: 0, clicks: 0, ftds: 0 });
+    }
+    const current = modelMap.get(model);
+    current.revenue += row.revenue || 0;
+    current.clicks += row.clicks || 0;
+    current.ftds += row.ftds || 0;
+  });
+  const topModels = Array.from(modelMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
+  const topModelsValue = topModels[0]?.model || "—";
+  const topModelsMeta = topModels.length
+    ? topModels
+        .map((item, idx) => `${idx + 1}. ${item.model} (${formatCurrency(item.revenue)})`)
+        .join(" · ")
+    : t("No data");
   const totals = deviceData.reduce(
     (acc, row) => ({
       clicks: acc.clicks + row.clicks,
@@ -3606,10 +3624,10 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
             meta: topRevenueDevice ? `${t("Revenue")}: ${formatCurrency(topRevenueDevice.revenue)}` : t("No data"),
           },
           {
-            label: "Top Buyer Device",
-            value: topBuyerDevice?.label || topBuyerDevice?.device || "—",
+            label: "Top Device Models",
+            value: topModelsValue,
             icon: Target,
-            meta: topBuyerDevice ? `${t("FTDs")}: ${topBuyerDevice.ftds}` : t("No data"),
+            meta: topModelsMeta,
           },
           {
             label: "Total Installs",
