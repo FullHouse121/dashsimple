@@ -1199,7 +1199,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   const loadHomeStats = React.useCallback(async () => {
     try {
       setHomeState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=500");
+      const response = await apiFetch("/api/media-stats?limit=5000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -3875,21 +3875,40 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+              <BarChart
+                data={osChartData}
+                margin={{ top: 8, right: 24, left: 80, bottom: 8 }}
+                layout="vertical"
+                barCategoryGap={12}
+              >
                 <defs>
-                  <linearGradient id="deviceClicks" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="deviceClicks" x1="0" y1="0" x2="1" y2="0">
                     <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.9} />
                     <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.25} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={axisTickStyle}
+                  tickFormatter={(value) => Number(value || 0).toLocaleString()}
+                  domain={valueDomain(osChartData, "clicks")}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="os"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={axisTickStyle}
+                  width={90}
+                />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(value) => [value?.toLocaleString?.() ?? value, t("Clicks")]}
                 />
-                <Bar dataKey="clicks" fill="url(#deviceClicks)" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="clicks" fill="url(#deviceClicks)" radius={[0, 8, 8, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
