@@ -354,8 +354,11 @@ const translations = {
     "Redeposit Revenue Field": "Redepozit Gelir Alanı",
     "OS Field": "OS Alanı",
     "OS Version Field": "OS Sürümü Alanı",
+    "OS Icon Field": "OS İkon Alanı",
+    "Device Model Field": "Cihaz Modeli Alanı",
     OS: "OS",
     "OS Version": "OS Sürümü",
+    "Device Model": "Cihaz Modeli",
     Name: "İsim",
     Role: "Rol",
     Country: "Ülke",
@@ -754,6 +757,8 @@ const defaultKeitaroMapping = {
   deviceField: "device",
   osField: "os",
   osVersionField: "os_version",
+  osIconField: "os_icon",
+  deviceModelField: "device_model",
 };
 
 const tooltipStyle = {
@@ -3514,13 +3519,16 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     const device = row.device || "Unknown";
     const os = row.os || row.os_version || row.osVersion || "";
     const osVersion = row.os_version || row.osVersion || "";
-    return `${device}||${os}||${osVersion}`;
+    const deviceModel = row.device_model || row.deviceModel || "";
+    return `${device}||${os}||${osVersion}||${deviceModel}`;
   };
 
   deviceEntries.forEach((row) => {
     const device = row.device || "Unknown";
     const os = row.os || row.os_version || row.osVersion || "";
     const osVersion = row.os_version || row.osVersion || "";
+    const osIcon = row.os_icon || row.osIcon || "";
+    const deviceModel = row.device_model || row.deviceModel || "";
     const key = getDeviceKey(row);
     if (!deviceMap.has(key)) {
       deviceMap.set(key, {
@@ -3528,7 +3536,9 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
         device,
         os,
         osVersion,
-        label: [device, os, osVersion].filter(Boolean).join(" · "),
+        osIcon,
+        deviceModel,
+        label: [device, os, osVersion, deviceModel].filter(Boolean).join(" · "),
         clicks: 0,
         installs: 0,
         registers: 0,
@@ -3567,6 +3577,8 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     key: row.key,
     device: row.label || row.device,
     deviceRaw: row.device,
+    deviceModel: row.deviceModel,
+    osIcon: row.osIcon,
     os: row.os,
     osVersion: row.osVersion,
     revenue: row.revenue,
@@ -3806,6 +3818,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                     <th>{t("Device")}</th>
                     <th>{t("OS")}</th>
                     <th>{t("OS Version")}</th>
+                    <th>{t("Device Model")}</th>
                     <th>{t("Clicks")}</th>
                     <th>{t("Installs")}</th>
                     <th>{t("Registers")}</th>
@@ -3822,6 +3835,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
                         <td>{row.device}</td>
                         <td>{row.os || "—"}</td>
                         <td>{row.osVersion || "—"}</td>
+                        <td>{row.deviceModel || "—"}</td>
                         <td>{row.clicks.toLocaleString()}</td>
                         <td>{row.installs.toLocaleString()}</td>
                         <td>{stats?.registers.toLocaleString() || "0"}</td>
@@ -5925,6 +5939,17 @@ function KeitaroApiView() {
                 <input
                   value={mapping.osVersionField || ""}
                   onChange={handleMappingChange("osVersionField")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("OS Icon Field")}</label>
+                <input value={mapping.osIconField || ""} onChange={handleMappingChange("osIconField")} />
+              </div>
+              <div className="field">
+                <label>{t("Device Model Field")}</label>
+                <input
+                  value={mapping.deviceModelField || ""}
+                  onChange={handleMappingChange("deviceModelField")}
                 />
               </div>
             </div>

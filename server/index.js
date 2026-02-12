@@ -134,6 +134,8 @@ const initDb = async () => {
       device TEXT NOT NULL,
       os TEXT,
       os_version TEXT,
+      os_icon TEXT,
+      device_model TEXT,
       buyer TEXT,
       country TEXT,
       spend REAL,
@@ -169,9 +171,11 @@ const initDb = async () => {
       ON conversion_events (date, buyer, country);`,
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os TEXT;`,
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os_version TEXT;`,
+    `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os_icon TEXT;`,
+    `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS device_model TEXT;`,
     `DROP INDEX IF EXISTS idx_device_stats_key;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
-      ON device_stats (date, device, os, os_version, buyer, country);`,
+      ON device_stats (date, device, os, os_version, device_model, buyer, country);`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
@@ -554,6 +558,8 @@ const insertDeviceStat = async (payload) => {
       device,
       os,
       os_version,
+      os_icon,
+      device_model,
       buyer,
       country,
       spend,
@@ -563,12 +569,14 @@ const insertDeviceStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       payload.date,
       payload.device,
       payload.os,
       payload.os_version,
+      payload.os_icon,
+      payload.device_model,
       payload.buyer,
       payload.country,
       payload.spend,
@@ -583,14 +591,22 @@ const insertDeviceStat = async (payload) => {
 
 const selectDeviceStats = async (limit) =>
   getRows(
-    `SELECT id, date, device, os, os_version, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
+    `SELECT id, date, device, os, os_version, os_icon, device_model, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
      FROM device_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
     [limit]
   );
 
-const deleteDeviceStat = async (date, device, buyer, country, os = null, osVersion = null) =>
+const deleteDeviceStat = async (
+  date,
+  device,
+  buyer,
+  country,
+  os = null,
+  osVersion = null,
+  deviceModel = null
+) =>
   query(
     `DELETE FROM device_stats
      WHERE date = $1
@@ -598,8 +614,9 @@ const deleteDeviceStat = async (date, device, buyer, country, os = null, osVersi
        AND buyer = $3
        AND country = $4
        AND ($5::text IS NULL OR os = $5)
-       AND ($6::text IS NULL OR os_version = $6)`,
-    [date, device, buyer, country, os, osVersion]
+       AND ($6::text IS NULL OR os_version = $6)
+       AND ($7::text IS NULL OR device_model = $7)`,
+    [date, device, buyer, country, os, osVersion, deviceModel]
   );
 
 const insertUser = async (payload) => {
@@ -838,6 +855,8 @@ const defaultKeitaroMapping = {
   deviceField: "device",
   osField: "os",
   osVersionField: "os_version",
+  osIconField: "os_icon",
+  deviceModelField: "device_model",
 };
 
 const parseJsonEnv = (value, fallback = null) => {
@@ -1280,7 +1299,9 @@ app.get("/api/device-stats", async (req, res) => {
     const device = normalizeDevice(row.device);
     const os = String(row.os || "");
     const osVersion = String(row.os_version || "");
-    const key = `${row.date}|${device}|${os}|${osVersion}`;
+    const osIcon = String(row.os_icon || "");
+    const deviceModel = String(row.device_model || "");
+    const key = `${row.date}|${device}|${os}|${osVersion}|${deviceModel}`;
     if (!aggregated.has(key)) {
       aggregated.set(key, {
         id: row.id,
@@ -1288,6 +1309,8 @@ app.get("/api/device-stats", async (req, res) => {
         device,
         os,
         os_version: osVersion,
+        os_icon: osIcon,
+        device_model: deviceModel,
         buyer: row.buyer || "",
         country: row.country || "",
         spend: 0,
@@ -1980,9 +2003,19 @@ const runKeitaroSync = async ({
       const device = normalizeDevice(readRowValue(row, map.deviceField));
       const os = String(readRowValue(row, map.osField) || "").trim();
       const osVersion = String(readRowValue(row, map.osVersionField) || "").trim();
+      const osIcon = String(readRowValue(row, map.osIconField) || "").trim();
+      const deviceModel = String(readRowValue(row, map.deviceModelField) || "").trim();
 
       if (replaceExisting) {
-        await deleteDeviceStat(date, device, buyer, country, os || null, osVersion || null);
+        await deleteDeviceStat(
+          date,
+          device,
+          buyer,
+          country,
+          os || null,
+          osVersion || null,
+          deviceModel || null
+        );
       }
 
       await insertDeviceStat({
@@ -1990,6 +2023,8 @@ const runKeitaroSync = async ({
         device,
         os: os || null,
         os_version: osVersion || null,
+        os_icon: osIcon || null,
+        device_model: deviceModel || null,
         buyer,
         country,
         spend,
@@ -2064,17 +2099,34 @@ app.all("/api/keitaro/cron", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized." });
   }
 
+  const targetParam = String(req.query.target || "").toLowerCase();
+  const targetEnv = String(process.env.KEITARO_TARGET || "").toLowerCase();
+  const target = targetParam || targetEnv || "overall";
+  const isDeviceTarget = target === "device";
+
   const baseUrl = process.env.KEITARO_BASE_URL;
   const apiKey = process.env.KEITARO_API_KEY;
-  const reportPath = process.env.KEITARO_REPORT_PATH || "/admin_api/v1/report/build";
-  const payloadRaw = process.env.KEITARO_REPORT_PAYLOAD;
-  const mapping = parseJsonEnv(process.env.KEITARO_MAPPING, defaultKeitaroMapping);
-  const target = process.env.KEITARO_TARGET || "overall";
-  const replaceExisting = parseBooleanEnv(process.env.KEITARO_REPLACE, true);
+  const reportPath =
+    (isDeviceTarget
+      ? process.env.KEITARO_DEVICE_REPORT_PATH
+      : process.env.KEITARO_REPORT_PATH) || "/admin_api/v1/report/build";
+  const payloadRaw =
+    (isDeviceTarget
+      ? process.env.KEITARO_DEVICE_REPORT_PAYLOAD
+      : process.env.KEITARO_REPORT_PAYLOAD) || process.env.KEITARO_REPORT_PAYLOAD;
+  const mapping = parseJsonEnv(
+    isDeviceTarget ? process.env.KEITARO_DEVICE_MAPPING : process.env.KEITARO_MAPPING,
+    defaultKeitaroMapping
+  );
+  const replaceExisting = parseBooleanEnv(
+    isDeviceTarget ? process.env.KEITARO_DEVICE_REPLACE : process.env.KEITARO_REPLACE,
+    true
+  );
 
   if (!baseUrl || !apiKey || !payloadRaw) {
+    const payloadName = isDeviceTarget ? "KEITARO_DEVICE_REPORT_PAYLOAD" : "KEITARO_REPORT_PAYLOAD";
     return res.status(400).json({
-      error: "KEITARO_BASE_URL, KEITARO_API_KEY, and KEITARO_REPORT_PAYLOAD are required.",
+      error: `KEITARO_BASE_URL, KEITARO_API_KEY, and ${payloadName} are required.`,
     });
   }
 
