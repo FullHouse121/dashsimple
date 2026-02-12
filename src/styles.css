@@ -2570,8 +2570,20 @@ select {
   color: var(--muted);
 }
 
+.map-info-metric {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.map-info-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .map-info-score {
-  font-size: 14px;
+  font-size: 18px;
   color: var(--text);
   font-weight: 600;
 }
@@ -2620,6 +2632,16 @@ select {
 .map-ranking-list {
   display: grid;
   gap: 10px;
+}
+
+.map-ranking-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.map-see-more {
+  font-size: 12px;
+  padding: 6px 12px;
 }
 
 .map-rank {

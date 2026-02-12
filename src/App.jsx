@@ -425,6 +425,7 @@ const translations = {
       "Seçilen filtrelere göre ülke performansı.",
     "Loading geo report…": "GEO raporu yükleniyor…",
     "No geo data yet.": "Henüz GEO verisi yok.",
+    "See more": "Daha fazla gör",
     Spend: "Harcama",
     Redeposits: "Redepozitler",
     ARPPU: "ARPPU",
@@ -1031,7 +1032,7 @@ function ChartTooltip({ active, payload, label, visibleKeys }) {
   );
 }
 
-function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters }) {
+function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters, onSeeGeos }) {
   const { t } = useLanguage();
   const [hoverSeries, setHoverSeries] = React.useState(null);
   const [selectedSeries, setSelectedSeries] = React.useState([]);
@@ -1229,46 +1230,46 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
       }));
   }, [filteredRows]);
 
-  const spendSeries = React.useMemo(() => {
+  const revenueSeries = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
       const key = row.date;
       if (!key) return;
       if (!map.has(key)) {
-        map.set(key, { date: key, spend: 0, ftds: 0, redeposits: 0 });
+        map.set(key, { date: key, revenue: 0, ftds: 0, redeposits: 0 });
       }
       const current = map.get(key);
-      current.spend += sum(row.spend);
+      current.revenue += sum(row.revenue);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
     });
     return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredRows]);
 
-  const spendTotals = spendSeries.reduce(
+  const revenueTotals = revenueSeries.reduce(
     (acc, item) => ({
-      spend: acc.spend + item.spend,
+      revenue: acc.revenue + item.revenue,
       ftds: acc.ftds + item.ftds,
       redeposits: acc.redeposits + item.redeposits,
     }),
-    { spend: 0, ftds: 0, redeposits: 0 }
+    { revenue: 0, ftds: 0, redeposits: 0 }
   );
 
   const avg = (values) =>
     values.length ? values.reduce((sumValue, value) => sumValue + value, 0) / values.length : null;
-  const dailySpendPerFtd = spendSeries
+  const dailyRevenuePerFtd = revenueSeries
     .filter((item) => item.ftds > 0)
-    .map((item) => item.spend / item.ftds);
-  const dailySpendPerRedeposit = spendSeries
+    .map((item) => item.revenue / item.ftds);
+  const dailyRevenuePerRedeposit = revenueSeries
     .filter((item) => item.redeposits > 0)
-    .map((item) => item.spend / item.redeposits);
-  const dailyCrFtdToRedeposit = spendSeries
+    .map((item) => item.revenue / item.redeposits);
+  const dailyCrFtdToRedeposit = revenueSeries
     .filter((item) => item.ftds > 0)
     .map((item) => (item.redeposits / item.ftds) * 100);
 
   const benchmark = {
-    spendPerFtd: avg(dailySpendPerFtd),
-    spendPerRedeposit: avg(dailySpendPerRedeposit),
+    revenuePerFtd: avg(dailyRevenuePerFtd),
+    revenuePerRedeposit: avg(dailyRevenuePerRedeposit),
     ftdToRedepositCr: avg(dailyCrFtdToRedeposit),
   };
 
@@ -1282,16 +1283,17 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
     return { tone: "neutral", label: t("On target") };
   };
 
-  const spendPerFtd = spendTotals.ftds > 0 ? spendTotals.spend / spendTotals.ftds : null;
-  const spendPerRedeposit =
-    spendTotals.redeposits > 0 ? spendTotals.spend / spendTotals.redeposits : null;
+  const revenuePerFtd =
+    revenueTotals.ftds > 0 ? revenueTotals.revenue / revenueTotals.ftds : null;
+  const revenuePerRedeposit =
+    revenueTotals.redeposits > 0 ? revenueTotals.revenue / revenueTotals.redeposits : null;
   const ftdToRedepositCr =
-    spendTotals.ftds > 0 ? (spendTotals.redeposits / spendTotals.ftds) * 100 : null;
+    revenueTotals.ftds > 0 ? (revenueTotals.redeposits / revenueTotals.ftds) * 100 : null;
 
-  const spendPerFtdStatus = classifyMetric(spendPerFtd, benchmark.spendPerFtd);
-  const spendPerRedepositStatus = classifyMetric(
-    spendPerRedeposit,
-    benchmark.spendPerRedeposit
+  const revenuePerFtdStatus = classifyMetric(revenuePerFtd, benchmark.revenuePerFtd);
+  const revenuePerRedepositStatus = classifyMetric(
+    revenuePerRedeposit,
+    benchmark.revenuePerRedeposit
   );
   const ftdToRedepositStatus = classifyMetric(ftdToRedepositCr, benchmark.ftdToRedepositCr);
 
@@ -1366,6 +1368,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
     () => [...geoMetricsWithCombined].sort((a, b) => b[geoMetricKey] - a[geoMetricKey]),
     [geoMetricsWithCombined, geoMetricKey]
   );
+  const topGeoList = geoSorted.slice(0, 3);
   const metricValues = geoSorted.map((item) => item[geoMetricKey]);
   const metricMax = metricValues.length ? Math.max(...metricValues) : 0;
   const activeGeo = selectedGeo ?? hoverGeo;
@@ -1587,33 +1590,33 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
             <div className="revenue-blocks">
               <div className="revenue-head">
                 <div>
-                  <h4>{t("Spend by date")}</h4>
-                  <p>{t("Daily spend trend for the selected period.")}</p>
+                  <h4>{t("Revenue by date")}</h4>
+                  <p>{t("Daily revenue trend for the selected period.")}</p>
                 </div>
                 <div className="revenue-total">
-                  <span>{t("Total Spend")}</span>
-                  <strong>{formatCurrency(spendTotals.spend)}</strong>
+                  <span>{t("Total Revenue")}</span>
+                  <strong>{formatCurrency(revenueTotals.revenue)}</strong>
                 </div>
               </div>
               <div className="revenue-grid">
-                <div className={`revenue-card ${spendPerFtdStatus.tone}`}>
+                <div className={`revenue-card ${revenuePerFtdStatus.tone}`}>
                   <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Spend per FTD")}</span>
-                    <span className={`revenue-chip ${spendPerFtdStatus.tone}`}>
-                      {spendPerFtdStatus.label}
+                    <span className="revenue-date">{t("Revenue per FTD")}</span>
+                    <span className={`revenue-chip ${revenuePerFtdStatus.tone}`}>
+                      {revenuePerFtdStatus.label}
                     </span>
                   </div>
-                  <strong>{spendPerFtd === null ? "—" : formatCurrency(spendPerFtd)}</strong>
+                  <strong>{revenuePerFtd === null ? "—" : formatCurrency(revenuePerFtd)}</strong>
                 </div>
-                <div className={`revenue-card ${spendPerRedepositStatus.tone}`}>
+                <div className={`revenue-card ${revenuePerRedepositStatus.tone}`}>
                   <div className="revenue-card-head">
-                    <span className="revenue-date">{t("Spend per Redeposit")}</span>
-                    <span className={`revenue-chip ${spendPerRedepositStatus.tone}`}>
-                      {spendPerRedepositStatus.label}
+                    <span className="revenue-date">{t("Revenue per Redeposit")}</span>
+                    <span className={`revenue-chip ${revenuePerRedepositStatus.tone}`}>
+                      {revenuePerRedepositStatus.label}
                     </span>
                   </div>
                   <strong>
-                    {spendPerRedeposit === null ? "—" : formatCurrency(spendPerRedeposit)}
+                    {revenuePerRedeposit === null ? "—" : formatCurrency(revenuePerRedeposit)}
                   </strong>
                 </div>
                 <div className={`revenue-card ${ftdToRedepositStatus.tone}`}>
@@ -1623,7 +1626,9 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
                       {ftdToRedepositStatus.label}
                     </span>
                   </div>
-                  <strong>{ftdToRedepositCr === null ? "—" : `${ftdToRedepositCr.toFixed(2)}%`}</strong>
+                  <strong>
+                    {ftdToRedepositCr === null ? "—" : `${ftdToRedepositCr.toFixed(2)}%`}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -1739,11 +1744,16 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
                 <div className="map-info-card">
                   <div className="map-info-head">
                     <span>{t("Active GEO")}</span>
+                    <span className="map-info-metric">
+                      {geoMetricOptions.find((option) => option.value === geoMetric)?.label}
+                    </span>
+                  </div>
+                  <div className="map-info-main">
+                    <div className="map-info-name">{activeGeoName || t("None")}</div>
                     <span className="map-info-score">
                       {focusGeo ? `${focusGeo[geoMetricKey]}%` : "--"}
                     </span>
                   </div>
-                  <div className="map-info-name">{activeGeoName || t("None")}</div>
                   <div className="map-info-metrics">
                     <div className="map-metric">
                       <span>{t("FTD rate")}</span>
@@ -1767,7 +1777,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
                     </span>
                   </div>
                   <div className="map-ranking-list">
-                    {geoSorted.map((marker) => {
+                    {topGeoList.map((marker) => {
                       const value = marker[geoMetricKey] || 0;
                       const width = metricMax ? Math.round((value / metricMax) * 100) : 0;
                       return (
@@ -1790,6 +1800,15 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
                         </button>
                       );
                     })}
+                  </div>
+                  <div className="map-ranking-footer">
+                    <button
+                      type="button"
+                      className="ghost map-see-more"
+                      onClick={() => onSeeGeos?.()}
+                    >
+                      {t("See more")}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -6471,6 +6490,7 @@ export default function App() {
             customRange={customRange}
             onCustomChange={handleCustomRange}
             filters={filters}
+            onSeeGeos={() => setActiveView("geos")}
           />
         )}
       </main>
@@ -6536,24 +6556,14 @@ export default function App() {
                 </div>
 
                 {isHome ? (
-                  <>
-                    <div className="field">
-                      <label>Approach</label>
-                      <select value={filters.approach} onChange={updateFilter("approach")}>
-                        {approachOptions.map((approach) => (
-                          <option key={approach}>{approach}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label>Media Buyer</label>
-                      <select value={filters.buyer} onChange={updateFilter("buyer")}>
-                        {buyerOptions.map((buyer) => (
-                          <option key={buyer}>{buyer}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </>
+                  <div className="field">
+                    <label>Media Buyer</label>
+                    <select value={filters.buyer} onChange={updateFilter("buyer")}>
+                      {buyerOptions.map((buyer) => (
+                        <option key={buyer}>{buyer}</option>
+                      ))}
+                    </select>
+                  </div>
                 ) : (
                   <>
                     <div className="field">
