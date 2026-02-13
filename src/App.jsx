@@ -2195,6 +2195,8 @@ function GeosDashboard({ filters }) {
     () => priorityBuyers.map((buyer) => buyer.toLowerCase()),
     []
   );
+  const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
+  const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
 
   const sum = (value) => Number(value || 0);
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
@@ -2221,22 +2223,35 @@ function GeosDashboard({ filters }) {
     );
   };
   const matchesBuyer = (buyer) => {
-    const normalizedBuyer = String(buyer || "").toLowerCase();
+    const normalizedBuyer = normalizeFilterValue(buyer);
     if (!normalizedBuyer) return false;
     const isAllowed = normalizedPriorityBuyers.some((name) => normalizedBuyer.includes(name));
     if (!isAllowed) return false;
-    if (buyerFilter === "All") return true;
-    const normalizedFilter = String(buyerFilter || "").toLowerCase();
+    if (isAllSelection(buyerFilter)) return true;
+    const normalizedFilter = normalizeFilterValue(buyerFilter);
     return normalizedBuyer.includes(normalizedFilter);
   };
 
   const filteredRows = React.useMemo(() => {
+    const normalizedCountry = normalizeFilterValue(countryFilter);
+    const normalizedCity = normalizeFilterValue(cityFilter);
+    const fromDate = dateFrom ? new Date(dateFrom) : null;
+    const toDate = dateTo ? new Date(dateTo) : null;
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
-      if (countryFilter !== "All" && String(row.country || "") !== countryFilter) return false;
-      if (cityFilter !== "All" && String(row.city || "") !== cityFilter) return false;
-      if (dateFrom && row.date && row.date < dateFrom) return false;
-      if (dateTo && row.date && row.date > dateTo) return false;
+      const rowCountry = normalizeFilterValue(row.country);
+      if (!isAllSelection(countryFilter) && rowCountry !== normalizedCountry) return false;
+      const rowCity = normalizeFilterValue(row.city);
+      if (!isAllSelection(cityFilter) && !rowCity.includes(normalizedCity)) return false;
+      if ((fromDate || toDate) && !row.date) return false;
+      if (fromDate && row.date) {
+        const rowDate = new Date(row.date);
+        if (Number.isFinite(rowDate.getTime()) && rowDate < fromDate) return false;
+      }
+      if (toDate && row.date) {
+        const rowDate = new Date(row.date);
+        if (Number.isFinite(rowDate.getTime()) && rowDate > toDate) return false;
+      }
       return true;
     });
   }, [geoRows, buyerFilter, countryFilter, cityFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
