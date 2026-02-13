@@ -11,6 +11,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  LabelList,
   XAxis,
   YAxis,
   Tooltip,
@@ -2598,40 +2599,49 @@ function GeosDashboard({ filters }) {
                 </div>
               </div>
               <div className="chart chart-surface">
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={260}>
                   <BarChart
                     data={geoArppuData}
-                    layout="vertical"
-                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                    barCategoryGap={12}
+                    margin={{ top: 24, right: 24, left: 8, bottom: 24 }}
+                    barCategoryGap={26}
+                    barSize={42}
                   >
                     <defs>
-                      <linearGradient id="geoArppu" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
-                        <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
+                      <linearGradient id="geoArppu" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--purple)" stopOpacity={0.95} />
+                        <stop offset="100%" stopColor="var(--purple)" stopOpacity={0.35} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                    <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
                     <XAxis
-                      type="number"
+                      dataKey="country"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      interval={0}
+                      angle={-18}
+                      textAnchor="end"
+                      height={50}
+                    />
+                    <YAxis
                       tickLine={false}
                       axisLine={false}
                       tick={axisTickStyle}
                       tickFormatter={(value) => formatCurrency(value)}
                     />
-                    <YAxis
-                      type="category"
-                      dataKey="country"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={axisTickStyle}
-                      width={110}
-                    />
                     <Tooltip
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("ARPPU")]}
                     />
-                    <Bar dataKey="arppu" fill="url(#geoArppu)" radius={[0, 8, 8, 0]} />
+                    <Bar dataKey="arppu" fill="url(#geoArppu)" radius={[10, 10, 0, 0]}>
+                      <LabelList
+                        dataKey="arppu"
+                        position="top"
+                        formatter={(value) => formatCurrency(value)}
+                        fill="rgba(255,255,255,0.9)"
+                        fontSize={11}
+                      />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
