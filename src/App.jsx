@@ -2463,13 +2463,14 @@ function GeosDashboard({ filters }) {
       city: row.city,
       arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
       ftds: row.ftds,
+      ftdsDisplay: Math.round(row.ftds || 0),
       revenue: row.revenue,
     }))
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
     .slice(0, geoTopLimit);
   const maxCityArppu = Math.max(1, ...cityArppuTable.map((row) => row.arppu || 0));
-  const maxCityUsers = Math.max(1, ...cityArppuTable.map((row) => row.ftds || 0));
+  const maxCityUsers = Math.max(1, ...cityArppuTable.map((row) => row.ftdsDisplay || 0));
   const cityLtvData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -3130,7 +3131,7 @@ function GeosDashboard({ filters }) {
                     {t("ARPPU")}
                     <span className="sort-caret">▾</span>
                   </div>
-                  <div className="metric-cell value users">{t("Paying Users")}</div>
+                  <div className="metric-cell value users">{t("FTDs")}</div>
                 </div>
                 {cityArppuTable.map((row) => (
                   <div className="metric-row" key={row.city}>
@@ -3143,9 +3144,9 @@ function GeosDashboard({ filters }) {
                     </div>
                     <div
                       className="metric-cell value users"
-                      style={{ "--metric-fill": `${(row.ftds / maxCityUsers) * 100}%` }}
+                      style={{ "--metric-fill": `${(row.ftdsDisplay / maxCityUsers) * 100}%` }}
                     >
-                      <span className="metric-text">{row.ftds.toLocaleString()}</span>
+                      <span className="metric-text">{row.ftdsDisplay.toLocaleString()}</span>
                     </div>
                   </div>
                 ))}
