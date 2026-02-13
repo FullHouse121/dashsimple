@@ -2408,6 +2408,8 @@ function GeosDashboard({ filters }) {
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
     .slice(0, geoTopLimit);
+  const maxCityArppu = Math.max(1, ...cityArppuTable.map((row) => row.arppu || 0));
+  const maxCityUsers = Math.max(1, ...cityArppuTable.map((row) => row.ftds || 0));
   const cityLtvData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -3073,8 +3075,18 @@ function GeosDashboard({ filters }) {
                 {cityArppuTable.map((row) => (
                   <div className="metric-row" key={row.city}>
                     <div className="metric-cell city">{row.city}</div>
-                    <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
-                    <div className="metric-cell value users">{row.ftds.toLocaleString()}</div>
+                    <div
+                      className="metric-cell value arppu"
+                      style={{ "--metric-fill": `${(row.arppu / maxCityArppu) * 100}%` }}
+                    >
+                      <span className="metric-text">{formatCurrency(row.arppu)}</span>
+                    </div>
+                    <div
+                      className="metric-cell value users"
+                      style={{ "--metric-fill": `${(row.ftds / maxCityUsers) * 100}%` }}
+                    >
+                      <span className="metric-text">{row.ftds.toLocaleString()}</span>
+                    </div>
                   </div>
                 ))}
               </div>
