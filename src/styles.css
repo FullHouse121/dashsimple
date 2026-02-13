@@ -1176,6 +1176,22 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.geo-charts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.geo-charts .panel {
+  min-height: 320px;
+}
+
+.geo-charts .panel.span-2 {
+  grid-column: span 2;
+}
+
+.geo-charts .panel.span-3 {
+  grid-column: 1 / -1;
+}
+
 .api-panels {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
@@ -1201,6 +1217,37 @@ select {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.section-header {
+  margin: 8px 2px 10px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.section-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.section-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1200px) {
+  .geo-charts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .geo-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .profile-info {
@@ -2054,6 +2101,85 @@ select {
   display: flex;
   gap: 24px;
   margin-bottom: 10px;
+}
+
+.metric-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 0.8fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(30, 33, 40, 0.9), rgba(21, 24, 30, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.metric-table.arppu-matrix .metric-row {
+  grid-template-columns: 1.4fr 0.9fr 0.9fr 0.9fr;
+  background: linear-gradient(135deg, rgba(25, 28, 34, 0.95), rgba(18, 21, 27, 0.95));
+}
+
+.metric-row.metric-header {
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metric-cell.city {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.metric-cell.value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-cell.value.arppu {
+  color: #9ae6b4;
+  font-weight: 600;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.35), rgba(16, 185, 129, 0.18));
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.metric-cell.value.users {
+  color: #bae6fd;
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.4), rgba(59, 130, 246, 0.2));
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.metric-cell.value.cpa {
+  color: #f8fafc;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.35), rgba(14, 165, 233, 0.2));
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.metric-table.arppu-matrix .metric-row.metric-header .metric-cell {
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.sort-caret {
+  font-size: 11px;
+  margin-left: 6px;
+  opacity: 0.7;
 }
 
 .summary-label {
