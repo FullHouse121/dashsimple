@@ -2220,67 +2220,6 @@ function GeosDashboard({ filters }) {
       </div>
     );
   };
-  const [geoTableSort, setGeoTableSort] = React.useState({ key: "revenue", dir: "desc" });
-  const toggleGeoSort = (key) => {
-    setGeoTableSort((prev) =>
-      prev.key === key
-        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
-        : { key, dir: "desc" }
-    );
-  };
-  const getGeoSortValue = (row, key) => {
-    const revenueValue = row.hasRevenue ? row.revenue : null;
-    switch (key) {
-      case "country":
-        return String(row.country || "");
-      case "spend":
-        return row.spend ? row.spend : null;
-      case "revenue":
-        return revenueValue;
-      case "clicks":
-        return row.clicks;
-      case "installs":
-        return row.installs ? row.installs : null;
-      case "registers":
-        return row.registers;
-      case "ftds":
-        return row.ftds;
-      case "redeposits":
-        return row.redeposits ? row.redeposits : null;
-      case "arppu":
-        return revenueValue !== null && row.ftds > 0 ? revenueValue / row.ftds : null;
-      case "ltv":
-        return revenueValue !== null && row.redeposits > 0 ? revenueValue / row.redeposits : null;
-      case "c2r":
-        return toPercent(row.registers, row.clicks);
-      case "c2ftd":
-        return toPercent(row.ftds, row.clicks);
-      case "r2d":
-        return toPercent(row.ftds, row.registers);
-      default:
-        return null;
-    }
-  };
-  const sortedGeoTotals = React.useMemo(() => {
-    const rows = [...geoTotals];
-    const { key, dir } = geoTableSort;
-    const direction = dir === "asc" ? 1 : -1;
-    return rows.sort((a, b) => {
-      const aVal = getGeoSortValue(a, key);
-      const bVal = getGeoSortValue(b, key);
-      const aNull = aVal === null || aVal === undefined || Number.isNaN(aVal);
-      const bNull = bVal === null || bVal === undefined || Number.isNaN(bVal);
-      if (key === "country") {
-        return direction * String(aVal || "").localeCompare(String(bVal || ""));
-      }
-      if (aNull && bNull) return 0;
-      if (aNull) return 1;
-      if (bNull) return -1;
-      if (aVal === bVal) return 0;
-      return direction * (aVal > bVal ? 1 : -1);
-    });
-  }, [geoTotals, geoTableSort]);
-
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = String(buyer || "").toLowerCase();
     if (!normalizedBuyer) return false;
@@ -2358,6 +2297,67 @@ function GeosDashboard({ filters }) {
       return (b.clicks || 0) - (a.clicks || 0);
     });
   }, [filteredRows]);
+
+  const [geoTableSort, setGeoTableSort] = React.useState({ key: "revenue", dir: "desc" });
+  const toggleGeoSort = (key) => {
+    setGeoTableSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "desc" }
+    );
+  };
+  const getGeoSortValue = (row, key) => {
+    const revenueValue = row.hasRevenue ? row.revenue : null;
+    switch (key) {
+      case "country":
+        return String(row.country || "");
+      case "spend":
+        return row.spend ? row.spend : null;
+      case "revenue":
+        return revenueValue;
+      case "clicks":
+        return row.clicks;
+      case "installs":
+        return row.installs ? row.installs : null;
+      case "registers":
+        return row.registers;
+      case "ftds":
+        return row.ftds;
+      case "redeposits":
+        return row.redeposits ? row.redeposits : null;
+      case "arppu":
+        return revenueValue !== null && row.ftds > 0 ? revenueValue / row.ftds : null;
+      case "ltv":
+        return revenueValue !== null && row.redeposits > 0 ? revenueValue / row.redeposits : null;
+      case "c2r":
+        return toPercent(row.registers, row.clicks);
+      case "c2ftd":
+        return toPercent(row.ftds, row.clicks);
+      case "r2d":
+        return toPercent(row.ftds, row.registers);
+      default:
+        return null;
+    }
+  };
+  const sortedGeoTotals = React.useMemo(() => {
+    const rows = [...geoTotals];
+    const { key, dir } = geoTableSort;
+    const direction = dir === "asc" ? 1 : -1;
+    return rows.sort((a, b) => {
+      const aVal = getGeoSortValue(a, key);
+      const bVal = getGeoSortValue(b, key);
+      const aNull = aVal === null || aVal === undefined || Number.isNaN(aVal);
+      const bNull = bVal === null || bVal === undefined || Number.isNaN(bVal);
+      if (key === "country") {
+        return direction * String(aVal || "").localeCompare(String(bVal || ""));
+      }
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      if (aVal === bVal) return 0;
+      return direction * (aVal > bVal ? 1 : -1);
+    });
+  }, [geoTotals, geoTableSort]);
 
   const cityTotals = React.useMemo(() => {
     const map = new Map();
