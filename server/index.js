@@ -2129,6 +2129,9 @@ app.all("/api/keitaro/cron", async (req, res) => {
   const targetEnv = String(process.env.KEITARO_TARGET || "").toLowerCase();
   const target = targetParam || targetEnv || "overall";
   const isDeviceTarget = target === "device";
+  const asyncMode =
+    String(req.query.async || req.query.background || "").toLowerCase() === "1" ||
+    String(req.query.async || req.query.background || "").toLowerCase() === "true";
 
   const baseUrl = process.env.KEITARO_BASE_URL;
   const apiKey = process.env.KEITARO_API_KEY;
@@ -2161,8 +2164,8 @@ app.all("/api/keitaro/cron", async (req, res) => {
     return res.status(400).json({ error: "KEITARO_REPORT_PAYLOAD must be valid JSON." });
   }
 
-  try {
-    const result = await runKeitaroSync({
+  const runSync = async () => {
+    return runKeitaroSync({
       baseUrl,
       apiKey,
       reportPath,
@@ -2171,6 +2174,18 @@ app.all("/api/keitaro/cron", async (req, res) => {
       replaceExisting,
       target,
     });
+  };
+
+  if (asyncMode) {
+    res.status(202).json({ ok: true, queued: true, target });
+    runSync().catch((error) => {
+      console.error("Keitaro async sync failed:", error);
+    });
+    return;
+  }
+
+  try {
+    const result = await runSync();
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || "Sync failed." });

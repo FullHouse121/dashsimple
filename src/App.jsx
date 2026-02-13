@@ -2401,6 +2401,13 @@ function GeosDashboard({ filters }) {
     label: country,
     color: ltvGrowthColors[index % ltvGrowthColors.length],
   }));
+  const arppuGrowthTargets = geoArppuData.map((row) => row.country);
+  const arppuGrowthColors = ["#8b5cf6", "#a78bfa", "#d0b4ff", "#67e8f9", "#4ade80"];
+  const arppuGrowthSeries = arppuGrowthTargets.map((country, index) => ({
+    key: country,
+    label: country,
+    color: arppuGrowthColors[index % arppuGrowthColors.length],
+  }));
 
   const ltvGrowthData = React.useMemo(() => {
     if (!ltvGrowthTargets.length) return [];
@@ -2447,10 +2454,60 @@ function GeosDashboard({ filters }) {
         ltvGrowthTargets.forEach((country) => {
           const stats = entry.values[country];
           row[country] = stats && stats.redeposits > 0 ? stats.revenue / stats.redeposits : 0;
-        });
+      });
         return row;
       });
   }, [filteredRows, ltvGrowthTargets]);
+
+  const arppuGrowthData = React.useMemo(() => {
+    if (!arppuGrowthTargets.length) return [];
+    const targetsSet = new Set(arppuGrowthTargets);
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const country = String(row.country || "").trim();
+      if (!targetsSet.has(country)) return;
+      const date = row.date;
+      if (!date) return;
+
+      const ftdRevenueValue = Number.isFinite(Number(row.ftdRevenue ?? row.ftd_revenue))
+        ? Number(row.ftdRevenue ?? row.ftd_revenue)
+        : 0;
+      const redepositRevenueValue = Number.isFinite(
+        Number(row.redepositRevenue ?? row.redeposit_revenue)
+      )
+        ? Number(row.redepositRevenue ?? row.redeposit_revenue)
+        : 0;
+      let revenueValue =
+        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+      if (!Number.isFinite(revenueValue)) {
+        revenueValue = null;
+      }
+      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
+        revenueValue = ftdRevenueValue + redepositRevenueValue;
+      }
+
+      if (!map.has(date)) {
+        map.set(date, { date, values: {} });
+      }
+      const entry = map.get(date);
+      if (!entry.values[country]) {
+        entry.values[country] = { revenue: 0, ftds: 0 };
+      }
+      entry.values[country].revenue += revenueValue || 0;
+      entry.values[country].ftds += sum(row.ftds);
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .map((entry) => {
+        const row = { date: entry.date, dateLabel: formatShortDate(entry.date) };
+        arppuGrowthTargets.forEach((country) => {
+          const stats = entry.values[country];
+          row[country] = stats && stats.ftds > 0 ? stats.revenue / stats.ftds : 0;
+        });
+        return row;
+      });
+  }, [filteredRows, arppuGrowthTargets]);
 
   return (
     <>
@@ -2764,6 +2821,85 @@ function GeosDashboard({ filters }) {
                         stroke={series.color}
                         strokeWidth={2}
                         fill={`url(#ltv-grad-${series.key})`}
+                        fillOpacity={0.9}
+                        connectNulls
+                        dot={index === 0 ? { r: 2.5 } : false}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="panel span-2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("ARPPU Growth Timeline")}</h3>
+                  <p className="panel-subtitle">
+                    {t("Daily ARPPU trend for the top GEOs (Revenue / FTDs).")}
+                  </p>
+                </div>
+              </div>
+              <div className="chart chart-surface">
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart
+                    data={arppuGrowthData}
+                    margin={{ top: 8, right: 24, left: 4, bottom: 4 }}
+                  >
+                    <defs>
+                      {arppuGrowthSeries.map((series) => (
+                        <linearGradient
+                          key={`arppu-grad-${series.key}`}
+                          id={`arppu-grad-${series.key}`}
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="5%" stopColor={series.color} stopOpacity={0.45} />
+                          <stop offset="95%" stopColor={series.color} stopOpacity={0.05} />
+                        </linearGradient>
+                      ))}
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="dateLabel"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      minTickGap={18}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={70}
+                      tick={axisTickStyle}
+                      tickFormatter={(value) => formatCurrency(value)}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelFormatter={(label) => label}
+                      formatter={(value, name) => [formatCurrency(value), name]}
+                    />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                    />
+                    {arppuGrowthSeries.map((series, index) => (
+                      <Area
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.label}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        fill={`url(#arppu-grad-${series.key})`}
                         fillOpacity={0.9}
                         connectNulls
                         dot={index === 0 ? { r: 2.5 } : false}
