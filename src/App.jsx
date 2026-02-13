@@ -3136,17 +3136,11 @@ function GeosDashboard({ filters }) {
                 {cityArppuTable.map((row) => (
                   <div className="metric-row" key={row.city}>
                     <div className="metric-cell city">{row.city}</div>
-                    <div
-                      className="metric-cell value arppu"
-                      style={{ "--metric-fill": `${(row.arppu / maxCityArppu) * 100}%` }}
-                    >
-                      <span className="metric-text">{formatCurrency(row.arppu)}</span>
+                    <div className="metric-cell value">
+                      <span className="metric-pill arppu">{formatCurrency(row.arppu)}</span>
                     </div>
-                    <div
-                      className="metric-cell value users"
-                      style={{ "--metric-fill": `${(row.ftdsDisplay / maxCityUsers) * 100}%` }}
-                    >
-                      <span className="metric-text">{row.ftdsDisplay.toLocaleString()}</span>
+                    <div className="metric-cell value">
+                      <span className="metric-pill ftds">{row.ftdsDisplay.toLocaleString()}</span>
                     </div>
                   </div>
                 ))}

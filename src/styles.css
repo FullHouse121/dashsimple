@@ -2180,45 +2180,29 @@ select {
 .metric-cell.value {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  position: relative;
-  z-index: 1;
-  padding: 8px 12px;
+}
+
+.metric-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 6px 12px;
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(14, 17, 22, 0.9), rgba(9, 12, 16, 0.95));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  overflow: hidden;
-}
-
-.metric-cell.value::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  width: var(--metric-fill, 0%);
-  border-radius: 12px;
-  opacity: 0.85;
-  transform: translateZ(0);
-}
-
-.metric-cell.value .metric-text {
-  position: relative;
-  z-index: 1;
-}
-
-.metric-cell.value.arppu {
-  color: #a7f3d0;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.metric-cell.value.arppu::before {
-  background: linear-gradient(120deg, rgba(16, 185, 129, 0.75), rgba(34, 197, 94, 0.45));
+.metric-pill.arppu {
+  color: #bbf7d0;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(34, 197, 94, 0.22));
 }
 
-.metric-cell.value.users {
+.metric-pill.ftds {
   color: #bae6fd;
-}
-
-.metric-cell.value.users::before {
-  background: linear-gradient(120deg, rgba(56, 189, 248, 0.7), rgba(59, 130, 246, 0.4));
+  background: linear-gradient(135deg, rgba(14, 116, 144, 0.45), rgba(59, 130, 246, 0.24));
 }
 
 .metric-table.arppu-matrix .metric-row.metric-header .metric-cell {
