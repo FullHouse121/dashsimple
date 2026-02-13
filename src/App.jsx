@@ -2340,7 +2340,11 @@ function GeosDashboard({ filters }) {
   );
 
   const geoChartRows = geoTotals.filter((row) => row.country && row.country !== "Unknown");
-  const geoRevenueData = geoChartRows.slice(0, 8);
+  const geoRevenueCandidates = geoChartRows.filter((row) => row.revenue > 0);
+  const geoRevenueData = (geoRevenueCandidates.length ? geoRevenueCandidates : geoChartRows).slice(
+    0,
+    5
+  );
   const geoArppuData = geoChartRows
     .map((row) => ({
       country: row.country,
@@ -2348,7 +2352,7 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
-    .slice(0, 8);
+    .slice(0, 5);
   const geoLtvData = geoChartRows
     .map((row) => ({
       country: row.country,
@@ -2356,9 +2360,13 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
-    .slice(0, 8);
+    .slice(0, 5);
 
-  const cityRevenueData = cityTotals.slice(0, 8);
+  const cityRevenueCandidates = cityTotals.filter((row) => row.revenue > 0);
+  const cityRevenueData = (cityRevenueCandidates.length ? cityRevenueCandidates : cityTotals).slice(
+    0,
+    5
+  );
   const cityArppuData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -2366,7 +2374,7 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
-    .slice(0, 8);
+    .slice(0, 5);
   const cityLtvData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -2374,7 +2382,7 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
-    .slice(0, 8);
+    .slice(0, 5);
 
   const topGeoArppu = geoArppuData[0] || null;
   const topGeoLtv = geoLtvData[0] || null;
@@ -2457,6 +2465,12 @@ function GeosDashboard({ filters }) {
             })}
           </section>
 
+          <div className="section-header">
+            <div>
+              <h3>{t("GEO Insights")}</h3>
+              <p>{t("Top performing countries across revenue, ARPPU, and LTV.")}</p>
+            </div>
+          </div>
           <section className="panels geo-charts">
             <motion.div
               className="panel"
@@ -2615,6 +2629,12 @@ function GeosDashboard({ filters }) {
             </motion.div>
           </section>
 
+          <div className="section-header">
+            <div>
+              <h3>{t("City Insights")}</h3>
+              <p>{t("Best cities ranked by revenue, ARPPU, and LTV.")}</p>
+            </div>
+          </div>
           <section className="panels geo-charts">
           <motion.div
             className="panel"
