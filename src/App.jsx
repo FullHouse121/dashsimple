@@ -10,10 +10,15 @@ import {
   ComposedChart,
   PieChart,
   Pie,
+  RadialBarChart,
+  RadialBar,
+  ScatterChart,
+  Scatter,
   Cell,
   LabelList,
   XAxis,
   YAxis,
+  PolarAngleAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
@@ -2387,6 +2392,11 @@ function GeosDashboard({ filters }) {
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
     .slice(0, geoTopLimit);
+  const cityArppuPalette = ["#8b5cf6", "#a78bfa", "#c4b5fd", "#67e8f9", "#4ade80"];
+  const cityArppuRadial = cityArppuData.map((row, index) => ({
+    ...row,
+    fill: cityArppuPalette[index % cityArppuPalette.length],
+  }));
 
   const topGeoArppu = geoArppuData[0] || null;
   const topGeoLtv = geoLtvData[0] || null;
@@ -2933,40 +2943,49 @@ function GeosDashboard({ filters }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={240}>
+              <ResponsiveContainer width="100%" height={260}>
                 <BarChart
                   data={cityRevenueData}
-                  layout="vertical"
-                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                  barCategoryGap={12}
+                  margin={{ top: 24, right: 20, left: 10, bottom: 24 }}
+                  barCategoryGap={22}
+                  barSize={36}
                 >
                   <defs>
-                    <linearGradient id="geoCityRevenue" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
+                    <linearGradient id="geoCityRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--green)" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="var(--green)" stopOpacity={0.25} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
                   <XAxis
-                    type="number"
+                    dataKey="city"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    interval={0}
+                    angle={-18}
+                    textAnchor="end"
+                    height={52}
+                  />
+                  <YAxis
                     tickLine={false}
                     axisLine={false}
                     tick={axisTickStyle}
                     tickFormatter={(value) => formatCurrency(value)}
                   />
-                  <YAxis
-                    type="category"
-                    dataKey="city"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    width={110}
-                  />
                   <Tooltip
                     contentStyle={tooltipStyle}
                     formatter={(value) => [formatCurrency(value), t("Revenue")]}
                   />
-                  <Bar dataKey="revenue" fill="url(#geoCityRevenue)" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="revenue" fill="url(#geoCityRevenue)" radius={[10, 10, 0, 0]}>
+                    <LabelList
+                      dataKey="revenue"
+                      position="top"
+                      formatter={(value) => formatCurrency(value)}
+                      fill="rgba(255,255,255,0.9)"
+                      fontSize={11}
+                    />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -2985,41 +3004,35 @@ function GeosDashboard({ filters }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={cityArppuData}
-                  layout="vertical"
-                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                  barCategoryGap={12}
+              <ResponsiveContainer width="100%" height={260}>
+                <RadialBarChart
+                  data={cityArppuRadial}
+                  innerRadius="32%"
+                  outerRadius="92%"
+                  startAngle={90}
+                  endAngle={-270}
                 >
-                  <defs>
-                    <linearGradient id="geoCityArppu" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    tickFormatter={(value) => formatCurrency(value)}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="city"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    width={110}
-                  />
+                  <PolarAngleAxis type="number" domain={[0, "dataMax"]} tick={false} />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    formatter={(value) => [formatCurrency(value), t("ARPPU")]}
+                    formatter={(value, _name, props) => [
+                      formatCurrency(value),
+                      props?.payload?.city || t("ARPPU"),
+                    ]}
                   />
-                  <Bar dataKey="arppu" fill="url(#geoCityArppu)" radius={[0, 8, 8, 0]} />
-                </BarChart>
+                  <Legend
+                    iconType="circle"
+                    layout="vertical"
+                    align="right"
+                    verticalAlign="middle"
+                    wrapperStyle={{ color: "#9aa0aa", fontSize: 12 }}
+                  />
+                  <RadialBar dataKey="arppu" cornerRadius={12} background clockWise>
+                    {cityArppuRadial.map((entry) => (
+                      <Cell key={entry.city} fill={entry.fill} />
+                    ))}
+                  </RadialBar>
+                </RadialBarChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
@@ -3037,22 +3050,12 @@ function GeosDashboard({ filters }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={cityLtvData}
-                  layout="vertical"
-                  margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                  barCategoryGap={12}
-                >
-                  <defs>
-                    <linearGradient id="geoCityLtv" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--orange)" stopOpacity={0.25} />
-                    </linearGradient>
-                  </defs>
+              <ResponsiveContainer width="100%" height={260}>
+                <ScatterChart margin={{ top: 8, right: 24, left: 90, bottom: 8 }}>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
                   <XAxis
                     type="number"
+                    dataKey="ltv"
                     tickLine={false}
                     axisLine={false}
                     tick={axisTickStyle}
@@ -3070,8 +3073,8 @@ function GeosDashboard({ filters }) {
                     contentStyle={tooltipStyle}
                     formatter={(value) => [formatCurrency(value), t("LTV")]}
                   />
-                  <Bar dataKey="ltv" fill="url(#geoCityLtv)" radius={[0, 8, 8, 0]} />
-                </BarChart>
+                  <Scatter data={cityLtvData} fill="var(--orange)" />
+                </ScatterChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
