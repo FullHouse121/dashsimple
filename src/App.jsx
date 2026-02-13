@@ -2341,11 +2341,12 @@ function GeosDashboard({ filters }) {
     [geoTotals]
   );
 
+  const geoTopLimit = 5;
   const geoChartRows = geoTotals.filter((row) => row.country && row.country !== "Unknown");
   const geoRevenueCandidates = geoChartRows.filter((row) => row.revenue > 0);
   const geoRevenueData = (geoRevenueCandidates.length ? geoRevenueCandidates : geoChartRows).slice(
     0,
-    5
+    geoTopLimit
   );
   const geoArppuData = geoChartRows
     .map((row) => ({
@@ -2354,7 +2355,7 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
-    .slice(0, 5);
+    .slice(0, geoTopLimit);
   const geoLtvData = geoChartRows
     .map((row) => ({
       country: row.country,
@@ -2362,12 +2363,12 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
-    .slice(0, 5);
+    .slice(0, geoTopLimit);
 
   const cityRevenueCandidates = cityTotals.filter((row) => row.revenue > 0);
   const cityRevenueData = (cityRevenueCandidates.length ? cityRevenueCandidates : cityTotals).slice(
     0,
-    5
+    geoTopLimit
   );
   const cityArppuData = cityTotals
     .map((row) => ({
@@ -2376,7 +2377,7 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
-    .slice(0, 5);
+    .slice(0, geoTopLimit);
   const cityLtvData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -2384,13 +2385,71 @@ function GeosDashboard({ filters }) {
     }))
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
-    .slice(0, 5);
+    .slice(0, geoTopLimit);
 
   const topGeoArppu = geoArppuData[0] || null;
   const topGeoLtv = geoLtvData[0] || null;
   const topGeoRevenue = geoRevenueData[0] || null;
   const topCityArppu = cityArppuData[0] || null;
   const topCityLtv = cityLtvData[0] || null;
+
+  const ltvGrowthTargets = geoLtvData.map((row) => row.country);
+  const ltvGrowthColors = ["#4b5bff", "#8b7bff", "#c6b9ff", "#7ed6ff", "#5cc9a5"];
+  const ltvGrowthSeries = ltvGrowthTargets.map((country, index) => ({
+    key: country,
+    label: country,
+    color: ltvGrowthColors[index % ltvGrowthColors.length],
+  }));
+
+  const ltvGrowthData = React.useMemo(() => {
+    if (!ltvGrowthTargets.length) return [];
+    const targetsSet = new Set(ltvGrowthTargets);
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const country = String(row.country || "").trim();
+      if (!targetsSet.has(country)) return;
+      const date = row.date;
+      if (!date) return;
+
+      const ftdRevenueValue = Number.isFinite(Number(row.ftdRevenue ?? row.ftd_revenue))
+        ? Number(row.ftdRevenue ?? row.ftd_revenue)
+        : 0;
+      const redepositRevenueValue = Number.isFinite(
+        Number(row.redepositRevenue ?? row.redeposit_revenue)
+      )
+        ? Number(row.redepositRevenue ?? row.redeposit_revenue)
+        : 0;
+      let revenueValue =
+        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+      if (!Number.isFinite(revenueValue)) {
+        revenueValue = null;
+      }
+      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
+        revenueValue = ftdRevenueValue + redepositRevenueValue;
+      }
+
+      if (!map.has(date)) {
+        map.set(date, { date, values: {} });
+      }
+      const entry = map.get(date);
+      if (!entry.values[country]) {
+        entry.values[country] = { revenue: 0, redeposits: 0 };
+      }
+      entry.values[country].revenue += revenueValue || 0;
+      entry.values[country].redeposits += sum(row.redeposits);
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .map((entry) => {
+        const row = { date: entry.date, dateLabel: formatShortDate(entry.date) };
+        ltvGrowthTargets.forEach((country) => {
+          const stats = entry.values[country];
+          row[country] = stats && stats.redeposits > 0 ? stats.revenue / stats.redeposits : 0;
+        });
+        return row;
+      });
+  }, [filteredRows, ltvGrowthTargets]);
 
   return (
     <>
@@ -2626,6 +2685,82 @@ function GeosDashboard({ filters }) {
                     />
                     <Bar dataKey="ltv" fill="url(#geoLtv)" radius={[0, 8, 8, 0]} />
                   </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="panel span-2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.15 }}
+            >
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("LTV Growth Timeline")}</h3>
+                  <p className="panel-subtitle">
+                    {t("Daily LTV trend for the top GEOs (2+ deposits).")}
+                  </p>
+                </div>
+              </div>
+              <div className="chart chart-surface">
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart data={ltvGrowthData} margin={{ top: 8, right: 24, left: 4, bottom: 4 }}>
+                    <defs>
+                      {ltvGrowthSeries.map((series) => (
+                        <linearGradient
+                          key={`ltv-grad-${series.key}`}
+                          id={`ltv-grad-${series.key}`}
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="5%" stopColor={series.color} stopOpacity={0.45} />
+                          <stop offset="95%" stopColor={series.color} stopOpacity={0.05} />
+                        </linearGradient>
+                      ))}
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="dateLabel"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={axisTickStyle}
+                      minTickGap={18}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={70}
+                      tick={axisTickStyle}
+                      tickFormatter={(value) => formatCurrency(value)}
+                    />
+                    <Tooltip
+                      contentStyle={tooltipStyle}
+                      labelFormatter={(label) => label}
+                      formatter={(value, name) => [formatCurrency(value), name]}
+                    />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                    />
+                    {ltvGrowthSeries.map((series, index) => (
+                      <Area
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.label}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        fill={`url(#ltv-grad-${series.key})`}
+                        fillOpacity={0.9}
+                        connectNulls
+                        dot={index === 0 ? { r: 2.5 } : false}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </motion.div>

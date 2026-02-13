@@ -322,6 +322,10 @@ body {
   height: 220px;
 }
 
+.geo-charts .panel.span-2 {
+  grid-column: span 2;
+}
+
 .section-header {
   margin: 8px 2px 10px;
   display: flex;
