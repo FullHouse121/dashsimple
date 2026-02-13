@@ -10,8 +10,8 @@ import {
   ComposedChart,
   PieChart,
   Pie,
-  RadialBarChart,
-  RadialBar,
+  RadarChart,
+  Radar,
   ScatterChart,
   Scatter,
   Cell,
@@ -19,6 +19,8 @@ import {
   XAxis,
   YAxis,
   PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
@@ -2406,17 +2408,6 @@ function GeosDashboard({ filters }) {
     .filter((row) => row.ltv > 0)
     .sort((a, b) => b.ltv - a.ltv)
     .slice(0, geoTopLimit);
-  const cityArppuPalette = ["#8b5cf6", "#a78bfa", "#c4b5fd", "#67e8f9", "#4ade80"];
-  const cityArppuRadial = cityArppuData.map((row, index) => ({
-    ...row,
-    fill: cityArppuPalette[index % cityArppuPalette.length],
-  }));
-  const cityArppuLegend = cityArppuRadial.map((entry) => ({
-    value: entry.city,
-    color: entry.fill,
-    type: "circle",
-    id: entry.city,
-  }));
 
   const topGeoArppu = geoArppuData[0] || null;
   const topGeoLtv = geoLtvData[0] || null;
@@ -3025,29 +3016,30 @@ function GeosDashboard({ filters }) {
             </div>
             <div className="chart chart-surface">
               <ResponsiveContainer width="100%" height={260}>
-                <RadialBarChart
-                  data={cityArppuRadial}
-                  innerRadius="32%"
-                  outerRadius="92%"
-                  startAngle={90}
-                  endAngle={-270}
-                >
-                  <PolarAngleAxis type="number" domain={[0, "dataMax"]} tick={false} />
-                  <Tooltip content={renderMetricTooltip("city", "arppu", t("ARPPU"))} />
-                  <Legend
-                    iconType="circle"
-                    layout="vertical"
-                    align="right"
-                    verticalAlign="middle"
-                    payload={cityArppuLegend}
-                    wrapperStyle={{ color: "#9aa0aa", fontSize: 12 }}
+                <RadarChart data={cityArppuData} outerRadius="70%">
+                  <defs>
+                    <linearGradient id="cityArppuRadar" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--purple)" stopOpacity={0.6} />
+                      <stop offset="100%" stopColor="var(--purple)" stopOpacity={0.1} />
+                    </linearGradient>
+                  </defs>
+                  <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                  <PolarAngleAxis dataKey="city" tick={axisTickStyle} />
+                  <PolarRadiusAxis
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
                   />
-                  <RadialBar dataKey="arppu" cornerRadius={12} background clockWise>
-                    {cityArppuRadial.map((entry) => (
-                      <Cell key={entry.city} fill={entry.fill} />
-                    ))}
-                  </RadialBar>
-                </RadialBarChart>
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [formatCurrency(value), t("ARPPU")]}
+                  />
+                  <Radar
+                    dataKey="arppu"
+                    stroke="var(--purple)"
+                    fill="url(#cityArppuRadar)"
+                    fillOpacity={0.5}
+                  />
+                </RadarChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
