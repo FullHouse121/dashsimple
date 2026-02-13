@@ -1049,6 +1049,16 @@ const decodeToken = (token) => {
 
 const isLeadership = (user) => user?.role === "Boss" || user?.role === "Team Leader";
 
+const normalizeBuyerName = (value) => String(value || "").trim().toLowerCase();
+const buyerMatches = (rowBuyer, viewerBuyer) => {
+  const rowValue = normalizeBuyerName(rowBuyer);
+  const viewerValue = normalizeBuyerName(viewerBuyer);
+  if (!viewerValue) return false;
+  if (!rowValue) return false;
+  if (rowValue === viewerValue) return true;
+  return rowValue.includes(viewerValue);
+};
+
 const resolveViewerBuyer = async (user) => {
   if (!user || isLeadership(user)) return null;
   if (user.buyerId) {
@@ -1199,9 +1209,9 @@ app.get("/api/media-stats", async (req, res) => {
   let conversionTotals = await selectConversionTotals();
 
   if (viewerBuyer) {
-    rows = rows.filter((row) => row.buyer === viewerBuyer);
-    installTotals = installTotals.filter((row) => row.buyer === viewerBuyer);
-    conversionTotals = conversionTotals.filter((row) => row.buyer === viewerBuyer);
+    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    installTotals = installTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    conversionTotals = conversionTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
   }
   const installMap = new Map();
   const conversionMap = new Map();
@@ -1313,7 +1323,11 @@ app.get("/api/media-stats", async (req, res) => {
 app.get("/api/device-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = await selectDeviceStats(limit);
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  let rows = await selectDeviceStats(limit);
+  if (viewerBuyer) {
+    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+  }
 
   const aggregated = new Map();
   rows.forEach((row) => {
@@ -1480,7 +1494,9 @@ app.get("/api/goals", async (req, res) => {
     return res.json(rows);
   }
   const viewerBuyer = await resolveViewerBuyer(req.user);
-  const filtered = rows.filter((row) => row.is_global || row.buyer === viewerBuyer);
+  const filtered = rows.filter(
+    (row) => row.is_global || (viewerBuyer && buyerMatches(row.buyer, viewerBuyer))
+  );
   return res.json(filtered);
 });
 
