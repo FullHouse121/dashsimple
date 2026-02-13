@@ -2184,6 +2184,7 @@ function GeosDashboard({ filters }) {
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
+  const cityFilter = filters?.city || "All";
   const dateFrom = filters?.dateFrom;
   const dateTo = filters?.dateTo;
   const normalizedPriorityBuyers = React.useMemo(
@@ -2216,11 +2217,12 @@ function GeosDashboard({ filters }) {
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       if (countryFilter !== "All" && String(row.country || "") !== countryFilter) return false;
+      if (cityFilter !== "All" && String(row.city || "") !== cityFilter) return false;
       if (dateFrom && row.date && row.date < dateFrom) return false;
       if (dateTo && row.date && row.date > dateTo) return false;
       return true;
     });
-  }, [geoRows, buyerFilter, countryFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
+  }, [geoRows, buyerFilter, countryFilter, cityFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
 
   const geoTotals = React.useMemo(() => {
     const map = new Map();
@@ -6902,6 +6904,7 @@ export default function App() {
       dateFrom: range.from,
       dateTo: range.to,
       country: "All",
+      city: "All",
       approach: "All",
       buyer: "All",
       category: "All",
@@ -7372,9 +7375,11 @@ export default function App() {
             >
               <div className="modal-head">
                 <div>
-                  <p className="modal-kicker">{isFinances ? "Finance Filters" : "Dashboard Filters"}</p>
+                  <p className="modal-kicker">
+                    {isFinances ? "Finance Filters" : isGeos ? "GEO Filters" : "Dashboard Filters"}
+                  </p>
                   <h2 id="filters-title">
-                    {isFinances ? "Refine expenses" : "Refine performance"}
+                    {isFinances ? "Refine expenses" : isGeos ? "Refine geos" : "Refine performance"}
                   </h2>
                 </div>
                 <button className="icon-btn" type="button" onClick={() => setFiltersOpen(false)}>
@@ -7410,15 +7415,28 @@ export default function App() {
                   </select>
                 </div>
 
-                {isHome ? (
-                  <div className="field">
-                    <label>Media Buyer</label>
-                    <select value={filters.buyer} onChange={updateFilter("buyer")}>
-                      {buyerOptions.map((buyer) => (
-                        <option key={buyer}>{buyer}</option>
-                      ))}
-                    </select>
-                  </div>
+                {isHome || isGeos ? (
+                  <>
+                    <div className="field">
+                      <label>Media Buyer</label>
+                      <select value={filters.buyer} onChange={updateFilter("buyer")}>
+                        {buyerOptions.map((buyer) => (
+                          <option key={buyer}>{buyer}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {isGeos ? (
+                      <div className="field">
+                        <label>City</label>
+                        <input
+                          type="text"
+                          placeholder="All"
+                          value={filters.city}
+                          onChange={updateFilter("city")}
+                        />
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <>
                     <div className="field">
@@ -7463,8 +7481,9 @@ export default function App() {
                       dateFrom: "2026-02-01",
                       dateTo: "2026-02-07",
                       country: "All",
+                      city: "All",
                       approach: "All",
-                      buyer: "DeusInsta",
+                      buyer: "All",
                       category: "All",
                       billing: "All",
                       status: "All",
