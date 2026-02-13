@@ -411,6 +411,51 @@ body {
   height: 240px;
 }
 
+.metric-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr 0.8fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(30, 33, 40, 0.9), rgba(21, 24, 30, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.metric-row.metric-header {
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metric-cell.city {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.metric-cell.value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-cell.value.arppu {
+  color: #a7f3d0;
+  font-weight: 600;
+}
+
 .grid line {
   stroke: rgba(255, 255, 255, 0.06);
   stroke-width: 1;

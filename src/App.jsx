@@ -10,8 +10,6 @@ import {
   ComposedChart,
   PieChart,
   Pie,
-  RadarChart,
-  Radar,
   ScatterChart,
   Scatter,
   Cell,
@@ -19,8 +17,6 @@ import {
   XAxis,
   YAxis,
   PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
@@ -2400,6 +2396,16 @@ function GeosDashboard({ filters }) {
     .filter((row) => row.arppu > 0)
     .sort((a, b) => b.arppu - a.arppu)
     .slice(0, geoTopLimit);
+  const cityArppuTable = cityTotals
+    .map((row) => ({
+      city: row.city,
+      arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
+      ftds: row.ftds,
+      revenue: row.revenue,
+    }))
+    .filter((row) => row.arppu > 0)
+    .sort((a, b) => b.arppu - a.arppu)
+    .slice(0, geoTopLimit);
   const cityLtvData = cityTotals
     .map((row) => ({
       city: row.city,
@@ -3015,32 +3021,22 @@ function GeosDashboard({ filters }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={260}>
-                <RadarChart data={cityArppuData} outerRadius="70%">
-                  <defs>
-                    <linearGradient id="cityArppuRadar" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--purple)" stopOpacity={0.6} />
-                      <stop offset="100%" stopColor="var(--purple)" stopOpacity={0.1} />
-                    </linearGradient>
-                  </defs>
-                  <PolarGrid stroke="rgba(255,255,255,0.08)" />
-                  <PolarAngleAxis dataKey="city" tick={axisTickStyle} />
-                  <PolarRadiusAxis
-                    tick={axisTickStyle}
-                    tickFormatter={(value) => formatCurrency(value)}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value) => [formatCurrency(value), t("ARPPU")]}
-                  />
-                  <Radar
-                    dataKey="arppu"
-                    stroke="var(--purple)"
-                    fill="url(#cityArppuRadar)"
-                    fillOpacity={0.5}
-                  />
-                </RadarChart>
-              </ResponsiveContainer>
+              <div className="metric-table">
+                <div className="metric-row metric-header">
+                  <div className="metric-cell city">{t("City")}</div>
+                  <div className="metric-cell value">{t("ARPPU")}</div>
+                  <div className="metric-cell value">{t("Paying Users")}</div>
+                  <div className="metric-cell value">{t("Revenue")}</div>
+                </div>
+                {cityArppuTable.map((row) => (
+                  <div className="metric-row" key={row.city}>
+                    <div className="metric-cell city">{row.city}</div>
+                    <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
+                    <div className="metric-cell value">{row.ftds.toLocaleString()}</div>
+                    <div className="metric-cell value">{formatCurrency(row.revenue)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </motion.div>
 
