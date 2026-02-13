@@ -2220,9 +2220,9 @@ function GeosDashboard({ filters }) {
       </div>
     );
   };
-  const [geoSort, setGeoSort] = React.useState({ key: "revenue", dir: "desc" });
+  const [geoTableSort, setGeoTableSort] = React.useState({ key: "revenue", dir: "desc" });
   const toggleGeoSort = (key) => {
-    setGeoSort((prev) =>
+    setGeoTableSort((prev) =>
       prev.key === key
         ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
         : { key, dir: "desc" }
@@ -2263,7 +2263,7 @@ function GeosDashboard({ filters }) {
   };
   const sortedGeoTotals = React.useMemo(() => {
     const rows = [...geoTotals];
-    const { key, dir } = geoSort;
+    const { key, dir } = geoTableSort;
     const direction = dir === "asc" ? 1 : -1;
     return rows.sort((a, b) => {
       const aVal = getGeoSortValue(a, key);
@@ -2279,7 +2279,7 @@ function GeosDashboard({ filters }) {
       if (aVal === bVal) return 0;
       return direction * (aVal > bVal ? 1 : -1);
     });
-  }, [geoTotals, geoSort]);
+  }, [geoTotals, geoTableSort]);
 
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = String(buyer || "").toLowerCase();
@@ -3197,8 +3197,12 @@ function GeosDashboard({ filters }) {
                       { key: "c2ftd", label: "C2FTD" },
                       { key: "r2d", label: "R2D" },
                     ].map((col) => {
-                      const isActive = geoSort.key === col.key;
-                      const indicator = isActive ? (geoSort.dir === "asc" ? "▲" : "▼") : "↕";
+                      const isActive = geoTableSort.key === col.key;
+                      const indicator = isActive
+                        ? geoTableSort.dir === "asc"
+                          ? "▲"
+                          : "▼"
+                        : "↕";
                       return (
                         <th key={col.key}>
                           <button
