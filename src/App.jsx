@@ -2307,6 +2307,7 @@ function GeosDashboard({ filters }) {
         map.set(city, {
           city,
           revenue: 0,
+          spend: 0,
           ftds: 0,
           redeposits: 0,
           clicks: 0,
@@ -2334,6 +2335,7 @@ function GeosDashboard({ filters }) {
       if (Number.isFinite(revenueValue)) {
         current.revenue += revenueValue;
       }
+      current.spend += sum(row.spend);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
       current.clicks += sum(row.clicks);
@@ -2400,6 +2402,7 @@ function GeosDashboard({ filters }) {
     .map((row) => ({
       city: row.city,
       arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
+      cpa: row.ftds > 0 && row.spend > 0 ? row.spend / row.ftds : null,
       ftds: row.ftds,
       revenue: row.revenue,
     }))
@@ -3021,19 +3024,24 @@ function GeosDashboard({ filters }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <div className="metric-table">
+              <div className="metric-table arppu-matrix">
                 <div className="metric-row metric-header">
                   <div className="metric-cell city">{t("City")}</div>
-                  <div className="metric-cell value">{t("ARPPU")}</div>
-                  <div className="metric-cell value">{t("Paying Users")}</div>
-                  <div className="metric-cell value">{t("Revenue")}</div>
+                  <div className="metric-cell value arppu">
+                    {t("ARPPU")}
+                    <span className="sort-caret">▾</span>
+                  </div>
+                  <div className="metric-cell value users">{t("Paying Users")}</div>
+                  <div className="metric-cell value cpa">{t("CPA")}</div>
                 </div>
                 {cityArppuTable.map((row) => (
                   <div className="metric-row" key={row.city}>
                     <div className="metric-cell city">{row.city}</div>
                     <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
-                    <div className="metric-cell value">{row.ftds.toLocaleString()}</div>
-                    <div className="metric-cell value">{formatCurrency(row.revenue)}</div>
+                    <div className="metric-cell value users">{row.ftds.toLocaleString()}</div>
+                    <div className="metric-cell value cpa">
+                      {row.cpa === null ? "—" : formatCurrency(row.cpa)}
+                    </div>
                   </div>
                 ))}
               </div>
