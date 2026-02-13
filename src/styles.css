@@ -2238,6 +2238,32 @@ select {
   opacity: 0.7;
 }
 
+.sortable-header {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.sortable-header:hover {
+  color: #e2e8f0;
+}
+
+.sortable-header.active {
+  color: #8b5cf6;
+}
+
+.sort-indicator {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
 .metric-table.arppu-matrix .metric-row:not(.metric-header) {
   animation: metricRise 0.5s ease both;
 }

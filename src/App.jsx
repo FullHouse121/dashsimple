@@ -2220,6 +2220,66 @@ function GeosDashboard({ filters }) {
       </div>
     );
   };
+  const [geoSort, setGeoSort] = React.useState({ key: "revenue", dir: "desc" });
+  const toggleGeoSort = (key) => {
+    setGeoSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "desc" }
+    );
+  };
+  const getGeoSortValue = (row, key) => {
+    const revenueValue = row.hasRevenue ? row.revenue : null;
+    switch (key) {
+      case "country":
+        return String(row.country || "");
+      case "spend":
+        return row.spend ? row.spend : null;
+      case "revenue":
+        return revenueValue;
+      case "clicks":
+        return row.clicks;
+      case "installs":
+        return row.installs ? row.installs : null;
+      case "registers":
+        return row.registers;
+      case "ftds":
+        return row.ftds;
+      case "redeposits":
+        return row.redeposits ? row.redeposits : null;
+      case "arppu":
+        return revenueValue !== null && row.ftds > 0 ? revenueValue / row.ftds : null;
+      case "ltv":
+        return revenueValue !== null && row.redeposits > 0 ? revenueValue / row.redeposits : null;
+      case "c2r":
+        return toPercent(row.registers, row.clicks);
+      case "c2ftd":
+        return toPercent(row.ftds, row.clicks);
+      case "r2d":
+        return toPercent(row.ftds, row.registers);
+      default:
+        return null;
+    }
+  };
+  const sortedGeoTotals = React.useMemo(() => {
+    const rows = [...geoTotals];
+    const { key, dir } = geoSort;
+    const direction = dir === "asc" ? 1 : -1;
+    return rows.sort((a, b) => {
+      const aVal = getGeoSortValue(a, key);
+      const bVal = getGeoSortValue(b, key);
+      const aNull = aVal === null || aVal === undefined || Number.isNaN(aVal);
+      const bNull = bVal === null || bVal === undefined || Number.isNaN(bVal);
+      if (key === "country") {
+        return direction * String(aVal || "").localeCompare(String(bVal || ""));
+      }
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      if (aVal === bVal) return 0;
+      return direction * (aVal > bVal ? 1 : -1);
+    });
+  }, [geoTotals, geoSort]);
 
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = String(buyer || "").toLowerCase();
@@ -3122,23 +3182,40 @@ function GeosDashboard({ filters }) {
               <table className="entries-table stats-table">
                 <thead>
                   <tr>
-                    <th>{t("Country")}</th>
-                    <th>{t("Spend")}</th>
-                    <th>{t("Revenue")}</th>
-                    <th>{t("Clicks")}</th>
-                    <th>{t("Installs")}</th>
-                    <th>{t("Registers")}</th>
-                    <th>{t("FTDs")}</th>
-                    <th>{t("Redeposits")}</th>
-                    <th>{t("ARPPU")}</th>
-                    <th>{t("LTV")}</th>
-                    <th>{t("C2R")}</th>
-                    <th>{t("C2FTD")}</th>
-                    <th>{t("R2D")}</th>
+                    {[
+                      { key: "country", label: "Country" },
+                      { key: "spend", label: "Spend" },
+                      { key: "revenue", label: "Revenue" },
+                      { key: "clicks", label: "Clicks" },
+                      { key: "installs", label: "Installs" },
+                      { key: "registers", label: "Registers" },
+                      { key: "ftds", label: "FTDs" },
+                      { key: "redeposits", label: "Redeposits" },
+                      { key: "arppu", label: "ARPPU" },
+                      { key: "ltv", label: "LTV" },
+                      { key: "c2r", label: "C2R" },
+                      { key: "c2ftd", label: "C2FTD" },
+                      { key: "r2d", label: "R2D" },
+                    ].map((col) => {
+                      const isActive = geoSort.key === col.key;
+                      const indicator = isActive ? (geoSort.dir === "asc" ? "▲" : "▼") : "↕";
+                      return (
+                        <th key={col.key}>
+                          <button
+                            type="button"
+                            className={`sortable-header ${isActive ? "active" : ""}`}
+                            onClick={() => toggleGeoSort(col.key)}
+                          >
+                            {t(col.label)}
+                            <span className="sort-indicator">{indicator}</span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {geoTotals.map((row) => {
+                  {sortedGeoTotals.map((row) => {
                     const revenueValue = row.hasRevenue ? row.revenue : null;
                     const arppu =
                       revenueValue !== null && row.ftds > 0
