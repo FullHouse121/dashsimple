@@ -2622,7 +2622,7 @@ function GeosDashboard({ filters }) {
           </div>
           <section className="panels geo-charts">
             <motion.div
-              className="panel"
+              className="panel span-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
@@ -2864,7 +2864,6 @@ function GeosDashboard({ filters }) {
 
             <motion.div
               className="panel span-3"
-              style={{ gridColumn: "1 / -1" }}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
@@ -2949,7 +2948,7 @@ function GeosDashboard({ filters }) {
               <p>{t("Best cities ranked by revenue, ARPPU, and LTV.")}</p>
             </div>
           </div>
-          <section className="panels geo-charts">
+          <section className="panels city-charts">
           <motion.div
             className="panel"
             initial={{ opacity: 0, y: 20 }}
@@ -3015,43 +3014,6 @@ function GeosDashboard({ filters }) {
             className="panel"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.05 }}
-          >
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{t("ARPPU by City")}</h3>
-                <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
-              </div>
-            </div>
-            <div className="chart chart-surface">
-              <div className="metric-table arppu-matrix">
-                <div className="metric-row metric-header">
-                  <div className="metric-cell city">{t("City")}</div>
-                  <div className="metric-cell value arppu">
-                    {t("ARPPU")}
-                    <span className="sort-caret">▾</span>
-                  </div>
-                  <div className="metric-cell value users">{t("Paying Users")}</div>
-                  <div className="metric-cell value cpa">{t("CPA")}</div>
-                </div>
-                {cityArppuTable.map((row) => (
-                  <div className="metric-row" key={row.city}>
-                    <div className="metric-cell city">{row.city}</div>
-                    <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
-                    <div className="metric-cell value users">{row.ftds.toLocaleString()}</div>
-                    <div className="metric-cell value cpa">
-                      {row.cpa === null ? "—" : formatCurrency(row.cpa)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            className="panel"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
           >
             <div className="panel-head">
@@ -3084,6 +3046,43 @@ function GeosDashboard({ filters }) {
                   <Scatter data={cityLtvData} fill="var(--orange)" name={t("LTV")} />
                 </ScatterChart>
               </ResponsiveContainer>
+            </div>
+          </motion.div>
+
+          <motion.div
+            className="panel span-2"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.15 }}
+          >
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("ARPPU by City")}</h3>
+                <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
+              </div>
+            </div>
+            <div className="chart chart-surface">
+              <div className="metric-table arppu-matrix">
+                <div className="metric-row metric-header">
+                  <div className="metric-cell city">{t("City")}</div>
+                  <div className="metric-cell value arppu">
+                    {t("ARPPU")}
+                    <span className="sort-caret">▾</span>
+                  </div>
+                  <div className="metric-cell value users">{t("Paying Users")}</div>
+                  <div className="metric-cell value cpa">{t("CPA")}</div>
+                </div>
+                {cityArppuTable.map((row) => (
+                  <div className="metric-row" key={row.city}>
+                    <div className="metric-cell city">{row.city}</div>
+                    <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
+                    <div className="metric-cell value users">{row.ftds.toLocaleString()}</div>
+                    <div className="metric-cell value cpa">
+                      {row.cpa === null ? "—" : formatCurrency(row.cpa)}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </motion.div>
           </section>
