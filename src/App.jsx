@@ -2402,7 +2402,6 @@ function GeosDashboard({ filters }) {
     .map((row) => ({
       city: row.city,
       arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
-      cpa: row.ftds > 0 && row.spend > 0 ? row.spend / row.ftds : null,
       ftds: row.ftds,
       revenue: row.revenue,
     }))
@@ -3070,16 +3069,12 @@ function GeosDashboard({ filters }) {
                     <span className="sort-caret">▾</span>
                   </div>
                   <div className="metric-cell value users">{t("Paying Users")}</div>
-                  <div className="metric-cell value cpa">{t("CPA")}</div>
                 </div>
                 {cityArppuTable.map((row) => (
                   <div className="metric-row" key={row.city}>
                     <div className="metric-cell city">{row.city}</div>
                     <div className="metric-cell value arppu">{formatCurrency(row.arppu)}</div>
                     <div className="metric-cell value users">{row.ftds.toLocaleString()}</div>
-                    <div className="metric-cell value cpa">
-                      {row.cpa === null ? "—" : formatCurrency(row.cpa)}
-                    </div>
                   </div>
                 ))}
               </div>
