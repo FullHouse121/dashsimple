@@ -2208,6 +2208,20 @@ function GeosDashboard({ filters }) {
     value === null || Number.isNaN(value) ? "—" : `${value.toFixed(2)}%`;
   const fmtCost = (value) =>
     value === null || Number.isNaN(value) ? "—" : formatCurrency(value);
+  const renderMetricTooltip = (labelKey, valueKey, valueLabel) => ({ active, payload }) => {
+    if (!active || !payload || !payload.length) return null;
+    const item = payload[0]?.payload || {};
+    const label = item[labelKey] || payload[0]?.name || "";
+    const value = item[valueKey] ?? payload[0]?.value;
+    return (
+      <div style={tooltipStyle}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        <div>
+          {valueLabel}: {formatCurrency(value || 0)}
+        </div>
+      </div>
+    );
+  };
 
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = String(buyer || "").toLowerCase();
@@ -2396,6 +2410,12 @@ function GeosDashboard({ filters }) {
   const cityArppuRadial = cityArppuData.map((row, index) => ({
     ...row,
     fill: cityArppuPalette[index % cityArppuPalette.length],
+  }));
+  const cityArppuLegend = cityArppuRadial.map((entry) => ({
+    value: entry.city,
+    color: entry.fill,
+    type: "circle",
+    id: entry.city,
   }));
 
   const topGeoArppu = geoArppuData[0] || null;
@@ -3013,18 +3033,13 @@ function GeosDashboard({ filters }) {
                   endAngle={-270}
                 >
                   <PolarAngleAxis type="number" domain={[0, "dataMax"]} tick={false} />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value, _name, props) => [
-                      formatCurrency(value),
-                      props?.payload?.city || t("ARPPU"),
-                    ]}
-                  />
+                  <Tooltip content={renderMetricTooltip("city", "arppu", t("ARPPU"))} />
                   <Legend
                     iconType="circle"
                     layout="vertical"
                     align="right"
                     verticalAlign="middle"
+                    payload={cityArppuLegend}
                     wrapperStyle={{ color: "#9aa0aa", fontSize: 12 }}
                   />
                   <RadialBar dataKey="arppu" cornerRadius={12} background clockWise>
@@ -3069,11 +3084,8 @@ function GeosDashboard({ filters }) {
                     tick={axisTickStyle}
                     width={110}
                   />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value) => [formatCurrency(value), t("LTV")]}
-                  />
-                  <Scatter data={cityLtvData} fill="var(--orange)" />
+                  <Tooltip content={renderMetricTooltip("city", "ltv", t("LTV"))} />
+                  <Scatter data={cityLtvData} fill="var(--orange)" name={t("LTV")} />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
