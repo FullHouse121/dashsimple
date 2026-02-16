@@ -1934,6 +1934,26 @@ select {
   letter-spacing: 0.4px;
 }
 
+.inline-select {
+  background: rgba(16, 18, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.inline-select:focus {
+  outline: none;
+  border-color: rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
+}
+
 .status-requested {
   background: rgba(255, 147, 87, 0.16);
   color: #ff9357;

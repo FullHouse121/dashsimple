@@ -1049,14 +1049,18 @@ const decodeToken = (token) => {
 
 const isLeadership = (user) => user?.role === "Boss" || user?.role === "Team Leader";
 
-const normalizeBuyerName = (value) => String(value || "").trim().toLowerCase();
+const normalizeBuyerName = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 const buyerMatches = (rowBuyer, viewerBuyer) => {
   const rowValue = normalizeBuyerName(rowBuyer);
   const viewerValue = normalizeBuyerName(viewerBuyer);
   if (!viewerValue) return false;
   if (!rowValue) return false;
   if (rowValue === viewerValue) return true;
-  return rowValue.includes(viewerValue);
+  return rowValue.includes(viewerValue) || viewerValue.includes(rowValue);
 };
 
 const resolveViewerBuyer = async (user) => {
@@ -1196,6 +1200,22 @@ app.post("/api/expenses", async (req, res) => {
 
   const info = await insertExpense(payload);
   res.status(201).json({ id: info.id });
+});
+
+app.patch("/api/expenses/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid expense id." });
+  }
+  const { status } = req.body ?? {};
+  if (!status) {
+    return res.status(400).json({ error: "Missing status." });
+  }
+  await query("UPDATE expenses SET status = $1 WHERE id = $2", [status, id]);
+  res.json({ ok: true });
 });
 
 app.get("/api/media-stats", async (req, res) => {

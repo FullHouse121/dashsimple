@@ -1230,8 +1230,9 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
+  const normalizeBuyerKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const normalizedPriorityBuyers = React.useMemo(
-    () => priorityBuyers.map((buyer) => buyer.toLowerCase()),
+    () => priorityBuyers.map((buyer) => normalizeBuyerKey(buyer)),
     []
   );
 
@@ -2223,13 +2224,16 @@ function GeosDashboard({ filters }) {
     );
   };
   const matchesBuyer = (buyer) => {
-    const normalizedBuyer = normalizeFilterValue(buyer);
+    const normalizedBuyer = normalizeBuyerKey(buyer);
     if (!normalizedBuyer) return false;
-    const isAllowed = normalizedPriorityBuyers.some((name) => normalizedBuyer.includes(name));
+    const isAllowed = normalizedPriorityBuyers.some(
+      (name) => normalizedBuyer.includes(name) || name.includes(normalizedBuyer)
+    );
     if (!isAllowed) return false;
     if (isAllSelection(buyerFilter)) return true;
-    const normalizedFilter = normalizeFilterValue(buyerFilter);
-    return normalizedBuyer.includes(normalizedFilter);
+    const normalizedFilter = normalizeBuyerKey(buyerFilter);
+    if (!normalizedFilter) return false;
+    return normalizedBuyer.includes(normalizedFilter) || normalizedFilter.includes(normalizedBuyer);
   };
 
   const filteredRows = React.useMemo(() => {
@@ -3278,6 +3282,8 @@ function FinancesDashboard({
   onEntryChange,
   onEntrySubmit,
   onEntryReset,
+  onEntryStatusChange,
+  canManageExpenses,
   period,
   setPeriod,
   customRange,
@@ -3468,9 +3474,23 @@ function FinancesDashboard({
                       <td>{t(row.billing_type)}</td>
                       <td className="amount-cell">{formatCurrency(row.amount)}</td>
                       <td>
-                        <span className={`status-pill status-${row.status.toLowerCase()}`}>
-                          {t(row.status)}
-                        </span>
+                        {canManageExpenses ? (
+                          <select
+                            className="inline-select"
+                            value={row.status}
+                            onChange={(event) => onEntryStatusChange?.(row.id, event.target.value)}
+                          >
+                            {statusOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {t(status)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className={`status-pill status-${row.status.toLowerCase()}`}>
+                            {t(row.status)}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -7331,6 +7351,7 @@ export default function App() {
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isProfile = activeView === "profile";
+  const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const showFilters = isFinances || isHome || isGeos;
 
   const viewPermissionMap = React.useMemo(
@@ -7573,6 +7594,26 @@ export default function App() {
     }
   };
 
+  const handleEntryStatusChange = async (id, status) => {
+    if (!id) return;
+    try {
+      const response = await apiFetch(`/api/expenses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update status.");
+      }
+      await fetchEntries();
+    } catch (error) {
+      setEntryState((prev) => ({
+        ...prev,
+        error: error.message || "Failed to update status.",
+      }));
+    }
+  };
+
   if (!authUser) {
     return (
       <LanguageContext.Provider value={{ language, t }}>
@@ -7701,6 +7742,8 @@ export default function App() {
             onEntryChange={handleEntryChange}
             onEntrySubmit={handleEntrySubmit}
             onEntryReset={resetEntry}
+            onEntryStatusChange={handleEntryStatusChange}
+            canManageExpenses={canManageExpenses}
             period={period}
             setPeriod={setPeriod}
             customRange={customRange}
