@@ -90,6 +90,7 @@ const initDb = async () => {
       status TEXT NOT NULL,
       game TEXT,
       platform TEXT,
+      country TEXT,
       owner_role TEXT,
       owner_id INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -181,6 +182,7 @@ const initDb = async () => {
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS country TEXT;`,
   ];
 
   for (const statement of statements) {
@@ -213,15 +215,15 @@ const roleSeed = [
   },
   {
     name: "Media Buyer Senior",
-    permissions: ["dashboard", "utm", "statistics", "geos", "goals"],
+    permissions: ["dashboard", "utm", "statistics", "geos", "goals", "domains"],
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics", "geos"],
+    permissions: ["dashboard", "utm", "statistics", "geos", "domains"],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics", "geos"],
+    permissions: ["dashboard", "statistics", "geos", "domains"],
   },
 ];
 
@@ -260,11 +262,6 @@ const seedRoles = async () => {
     await insertRoleSeed(role);
   }
   for (const role of roleSeed) {
-    if (role.permissions.includes("statistics")) {
-      await ensureRolePermissions(role.name, ["geos"]);
-    }
-  }
-  for (const role of roleSeed.filter((item) => ["Boss", "Team Leader"].includes(item.name))) {
     await ensureRolePermissions(role.name, role.permissions);
   }
 };
@@ -419,8 +416,8 @@ const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id 
 
 const insertDomain = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO domains (domain, status, game, platform, owner_role, owner_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO domains (domain, status, game, platform, owner_role, owner_id, country)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       payload.domain,
@@ -429,6 +426,7 @@ const insertDomain = async (payload) => {
       payload.platform,
       payload.owner_role,
       payload.owner_id,
+      payload.country,
     ]
   );
   return rows[0];
@@ -436,7 +434,7 @@ const insertDomain = async (payload) => {
 
 const selectDomains = async (limit) =>
   getRows(
-    `SELECT id, domain, status, game, platform, owner_role, owner_id
+    `SELECT id, domain, status, game, platform, owner_role, owner_id, country
      FROM domains
      ORDER BY domain ASC, id DESC
      LIMIT $1`,
@@ -445,7 +443,7 @@ const selectDomains = async (limit) =>
 
 const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT id, domain, status, game, platform, owner_role, owner_id
+    `SELECT id, domain, status, game, platform, owner_role, owner_id, country
      FROM domains
      WHERE owner_id = $1
      ORDER BY domain ASC, id DESC
@@ -1651,7 +1649,7 @@ app.get("/api/domains", async (req, res) => {
 });
 
 app.post("/api/domains", async (req, res) => {
-  const { domain, status, ownerId, game, platform } = req.body ?? {};
+  const { domain, status, ownerId, game, platform, country } = req.body ?? {};
 
   if (!domain || !status) {
     return res.status(400).json({ error: "Domain and status are required." });
@@ -1661,11 +1659,16 @@ app.post("/api/domains", async (req, res) => {
     return res.status(400).json({ error: "Game and platform are required." });
   }
 
+  if (!country) {
+    return res.status(400).json({ error: "Country is required." });
+  }
+
   const payload = {
     domain: String(domain).trim(),
     status,
     game: String(game).trim(),
     platform: String(platform).trim(),
+    country: String(country).trim(),
     owner_role: req.user?.role || "",
     owner_id: isLeadership(req.user)
       ? ownerId
@@ -1676,6 +1679,26 @@ app.post("/api/domains", async (req, res) => {
 
   const info = await insertDomain(payload);
   res.status(201).json({ id: info.id });
+});
+
+app.patch("/api/domains/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid domain id." });
+  }
+  const domain = await selectDomainById(id);
+  if (!domain) {
+    return res.status(404).json({ error: "Domain not found." });
+  }
+  if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const { status } = req.body ?? {};
+  if (!status) {
+    return res.status(400).json({ error: "Status is required." });
+  }
+  await query(`UPDATE domains SET status = $1 WHERE id = $2`, [status, id]);
+  res.json({ ok: true });
 });
 
 app.delete("/api/domains/:id", async (req, res) => {

@@ -5520,11 +5520,13 @@ function GoalsDashboard({ authUser }) {
 function DomainsDashboard({ authUser }) {
   const { t } = useLanguage();
   const ownerRole = authUser?.role || roleOptions[0];
+  const canManageDomains = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [domainForm, setDomainForm] = React.useState(() => ({
     domain: "",
     status: "Active",
     game: "",
     platform: "PWA Group",
+    country: "Brazil",
     ownerRole,
   }));
   const [domains, setDomains] = React.useState([]);
@@ -5535,7 +5537,14 @@ function DomainsDashboard({ authUser }) {
   };
 
   const resetDomainForm = () => {
-    setDomainForm({ domain: "", status: "Active", game: "", platform: "PWA Group", ownerRole });
+    setDomainForm({
+      domain: "",
+      status: "Active",
+      game: "",
+      platform: "PWA Group",
+      country: "Brazil",
+      ownerRole,
+    });
   };
 
   React.useEffect(() => {
@@ -5589,6 +5598,22 @@ function DomainsDashboard({ authUser }) {
       await fetchDomains();
     } catch (error) {
       setDomainState({ loading: false, error: error.message || "Failed to delete domain." });
+    }
+  };
+
+  const handleDomainStatusChange = async (id, status) => {
+    try {
+      const response = await apiFetch(`/api/domains/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update domain status.");
+      }
+      await fetchDomains();
+    } catch (error) {
+      setDomainState({ loading: false, error: error.message || "Failed to update domain status." });
     }
   };
 
@@ -5647,6 +5672,16 @@ function DomainsDashboard({ authUser }) {
             </select>
           </div>
           <div className="field">
+            <label>{t("Target Country")}</label>
+            <select value={domainForm.country} onChange={updateDomainForm("country")} required>
+              {countryOptions.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
             <label>{t("Owner")}</label>
             <input value={t(domainForm.ownerRole || ownerRole)} disabled />
           </div>
@@ -5674,6 +5709,7 @@ function DomainsDashboard({ authUser }) {
                   <th>{t("Domain")}</th>
                   <th>{t("Game")}</th>
                   <th>{t("Platform")}</th>
+                  <th>{t("Country")}</th>
                   <th>{t("Owner")}</th>
                   <th>{t("Status")}</th>
                   <th />
@@ -5685,11 +5721,28 @@ function DomainsDashboard({ authUser }) {
                     <td>{domain.domain}</td>
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
+                    <td>{domain.country || "—"}</td>
                     <td>{domain.owner_role ? t(domain.owner_role) : "—"}</td>
                     <td>
-                      <span className={`status-pill status-${domain.status?.toLowerCase() || "inactive"}`}>
-                        {t(domain.status)}
-                      </span>
+                      {canManageDomains || domain.owner_id === authUser?.id ? (
+                        <select
+                          className="inline-select"
+                          value={domain.status}
+                          onChange={(event) =>
+                            handleDomainStatusChange(domain.id, event.target.value)
+                          }
+                        >
+                          {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
+                            <option key={status} value={status}>
+                              {t(status)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`status-pill status-${domain.status?.toLowerCase() || "inactive"}`}>
+                          {t(domain.status)}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <button className="icon-btn" type="button" onClick={() => handleDomainDelete(domain.id)}>
