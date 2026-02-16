@@ -5726,7 +5726,7 @@ function DomainsDashboard({ authUser }) {
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
                         <select
-                          className="inline-select"
+                          className={`inline-select status-select status-${(domain.status || "inactive").toLowerCase()}`}
                           value={domain.status}
                           onChange={(event) =>
                             handleDomainStatusChange(domain.id, event.target.value)

@@ -1954,6 +1954,43 @@ select {
   box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
 }
 
+.status-select {
+  min-width: 132px;
+  padding-right: 26px;
+  position: relative;
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.2));
+}
+
+.status-select.status-active {
+  border-color: rgba(74, 222, 128, 0.4);
+  background: linear-gradient(135deg, rgba(46, 160, 99, 0.5), rgba(22, 36, 28, 0.9));
+  color: #b8f3d1;
+}
+
+.status-select.status-pending {
+  border-color: rgba(250, 204, 21, 0.4);
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.35), rgba(46, 40, 16, 0.95));
+  color: #fde68a;
+}
+
+.status-select.status-paused {
+  border-color: rgba(251, 146, 60, 0.4);
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.35), rgba(46, 27, 14, 0.95));
+  color: #fdba74;
+}
+
+.status-select.status-expired {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.35), rgba(46, 16, 16, 0.95));
+  color: #fecaca;
+}
+
+.status-select.status-blocked {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.45), rgba(46, 12, 12, 0.95));
+  color: #fecaca;
+}
+
 .status-requested {
   background: rgba(255, 147, 87, 0.16);
   color: #ff9357;
