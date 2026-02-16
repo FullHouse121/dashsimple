@@ -31,6 +31,8 @@ const initDb = async () => {
       category TEXT NOT NULL,
       reference TEXT,
       billing_type TEXT NOT NULL,
+      crypto_network TEXT,
+      crypto_hash TEXT,
       amount REAL NOT NULL,
       status TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -183,6 +185,8 @@ const initDb = async () => {
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS country TEXT;`,
+    `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_network TEXT;`,
+    `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_hash TEXT;`,
   ];
 
   for (const statement of statements) {
@@ -268,8 +272,8 @@ const seedRoles = async () => {
 
 const insertExpense = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO expenses (date, country, category, reference, billing_type, amount, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO expenses (date, country, category, reference, billing_type, crypto_network, crypto_hash, amount, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       payload.date,
@@ -277,6 +281,8 @@ const insertExpense = async (payload) => {
       payload.category,
       payload.reference,
       payload.billing_type,
+      payload.crypto_network,
+      payload.crypto_hash,
       payload.amount,
       payload.status,
     ]
@@ -286,7 +292,7 @@ const insertExpense = async (payload) => {
 
 const selectExpenses = async (limit) =>
   getRows(
-    `SELECT id, date, country, category, reference, billing_type, amount, status
+    `SELECT id, date, country, category, reference, billing_type, crypto_network, crypto_hash, amount, status
      FROM expenses
      ORDER BY date DESC, id DESC
      LIMIT $1`,
@@ -1173,6 +1179,8 @@ app.post("/api/expenses", async (req, res) => {
     category,
     reference = "",
     billing,
+    cryptoNetwork = "",
+    cryptoHash = "",
     amount,
     status,
   } = req.body ?? {};
@@ -1192,6 +1200,8 @@ app.post("/api/expenses", async (req, res) => {
     category,
     reference,
     billing_type: billing,
+    crypto_network: cryptoNetwork || null,
+    crypto_hash: cryptoHash || null,
     amount: parsedAmount,
     status,
   };
@@ -1213,6 +1223,18 @@ app.patch("/api/expenses/:id", async (req, res) => {
     return res.status(400).json({ error: "Missing status." });
   }
   await query("UPDATE expenses SET status = $1 WHERE id = $2", [status, id]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/expenses/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid expense id." });
+  }
+  await query("DELETE FROM expenses WHERE id = $1", [id]);
   res.json({ ok: true });
 });
 

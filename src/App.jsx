@@ -151,7 +151,7 @@ const countryOptions = [
 
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
-const statusOptions = ["Requested", "Done", "Expired"];
+const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
 const approachOptions = ["All", "Organic", "Paid Social", "Influencers", "Search"];
 const priorityBuyers = [
   "Leo",
@@ -3283,6 +3283,7 @@ function FinancesDashboard({
   onEntrySubmit,
   onEntryReset,
   onEntryStatusChange,
+  onEntryDelete,
   canManageExpenses,
   period,
   setPeriod,
@@ -3388,16 +3389,39 @@ function FinancesDashboard({
                 onChange={onEntryChange("reference")}
               />
             </div>
-            <div className="field">
-              <label>{t("Billing type")}</label>
-              <select value={entry.billing} onChange={onEntryChange("billing")}> 
-                {billingOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {t(type)}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="field">
+            <label>{t("Billing type")}</label>
+            <select value={entry.billing} onChange={onEntryChange("billing")}> 
+              {billingOptions.map((type) => (
+                <option key={type} value={type}>
+                  {t(type)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {entry.billing === "Crypto" ? (
+            <>
+              <div className="field">
+                <label>{t("Network")}</label>
+                <select value={entry.cryptoNetwork} onChange={onEntryChange("cryptoNetwork")}>
+                  {["TRC20", "ERC20", "BTC", "Other"].map((network) => (
+                    <option key={network} value={network}>
+                      {network}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>{t("TX Hash")}</label>
+                <input
+                  type="text"
+                  placeholder={t("Paste transaction hash")}
+                  value={entry.cryptoHash}
+                  onChange={onEntryChange("cryptoHash")}
+                />
+              </div>
+            </>
+          ) : null}
             <div className="field">
               <label>{t("Amount (USD)")}</label>
               <input
@@ -3460,8 +3484,11 @@ function FinancesDashboard({
                     <th>{t("Category")}</th>
                     <th>{t("Reference")}</th>
                     <th>{t("Billing type")}</th>
+                    <th>{t("Network")}</th>
+                    <th>{t("TX Hash")}</th>
                     <th>{t("Amount (USD)")}</th>
                     <th>{t("Status")}</th>
+                    {canManageExpenses ? <th>{t("Actions")}</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -3472,6 +3499,10 @@ function FinancesDashboard({
                       <td>{t(row.category)}</td>
                       <td>{row.reference || "—"}</td>
                       <td>{t(row.billing_type)}</td>
+                      <td>{row.billing_type === "Crypto" ? row.crypto_network || "—" : "—"}</td>
+                      <td className="hash-cell">
+                        {row.billing_type === "Crypto" ? row.crypto_hash || "—" : "—"}
+                      </td>
                       <td className="amount-cell">{formatCurrency(row.amount)}</td>
                       <td>
                         {canManageExpenses ? (
@@ -3492,6 +3523,25 @@ function FinancesDashboard({
                           </span>
                         )}
                       </td>
+                      {canManageExpenses ? (
+                        <td className="action-cell">
+                          <button
+                            className="ghost small-btn"
+                            type="button"
+                            onClick={() => onEntryStatusChange?.(row.id, "Cancelled")}
+                            disabled={String(row.status).toLowerCase() === "cancelled"}
+                          >
+                            {t("Cancel")}
+                          </button>
+                          <button
+                            className="icon-btn danger"
+                            type="button"
+                            onClick={() => onEntryDelete?.(row.id)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -7386,6 +7436,8 @@ export default function App() {
     category: "Traffic Source",
     reference: "",
     billing: "Crypto",
+    cryptoNetwork: "TRC20",
+    cryptoHash: "",
     amount: "",
     status: "Requested",
   });
@@ -7605,6 +7657,8 @@ export default function App() {
       category: "Traffic Source",
       reference: "",
       billing: "Crypto",
+      cryptoNetwork: "TRC20",
+      cryptoHash: "",
       amount: "",
       status: "Requested",
     });
@@ -7663,6 +7717,24 @@ export default function App() {
       setEntryState((prev) => ({
         ...prev,
         error: error.message || "Failed to update status.",
+      }));
+    }
+  };
+
+  const handleEntryDelete = async (id) => {
+    if (!id) return;
+    const confirmed = window.confirm("Remove this payment? This cannot be undone.");
+    if (!confirmed) return;
+    try {
+      const response = await apiFetch(`/api/expenses/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("Failed to remove payment.");
+      }
+      await fetchEntries();
+    } catch (error) {
+      setEntryState((prev) => ({
+        ...prev,
+        error: error.message || "Failed to remove payment.",
       }));
     }
   };
@@ -7796,6 +7868,7 @@ export default function App() {
             onEntrySubmit={handleEntrySubmit}
             onEntryReset={resetEntry}
             onEntryStatusChange={handleEntryStatusChange}
+            onEntryDelete={handleEntryDelete}
             canManageExpenses={canManageExpenses}
             period={period}
             setPeriod={setPeriod}

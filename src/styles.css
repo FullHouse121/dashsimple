@@ -1923,6 +1923,40 @@ select {
   font-weight: 600;
 }
 
+.hash-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.action-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.small-btn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.icon-btn.danger {
+  color: #ff9c9c;
+  border-color: rgba(255, 99, 99, 0.3);
+}
+
+.icon-btn.danger:hover {
+  background: rgba(255, 99, 99, 0.16);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -2039,6 +2073,11 @@ select {
 .status-expired {
   background: rgba(255, 125, 163, 0.16);
   color: #ff7da3;
+}
+
+.status-cancelled {
+  background: rgba(255, 99, 132, 0.16);
+  color: #ff9bb0;
 }
 
 .empty-state {
