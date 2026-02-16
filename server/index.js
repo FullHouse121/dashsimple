@@ -91,6 +91,7 @@ const initDb = async () => {
       pixel_id TEXT NOT NULL,
       token_eaag TEXT NOT NULL,
       flows TEXT,
+      geo TEXT,
       comment TEXT,
       owner_role TEXT,
       owner_id INTEGER,
@@ -198,6 +199,7 @@ const initDb = async () => {
     `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_network TEXT;`,
     `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_hash TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS flows TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS geo TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS comment TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
@@ -437,13 +439,14 @@ const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id 
 
 const insertPixel = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO pixels (pixel_id, token_eaag, flows, comment, owner_role, owner_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO pixels (pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       payload.pixel_id,
       payload.token_eaag,
       payload.flows,
+      payload.geo,
       payload.comment,
       payload.owner_role,
       payload.owner_id,
@@ -454,7 +457,7 @@ const insertPixel = async (payload) => {
 
 const selectPixels = async (limit) =>
   getRows(
-    `SELECT id, pixel_id, token_eaag, flows, comment, owner_role, owner_id, created_at
+    `SELECT id, pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id, created_at
      FROM pixels
      ORDER BY created_at DESC, id DESC
      LIMIT $1`,
@@ -463,7 +466,7 @@ const selectPixels = async (limit) =>
 
 const selectPixelsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT id, pixel_id, token_eaag, flows, comment, owner_role, owner_id, created_at
+    `SELECT id, pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id, created_at
      FROM pixels
      WHERE owner_id = $1
      ORDER BY created_at DESC, id DESC
@@ -1807,14 +1810,23 @@ app.get("/api/pixels", async (req, res) => {
 });
 
 app.post("/api/pixels", async (req, res) => {
-  const { pixelId, tokenEaag, flows = "", comment = "", ownerId } = req.body ?? {};
-  if (!pixelId || !tokenEaag) {
-    return res.status(400).json({ error: "Pixel ID and token are required." });
+  const {
+    pixelId,
+    tokenEaag,
+    flow,
+    flows = "",
+    geo,
+    comment = "",
+    ownerId,
+  } = req.body ?? {};
+  if (!pixelId || !tokenEaag || !geo || !(flow || flows)) {
+    return res.status(400).json({ error: "Pixel ID, token, GEO, and Flow are required." });
   }
   const payload = {
     pixel_id: String(pixelId).trim(),
     token_eaag: String(tokenEaag).trim(),
-    flows: flows ? String(flows).trim() : null,
+    flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
+    geo: String(geo).trim(),
     comment: comment ? String(comment).trim() : null,
     owner_role: req.user?.role || "",
     owner_id: isLeadership(req.user)

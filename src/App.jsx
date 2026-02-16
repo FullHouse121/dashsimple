@@ -5818,11 +5818,14 @@ function PixelsDashboard({ authUser }) {
   const canManagePixels = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [pixels, setPixels] = React.useState([]);
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
+  const [domains, setDomains] = React.useState([]);
+  const [domainState, setDomainState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
-    flows: "",
+    flow: "",
+    geo: "Brazil",
     comment: "",
   });
 
@@ -5831,7 +5834,7 @@ function PixelsDashboard({ authUser }) {
   };
 
   const resetPixelForm = () => {
-    setPixelForm({ pixelId: "", tokenEaag: "", flows: "", comment: "" });
+    setPixelForm({ pixelId: "", tokenEaag: "", flow: "", geo: "Brazil", comment: "" });
   };
 
   const fetchPixels = React.useCallback(async () => {
@@ -5849,9 +5852,25 @@ function PixelsDashboard({ authUser }) {
     }
   }, []);
 
+  const fetchDomains = React.useCallback(async () => {
+    try {
+      setDomainState({ loading: true, error: null });
+      const response = await apiFetch("/api/domains?limit=200");
+      if (!response.ok) {
+        throw new Error("Failed to load domains.");
+      }
+      const data = await response.json();
+      setDomains(data);
+      setDomainState({ loading: false, error: null });
+    } catch (error) {
+      setDomainState({ loading: false, error: error.message || "Failed to load domains." });
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchPixels();
-  }, [fetchPixels]);
+    fetchDomains();
+  }, [fetchPixels, fetchDomains]);
 
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
@@ -5859,7 +5878,13 @@ function PixelsDashboard({ authUser }) {
       const response = await apiFetch("/api/pixels", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pixelForm),
+        body: JSON.stringify({
+          pixelId: pixelForm.pixelId,
+          tokenEaag: pixelForm.tokenEaag,
+          flow: pixelForm.flow,
+          geo: pixelForm.geo,
+          comment: pixelForm.comment,
+        }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -5931,12 +5956,29 @@ function PixelsDashboard({ authUser }) {
               />
             </div>
             <div className="field">
-              <label>{t("Flows")}</label>
-              <input
-                value={pixelForm.flows}
-                onChange={updatePixelForm("flows")}
-                placeholder={t("domain1.com, domain2.com")}
-              />
+              <label>{t("GEO")}</label>
+              <select value={pixelForm.geo} onChange={updatePixelForm("geo")} required>
+                {countryOptions.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t("Flow")}</label>
+              <select
+                value={pixelForm.flow}
+                onChange={updatePixelForm("flow")}
+                required={domains.length > 0}
+              >
+                <option value="">{domainState.loading ? t("Loading...") : t("Select")}</option>
+                {domains.map((domain) => (
+                  <option key={domain.id} value={domain.domain}>
+                    {domain.domain}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field field-full">
               <label>{t("Comment")}</label>
@@ -5972,7 +6014,8 @@ function PixelsDashboard({ authUser }) {
                   <th>{t("ID")}</th>
                   <th>{t("Pixel ID")}</th>
                   <th>{t("Token EAAG")}</th>
-                  <th>{t("Flows")}</th>
+                  <th>{t("GEO")}</th>
+                  <th>{t("Flow")}</th>
                   <th>{t("Comment")}</th>
                   <th>{t("Owner")}</th>
                   <th />
@@ -5984,6 +6027,7 @@ function PixelsDashboard({ authUser }) {
                     <td>{pixel.id}</td>
                     <td>{pixel.pixel_id}</td>
                     <td className="token-cell">{maskToken(pixel.token_eaag)}</td>
+                    <td>{pixel.geo || "—"}</td>
                     <td>{pixel.flows || "—"}</td>
                     <td>{pixel.comment || "—"}</td>
                     <td>{pixel.owner_role ? t(pixel.owner_role) : "—"}</td>
