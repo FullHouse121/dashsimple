@@ -46,6 +46,7 @@ import {
   Trash2,
   Globe,
   Map as MapIcon,
+  Zap,
   ShieldCheck,
   User,
   Lock,
@@ -78,6 +79,7 @@ const navItems = [
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "devices", label: "Devices", icon: Smartphone },
   { key: "domains", label: "Domains", icon: Globe },
+  { key: "pixels", label: "Pixels", icon: Zap },
   { key: "roles", label: "Roles", icon: ShieldCheck },
   { key: "profile", label: "Profile", icon: User },
   { key: "api", label: "API", icon: Plug },
@@ -98,7 +100,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "devices"] },
-  { title: "Operations", items: ["finances", "utm", "domains"] },
+  { title: "Operations", items: ["finances", "utm", "domains", "pixels"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["api"] },
@@ -181,6 +183,7 @@ const permissionOptions = [
   { key: "statistics", label: "Statistics" },
   { key: "devices", label: "Devices" },
   { key: "domains", label: "Domains" },
+  { key: "pixels", label: "Pixels" },
   { key: "api", label: "API" },
   { key: "media_buyers", label: "Media Buyers" },
   { key: "roles", label: "Roles & Permissions" },
@@ -5810,6 +5813,202 @@ function DomainsDashboard({ authUser }) {
   );
 }
 
+function PixelsDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const canManagePixels = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const [pixels, setPixels] = React.useState([]);
+  const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
+  const [showForm, setShowForm] = React.useState(true);
+  const [pixelForm, setPixelForm] = React.useState({
+    pixelId: "",
+    tokenEaag: "",
+    flows: "",
+    comment: "",
+  });
+
+  const updatePixelForm = (key) => (event) => {
+    setPixelForm((prev) => ({ ...prev, [key]: event.target.value }));
+  };
+
+  const resetPixelForm = () => {
+    setPixelForm({ pixelId: "", tokenEaag: "", flows: "", comment: "" });
+  };
+
+  const fetchPixels = React.useCallback(async () => {
+    try {
+      setPixelState({ loading: true, error: null });
+      const response = await apiFetch("/api/pixels?limit=200");
+      if (!response.ok) {
+        throw new Error("Failed to load pixels.");
+      }
+      const data = await response.json();
+      setPixels(data);
+      setPixelState({ loading: false, error: null });
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to load pixels." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchPixels();
+  }, [fetchPixels]);
+
+  const handlePixelSubmit = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await apiFetch("/api/pixels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pixelForm),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save pixel.");
+      }
+      await fetchPixels();
+      resetPixelForm();
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to save pixel." });
+    }
+  };
+
+  const handlePixelDelete = async (id) => {
+    const confirmed = window.confirm("Remove this pixel? This cannot be undone.");
+    if (!confirmed) return;
+    try {
+      const response = await apiFetch(`/api/pixels/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        throw new Error("Failed to delete pixel.");
+      }
+      await fetchPixels();
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to delete pixel." });
+    }
+  };
+
+  const maskToken = (token) => {
+    const value = String(token || "");
+    if (value.length <= 12) return value;
+    return `${value.slice(0, 6)}••••${value.slice(-4)}`;
+  };
+
+  return (
+    <section className="form-section">
+      <motion.div
+        className="panel"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+      >
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">{t("Pixels")}</h3>
+            <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
+          </div>
+          <button className="action-pill" type="button" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? t("Hide Form") : t("Create")}
+          </button>
+        </div>
+
+        {showForm ? (
+          <form className="form-grid pixel-form" onSubmit={handlePixelSubmit}>
+            <div className="field">
+              <label>{t("Pixel ID")}</label>
+              <input
+                value={pixelForm.pixelId}
+                onChange={updatePixelForm("pixelId")}
+                placeholder="7147390541946812"
+                required
+              />
+            </div>
+            <div className="field">
+              <label>{t("Token EAAG")}</label>
+              <input
+                value={pixelForm.tokenEaag}
+                onChange={updatePixelForm("tokenEaag")}
+                placeholder="EAAG..."
+                required
+              />
+            </div>
+            <div className="field">
+              <label>{t("Flows")}</label>
+              <input
+                value={pixelForm.flows}
+                onChange={updatePixelForm("flows")}
+                placeholder={t("domain1.com, domain2.com")}
+              />
+            </div>
+            <div className="field field-full">
+              <label>{t("Comment")}</label>
+              <textarea
+                rows={3}
+                value={pixelForm.comment}
+                onChange={updatePixelForm("comment")}
+                placeholder={t("Add a comment")}
+              />
+            </div>
+            <div className="form-actions">
+              <button className="ghost" type="button" onClick={resetPixelForm}>
+                {t("Reset")}
+              </button>
+              <button className="action-pill" type="submit">
+                {t("Save")}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {pixelState.loading ? (
+          <div className="empty-state">{t("Loading entries…")}</div>
+        ) : pixelState.error ? (
+          <div className="empty-state error">{pixelState.error}</div>
+        ) : pixels.length === 0 ? (
+          <div className="empty-state">{t("No pixels added yet.")}</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="entries-table pixel-table">
+              <thead>
+                <tr>
+                  <th>{t("ID")}</th>
+                  <th>{t("Pixel ID")}</th>
+                  <th>{t("Token EAAG")}</th>
+                  <th>{t("Flows")}</th>
+                  <th>{t("Comment")}</th>
+                  <th>{t("Owner")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {pixels.map((pixel) => (
+                  <tr key={pixel.id}>
+                    <td>{pixel.id}</td>
+                    <td>{pixel.pixel_id}</td>
+                    <td className="token-cell">{maskToken(pixel.token_eaag)}</td>
+                    <td>{pixel.flows || "—"}</td>
+                    <td>{pixel.comment || "—"}</td>
+                    <td>{pixel.owner_role ? t(pixel.owner_role) : "—"}</td>
+                    <td>
+                      {canManagePixels || pixel.owner_id === authUser?.id ? (
+                        <button
+                          className="icon-btn danger"
+                          type="button"
+                          onClick={() => handlePixelDelete(pixel.id)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </motion.div>
+    </section>
+  );
+}
+
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
   const [roles, setRoles] = React.useState([]);
@@ -7452,6 +7651,7 @@ export default function App() {
   const isApi = activeView === "api";
   const isGoals = activeView === "streams";
   const isDomains = activeView === "domains";
+  const isPixels = activeView === "pixels";
   const isRoles = activeView === "roles";
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
@@ -7465,13 +7665,14 @@ export default function App() {
       geos: "geos",
       streams: "goals",
       finances: "finances",
-      utm: "utm",
-      statistics: "statistics",
-      devices: "devices",
-      domains: "domains",
-      roles: "roles",
-      api: "api",
-    }),
+    utm: "utm",
+    statistics: "statistics",
+    devices: "devices",
+    domains: "domains",
+    pixels: "pixels",
+    roles: "roles",
+    api: "api",
+  }),
     []
   );
 
@@ -7881,6 +8082,8 @@ export default function App() {
           <GoalsDashboard authUser={authUser} />
         ) : isDomains ? (
           <DomainsDashboard authUser={authUser} />
+        ) : isPixels ? (
+          <PixelsDashboard authUser={authUser} />
         ) : isProfile ? (
           <ProfileDashboard authUser={authUser} />
         ) : isRoles ? (

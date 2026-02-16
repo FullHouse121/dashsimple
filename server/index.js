@@ -86,6 +86,16 @@ const initDb = async () => {
       status TEXT NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS pixels (
+      id SERIAL PRIMARY KEY,
+      pixel_id TEXT NOT NULL,
+      token_eaag TEXT NOT NULL,
+      flows TEXT,
+      comment TEXT,
+      owner_role TEXT,
+      owner_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS domains (
       id SERIAL PRIMARY KEY,
       domain TEXT NOT NULL,
@@ -187,6 +197,10 @@ const initDb = async () => {
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS country TEXT;`,
     `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_network TEXT;`,
     `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_hash TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS flows TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS comment TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
   ];
 
   for (const statement of statements) {
@@ -203,6 +217,7 @@ const allPermissions = [
   "geos",
   "devices",
   "domains",
+  "pixels",
   "api",
   "media_buyers",
   "roles",
@@ -219,15 +234,15 @@ const roleSeed = [
   },
   {
     name: "Media Buyer Senior",
-    permissions: ["dashboard", "utm", "statistics", "geos", "goals", "domains"],
+    permissions: ["dashboard", "utm", "statistics", "geos", "goals", "domains", "pixels"],
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics", "geos", "domains"],
+    permissions: ["dashboard", "utm", "statistics", "geos", "domains", "pixels"],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics", "geos", "domains"],
+    permissions: ["dashboard", "statistics", "geos", "domains", "pixels"],
   },
 ];
 
@@ -419,6 +434,47 @@ const selectMediaBuyerById = async (id) =>
   );
 
 const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id = $1`, [id]);
+
+const insertPixel = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO pixels (pixel_id, token_eaag, flows, comment, owner_role, owner_id)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      payload.pixel_id,
+      payload.token_eaag,
+      payload.flows,
+      payload.comment,
+      payload.owner_role,
+      payload.owner_id,
+    ]
+  );
+  return rows[0];
+};
+
+const selectPixels = async (limit) =>
+  getRows(
+    `SELECT id, pixel_id, token_eaag, flows, comment, owner_role, owner_id, created_at
+     FROM pixels
+     ORDER BY created_at DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+const selectPixelsByOwner = async (ownerId, limit) =>
+  getRows(
+    `SELECT id, pixel_id, token_eaag, flows, comment, owner_role, owner_id, created_at
+     FROM pixels
+     WHERE owner_id = $1
+     ORDER BY created_at DESC, id DESC
+     LIMIT $2`,
+    [ownerId, limit]
+  );
+
+const selectPixelById = async (id) =>
+  getRow(`SELECT id, owner_id FROM pixels WHERE id = $1`, [id]);
+
+const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]);
 
 const insertDomain = async (payload) => {
   const { rows } = await query(
@@ -1736,6 +1792,54 @@ app.delete("/api/domains/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deleteDomain(id);
+  res.json({ ok: true });
+});
+
+app.get("/api/pixels", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  if (isLeadership(req.user)) {
+    const rows = await selectPixels(limit);
+    return res.json(rows);
+  }
+  const rows = await selectPixelsByOwner(req.user.id, limit);
+  return res.json(rows);
+});
+
+app.post("/api/pixels", async (req, res) => {
+  const { pixelId, tokenEaag, flows = "", comment = "", ownerId } = req.body ?? {};
+  if (!pixelId || !tokenEaag) {
+    return res.status(400).json({ error: "Pixel ID and token are required." });
+  }
+  const payload = {
+    pixel_id: String(pixelId).trim(),
+    token_eaag: String(tokenEaag).trim(),
+    flows: flows ? String(flows).trim() : null,
+    comment: comment ? String(comment).trim() : null,
+    owner_role: req.user?.role || "",
+    owner_id: isLeadership(req.user)
+      ? ownerId
+        ? Number(ownerId)
+        : null
+      : req.user.id,
+  };
+  const info = await insertPixel(payload);
+  res.status(201).json({ id: info.id });
+});
+
+app.delete("/api/pixels/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid pixel id." });
+  }
+  const pixel = await selectPixelById(id);
+  if (!pixel) {
+    return res.status(404).json({ error: "Pixel not found." });
+  }
+  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  await deletePixel(id);
   res.json({ ok: true });
 });
 
