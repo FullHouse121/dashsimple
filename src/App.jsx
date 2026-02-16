@@ -3476,7 +3476,7 @@ function FinancesDashboard({
                       <td>
                         {canManageExpenses ? (
                           <select
-                            className="inline-select"
+                            className={`inline-select status-select status-${row.status.toLowerCase()}`}
                             value={row.status}
                             onChange={(event) => onEntryStatusChange?.(row.id, event.target.value)}
                           >
