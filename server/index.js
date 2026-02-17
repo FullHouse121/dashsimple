@@ -2419,19 +2419,25 @@ const runKeitaroSync = async ({
       responseData?.data?.columns,
     ];
 
+    const isUsefulColumnName = (name) =>
+      /[a-z_]/i.test(String(name || "")) && !/^\d+$/.test(String(name || "").trim());
+
     for (const candidate of candidates) {
       if (!Array.isArray(candidate) || candidate.length === 0) continue;
       const names = candidate
         .map((item) => {
           if (typeof item === "string") return item;
           if (item && typeof item === "object") {
-            return item.name || item.field || item.key || item.id || "";
+            return item.name || item.field || item.key || item.alias || item.title || item.label || "";
           }
           return "";
         })
         .map((name) => String(name || "").trim())
         .filter(Boolean);
-      if (names.length > 0) return names;
+      const usefulCount = names.filter((name) => isUsefulColumnName(name)).length;
+      if (names.length > 0 && usefulCount >= Math.max(1, Math.ceil(names.length * 0.4))) {
+        return names;
+      }
     }
 
     const payloadDimensions = Array.isArray(requestPayload?.dimensions)
@@ -2497,6 +2503,8 @@ const runKeitaroSync = async ({
 
   let inserted = 0;
   let skipped = 0;
+  let placementsExtracted = 0;
+  const placementSamples = new Set();
   const clearedOverallKeys = new Set();
 
   for (const rawRow of rows) {
@@ -2530,6 +2538,12 @@ const runKeitaroSync = async ({
         readRowValue(row, "placement") ||
         ""
     ).trim();
+    if (placement) {
+      placementsExtracted += 1;
+      if (placementSamples.size < 5) {
+        placementSamples.add(placement);
+      }
+    }
     const spend = numberFromValue(readRowValue(row, map.spendField));
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
@@ -2605,7 +2619,13 @@ const runKeitaroSync = async ({
     inserted += 1;
   }
 
-  return { total: rows.length, inserted, skipped };
+  return {
+    total: rows.length,
+    inserted,
+    skipped,
+    placementsExtracted,
+    placementSamples: Array.from(placementSamples),
+  };
 };
 
 app.post("/api/keitaro/test", async (req, res) => {

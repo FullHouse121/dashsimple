@@ -8271,6 +8271,12 @@ function KeitaroApiView() {
                       skipped: syncResult.skipped,
                       total: syncResult.total,
                     })}
+                    {syncResult.placementsExtracted !== undefined
+                      ? ` · ${t("Placements extracted")}: ${syncResult.placementsExtracted}`
+                      : ""}
+                    {Array.isArray(syncResult.placementSamples) && syncResult.placementSamples.length
+                      ? ` · ${t("Samples")}: ${syncResult.placementSamples.join(", ")}`
+                      : ""}
                   </span>
                 )}
               </div>
