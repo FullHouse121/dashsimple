@@ -767,6 +767,8 @@ const translations = {
       "Trafik kaynağınızdan gelen yeniden yatırım eventlerini alın ve Keitaro kampanyalarına bağlayın.",
     "Postback URL": "Postback URL",
     "Copy URL": "URL Kopyala",
+    "Copied successfully": "Başarıyla kopyalandı",
+    "Copy failed": "Kopyalama başarısız",
     "Accepted parameters": "Kabul edilen parametreler",
     "campaign_id - Keitaro campaign ID or name": "campaign_id - Keitaro kampanya ID veya adı",
     "buyer - media buyer override": "buyer - medya alıcısı geçersiz kılma",
@@ -5841,6 +5843,12 @@ function PixelsDashboard({ authUser }) {
     comment: "",
     ownerId: "",
   });
+  const [copyToast, setCopyToast] = React.useState({
+    visible: false,
+    type: "success",
+    message: "",
+  });
+  const copyToastTimeoutRef = React.useRef(null);
 
   const updatePixelForm = (key) => (event) => {
     setPixelForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -5914,6 +5922,24 @@ function PixelsDashboard({ authUser }) {
     setPixelForm((prev) => ({ ...prev, ownerId: prev.ownerId || String(users[0]?.id || "") }));
   }, [canManagePixels, users]);
 
+  React.useEffect(() => {
+    return () => {
+      if (copyToastTimeoutRef.current) {
+        clearTimeout(copyToastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const showCopyToast = React.useCallback((type, message) => {
+    if (copyToastTimeoutRef.current) {
+      clearTimeout(copyToastTimeoutRef.current);
+    }
+    setCopyToast({ visible: true, type, message });
+    copyToastTimeoutRef.current = setTimeout(() => {
+      setCopyToast((prev) => ({ ...prev, visible: false }));
+    }, 1400);
+  }, []);
+
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
     try {
@@ -5964,8 +5990,9 @@ function PixelsDashboard({ authUser }) {
     if (!value) return;
     try {
       await navigator.clipboard?.writeText(String(value));
+      showCopyToast("success", t("Copied successfully"));
     } catch (error) {
-      // ignore clipboard failure
+      showCopyToast("error", t("Copy failed"));
     }
   };
 
@@ -6008,6 +6035,21 @@ function PixelsDashboard({ authUser }) {
             {showForm ? t("Hide Form") : t("Create")}
           </button>
         </div>
+
+        <AnimatePresence>
+          {copyToast.visible ? (
+            <motion.div
+              className={`copy-toast ${copyToast.type}`}
+              initial={{ opacity: 0, y: -8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+            >
+              {copyToast.type === "success" ? <CheckCircle size={14} /> : <X size={14} />}
+              <span>{copyToast.message}</span>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {showForm ? (
           <form className="form-grid pixel-form" onSubmit={handlePixelSubmit}>
