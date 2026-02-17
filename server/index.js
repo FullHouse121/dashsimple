@@ -1822,18 +1822,28 @@ app.post("/api/pixels", async (req, res) => {
   if (!pixelId || !tokenEaag || !geo || !(flow || flows)) {
     return res.status(400).json({ error: "Pixel ID, token, GEO, and Flow are required." });
   }
+  let resolvedOwnerId = req.user.id;
+  let resolvedOwnerRole = req.user?.role || "";
+  if (isLeadership(req.user) && ownerId) {
+    const parsedOwner = Number(ownerId);
+    if (!Number.isFinite(parsedOwner)) {
+      return res.status(400).json({ error: "Invalid owner id." });
+    }
+    const ownerRecord = await selectUserById(parsedOwner);
+    if (!ownerRecord) {
+      return res.status(400).json({ error: "Owner not found." });
+    }
+    resolvedOwnerId = ownerRecord.id;
+    resolvedOwnerRole = ownerRecord.role || "";
+  }
   const payload = {
     pixel_id: String(pixelId).trim(),
     token_eaag: String(tokenEaag).trim(),
     flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
     geo: String(geo).trim(),
     comment: comment ? String(comment).trim() : null,
-    owner_role: req.user?.role || "",
-    owner_id: isLeadership(req.user)
-      ? ownerId
-        ? Number(ownerId)
-        : null
-      : req.user.id,
+    owner_role: resolvedOwnerRole,
+    owner_id: resolvedOwnerId,
   };
   const info = await insertPixel(payload);
   res.status(201).json({ id: info.id });

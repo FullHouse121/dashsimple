@@ -5820,6 +5820,8 @@ function PixelsDashboard({ authUser }) {
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
   const [domains, setDomains] = React.useState([]);
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
+  const [users, setUsers] = React.useState([]);
+  const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
@@ -5827,6 +5829,7 @@ function PixelsDashboard({ authUser }) {
     flow: "",
     geo: "Brazil",
     comment: "",
+    ownerId: "",
   });
 
   const updatePixelForm = (key) => (event) => {
@@ -5834,7 +5837,14 @@ function PixelsDashboard({ authUser }) {
   };
 
   const resetPixelForm = () => {
-    setPixelForm({ pixelId: "", tokenEaag: "", flow: "", geo: "Brazil", comment: "" });
+    setPixelForm({
+      pixelId: "",
+      tokenEaag: "",
+      flow: "",
+      geo: "Brazil",
+      comment: "",
+      ownerId: canManagePixels ? "" : "",
+    });
   };
 
   const fetchPixels = React.useCallback(async () => {
@@ -5867,10 +5877,32 @@ function PixelsDashboard({ authUser }) {
     }
   }, []);
 
+  const fetchUsers = React.useCallback(async () => {
+    if (!canManagePixels) return;
+    try {
+      setUserState({ loading: true, error: null });
+      const response = await apiFetch("/api/users?limit=200");
+      if (!response.ok) {
+        throw new Error("Failed to load users.");
+      }
+      const data = await response.json();
+      setUsers(data);
+      setUserState({ loading: false, error: null });
+    } catch (error) {
+      setUserState({ loading: false, error: error.message || "Failed to load users." });
+    }
+  }, [canManagePixels]);
+
   React.useEffect(() => {
     fetchPixels();
     fetchDomains();
-  }, [fetchPixels, fetchDomains]);
+    fetchUsers();
+  }, [fetchPixels, fetchDomains, fetchUsers]);
+
+  React.useEffect(() => {
+    if (!canManagePixels || !users.length) return;
+    setPixelForm((prev) => ({ ...prev, ownerId: prev.ownerId || String(users[0]?.id || "") }));
+  }, [canManagePixels, users]);
 
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
@@ -5884,6 +5916,7 @@ function PixelsDashboard({ authUser }) {
           flow: pixelForm.flow,
           geo: pixelForm.geo,
           comment: pixelForm.comment,
+          ownerId: canManagePixels ? pixelForm.ownerId || null : null,
         }),
       });
       if (!response.ok) {
@@ -5926,6 +5959,28 @@ function PixelsDashboard({ authUser }) {
     }
   };
 
+  const ownerLookup = React.useMemo(() => {
+    if (!users.length) return {};
+    return users.reduce((acc, user) => {
+      acc[user.id] = user.username;
+      return acc;
+    }, {});
+  }, [users]);
+
+  const resolveOwnerLabel = (pixel) => {
+    if (pixel?.owner_id && ownerLookup[pixel.owner_id]) return ownerLookup[pixel.owner_id];
+    if (pixel?.owner_id && pixel.owner_id === authUser?.id) return authUser?.username || "You";
+    return pixel?.owner_role ? t(pixel.owner_role) : "—";
+  };
+
+  const filteredDomains = React.useMemo(() => {
+    if (!canManagePixels) return domains;
+    if (!pixelForm.ownerId) return domains;
+    const ownerId = Number(pixelForm.ownerId);
+    if (!Number.isFinite(ownerId)) return domains;
+    return domains.filter((domain) => domain.owner_id === ownerId);
+  }, [canManagePixels, domains, pixelForm.ownerId]);
+
   return (
     <section className="form-section">
       <motion.div
@@ -5964,6 +6019,22 @@ function PixelsDashboard({ authUser }) {
                 required
               />
             </div>
+            {canManagePixels ? (
+              <div className="field">
+                <label>{t("Assign to")}</label>
+                <select value={pixelForm.ownerId} onChange={updatePixelForm("ownerId")} required>
+                  {userState.loading ? (
+                    <option value="">{t("Loading...")}</option>
+                  ) : (
+                    users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username} · {t(user.role)}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            ) : null}
             <div className="field">
               <label>{t("GEO")}</label>
               <select value={pixelForm.geo} onChange={updatePixelForm("geo")} required>
@@ -5979,10 +6050,16 @@ function PixelsDashboard({ authUser }) {
               <select
                 value={pixelForm.flow}
                 onChange={updatePixelForm("flow")}
-                required={domains.length > 0}
+                required
               >
-                <option value="">{domainState.loading ? t("Loading...") : t("Select")}</option>
-                {domains.map((domain) => (
+                <option value="">
+                  {domainState.loading
+                    ? t("Loading...")
+                    : filteredDomains.length
+                      ? t("Select")
+                      : t("No flows")}
+                </option>
+                {filteredDomains.map((domain) => (
                   <option key={domain.id} value={domain.domain}>
                     {domain.domain}
                   </option>
@@ -6059,7 +6136,7 @@ function PixelsDashboard({ authUser }) {
                     <td>{pixel.geo || "—"}</td>
                     <td>{pixel.flows || "—"}</td>
                     <td>{pixel.comment || "—"}</td>
-                    <td>{pixel.owner_role ? t(pixel.owner_role) : "—"}</td>
+                    <td>{resolveOwnerLabel(pixel)}</td>
                     <td>
                       {canManagePixels ? (
                         <button
