@@ -2195,8 +2195,10 @@ function GeosDashboard({ filters }) {
   const cityFilter = filters?.city || "All";
   const dateFrom = filters?.dateFrom;
   const dateTo = filters?.dateTo;
+  const normalizeBuyerKey = (value) =>
+    String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const normalizedPriorityBuyers = React.useMemo(
-    () => priorityBuyers.map((buyer) => buyer.toLowerCase()),
+    () => priorityBuyers.map((buyer) => normalizeBuyerKey(buyer)),
     []
   );
   const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
