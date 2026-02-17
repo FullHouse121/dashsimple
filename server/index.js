@@ -641,7 +641,16 @@ const insertDeviceStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     ON CONFLICT (date, device, os, os_version, device_model, buyer, country)
+     DO UPDATE SET
+       os_icon = COALESCE(EXCLUDED.os_icon, device_stats.os_icon),
+       spend = EXCLUDED.spend,
+       revenue = EXCLUDED.revenue,
+       clicks = EXCLUDED.clicks,
+       registers = EXCLUDED.registers,
+       ftds = EXCLUDED.ftds,
+       redeposits = EXCLUDED.redeposits`,
     [
       payload.date,
       payload.device,
@@ -1125,6 +1134,30 @@ const ensurePayloadField = (payload, field) => {
   }
 
   return { ...payload, dimensions: [rawField] };
+};
+
+const normalizeKeitaroPayload = (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const next = { ...payload };
+  const dimensions = Array.isArray(payload.dimensions) ? payload.dimensions : null;
+  const grouping = Array.isArray(payload.grouping) ? payload.grouping : null;
+  const measures = Array.isArray(payload.measures) ? payload.measures : null;
+  const metrics = Array.isArray(payload.metrics) ? payload.metrics : null;
+
+  if (dimensions && !grouping) {
+    next.grouping = [...dimensions];
+  }
+  if (grouping && !dimensions) {
+    next.dimensions = [...grouping];
+  }
+  if (measures && !metrics) {
+    next.metrics = [...measures];
+  }
+  if (metrics && !measures) {
+    next.measures = [...metrics];
+  }
+
+  return next;
 };
 
 const buildAuthHeaders = (apiKey) => {
@@ -2422,7 +2455,7 @@ const runKeitaroSync = async ({
 
   const map = mapping || {};
   const syncTarget = target === "device" ? "device" : "overall";
-  let preparedPayload = payload;
+  let preparedPayload = normalizeKeitaroPayload(payload);
   const requiredFields =
     syncTarget === "overall"
       ? [
@@ -2444,6 +2477,7 @@ const runKeitaroSync = async ({
   requiredFields.forEach((field) => {
     preparedPayload = ensurePayloadField(preparedPayload, field);
   });
+  preparedPayload = normalizeKeitaroPayload(preparedPayload);
 
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
     reportPath || "/admin_api/v1/report/build"
