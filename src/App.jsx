@@ -862,7 +862,7 @@ const LanguageContext = React.createContext({
 const useLanguage = () => React.useContext(LanguageContext);
 
 const defaultKeitaroOverallPayloadObject = {
-  dimensions: ["day", "campaign", "country", "city", "sub1"],
+  dimensions: ["day", "campaign", "country", "city", "sub_id_1"],
   measures: [
     "clicks",
     "regs",
@@ -927,7 +927,7 @@ const defaultKeitaroMapping = {
   buyerField: "campaign",
   countryField: "country",
   cityField: "city",
-  placementField: "sub1",
+  placementField: "sub_id_1",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -4854,7 +4854,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Placement Volume")}</h3>
-              <p className="panel-subtitle">{t("Clicks and registers grouped by sub1 placement.")}</p>
+              <p className="panel-subtitle">{t("Clicks and registers grouped by sub_id_1 placement.")}</p>
             </div>
             <PeriodSelect
               value={period}
@@ -4869,7 +4869,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
             <div className="empty-state error">{placementState.error}</div>
           ) : topChartRows.length === 0 ? (
             <div className="empty-state">
-              {t("No placement data yet. Sync Keitaro with sub1 in dimensions and placementField mapping.")}
+              {t("No placement data yet. Sync Keitaro with sub_id_1 in dimensions and placementField mapping.")}
             </div>
           ) : (
             <div className="chart chart-surface">
@@ -5026,7 +5026,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Placement Breakdown")}</h3>
-              <p className="panel-subtitle">{t("Detailed performance by placement (sub1).")}</p>
+              <p className="panel-subtitle">{t("Detailed performance by placement (sub_id_1).")}</p>
             </div>
             <div className="summary-inline">
               <span>{t("Clicks")}: {totals.clicks.toLocaleString()}</span>
@@ -5042,7 +5042,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
             <div className="empty-state error">{placementState.error}</div>
           ) : placementData.length === 0 ? (
             <div className="empty-state">
-              {t("No placement rows found. Check Keitaro payload dimensions and mapping for sub1.")}
+              {t("No placement rows found. Check Keitaro payload dimensions and mapping for sub_id_1.")}
             </div>
           ) : (
             <div className="table-wrap">

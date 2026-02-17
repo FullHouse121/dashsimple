@@ -58,8 +58,8 @@ Output: `dist/`
   `KEITARO_DEVICE_MAPPING`, `KEITARO_DEVICE_REPLACE`
 
 Notes:
-- For placement reporting, include `sub1` in `KEITARO_REPORT_PAYLOAD.dimensions`.
-- Set `KEITARO_MAPPING.placementField` to `sub1` (or your placement field key).
+- For placement reporting, include `sub_id_1` in `KEITARO_REPORT_PAYLOAD.dimensions`.
+- Set `KEITARO_MAPPING.placementField` to `sub_id_1` (or your placement field key).
 - Render provides `PORT` automatically
 
 ### Keitaro Cron Sync (Render Cron Job)

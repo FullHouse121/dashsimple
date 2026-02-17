@@ -777,7 +777,10 @@ const deleteMediaStat = async (date, buyer, country, city, placement) => {
          AND buyer = $2
          AND country = $3
          AND COALESCE(city, '') = $4
-         AND COALESCE(placement, '') = $5`,
+         AND (
+           COALESCE(placement, '') = $5
+           OR ($5 <> '' AND COALESCE(placement, '') = '')
+         )`,
       [date, buyer, country, cityValue, placementValue]
     );
   }
@@ -1101,7 +1104,7 @@ const defaultKeitaroMapping = {
   buyerField: "campaign",
   countryField: "country",
   cityField: "city",
-  placementField: "sub1",
+  placementField: "sub_id_1",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -2438,10 +2441,62 @@ const runKeitaroSync = async ({
     throw error;
   }
 
+  const extractColumnNames = (responseData, requestPayload) => {
+    const candidates = [
+      responseData?.meta,
+      responseData?.data?.meta,
+      responseData?.columns,
+      responseData?.data?.columns,
+    ];
+
+    for (const candidate of candidates) {
+      if (!Array.isArray(candidate) || candidate.length === 0) continue;
+      const names = candidate
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            return item.name || item.field || item.key || item.id || "";
+          }
+          return "";
+        })
+        .map((name) => String(name || "").trim())
+        .filter(Boolean);
+      if (names.length > 0) return names;
+    }
+
+    const payloadDimensions = Array.isArray(requestPayload?.dimensions)
+      ? requestPayload.dimensions
+      : Array.isArray(requestPayload?.grouping)
+        ? requestPayload.grouping
+        : [];
+    const payloadMeasures = Array.isArray(requestPayload?.measures)
+      ? requestPayload.measures
+      : Array.isArray(requestPayload?.metrics)
+        ? requestPayload.metrics
+        : [];
+    const fallback = [...payloadDimensions, ...payloadMeasures]
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    return fallback;
+  };
+
+  const columnNames = extractColumnNames(data, preparedPayload);
+  const normalizeReportRow = (rawRow) => {
+    if (!Array.isArray(rawRow)) return rawRow;
+    if (!Array.isArray(columnNames) || columnNames.length === 0) return rawRow;
+    const mapped = {};
+    for (let index = 0; index < rawRow.length; index += 1) {
+      const key = columnNames[index] || `col_${index}`;
+      mapped[key] = rawRow[index];
+    }
+    return mapped;
+  };
+
   let inserted = 0;
   let skipped = 0;
 
-  for (const row of rows) {
+  for (const rawRow of rows) {
+    const row = normalizeReportRow(rawRow);
     const date = normalizeDate(readRowValue(row, map.dateField));
     if (!date) {
       skipped += 1;
@@ -2453,6 +2508,8 @@ const runKeitaroSync = async ({
     const city = resolveCityValue(row, map.cityField);
     const placement = String(
       readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) ||
+        readRowValue(row, "sub_id_1") ||
+        readRowValue(row, "subid1") ||
         readRowValue(row, "sub1") ||
         readRowValue(row, "sub_1") ||
         readRowValue(row, "placement") ||
