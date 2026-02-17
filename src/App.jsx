@@ -4812,7 +4812,13 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   const placementData = React.useMemo(() => {
     const map = new Map();
     placementRows.forEach((row) => {
-      const placement = String(row.placement || "").trim() || "Unknown placement";
+      const rawPlacement = String(row.placement || "").trim();
+      const normalizedPlacement = rawPlacement
+        .replace(/^[({\[]?sub[_\s-]*id[_\s-]*1[)\]}]?$/i, "")
+        .replace(/^[({\[]?sub[_\s-]*1[)\]}]?$/i, "")
+        .trim();
+      if (!normalizedPlacement) return;
+      const placement = normalizedPlacement.replace(/_/g, " ");
       if (!map.has(placement)) {
         map.set(placement, {
           placement,
