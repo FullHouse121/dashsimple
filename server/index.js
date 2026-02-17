@@ -43,6 +43,7 @@ const initDb = async () => {
       buyer TEXT NOT NULL,
       country TEXT,
       city TEXT,
+      placement TEXT,
       spend REAL,
       revenue REAL,
       ftd_revenue REAL,
@@ -58,6 +59,7 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS city TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS placement TEXT;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
       buyer TEXT NOT NULL,
@@ -216,6 +218,7 @@ const allPermissions = [
   "finances",
   "utm",
   "statistics",
+  "placements",
   "geos",
   "devices",
   "domains",
@@ -236,15 +239,15 @@ const roleSeed = [
   },
   {
     name: "Media Buyer Senior",
-    permissions: ["dashboard", "utm", "statistics", "geos", "goals", "domains", "pixels"],
+    permissions: ["dashboard", "utm", "statistics", "placements", "geos", "goals", "domains", "pixels"],
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics", "geos", "domains", "pixels"],
+    permissions: ["dashboard", "utm", "statistics", "placements", "geos", "domains", "pixels"],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics", "geos", "domains", "pixels"],
+    permissions: ["dashboard", "statistics", "placements", "geos", "domains", "pixels"],
   },
 ];
 
@@ -323,6 +326,7 @@ const insertMediaStat = async (payload) => {
       buyer,
       country,
       city,
+      placement,
       spend,
       revenue,
       ftd_revenue,
@@ -333,13 +337,14 @@ const insertMediaStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id`,
     [
       payload.date,
       payload.buyer,
       payload.country,
       payload.city,
+      payload.placement,
       payload.spend,
       payload.revenue,
       payload.ftd_revenue,
@@ -357,7 +362,7 @@ const insertMediaStat = async (payload) => {
 const selectMediaStats = async (limit) =>
   getRows(
     `SELECT id, date, buyer, country, city, spend, revenue, ftd_revenue, redeposit_revenue,
-            clicks, installs, registers, ftds, redeposits
+            placement, clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
@@ -761,18 +766,31 @@ const updateRole = async (payload) =>
 
 const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
-const deleteMediaStat = async (date, buyer, country, city) => {
-  if (city) {
+const deleteMediaStat = async (date, buyer, country, city, placement) => {
+  const cityValue = city === undefined || city === null ? "" : String(city);
+  const placementValue = placement === undefined || placement === null ? "" : String(placement);
+
+  if (cityValue || placementValue) {
     return query(
-      `DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3 AND city = $4`,
-      [date, buyer, country, city]
+      `DELETE FROM media_stats
+       WHERE date = $1
+         AND buyer = $2
+         AND country = $3
+         AND COALESCE(city, '') = $4
+         AND COALESCE(placement, '') = $5`,
+      [date, buyer, country, cityValue, placementValue]
     );
   }
-  return query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
-    date,
-    buyer,
-    country,
-  ]);
+
+  return query(
+    `DELETE FROM media_stats
+     WHERE date = $1
+       AND buyer = $2
+       AND country = $3
+       AND COALESCE(city, '') = ''
+       AND COALESCE(placement, '') = ''`,
+    [date, buyer, country]
+  );
 };
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
@@ -994,16 +1012,36 @@ const readRowValue = (row, key) => {
   return null;
 };
 
-const ensurePayloadGroupingField = (payload, field) => {
+const ensurePayloadField = (payload, field) => {
   if (!payload || typeof payload !== "object" || !field) return payload;
   const rawField = String(field).trim();
   if (!rawField) return payload;
-  const grouping = Array.isArray(payload.grouping) ? [...payload.grouping] : [];
-  const normalized = grouping.map((item) => String(item).trim().toLowerCase());
-  if (!normalized.includes(rawField.toLowerCase())) {
-    grouping.push(rawField);
+
+  const hasDimensions = Array.isArray(payload.dimensions);
+  const hasGrouping = Array.isArray(payload.grouping);
+  const normalizedField = rawField.toLowerCase();
+
+  const appendField = (items) => {
+    const next = [...items];
+    const normalized = next.map((item) => String(item || "").trim().toLowerCase());
+    if (!normalized.includes(normalizedField)) {
+      next.push(rawField);
+    }
+    return next;
+  };
+
+  if (hasDimensions || hasGrouping) {
+    const nextPayload = { ...payload };
+    if (hasDimensions) {
+      nextPayload.dimensions = appendField(payload.dimensions);
+    }
+    if (hasGrouping) {
+      nextPayload.grouping = appendField(payload.grouping);
+    }
+    return nextPayload;
   }
-  return { ...payload, grouping };
+
+  return { ...payload, dimensions: [rawField] };
 };
 
 const buildAuthHeaders = (apiKey) => {
@@ -1016,9 +1054,10 @@ const buildAuthHeaders = (apiKey) => {
 
 const defaultKeitaroMapping = {
   dateField: "day",
-  buyerField: "campaign_group",
+  buyerField: "campaign",
   countryField: "country",
   cityField: "city",
+  placementField: "sub1",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -1026,9 +1065,9 @@ const defaultKeitaroMapping = {
   clicksField: "clicks",
   installsField: "installs",
   registersField: "regs",
-  ftdsField: "ftds",
-  redepositsField: "redeposits",
-  deviceField: "device",
+  ftdsField: "custom_conversion_8",
+  redepositsField: "custom_conversion_7",
+  deviceField: "device_type",
   osField: "os",
   osVersionField: "os_version",
   osIconField: "os_icon",
@@ -1430,10 +1469,12 @@ app.get("/api/media-stats", async (req, res) => {
 
   const existingKeys = new Set();
   const merged = rows.map((row) => {
-    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}|${row.city || ""}`;
+    const key = `${row.date}|${row.buyer || ""}|${row.country || ""}|${row.city || ""}|${
+      row.placement || ""
+    }`;
     existingKeys.add(key);
     const mapKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
-    const shouldMergeExternal = !row.city;
+    const shouldMergeExternal = !row.city && !row.placement;
     const installs =
       shouldMergeExternal && installMap.has(mapKey) ? installMap.get(mapKey) : row.installs ?? 0;
     const ftdRevenue =
@@ -1466,7 +1507,7 @@ app.get("/api/media-stats", async (req, res) => {
 
   installTotals.forEach((row) => {
     const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
-    const key = `${baseKey}|`;
+    const key = `${baseKey}||`;
     if (mergedKeys.has(key)) return;
     const conversions = conversionMap.get(baseKey);
     mergedKeys.add(key);
@@ -1476,6 +1517,7 @@ app.get("/api/media-stats", async (req, res) => {
       buyer: row.buyer,
       country: row.country,
       city: null,
+      placement: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
@@ -1490,7 +1532,7 @@ app.get("/api/media-stats", async (req, res) => {
 
   conversionTotals.forEach((row) => {
     const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
-    const key = `${baseKey}|`;
+    const key = `${baseKey}||`;
     if (mergedKeys.has(key)) return;
     mergedKeys.add(key);
     merged.push({
@@ -1499,6 +1541,7 @@ app.get("/api/media-stats", async (req, res) => {
       buyer: row.buyer,
       country: row.country,
       city: null,
+      placement: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
@@ -1584,6 +1627,7 @@ app.post("/api/media-stats", async (req, res) => {
     buyer,
     country,
     city,
+    placement,
     spend,
     revenue,
     ftdRevenue,
@@ -1671,6 +1715,7 @@ app.post("/api/media-stats", async (req, res) => {
     buyer,
     country: country || "",
     city: city || null,
+    placement: placement || null,
     spend: parsedSpend,
     revenue: parsedRevenue,
     ftd_revenue: parsedFtdRevenue,
@@ -2276,10 +2321,28 @@ const runKeitaroSync = async ({
 
   const map = mapping || {};
   const syncTarget = target === "device" ? "device" : "overall";
-  const preparedPayload =
+  let preparedPayload = payload;
+  const requiredFields =
     syncTarget === "overall"
-      ? ensurePayloadGroupingField(payload, map.cityField || defaultKeitaroMapping.cityField)
-      : payload;
+      ? [
+          map.dateField || defaultKeitaroMapping.dateField,
+          map.buyerField || defaultKeitaroMapping.buyerField,
+          map.countryField || defaultKeitaroMapping.countryField,
+          map.cityField || defaultKeitaroMapping.cityField,
+          map.placementField || defaultKeitaroMapping.placementField,
+        ]
+      : [
+          map.dateField || defaultKeitaroMapping.dateField,
+          map.buyerField || defaultKeitaroMapping.buyerField,
+          map.countryField || defaultKeitaroMapping.countryField,
+          map.deviceField || defaultKeitaroMapping.deviceField,
+          map.osField || defaultKeitaroMapping.osField,
+          map.osVersionField || defaultKeitaroMapping.osVersionField,
+          map.deviceModelField || defaultKeitaroMapping.deviceModelField,
+        ];
+  requiredFields.forEach((field) => {
+    preparedPayload = ensurePayloadField(preparedPayload, field);
+  });
 
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
     reportPath || "/admin_api/v1/report/build"
@@ -2326,6 +2389,9 @@ const runKeitaroSync = async ({
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
     const city = resolveCityValue(row, map.cityField);
+    const placement = String(
+      readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
+    ).trim();
     const spend = numberFromValue(readRowValue(row, map.spendField));
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
@@ -2381,7 +2447,7 @@ const runKeitaroSync = async ({
       const installs = numberFromValue(readRowValue(row, map.installsField));
 
       if (replaceExisting) {
-        await deleteMediaStat(date, buyer, country, city || null);
+        await deleteMediaStat(date, buyer, country, city || null, placement || null);
       }
 
       await insertMediaStat({
@@ -2389,6 +2455,7 @@ const runKeitaroSync = async ({
         buyer,
         country,
         city: city || null,
+        placement: placement || null,
         spend,
         revenue,
         ftd_revenue: ftdRevenue,

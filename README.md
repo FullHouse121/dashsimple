@@ -54,7 +54,12 @@ Output: `dist/`
 - Optional FX env vars: `FX_BASE`, `FX_TARGET`, `FX_PROVIDER`, `FX_TTL_SECONDS`
 - Optional Keitaro cron env vars: `KEITARO_BASE_URL`, `KEITARO_API_KEY`, `KEITARO_REPORT_PAYLOAD`,
   `KEITARO_REPORT_PATH`, `KEITARO_MAPPING`, `KEITARO_TARGET`, `KEITARO_REPLACE`, `KEITARO_RANGE_DAYS`,
-  `KEITARO_CRON_SECRET`
+  `KEITARO_CRON_SECRET`, `KEITARO_DEVICE_REPORT_PATH`, `KEITARO_DEVICE_REPORT_PAYLOAD`,
+  `KEITARO_DEVICE_MAPPING`, `KEITARO_DEVICE_REPLACE`
+
+Notes:
+- For placement reporting, include `sub1` in `KEITARO_REPORT_PAYLOAD.dimensions`.
+- Set `KEITARO_MAPPING.placementField` to `sub1` (or your placement field key).
 - Render provides `PORT` automatically
 
 ### Keitaro Cron Sync (Render Cron Job)
