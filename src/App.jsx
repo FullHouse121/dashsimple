@@ -2498,7 +2498,9 @@ function GeosDashboard({ filters }) {
     .slice(0, geoTopLimit);
   const maxCityArppu = Math.max(1, ...cityArppuTable.map((row) => row.arppu || 0));
   const maxCityUsers = Math.max(1, ...cityArppuTable.map((row) => row.ftdsDisplay || 0));
-  const cityLtvData = cityTotals
+  const cityLtvSource =
+    cityTotals.some((row) => row.redeposits > 0 && row.revenue > 0) ? cityTotals : cityTotalsAll;
+  const cityLtvData = cityLtvSource
     .map((row) => ({
       city: row.city,
       ltv: row.redeposits > 0 ? row.revenue / row.redeposits : 0,
