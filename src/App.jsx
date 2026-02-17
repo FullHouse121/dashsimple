@@ -768,6 +768,7 @@ const translations = {
     "Postback URL": "Postback URL",
     "Copy URL": "URL Kopyala",
     "Copied successfully": "Başarıyla kopyalandı",
+    "Has been copied successfully": "Başarıyla kopyalandı",
     "Copy failed": "Kopyalama başarısız",
     "Accepted parameters": "Kabul edilen parametreler",
     "campaign_id - Keitaro campaign ID or name": "campaign_id - Keitaro kampanya ID veya adı",
@@ -5849,6 +5850,7 @@ function PixelsDashboard({ authUser }) {
     message: "",
   });
   const copyToastTimeoutRef = React.useRef(null);
+  const normalizeRole = React.useCallback((value) => String(value || "").trim().toLowerCase(), []);
 
   const updatePixelForm = (key) => (event) => {
     setPixelForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -5919,8 +5921,16 @@ function PixelsDashboard({ authUser }) {
 
   React.useEffect(() => {
     if (!canManagePixels || !users.length) return;
-    setPixelForm((prev) => ({ ...prev, ownerId: prev.ownerId || String(users[0]?.id || "") }));
-  }, [canManagePixels, users]);
+    setPixelForm((prev) => {
+      if (prev.ownerId) return prev;
+      const currentUser = users.find((user) => Number(user.id) === Number(authUser?.id));
+      const roleMatch = users.find(
+        (user) => normalizeRole(user.role) === normalizeRole(authUser?.role)
+      );
+      const preferredOwner = currentUser || roleMatch || users[0];
+      return { ...prev, ownerId: preferredOwner ? String(preferredOwner.id) : "" };
+    });
+  }, [canManagePixels, users, authUser?.id, authUser?.role, normalizeRole]);
 
   React.useEffect(() => {
     return () => {
@@ -5990,7 +6000,7 @@ function PixelsDashboard({ authUser }) {
     if (!value) return;
     try {
       await navigator.clipboard?.writeText(String(value));
-      showCopyToast("success", t("Copied successfully"));
+      showCopyToast("success", t("Has been copied successfully"));
     } catch (error) {
       showCopyToast("error", t("Copy failed"));
     }
@@ -6013,10 +6023,24 @@ function PixelsDashboard({ authUser }) {
   const filteredDomains = React.useMemo(() => {
     if (!canManagePixels) return domains;
     if (!pixelForm.ownerId) return domains;
+
     const ownerId = Number(pixelForm.ownerId);
     if (!Number.isFinite(ownerId)) return domains;
-    return domains.filter((domain) => domain.owner_id === ownerId);
-  }, [canManagePixels, domains, pixelForm.ownerId]);
+
+    const selectedOwner = users.find((user) => Number(user.id) === ownerId);
+    const selectedRole = normalizeRole(selectedOwner?.role);
+
+    return domains.filter((domain) => {
+      const domainOwnerId = Number(domain.owner_id);
+      if (Number.isFinite(domainOwnerId) && domainOwnerId === ownerId) {
+        return true;
+      }
+      if (!Number.isFinite(domainOwnerId) && selectedRole) {
+        return normalizeRole(domain.owner_role) === selectedRole;
+      }
+      return false;
+    });
+  }, [canManagePixels, domains, pixelForm.ownerId, users, normalizeRole]);
 
   return (
     <section className="form-section">
