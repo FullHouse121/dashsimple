@@ -5842,7 +5842,6 @@ function PixelsDashboard({ authUser }) {
     flow: "",
     geo: "Brazil",
     comment: "",
-    ownerId: "",
   });
   const [copyToast, setCopyToast] = React.useState({
     visible: false,
@@ -5863,7 +5862,6 @@ function PixelsDashboard({ authUser }) {
       flow: "",
       geo: "Brazil",
       comment: "",
-      ownerId: canManagePixels ? "" : "",
     });
   };
 
@@ -5920,19 +5918,6 @@ function PixelsDashboard({ authUser }) {
   }, [fetchPixels, fetchDomains, fetchUsers]);
 
   React.useEffect(() => {
-    if (!canManagePixels || !users.length) return;
-    setPixelForm((prev) => {
-      if (prev.ownerId) return prev;
-      const currentUser = users.find((user) => Number(user.id) === Number(authUser?.id));
-      const roleMatch = users.find(
-        (user) => normalizeRole(user.role) === normalizeRole(authUser?.role)
-      );
-      const preferredOwner = currentUser || roleMatch || users[0];
-      return { ...prev, ownerId: preferredOwner ? String(preferredOwner.id) : "" };
-    });
-  }, [canManagePixels, users, authUser?.id, authUser?.role, normalizeRole]);
-
-  React.useEffect(() => {
     return () => {
       if (copyToastTimeoutRef.current) {
         clearTimeout(copyToastTimeoutRef.current);
@@ -5962,7 +5947,6 @@ function PixelsDashboard({ authUser }) {
           flow: pixelForm.flow,
           geo: pixelForm.geo,
           comment: pixelForm.comment,
-          ownerId: canManagePixels ? pixelForm.ownerId || null : null,
         }),
       });
       if (!response.ok) {
@@ -6021,26 +6005,20 @@ function PixelsDashboard({ authUser }) {
   };
 
   const filteredDomains = React.useMemo(() => {
-    if (!canManagePixels) return domains;
-    if (!pixelForm.ownerId) return domains;
-
-    const ownerId = Number(pixelForm.ownerId);
-    if (!Number.isFinite(ownerId)) return domains;
-
-    const selectedOwner = users.find((user) => Number(user.id) === ownerId);
-    const selectedRole = normalizeRole(selectedOwner?.role);
+    const loggedId = Number(authUser?.id);
+    const loggedRole = normalizeRole(authUser?.role);
 
     return domains.filter((domain) => {
       const domainOwnerId = Number(domain.owner_id);
-      if (Number.isFinite(domainOwnerId) && domainOwnerId === ownerId) {
+      if (Number.isFinite(loggedId) && Number.isFinite(domainOwnerId) && domainOwnerId === loggedId) {
         return true;
       }
-      if (!Number.isFinite(domainOwnerId) && selectedRole) {
-        return normalizeRole(domain.owner_role) === selectedRole;
+      if (!Number.isFinite(domainOwnerId) && loggedRole) {
+        return normalizeRole(domain.owner_role) === loggedRole;
       }
       return false;
     });
-  }, [canManagePixels, domains, pixelForm.ownerId, users, normalizeRole]);
+  }, [domains, authUser?.id, authUser?.role, normalizeRole]);
 
   return (
     <section className="form-section">
@@ -6095,32 +6073,6 @@ function PixelsDashboard({ authUser }) {
                 required
               />
             </div>
-            {canManagePixels ? (
-              <div className="field">
-                <label>{t("Assign to")}</label>
-                <select value={pixelForm.ownerId} onChange={updatePixelForm("ownerId")} required>
-                  {userState.loading ? (
-                    <option value="">{t("Loading...")}</option>
-                  ) : (
-                    users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.username} · {t(user.role)}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            ) : null}
-            <div className="field">
-              <label>{t("GEO")}</label>
-              <select value={pixelForm.geo} onChange={updatePixelForm("geo")} required>
-                {countryOptions.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="field">
               <label>{t("Flow")}</label>
               <select
@@ -6138,6 +6090,16 @@ function PixelsDashboard({ authUser }) {
                 {filteredDomains.map((domain) => (
                   <option key={domain.id} value={domain.domain}>
                     {domain.domain}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t("GEO")}</label>
+              <select value={pixelForm.geo} onChange={updatePixelForm("geo")} required>
+                {countryOptions.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
                   </option>
                 ))}
               </select>
