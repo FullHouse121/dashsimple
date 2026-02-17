@@ -766,36 +766,6 @@ const updateRole = async (payload) =>
 
 const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
-const deleteMediaStat = async (date, buyer, country, city, placement) => {
-  const cityValue = city === undefined || city === null ? "" : String(city);
-  const placementValue = placement === undefined || placement === null ? "" : String(placement);
-
-  if (cityValue || placementValue) {
-    return query(
-      `DELETE FROM media_stats
-       WHERE date = $1
-         AND buyer = $2
-         AND country = $3
-         AND COALESCE(city, '') = $4
-         AND (
-           COALESCE(placement, '') = $5
-           OR ($5 <> '' AND COALESCE(placement, '') = '')
-         )`,
-      [date, buyer, country, cityValue, placementValue]
-    );
-  }
-
-  return query(
-    `DELETE FROM media_stats
-     WHERE date = $1
-       AND buyer = $2
-       AND country = $3
-       AND COALESCE(city, '') = ''
-       AND COALESCE(placement, '') = ''`,
-    [date, buyer, country]
-  );
-};
-
 const postbackSecret = process.env.POSTBACK_SECRET || "";
 const keitaroCronSecret = process.env.KEITARO_CRON_SECRET || "";
 const fxBase = String(process.env.FX_BASE || "USD").toUpperCase();
@@ -2481,19 +2451,53 @@ const runKeitaroSync = async ({
   };
 
   const columnNames = extractColumnNames(data, preparedPayload);
+  const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
+    ? preparedPayload.dimensions
+    : Array.isArray(preparedPayload?.grouping)
+      ? preparedPayload.grouping
+      : [];
+  const payloadMeasures = Array.isArray(preparedPayload?.measures)
+    ? preparedPayload.measures
+    : Array.isArray(preparedPayload?.metrics)
+      ? preparedPayload.metrics
+      : [];
+
   const normalizeReportRow = (rawRow) => {
-    if (!Array.isArray(rawRow)) return rawRow;
-    if (!Array.isArray(columnNames) || columnNames.length === 0) return rawRow;
-    const mapped = {};
-    for (let index = 0; index < rawRow.length; index += 1) {
-      const key = columnNames[index] || `col_${index}`;
-      mapped[key] = rawRow[index];
+    if (Array.isArray(rawRow)) {
+      if (!Array.isArray(columnNames) || columnNames.length === 0) return rawRow;
+      const mapped = {};
+      for (let index = 0; index < rawRow.length; index += 1) {
+        const key = columnNames[index] || `col_${index}`;
+        mapped[key] = rawRow[index];
+      }
+      return mapped;
     }
-    return mapped;
+
+    if (rawRow && typeof rawRow === "object") {
+      const mapped = { ...rawRow };
+      const applyTuple = (tuple, names, prefix) => {
+        if (!Array.isArray(tuple)) return;
+        for (let index = 0; index < tuple.length; index += 1) {
+          const key = String(names[index] || `${prefix}_${index}`).trim();
+          if (key && !Object.prototype.hasOwnProperty.call(mapped, key)) {
+            mapped[key] = tuple[index];
+          }
+        }
+      };
+
+      applyTuple(rawRow.dimensions, payloadDimensions, "dimension");
+      applyTuple(rawRow.grouping, payloadDimensions, "grouping");
+      applyTuple(rawRow.measures, payloadMeasures, "measure");
+      applyTuple(rawRow.metrics, payloadMeasures, "metric");
+      return mapped;
+    }
+
+    return rawRow;
   };
 
   let inserted = 0;
   let skipped = 0;
+  const clearedOverallKeys = new Set();
 
   for (const rawRow of rows) {
     const row = normalizeReportRow(rawRow);
@@ -2505,6 +2509,17 @@ const runKeitaroSync = async ({
 
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
+    const baseRowKey = `${date}|${buyer}|${country}`;
+
+    if (syncTarget === "overall" && replaceExisting && !clearedOverallKeys.has(baseRowKey)) {
+      await query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
+        date,
+        buyer,
+        country,
+      ]);
+      clearedOverallKeys.add(baseRowKey);
+    }
+
     const city = resolveCityValue(row, map.cityField);
     const placement = String(
       readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) ||
@@ -2568,10 +2583,6 @@ const runKeitaroSync = async ({
       });
     } else {
       const installs = numberFromValue(readRowValue(row, map.installsField));
-
-      if (replaceExisting) {
-        await deleteMediaStat(date, buyer, country, city || null, placement || null);
-      }
 
       await insertMediaStat({
         date,
