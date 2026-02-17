@@ -2383,10 +2383,11 @@ function GeosDashboard({ filters }) {
     });
   }, [geoTotals, geoTableSort]);
 
-  const cityTotals = React.useMemo(() => {
+  const cityTotalsAll = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const city = String(row.city || "Unknown").trim() || "Unknown";
+      const rawCity = String(row.city || "Unknown").trim();
+      const city = rawCity ? rawCity : "Unknown";
       if (!map.has(city)) {
         map.set(city, {
           city,
@@ -2425,10 +2426,12 @@ function GeosDashboard({ filters }) {
       current.clicks += sum(row.clicks);
       current.registers += sum(row.registers);
     });
-    return Array.from(map.values())
-      .filter((row) => row.city !== "Unknown")
-      .sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
+    return Array.from(map.values()).sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
   }, [filteredRows]);
+
+  const cityTotals = React.useMemo(() => {
+    return cityTotalsAll.filter((row) => row.city !== "Unknown");
+  }, [cityTotalsAll]);
 
   const geoSummary = React.useMemo(
     () =>
