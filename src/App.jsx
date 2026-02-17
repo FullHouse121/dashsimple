@@ -4732,8 +4732,6 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   const sum = (value) => Number(value || 0);
   const placementRows = React.useMemo(() => {
     return placementEntries.filter((row) => {
-      const placement = String(row.placement || "").trim();
-      if (!placement) return false;
       const date = String(row.date || "").slice(0, 10);
       if (periodRange.from && periodRange.to) {
         if (!date || date < periodRange.from || date > periodRange.to) return false;
@@ -4745,8 +4743,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   const placementData = React.useMemo(() => {
     const map = new Map();
     placementRows.forEach((row) => {
-      const placement = String(row.placement || "").trim();
-      if (!placement) return;
+      const placement = String(row.placement || "").trim() || "Unknown placement";
       if (!map.has(placement)) {
         map.set(placement, {
           placement,
@@ -8539,9 +8536,16 @@ export default function App() {
     };
   }, [authUser]);
 
-  const allowedPermissions = rolePermissions?.length
-    ? rolePermissions
-    : permissionOptions.map((perm) => perm.key);
+  const allowedPermissions = React.useMemo(() => {
+    const basePermissions = rolePermissions?.length
+      ? rolePermissions
+      : permissionOptions.map((perm) => perm.key);
+    const list = Array.isArray(basePermissions) ? [...basePermissions] : [];
+    if (list.includes("statistics") && !list.includes("placements")) {
+      list.push("placements");
+    }
+    return Array.from(new Set(list));
+  }, [rolePermissions]);
 
   const allowedNavItems = navItems.filter((item) => {
     const perm = viewPermissionMap[item.key];

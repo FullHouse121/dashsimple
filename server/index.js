@@ -982,6 +982,27 @@ const readRowValue = (row, key) => {
   const field = String(key || "").trim();
   if (!field) return null;
 
+  const findObjectValue = (obj, candidate) => {
+    if (!obj || typeof obj !== "object") return null;
+    if (Object.prototype.hasOwnProperty.call(obj, candidate)) {
+      return extractRowPrimitive(obj[candidate]);
+    }
+    const keys = Object.keys(obj);
+    const lower = candidate.toLowerCase();
+    const normalized = lower.replace(/[^a-z0-9]/g, "");
+    const caseMatch = keys.find((k) => String(k).toLowerCase() === lower);
+    if (caseMatch) {
+      return extractRowPrimitive(obj[caseMatch]);
+    }
+    const normalizedMatch = keys.find(
+      (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normalized
+    );
+    if (normalizedMatch) {
+      return extractRowPrimitive(obj[normalizedMatch]);
+    }
+    return null;
+  };
+
   if (Object.prototype.hasOwnProperty.call(row, field)) {
     return extractRowPrimitive(row[field]);
   }
@@ -989,6 +1010,29 @@ const readRowValue = (row, key) => {
   const altField = field.replace(/\./g, "_");
   if (altField !== field && Object.prototype.hasOwnProperty.call(row, altField)) {
     return extractRowPrimitive(row[altField]);
+  }
+
+  const topLevelFound = findObjectValue(row, field);
+  if (topLevelFound !== null && topLevelFound !== undefined) {
+    return topLevelFound;
+  }
+
+  const nestedContainers = [
+    "dimensions",
+    "dimension",
+    "measures",
+    "metrics",
+    "grouping",
+    "groupings",
+    "data",
+    "values",
+  ];
+  for (const container of nestedContainers) {
+    const containerObj = row[container];
+    const nestedValue = findObjectValue(containerObj, field);
+    if (nestedValue !== null && nestedValue !== undefined) {
+      return nestedValue;
+    }
   }
 
   // Supports nested mapping keys like "dimensions.city" and array indexes like "items[0].name".
@@ -2229,7 +2273,25 @@ app.get("/api/roles", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = (await selectRoles(limit)).map((row) => ({
     ...row,
-    permissions: JSON.parse(row.permissions || "[]"),
+    permissions: (() => {
+      let permissions = [];
+      try {
+        permissions = JSON.parse(row.permissions || "[]");
+      } catch (error) {
+        permissions = [];
+      }
+      if (row.name === "Boss" || row.name === "Team Leader") {
+        return allPermissions;
+      }
+      const compatPermissions = Array.isArray(permissions) ? [...permissions] : [];
+      if (
+        compatPermissions.includes("statistics") &&
+        !compatPermissions.includes("placements")
+      ) {
+        compatPermissions.push("placements");
+      }
+      return Array.from(new Set(compatPermissions));
+    })(),
   }));
   res.json(rows);
 });
@@ -2390,7 +2452,11 @@ const runKeitaroSync = async ({
     const country = String(readRowValue(row, map.countryField) || "");
     const city = resolveCityValue(row, map.cityField);
     const placement = String(
-      readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
+      readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) ||
+        readRowValue(row, "sub1") ||
+        readRowValue(row, "sub_1") ||
+        readRowValue(row, "placement") ||
+        ""
     ).trim();
     const spend = numberFromValue(readRowValue(row, map.spendField));
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
