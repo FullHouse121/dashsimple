@@ -973,6 +973,13 @@ const readRowValue = (row, key) => {
     if (normalizedMatch) {
       return extractRowPrimitive(obj[normalizedMatch]);
     }
+    const containsMatch = keys.find((k) => {
+      const normalizedKey = String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+      return normalizedKey.includes(normalized) || normalized.includes(normalizedKey);
+    });
+    if (containsMatch) {
+      return extractRowPrimitive(obj[containsMatch]);
+    }
     return null;
   };
 
@@ -1027,6 +1034,65 @@ const readRowValue = (row, key) => {
   }
 
   return null;
+};
+
+const placementKeyPattern = /(sub[\s_-]*id[\s_-]*1|sub[\s_-]*1|placement)/i;
+const readPlacementValue = (row, mappedField) => {
+  const candidates = [
+    mappedField,
+    "sub_id_1",
+    "sub id 1",
+    "subid1",
+    "sub1",
+    "sub_1",
+    "placement",
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const value = readRowValue(row, candidate);
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+
+  const visit = (node, depth = 0) => {
+    if (node === null || node === undefined || depth > 4) return "";
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = visit(item, depth + 1);
+        if (found) return found;
+      }
+      return "";
+    }
+    if (typeof node !== "object") return "";
+
+    const hintedKey = [node.name, node.field, node.key, node.id, node.title, node.label].find(
+      (item) => typeof item === "string" && placementKeyPattern.test(item)
+    );
+    if (hintedKey) {
+      const hintedValue = extractRowPrimitive(
+        node.value ?? node.val ?? node.data ?? node.result ?? node.metric ?? node.measure
+      );
+      const hintedText = String(hintedValue ?? "").trim();
+      if (hintedText) return hintedText;
+    }
+
+    for (const [key, value] of Object.entries(node)) {
+      if (!placementKeyPattern.test(String(key))) continue;
+      const primitive = extractRowPrimitive(value);
+      const text = String(primitive ?? "").trim();
+      if (text) return text;
+    }
+
+    for (const value of Object.values(node)) {
+      if (!value || typeof value !== "object") continue;
+      const found = visit(value, depth + 1);
+      if (found) return found;
+    }
+    return "";
+  };
+
+  return visit(row);
 };
 
 const ensurePayloadField = (payload, field) => {
@@ -2530,13 +2596,7 @@ const runKeitaroSync = async ({
 
     const city = resolveCityValue(row, map.cityField);
     const placement = String(
-      readRowValue(row, map.placementField || defaultKeitaroMapping.placementField) ||
-        readRowValue(row, "sub_id_1") ||
-        readRowValue(row, "subid1") ||
-        readRowValue(row, "sub1") ||
-        readRowValue(row, "sub_1") ||
-        readRowValue(row, "placement") ||
-        ""
+      readPlacementValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
     ).trim();
     if (placement) {
       placementsExtracted += 1;
