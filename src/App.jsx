@@ -191,22 +191,6 @@ const permissionOptions = [
   { key: "roles", label: "Roles & Permissions" },
 ];
 
-const monthlyExpenses = [
-  { month: "Aug", traffic: 6200, tools: 3100, designs: 2150, total: 11450 },
-  { month: "Sep", traffic: 6900, tools: 3400, designs: 2600, total: 12900 },
-  { month: "Oct", traffic: 7200, tools: 3600, designs: 2800, total: 13600 },
-  { month: "Nov", traffic: 7800, tools: 4100, designs: 3100, total: 15000 },
-  { month: "Dec", traffic: 9100, tools: 5200, designs: 3600, total: 17900 },
-  { month: "Jan", traffic: 8400, tools: 4700, designs: 3300, total: 16400 },
-  { month: "Feb", traffic: 7600, tools: 3900, designs: 2900, total: 14400 },
-];
-
-const billingMix = [
-  { name: "Crypto", value: 38, color: "var(--blue)" },
-  { name: "Bank Transfer", value: 44, color: "var(--green)" },
-  { name: "Card", value: 18, color: "var(--purple)" },
-];
-
 const periodOptions = [
   "Today",
   "Yesterday",
@@ -1002,6 +986,73 @@ const getDefaultDateRange = () => {
   start.setDate(today.getDate() - 6);
   return { from: formatIsoDate(start), to: formatIsoDate(end) };
 };
+const normalizeDateValue = (value) => {
+  if (!value) return null;
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return formatIsoDate(value);
+  }
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const direct = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (direct) {
+    return `${direct[1]}-${direct[2]}-${direct[3]}`;
+  }
+  const parsed = new Date(text);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return formatIsoDate(parsed);
+};
+const normalizeDateRange = (from, to) => {
+  let normalizedFrom = normalizeDateValue(from);
+  let normalizedTo = normalizeDateValue(to);
+  if (normalizedFrom && normalizedTo && normalizedFrom > normalizedTo) {
+    [normalizedFrom, normalizedTo] = [normalizedTo, normalizedFrom];
+  }
+  return { from: normalizedFrom, to: normalizedTo };
+};
+const getPeriodDateRange = (value, customRange) => {
+  const today = new Date();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+  const day = today.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() + mondayOffset);
+  const startOfLastWeek = new Date(startOfWeek);
+  startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+  const endOfLastWeek = new Date(startOfWeek);
+  endOfLastWeek.setDate(startOfWeek.getDate() - 1);
+
+  switch (value) {
+    case "Today":
+      return normalizeDateRange(today, today);
+    case "Yesterday": {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      return normalizeDateRange(yesterday, yesterday);
+    }
+    case "This Week":
+      return normalizeDateRange(startOfWeek, today);
+    case "Last Week":
+      return normalizeDateRange(startOfLastWeek, endOfLastWeek);
+    case "This Month":
+      return normalizeDateRange(startOfMonth, today);
+    case "Last Month":
+      return normalizeDateRange(startOfLastMonth, endOfLastMonth);
+    case "Custom range":
+      return normalizeDateRange(customRange?.from, customRange?.to);
+    default:
+      return { from: null, to: null };
+  }
+};
+const isDateInRange = (value, range) => {
+  const day = normalizeDateValue(value);
+  if (!range?.from && !range?.to) return true;
+  if (!day) return false;
+  if (range?.from && day < range.from) return false;
+  if (range?.to && day > range.to) return false;
+  return true;
+};
 const formatShortDate = (value) => {
   if (!value) return "";
   const parts = value.split("-");
@@ -1131,6 +1182,11 @@ function PeriodSelect({ value, onChange, customRange, onCustomChange }) {
   const [open, setOpen] = React.useState(false);
   const [showCustom, setShowCustom] = React.useState(false);
   const containerRef = React.useRef(null);
+  const normalizedCustomRange = React.useMemo(
+    () => normalizeDateRange(customRange?.from, customRange?.to),
+    [customRange?.from, customRange?.to]
+  );
+  const canApplyCustomRange = Boolean(normalizedCustomRange.from && normalizedCustomRange.to);
 
   React.useEffect(() => {
     if (!open) return;
@@ -1156,6 +1212,13 @@ function PeriodSelect({ value, onChange, customRange, onCustomChange }) {
   };
 
   const handleApplyCustom = () => {
+    if (!canApplyCustomRange) return;
+    if (customRange?.from !== normalizedCustomRange.from) {
+      onCustomChange("from", normalizedCustomRange.from);
+    }
+    if (customRange?.to !== normalizedCustomRange.to) {
+      onCustomChange("to", normalizedCustomRange.to);
+    }
     onChange("Custom range");
     setOpen(false);
   };
@@ -1209,7 +1272,12 @@ function PeriodSelect({ value, onChange, customRange, onCustomChange }) {
                 <button className="ghost" type="button" onClick={() => setShowCustom(false)}>
                   {t("Cancel")}
                 </button>
-                <button className="action-pill" type="button" onClick={handleApplyCustom}>
+                <button
+                  className="action-pill"
+                  type="button"
+                  onClick={handleApplyCustom}
+                  disabled={!canApplyCustomRange}
+                >
                   {t("Apply")}
                 </button>
               </div>
@@ -1336,59 +1404,16 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   const matchesCountry = (country) =>
     countryFilter === "All" || String(country || "") === countryFilter;
 
-  const toDateString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-  const getPeriodRange = (value) => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-    const day = today.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() + mondayOffset);
-    const startOfLastWeek = new Date(startOfWeek);
-    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-    const endOfLastWeek = new Date(startOfWeek);
-    endOfLastWeek.setDate(startOfWeek.getDate() - 1);
-
-    switch (value) {
-      case "Today":
-        return { from: toDateString(today), to: toDateString(today) };
-      case "Yesterday": {
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        return { from: toDateString(yesterday), to: toDateString(yesterday) };
-      }
-      case "This Week":
-        return { from: toDateString(startOfWeek), to: toDateString(today) };
-      case "Last Week":
-        return { from: toDateString(startOfLastWeek), to: toDateString(endOfLastWeek) };
-      case "This Month":
-        return { from: toDateString(startOfMonth), to: toDateString(today) };
-      case "Last Month":
-        return { from: toDateString(startOfLastMonth), to: toDateString(endOfLastMonth) };
-      case "Custom range":
-        return { from: customRange.from, to: customRange.to };
-      default:
-        return { from: null, to: null };
-    }
-  };
-
-  const periodRange = getPeriodRange(period);
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
 
   const filteredRows = React.useMemo(() => {
     return homeRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       if (!matchesCountry(row.country)) return false;
-      if (periodRange.from && periodRange.to) {
-        if (!row.date) return false;
-        if (row.date < periodRange.from || row.date > periodRange.to) return false;
-      }
+      if (!isDateInRange(row.date, periodRange)) return false;
       return true;
     });
   }, [homeRows, buyerFilter, countryFilter, periodRange.from, periodRange.to, normalizedPriorityBuyers]);
@@ -2292,23 +2317,14 @@ function GeosDashboard({ filters }) {
   const filteredRows = React.useMemo(() => {
     const normalizedCountry = normalizeFilterValue(countryFilter);
     const normalizedCity = normalizeFilterValue(cityFilter);
-    const fromDate = dateFrom ? new Date(dateFrom) : null;
-    const toDate = dateTo ? new Date(dateTo) : null;
+    const dateRange = normalizeDateRange(dateFrom, dateTo);
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       const rowCountry = normalizeFilterValue(row.country);
       if (!isAllSelection(countryFilter) && rowCountry !== normalizedCountry) return false;
       const rowCity = normalizeFilterValue(row.city);
       if (!isAllSelection(cityFilter) && !rowCity.includes(normalizedCity)) return false;
-      if ((fromDate || toDate) && !row.date) return false;
-      if (fromDate && row.date) {
-        const rowDate = new Date(row.date);
-        if (Number.isFinite(rowDate.getTime()) && rowDate < fromDate) return false;
-      }
-      if (toDate && row.date) {
-        const rowDate = new Date(row.date);
-        if (Number.isFinite(rowDate.getTime()) && rowDate > toDate) return false;
-      }
+      if (!isDateInRange(row.date, dateRange)) return false;
       return true;
     });
   }, [geoRows, buyerFilter, countryFilter, cityFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
@@ -3352,20 +3368,111 @@ function FinancesDashboard({
   onCustomChange,
 }) {
   const { t } = useLanguage();
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
+  const periodLabel =
+    period === "Custom range" && periodRange.from && periodRange.to
+      ? `${periodRange.from} → ${periodRange.to}`
+      : t(period);
+  const filteredEntries = React.useMemo(
+    () => entries.filter((row) => isDateInRange(row.date, periodRange)),
+    [entries, periodRange.from, periodRange.to]
+  );
+  const isShortWindow =
+    period === "Today" ||
+    period === "Yesterday" ||
+    period === "This Week" ||
+    period === "Last Week" ||
+    period === "Custom range";
+  const financeTrendMap = React.useMemo(() => {
+    const map = new Map();
+    filteredEntries.forEach((row) => {
+      const dateKey = normalizeDateValue(row.date);
+      if (!dateKey) return;
+      const bucketKey = isShortWindow ? dateKey : dateKey.slice(0, 7);
+      const label = isShortWindow
+        ? formatShortDate(dateKey)
+        : (() => {
+            const parts = bucketKey.split("-");
+            if (parts.length < 2) return bucketKey;
+            const month = shortMonths[Number(parts[1]) - 1] || parts[1];
+            return month;
+          })();
+      if (!map.has(bucketKey)) {
+        map.set(bucketKey, { key: bucketKey, label, traffic: 0, tools: 0, designs: 0, total: 0 });
+      }
+      const current = map.get(bucketKey);
+      const amount = Number(row.amount || 0);
+      const category = String(row.category || "").toLowerCase();
+      if (category.includes("traffic")) {
+        current.traffic += amount;
+      } else if (category.includes("tool")) {
+        current.tools += amount;
+      } else if (category.includes("design")) {
+        current.designs += amount;
+      } else {
+        current.tools += amount;
+      }
+      current.total += amount;
+    });
+    return map;
+  }, [filteredEntries, isShortWindow]);
+
+  const financeTrendData = React.useMemo(
+    () => Array.from(financeTrendMap.values()).sort((a, b) => a.key.localeCompare(b.key)),
+    [financeTrendMap]
+  );
+
+  const billingTotals = React.useMemo(() => {
+    const totals = { Crypto: 0, "Bank Transfer": 0, Card: 0 };
+    filteredEntries.forEach((row) => {
+      const rawType = String(row.billing_type || row.billing || "").toLowerCase();
+      if (rawType.includes("crypto")) {
+        totals.Crypto += Number(row.amount || 0);
+      } else if (rawType.includes("bank")) {
+        totals["Bank Transfer"] += Number(row.amount || 0);
+      } else if (rawType.includes("card")) {
+        totals.Card += Number(row.amount || 0);
+      }
+    });
+    return totals;
+  }, [filteredEntries]);
+
+  const billingTotalSpend = Object.values(billingTotals).reduce((sum, value) => sum + value, 0);
+  const billingMixData = [
+    {
+      name: "Crypto",
+      value: billingTotalSpend > 0 ? (billingTotals.Crypto / billingTotalSpend) * 100 : 0,
+      color: "var(--blue)",
+    },
+    {
+      name: "Bank Transfer",
+      value: billingTotalSpend > 0 ? (billingTotals["Bank Transfer"] / billingTotalSpend) * 100 : 0,
+      color: "var(--green)",
+    },
+    {
+      name: "Card",
+      value: billingTotalSpend > 0 ? (billingTotals.Card / billingTotalSpend) * 100 : 0,
+      color: "var(--purple)",
+    },
+  ];
+
   const now = new Date();
   const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const totalExpenses = entries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const totalExpenses = filteredEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const monthExpenses = entries.reduce(
     (sum, row) => (row.date?.startsWith(monthKey) ? sum + Number(row.amount || 0) : sum),
     0
   );
-  const pendingCount = entries.filter(
+  const pendingCount = filteredEntries.filter(
     (row) => String(row.status).toLowerCase() === "requested"
   ).length;
-  const doneCount = entries.filter((row) => String(row.status).toLowerCase() === "done").length;
+  const doneCount = filteredEntries.filter((row) => String(row.status).toLowerCase() === "done").length;
 
   const financeMetrics = [
-    { label: "Total Expenses", value: formatCurrency(totalExpenses), icon: Wallet, meta: "All time" },
+    { label: "Total Expenses", value: formatCurrency(totalExpenses), icon: Wallet, meta: periodLabel },
     {
       label: "This Month",
       value: formatCurrency(monthExpenses),
@@ -3376,8 +3483,8 @@ function FinancesDashboard({
     { label: "Completed", value: `${doneCount}`, icon: CheckCircle, meta: "Marked done" },
   ];
 
-  const totalSpend = monthlyExpenses.reduce((sum, item) => sum + item.total, 0);
-  const avgSpend = Math.round(totalSpend / monthlyExpenses.length);
+  const totalSpend = totalExpenses;
+  const avgSpend = financeTrendData.length ? Math.round(totalSpend / financeTrendData.length) : 0;
 
   return (
     <>
@@ -3533,7 +3640,7 @@ function FinancesDashboard({
             <div className="empty-state">{t("Loading entries…")}</div>
           ) : entryState.error ? (
             <div className="empty-state error">{entryState.error}</div>
-          ) : entries.length === 0 ? (
+          ) : filteredEntries.length === 0 ? (
             <div className="empty-state">{t("No entries yet. Add your first expense above.")}</div>
           ) : (
             <div className="table-wrap">
@@ -3553,7 +3660,7 @@ function FinancesDashboard({
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((row) => (
+                  {filteredEntries.map((row) => (
                     <tr key={row.id}>
                       <td>{row.date}</td>
                       <td>{row.country}</td>
@@ -3643,7 +3750,7 @@ function FinancesDashboard({
               </div>
             </div>
             <ResponsiveContainer width="100%" height={240}>
-              <AreaChart data={monthlyExpenses} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
+              <AreaChart data={financeTrendData} margin={{ top: 12, right: 16, left: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id="totalGlow" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="rgba(100, 184, 255, 0.6)" />
@@ -3652,7 +3759,7 @@ function FinancesDashboard({
                 </defs>
                 <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis
-                  dataKey="month"
+                  dataKey="label"
                   stroke="#7f848f"
                   tickLine={false}
                   axisLine={false}
@@ -3703,10 +3810,10 @@ function FinancesDashboard({
           </div>
           <div className="chart chart-surface">
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthlyExpenses} barCategoryGap="24%">
+              <BarChart data={financeTrendData} barCategoryGap="24%">
                 <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis
-                  dataKey="month"
+                  dataKey="label"
                   stroke="#7f848f"
                   tickLine={false}
                   axisLine={false}
@@ -3764,34 +3871,40 @@ function FinancesDashboard({
             />
           </div>
           <div className="chart chart-surface chart-center">
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie
-                  data={billingMix}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={60}
-                  outerRadius={92}
-                  paddingAngle={4}
-                  cornerRadius={10}
-                  stroke="rgba(12, 14, 17, 0.9)"
-                  strokeWidth={2}
-                >
-                  {billingMix.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
+            {billingTotalSpend > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={240}>
+                  <PieChart>
+                    <Pie
+                      data={billingMixData}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={92}
+                      paddingAngle={4}
+                      cornerRadius={10}
+                      stroke="rgba(12, 14, 17, 0.9)"
+                      strokeWidth={2}
+                    >
+                      {billingMixData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ShareTooltip />} wrapperStyle={{ zIndex: 40 }} cursor={false} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="legend">
+                  {billingMixData.map((item) => (
+                    <span className="legend-item" key={item.name}>
+                      <span className="dot" style={{ background: item.color }} />
+                      {t(item.name)}
+                    </span>
                   ))}
-                </Pie>
-                <Tooltip content={<ShareTooltip />} wrapperStyle={{ zIndex: 40 }} cursor={false} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="legend">
-              {billingMix.map((item) => (
-                <span className="legend-item" key={item.name}>
-                  <span className="dot" style={{ background: item.color }} />
-                  {t(item.name)}
-                </span>
-              ))}
-            </div>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">{t("No billing mix data for selected period.")}</div>
+            )}
           </div>
         </motion.div>
       </section>
@@ -4684,58 +4797,14 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
     return () => window.removeEventListener("keitaro:sync", handleSync);
   }, [fetchPlacements]);
 
-  const toDateString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  const getPeriodRange = (value) => {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-    const day = today.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() + mondayOffset);
-    const startOfLastWeek = new Date(startOfWeek);
-    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-    const endOfLastWeek = new Date(startOfWeek);
-    endOfLastWeek.setDate(startOfWeek.getDate() - 1);
-
-    switch (value) {
-      case "Today":
-        return { from: toDateString(today), to: toDateString(today) };
-      case "Yesterday": {
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        return { from: toDateString(yesterday), to: toDateString(yesterday) };
-      }
-      case "This Week":
-        return { from: toDateString(startOfWeek), to: toDateString(today) };
-      case "Last Week":
-        return { from: toDateString(startOfLastWeek), to: toDateString(endOfLastWeek) };
-      case "This Month":
-        return { from: toDateString(startOfMonth), to: toDateString(today) };
-      case "Last Month":
-        return { from: toDateString(startOfLastMonth), to: toDateString(endOfLastMonth) };
-      case "Custom range":
-        return { from: customRange.from, to: customRange.to };
-      default:
-        return { from: null, to: null };
-    }
-  };
-
-  const periodRange = getPeriodRange(period);
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
   const sum = (value) => Number(value || 0);
   const placementRows = React.useMemo(() => {
     return placementEntries.filter((row) => {
-      const date = String(row.date || "").slice(0, 10);
-      if (periodRange.from && periodRange.to) {
-        if (!date || date < periodRange.from || date > periodRange.to) return false;
-      }
+      if (!isDateInRange(row.date, periodRange)) return false;
       return true;
     });
   }, [placementEntries, periodRange.from, periodRange.to]);
@@ -5090,6 +5159,10 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const { t } = useLanguage();
   const [deviceEntries, setDeviceEntries] = React.useState([]);
   const [deviceState, setDeviceState] = React.useState({ loading: true, error: null });
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
 
   const fetchDeviceStats = React.useCallback(async () => {
     try {
@@ -5118,6 +5191,11 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     return () => window.removeEventListener("keitaro:sync", handleSync);
   }, [fetchDeviceStats]);
 
+  const filteredDeviceEntries = React.useMemo(
+    () => deviceEntries.filter((row) => isDateInRange(row.date, periodRange)),
+    [deviceEntries, periodRange.from, periodRange.to]
+  );
+
   const sum = (value) => Number(value || 0);
   const deviceMap = new Map();
 
@@ -5129,7 +5207,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
     return `${device}||${os}||${osVersion}||${deviceModel}`;
   };
 
-  deviceEntries.forEach((row) => {
+  filteredDeviceEntries.forEach((row) => {
     const device = row.device || "Unknown";
     const os = row.os || row.os_version || row.osVersion || "";
     const osVersion = row.os_version || row.osVersion || "";
@@ -8652,18 +8730,35 @@ export default function App() {
 
   const updateFilter = (key) => (event) => {
     const value = event.target.value;
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters((prev) => {
+      if (key === "dateFrom" || key === "dateTo") {
+        const next = { ...prev, [key]: value };
+        const normalized = normalizeDateRange(next.dateFrom, next.dateTo);
+        return {
+          ...next,
+          dateFrom: normalized.from || "",
+          dateTo: normalized.to || "",
+        };
+      }
+      return { ...prev, [key]: value };
+    });
     if (key === "dateFrom" || key === "dateTo") {
-      setCustomRange((prev) => ({
-        ...prev,
-        [key === "dateFrom" ? "from" : "to"]: value,
-      }));
+      setCustomRange((prev) => {
+        const nextRange = {
+          ...prev,
+          [key === "dateFrom" ? "from" : "to"]: value,
+        };
+        return normalizeDateRange(nextRange.from, nextRange.to);
+      });
       setPeriod("Custom range");
     }
   };
 
   const handleCustomRange = (key, value) => {
-    setCustomRange((prev) => ({ ...prev, [key]: value }));
+    setCustomRange((prev) => {
+      const nextRange = { ...prev, [key]: value };
+      return normalizeDateRange(nextRange.from, nextRange.to);
+    });
   };
 
   const handleEntryChange = (key) => (event) => {
@@ -9064,10 +9159,11 @@ export default function App() {
                 <button
                   className="ghost"
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    const defaultRange = getDefaultDateRange();
                     setFilters({
-                      dateFrom: "2026-02-01",
-                      dateTo: "2026-02-07",
+                      dateFrom: defaultRange.from,
+                      dateTo: defaultRange.to,
                       country: "All",
                       city: "All",
                       approach: "All",
@@ -9075,8 +9171,10 @@ export default function App() {
                       category: "All",
                       billing: "All",
                       status: "All",
-                    })
-                  }
+                    });
+                    setCustomRange(defaultRange);
+                    setPeriod("Custom range");
+                  }}
                 >
                   Reset
                 </button>
