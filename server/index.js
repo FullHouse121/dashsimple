@@ -842,6 +842,65 @@ const normalizeDevice = (value) => {
   return raw;
 };
 
+const extractRowPrimitive = (value) => {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    if (!value.length) return null;
+    return extractRowPrimitive(value[0]);
+  }
+  if (typeof value === "object") {
+    const priorityKeys = ["value", "name", "title", "label", "city"];
+    for (const key of priorityKeys) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const nested = extractRowPrimitive(value[key]);
+        if (nested !== null && nested !== undefined && nested !== "") return nested;
+      }
+    }
+    return null;
+  }
+  return value;
+};
+
+const normalizeCityValue = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const normalized = text.toLowerCase();
+  if (
+    [
+      "unknown",
+      "(not set)",
+      "not set",
+      "n/a",
+      "na",
+      "null",
+      "undefined",
+      "-",
+    ].includes(normalized)
+  ) {
+    return "";
+  }
+  return text;
+};
+
+const resolveCityValue = (row, preferredField) => {
+  const candidates = [
+    preferredField,
+    "city",
+    "city_name",
+    "cityName",
+    "geo_city",
+    "location_city",
+    "sub_city",
+  ].filter(Boolean);
+
+  for (const key of candidates) {
+    const value = readRowValue(row, key);
+    const city = normalizeCityValue(value);
+    if (city) return city;
+  }
+  return "";
+};
+
 const resolvePostbackContext = async (payload) => {
   const campaignId =
     payload.campaign_id ||
@@ -902,7 +961,49 @@ const resolvePostbackContext = async (payload) => {
 
 const readRowValue = (row, key) => {
   if (!row || !key) return null;
-  return Object.prototype.hasOwnProperty.call(row, key) ? row[key] : null;
+  const field = String(key || "").trim();
+  if (!field) return null;
+
+  if (Object.prototype.hasOwnProperty.call(row, field)) {
+    return extractRowPrimitive(row[field]);
+  }
+
+  const altField = field.replace(/\./g, "_");
+  if (altField !== field && Object.prototype.hasOwnProperty.call(row, altField)) {
+    return extractRowPrimitive(row[altField]);
+  }
+
+  // Supports nested mapping keys like "dimensions.city" and array indexes like "items[0].name".
+  if (field.includes(".") || field.includes("[")) {
+    const path = field.replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean);
+    let current = row;
+    for (const part of path) {
+      if (current === null || current === undefined) {
+        current = null;
+        break;
+      }
+      if (typeof current !== "object") {
+        current = null;
+        break;
+      }
+      current = current[part];
+    }
+    return extractRowPrimitive(current);
+  }
+
+  return null;
+};
+
+const ensurePayloadGroupingField = (payload, field) => {
+  if (!payload || typeof payload !== "object" || !field) return payload;
+  const rawField = String(field).trim();
+  if (!rawField) return payload;
+  const grouping = Array.isArray(payload.grouping) ? [...payload.grouping] : [];
+  const normalized = grouping.map((item) => String(item).trim().toLowerCase());
+  if (!normalized.includes(rawField.toLowerCase())) {
+    grouping.push(rawField);
+  }
+  return { ...payload, grouping };
 };
 
 const buildAuthHeaders = (apiKey) => {
@@ -2168,6 +2269,13 @@ const runKeitaroSync = async ({
     throw error;
   }
 
+  const map = mapping || {};
+  const syncTarget = target === "device" ? "device" : "overall";
+  const preparedPayload =
+    syncTarget === "overall"
+      ? ensurePayloadGroupingField(payload, map.cityField || defaultKeitaroMapping.cityField)
+      : payload;
+
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
     reportPath || "/admin_api/v1/report/build"
   )}`;
@@ -2178,7 +2286,7 @@ const runKeitaroSync = async ({
       "Content-Type": "application/json",
       ...buildAuthHeaders(apiKey),
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(preparedPayload),
   });
 
   const data = await response.json().catch(() => null);
@@ -2200,8 +2308,6 @@ const runKeitaroSync = async ({
     throw error;
   }
 
-  const map = mapping || {};
-  const syncTarget = target === "device" ? "device" : "overall";
   let inserted = 0;
   let skipped = 0;
 
@@ -2214,7 +2320,7 @@ const runKeitaroSync = async ({
 
     const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
     const country = String(readRowValue(row, map.countryField) || "");
-    const city = String(readRowValue(row, map.cityField) || "").trim();
+    const city = resolveCityValue(row, map.cityField);
     const spend = numberFromValue(readRowValue(row, map.spendField));
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));

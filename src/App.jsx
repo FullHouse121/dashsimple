@@ -862,7 +862,7 @@ const defaultKeitaroPayload = `{
     "from": "2026-02-01",
     "to": "2026-02-07"
   },
-  "grouping": ["day", "campaign_group", "country"],
+  "grouping": ["day", "campaign_group", "country", "city"],
   "metrics": [
     "clicks",
     "regs",
@@ -2386,8 +2386,9 @@ function GeosDashboard({ filters }) {
   const cityTotalsAll = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const rawCity = String(row.city || "Unknown").trim();
-      const city = rawCity ? rawCity : "Unknown";
+      const rawCity = String(row.city || "").trim();
+      const countryLabel = String(row.country || "Unknown").trim() || "Unknown";
+      const city = rawCity || `Unknown (${countryLabel})`;
       if (!map.has(city)) {
         map.set(city, {
           city,
@@ -2430,7 +2431,7 @@ function GeosDashboard({ filters }) {
   }, [filteredRows]);
 
   const cityTotals = React.useMemo(() => {
-    return cityTotalsAll.filter((row) => row.city !== "Unknown");
+    return cityTotalsAll;
   }, [cityTotalsAll]);
 
   const geoSummary = React.useMemo(
@@ -2481,8 +2482,10 @@ function GeosDashboard({ filters }) {
     .map((row) => ({
       city: row.city,
       arppu: row.ftds > 0 ? row.revenue / row.ftds : 0,
+      revenue: row.revenue,
+      ftds: row.ftds,
     }))
-    .filter((row) => row.arppu > 0)
+    .filter((row) => row.revenue > 0 || row.ftds > 0)
     .sort((a, b) => b.arppu - a.arppu)
     .slice(0, geoTopLimit);
   const cityArppuTable = cityTotals
@@ -2493,7 +2496,7 @@ function GeosDashboard({ filters }) {
       ftdsDisplay: Math.round(row.ftds || 0),
       revenue: row.revenue,
     }))
-    .filter((row) => row.arppu > 0)
+    .filter((row) => row.revenue > 0 || row.ftds > 0)
     .sort((a, b) => b.arppu - a.arppu)
     .slice(0, geoTopLimit);
   const maxCityArppu = Math.max(1, ...cityArppuTable.map((row) => row.arppu || 0));
@@ -6119,26 +6122,30 @@ function PixelsDashboard({ authUser }) {
                   <tr key={pixel.id}>
                     <td>{pixel.id}</td>
                     <td className="copy-cell">
-                      <span className="copy-text">{pixel.pixel_id}</span>
-                      <button
-                        className="icon-btn copy-btn"
-                        type="button"
-                        onClick={handleCopy(pixel.pixel_id)}
-                        title={t("Copy")}
-                      >
-                        <Copy size={14} />
-                      </button>
+                      <div className="copy-inline">
+                        <span className="copy-text">{pixel.pixel_id}</span>
+                        <button
+                          className="icon-btn copy-btn"
+                          type="button"
+                          onClick={handleCopy(pixel.pixel_id)}
+                          title={t("Copy")}
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </div>
                     </td>
                     <td className="copy-cell token-cell">
-                      <span className="copy-text">{maskToken(pixel.token_eaag)}</span>
-                      <button
-                        className="icon-btn copy-btn"
-                        type="button"
-                        onClick={handleCopy(pixel.token_eaag)}
-                        title={t("Copy")}
-                      >
-                        <Copy size={14} />
-                      </button>
+                      <div className="copy-inline">
+                        <span className="copy-text">{maskToken(pixel.token_eaag)}</span>
+                        <button
+                          className="icon-btn copy-btn"
+                          type="button"
+                          onClick={handleCopy(pixel.token_eaag)}
+                          title={t("Copy")}
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </div>
                     </td>
                     <td>{pixel.geo || "—"}</td>
                     <td>{pixel.flows || "—"}</td>
@@ -7280,6 +7287,18 @@ function KeitaroApiView() {
     } catch (error) {
       setSyncState({ loading: false, ok: false, message: "Report payload must be valid JSON." });
       return;
+    }
+
+    if (syncTarget === "overall") {
+      const cityField = String(mapping.cityField || "city").trim();
+      const grouping = Array.isArray(parsedPayload?.grouping) ? [...parsedPayload.grouping] : [];
+      const hasCity = grouping.some(
+        (field) => String(field || "").trim().toLowerCase() === cityField.toLowerCase()
+      );
+      if (!hasCity) {
+        grouping.push(cityField);
+      }
+      parsedPayload = { ...(parsedPayload || {}), grouping };
     }
 
     try {
