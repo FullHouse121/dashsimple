@@ -1947,6 +1947,33 @@ select {
   color: var(--muted);
 }
 
+.copy-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copy-text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .pixel-form .field-full {
   grid-column: span 2;
 }

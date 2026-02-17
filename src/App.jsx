@@ -5917,6 +5917,15 @@ function PixelsDashboard({ authUser }) {
     return `${value.slice(0, 6)}••••${value.slice(-4)}`;
   };
 
+  const handleCopy = (value) => async () => {
+    if (!value) return;
+    try {
+      await navigator.clipboard?.writeText(String(value));
+    } catch (error) {
+      // ignore clipboard failure
+    }
+  };
+
   return (
     <section className="form-section">
       <motion.div
@@ -6025,14 +6034,34 @@ function PixelsDashboard({ authUser }) {
                 {pixels.map((pixel) => (
                   <tr key={pixel.id}>
                     <td>{pixel.id}</td>
-                    <td>{pixel.pixel_id}</td>
-                    <td className="token-cell">{maskToken(pixel.token_eaag)}</td>
+                    <td className="copy-cell">
+                      <span className="copy-text">{pixel.pixel_id}</span>
+                      <button
+                        className="icon-btn copy-btn"
+                        type="button"
+                        onClick={handleCopy(pixel.pixel_id)}
+                        title={t("Copy")}
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </td>
+                    <td className="copy-cell token-cell">
+                      <span className="copy-text">{maskToken(pixel.token_eaag)}</span>
+                      <button
+                        className="icon-btn copy-btn"
+                        type="button"
+                        onClick={handleCopy(pixel.token_eaag)}
+                        title={t("Copy")}
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </td>
                     <td>{pixel.geo || "—"}</td>
                     <td>{pixel.flows || "—"}</td>
                     <td>{pixel.comment || "—"}</td>
                     <td>{pixel.owner_role ? t(pixel.owner_role) : "—"}</td>
                     <td>
-                      {canManagePixels || pixel.owner_id === authUser?.id ? (
+                      {canManagePixels ? (
                         <button
                           className="icon-btn danger"
                           type="button"

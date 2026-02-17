@@ -1848,7 +1848,7 @@ app.delete("/api/pixels/:id", async (req, res) => {
   if (!pixel) {
     return res.status(404).json({ error: "Pixel not found." });
   }
-  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+  if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deletePixel(id);
