@@ -6005,15 +6005,26 @@ function PixelsDashboard({ authUser }) {
   };
 
   const filteredDomains = React.useMemo(() => {
-    const loggedId = Number(authUser?.id);
+    const loggedIdRaw = authUser?.id;
+    const loggedId =
+      loggedIdRaw === null || loggedIdRaw === undefined || loggedIdRaw === ""
+        ? null
+        : Number(loggedIdRaw);
+    const hasLoggedId = Number.isFinite(loggedId) && loggedId > 0;
     const loggedRole = normalizeRole(authUser?.role);
 
     return domains.filter((domain) => {
-      const domainOwnerId = Number(domain.owner_id);
-      if (Number.isFinite(loggedId) && Number.isFinite(domainOwnerId) && domainOwnerId === loggedId) {
+      const domainOwnerIdRaw = domain.owner_id;
+      const domainOwnerId =
+        domainOwnerIdRaw === null || domainOwnerIdRaw === undefined || domainOwnerIdRaw === ""
+          ? null
+          : Number(domainOwnerIdRaw);
+      const hasDomainOwnerId = Number.isFinite(domainOwnerId) && domainOwnerId > 0;
+
+      if (hasLoggedId && hasDomainOwnerId && domainOwnerId === loggedId) {
         return true;
       }
-      if (!Number.isFinite(domainOwnerId) && loggedRole) {
+      if (!hasDomainOwnerId && loggedRole) {
         return normalizeRole(domain.owner_role) === loggedRole;
       }
       return false;

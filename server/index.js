@@ -1845,6 +1845,15 @@ app.post("/api/domains", async (req, res) => {
     return res.status(400).json({ error: "Country is required." });
   }
 
+  let resolvedOwnerId = req.user.id;
+  if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
+    const parsedOwner = Number(ownerId);
+    if (!Number.isFinite(parsedOwner)) {
+      return res.status(400).json({ error: "Invalid owner id." });
+    }
+    resolvedOwnerId = parsedOwner;
+  }
+
   const payload = {
     domain: String(domain).trim(),
     status,
@@ -1852,11 +1861,7 @@ app.post("/api/domains", async (req, res) => {
     platform: String(platform).trim(),
     country: String(country).trim(),
     owner_role: req.user?.role || "",
-    owner_id: isLeadership(req.user)
-      ? ownerId
-        ? Number(ownerId)
-        : null
-      : req.user.id,
+    owner_id: resolvedOwnerId,
   };
 
   const info = await insertDomain(payload);
