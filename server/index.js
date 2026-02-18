@@ -128,6 +128,7 @@ const initDb = async () => {
       token_eaag TEXT NOT NULL,
       flows TEXT,
       geo TEXT,
+      status TEXT NOT NULL DEFAULT 'Active',
       comment TEXT,
       owner_role TEXT,
       owner_id INTEGER,
@@ -240,9 +241,11 @@ const initDb = async () => {
     `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS crypto_hash TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS flows TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS geo TEXT;`,
+    `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS status TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS comment TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
+    `UPDATE pixels SET status = 'Active' WHERE status IS NULL;`,
   ];
 
   for (const statement of statements) {
@@ -556,14 +559,15 @@ const deleteMediaBuyer = async (id) => query(`DELETE FROM media_buyers WHERE id 
 
 const insertPixel = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO pixels (pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO pixels (pixel_id, token_eaag, flows, geo, status, comment, owner_role, owner_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
     [
       payload.pixel_id,
       payload.token_eaag,
       payload.flows,
       payload.geo,
+      payload.status,
       payload.comment,
       payload.owner_role,
       payload.owner_id,
@@ -574,7 +578,7 @@ const insertPixel = async (payload) => {
 
 const selectPixels = async (limit) =>
   getRows(
-    `SELECT id, pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id, created_at
+    `SELECT id, pixel_id, token_eaag, flows, geo, status, comment, owner_role, owner_id, created_at
      FROM pixels
      ORDER BY created_at DESC, id DESC
      LIMIT $1`,
@@ -583,7 +587,7 @@ const selectPixels = async (limit) =>
 
 const selectPixelsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT id, pixel_id, token_eaag, flows, geo, comment, owner_role, owner_id, created_at
+    `SELECT id, pixel_id, token_eaag, flows, geo, status, comment, owner_role, owner_id, created_at
      FROM pixels
      WHERE owner_id = $1
      ORDER BY created_at DESC, id DESC
@@ -2289,6 +2293,7 @@ app.post("/api/pixels", async (req, res) => {
     flows = "",
     geo,
     comment = "",
+    status = "Active",
     ownerId,
   } = req.body ?? {};
   if (!pixelId || !tokenEaag || !geo || !(flow || flows)) {
@@ -2313,12 +2318,33 @@ app.post("/api/pixels", async (req, res) => {
     token_eaag: String(tokenEaag).trim(),
     flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
     geo: String(geo).trim(),
+    status: String(status || "Active").trim(),
     comment: comment ? String(comment).trim() : null,
     owner_role: resolvedOwnerRole,
     owner_id: resolvedOwnerId,
   };
   const info = await insertPixel(payload);
   res.status(201).json({ id: info.id });
+});
+
+app.patch("/api/pixels/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid pixel id." });
+  }
+  const pixel = await selectPixelById(id);
+  if (!pixel) {
+    return res.status(404).json({ error: "Pixel not found." });
+  }
+  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const { status } = req.body ?? {};
+  if (!status) {
+    return res.status(400).json({ error: "Status is required." });
+  }
+  await query(`UPDATE pixels SET status = $1 WHERE id = $2`, [status, id]);
+  res.json({ ok: true });
 });
 
 app.delete("/api/pixels/:id", async (req, res) => {

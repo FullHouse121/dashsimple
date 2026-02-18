@@ -6642,6 +6642,8 @@ function DomainsDashboard({ authUser }) {
   }));
   const [domains, setDomains] = React.useState([]);
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
+  const [users, setUsers] = React.useState([]);
+  const [userState, setUserState] = React.useState({ loading: true, error: null });
 
   const updateDomainForm = (key) => (event) => {
     setDomainForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -6677,9 +6679,65 @@ function DomainsDashboard({ authUser }) {
     }
   }, []);
 
+  const fetchUsers = React.useCallback(async () => {
+    try {
+      setUserState({ loading: true, error: null });
+      const response = await apiFetch("/api/users?limit=500");
+      if (!response.ok) {
+        throw new Error("Failed to load users.");
+      }
+      const data = await response.json();
+      setUsers(Array.isArray(data) ? data : []);
+      setUserState({ loading: false, error: null });
+    } catch (error) {
+      setUserState({ loading: false, error: error.message || "Failed to load users." });
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchDomains();
-  }, [fetchDomains]);
+    fetchUsers();
+  }, [fetchDomains, fetchUsers]);
+
+  const userMap = React.useMemo(() => {
+    const map = new Map();
+    users.forEach((user) => {
+      if (user?.id) {
+        map.set(user.id, user.username);
+      }
+    });
+    return map;
+  }, [users]);
+
+  const roleMap = React.useMemo(() => {
+    const map = new Map();
+    users.forEach((user) => {
+      if (!user?.role || !user?.username) return;
+      const list = map.get(user.role) || [];
+      list.push(user.username);
+      map.set(user.role, list);
+    });
+    return map;
+  }, [users]);
+
+  const resolveOwnerName = React.useCallback(
+    (domain) => {
+      if (!domain) return "—";
+      if (domain.owner_name) return domain.owner_name;
+      if (domain.owner_id && userMap.has(domain.owner_id)) {
+        return userMap.get(domain.owner_id);
+      }
+      if (domain.owner_role) {
+        const candidates = roleMap.get(domain.owner_role) || [];
+        if (candidates.length === 1) {
+          return candidates[0];
+        }
+        return t(domain.owner_role);
+      }
+      return "—";
+    },
+    [roleMap, t, userMap]
+  );
 
   const handleDomainSubmit = async (event) => {
     event.preventDefault();
@@ -6840,7 +6898,7 @@ function DomainsDashboard({ authUser }) {
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
                     <td>{domain.country || "—"}</td>
-                    <td>{domain.owner_name || (domain.owner_role ? t(domain.owner_role) : "—")}</td>
+                    <td>{resolveOwnerName(domain)}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
                         <select
@@ -6893,6 +6951,7 @@ function PixelsDashboard({ authUser }) {
     tokenEaag: "",
     flow: "",
     geo: "Brazil",
+    status: "Active",
     comment: "",
   });
   const [copyToast, setCopyToast] = React.useState({
@@ -6916,6 +6975,7 @@ function PixelsDashboard({ authUser }) {
       tokenEaag: "",
       flow: "",
       geo: "Brazil",
+      status: "Active",
       comment: "",
     });
   };
@@ -7019,6 +7079,7 @@ function PixelsDashboard({ authUser }) {
           tokenEaag: pixelForm.tokenEaag,
           flow: pixelForm.flow,
           geo: pixelForm.geo,
+          status: pixelForm.status,
           comment: pixelForm.comment,
         }),
       });
@@ -7044,6 +7105,22 @@ function PixelsDashboard({ authUser }) {
       await fetchPixels();
     } catch (error) {
       setPixelState({ loading: false, error: error.message || "Failed to delete pixel." });
+    }
+  };
+
+  const handlePixelStatusChange = async (id, status) => {
+    try {
+      const response = await apiFetch(`/api/pixels/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update pixel status.");
+      }
+      await fetchPixels();
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to update pixel status." });
     }
   };
 
@@ -7194,6 +7271,16 @@ function PixelsDashboard({ authUser }) {
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label>{t("Status")}</label>
+              <select value={pixelForm.status} onChange={updatePixelForm("status")}>
+                {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
+                  <option key={status} value={status}>
+                    {t(status)}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="field field-full">
               <label>{t("Comment")}</label>
               <textarea
@@ -7230,6 +7317,7 @@ function PixelsDashboard({ authUser }) {
                   <th>{t("Token EAAG")}</th>
                   <th>{t("GEO")}</th>
                   <th>{t("Flow")}</th>
+                  <th>{t("Status")}</th>
                   <th>{t("Comment")}</th>
                   <th>{t("Owner")}</th>
                   <th />
@@ -7267,6 +7355,27 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td>{pixel.geo || "—"}</td>
                     <td>{pixel.flows || "—"}</td>
+                    <td>
+                      {canManagePixels || pixel.owner_id === authUser?.id ? (
+                        <select
+                          className={`inline-select status-select status-${(pixel.status || "inactive").toLowerCase()}`}
+                          value={pixel.status || "Active"}
+                          onChange={(event) =>
+                            handlePixelStatusChange(pixel.id, event.target.value)
+                          }
+                        >
+                          {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
+                            <option key={status} value={status}>
+                              {t(status)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`status-pill status-${pixel.status?.toLowerCase() || "inactive"}`}>
+                          {t(pixel.status || "Active")}
+                        </span>
+                      )}
+                    </td>
                     <td>{pixel.comment || "—"}</td>
                     <td>{resolveOwnerLabel(pixel)}</td>
                     <td>
