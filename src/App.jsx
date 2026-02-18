@@ -906,16 +906,17 @@ const defaultKeitaroPayloadByTarget = {
 
 const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
 
-const defaultKeitaroMapping = {
-  dateField: "day",
-  buyerField: "campaign",
-  countryField: "country",
-  cityField: "city",
-  placementField: "sub_id_1",
-  spendField: "cost",
-  revenueField: "revenue",
-  ftdRevenueField: "custom_conversion_8_revenue",
-  redepositRevenueField: "custom_conversion_7_revenue",
+  const defaultKeitaroMapping = {
+    dateField: "day",
+    buyerField: "campaign",
+    countryField: "country",
+    cityField: "city",
+    regionField: "region",
+    placementField: "sub_id_1",
+    spendField: "cost",
+    revenueField: "revenue",
+    ftdRevenueField: "custom_conversion_8_revenue",
+    redepositRevenueField: "custom_conversion_7_revenue",
   clicksField: "clicks",
   installsField: "installs",
   registersField: "regs",
@@ -8214,6 +8215,10 @@ function KeitaroApiView() {
               <div className="field">
                 <label>{t("City Field")}</label>
                 <input value={mapping.cityField || ""} onChange={handleMappingChange("cityField")} />
+              </div>
+              <div className="field">
+                <label>{t("Region Field")}</label>
+                <input value={mapping.regionField || ""} onChange={handleMappingChange("regionField")} />
               </div>
               <div className="field">
                 <label>{t("Placement Field")}</label>

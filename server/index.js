@@ -43,6 +43,7 @@ const initDb = async () => {
       buyer TEXT NOT NULL,
       country TEXT,
       city TEXT,
+      region TEXT,
       placement TEXT,
       spend REAL,
       revenue REAL,
@@ -59,6 +60,7 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS city TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS region TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS placement TEXT;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
@@ -326,6 +328,7 @@ const insertMediaStat = async (payload) => {
       buyer,
       country,
       city,
+      region,
       placement,
       spend,
       revenue,
@@ -337,13 +340,14 @@ const insertMediaStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING id`,
     [
       payload.date,
       payload.buyer,
       payload.country,
       payload.city,
+      payload.region,
       payload.placement,
       payload.spend,
       payload.revenue,
@@ -361,7 +365,7 @@ const insertMediaStat = async (payload) => {
 
 const selectMediaStats = async (limit) =>
   getRows(
-    `SELECT id, date, buyer, country, city, spend, revenue, ftd_revenue, redeposit_revenue,
+    `SELECT id, date, buyer, country, city, region, spend, revenue, ftd_revenue, redeposit_revenue,
             placement, clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
@@ -901,6 +905,30 @@ const resolveCityValue = (row, preferredField) => {
   return "";
 };
 
+const resolveRegionValue = (row, preferredField) => {
+  const candidates = [
+    preferredField,
+    "region",
+    "state",
+    "state_region",
+    "state_region_name",
+    "region_name",
+    "geo_region",
+    "geo_state",
+    "location_region",
+    "location_state",
+    "sub_region",
+    "sub_state",
+  ].filter(Boolean);
+
+  for (const key of candidates) {
+    const value = readRowValue(row, key);
+    const region = normalizeCityValue(value);
+    if (region) return region;
+  }
+  return "";
+};
+
 const resolvePostbackContext = async (payload) => {
   const campaignId =
     payload.campaign_id ||
@@ -1173,6 +1201,7 @@ const defaultKeitaroMapping = {
   buyerField: "campaign",
   countryField: "country",
   cityField: "city",
+  regionField: "region",
   placementField: "sub_id_1",
   spendField: "cost",
   revenueField: "revenue",
@@ -2463,6 +2492,7 @@ const runKeitaroSync = async ({
           map.buyerField || defaultKeitaroMapping.buyerField,
           map.countryField || defaultKeitaroMapping.countryField,
           map.cityField || defaultKeitaroMapping.cityField,
+          map.regionField || defaultKeitaroMapping.regionField,
           map.placementField || defaultKeitaroMapping.placementField,
         ]
       : [
@@ -2629,6 +2659,7 @@ const runKeitaroSync = async ({
     }
 
     const city = resolveCityValue(row, map.cityField);
+    const region = resolveRegionValue(row, map.regionField || defaultKeitaroMapping.regionField);
     const placement = String(
       readPlacementValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
     ).trim();
@@ -2697,6 +2728,7 @@ const runKeitaroSync = async ({
         buyer,
         country,
         city: city || null,
+        region: region || null,
         placement: placement || null,
         spend,
         revenue,
