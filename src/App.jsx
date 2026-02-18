@@ -4012,34 +4012,45 @@ function UtmBuilder() {
     setCopyState("idle");
   };
 
+  const encodeParamValue = (value) => {
+    const encoded = encodeURIComponent(String(value));
+    return encoded.replace(/%7B/gi, "{").replace(/%7D/gi, "}");
+  };
+
+  const buildQueryString = (url) => {
+    const params = [];
+    url.searchParams.forEach((value, key) => {
+      params.push(`${encodeURIComponent(key)}=${encodeParamValue(value)}`);
+    });
+    if (utm.fbp) {
+      params.push(`fbp=${encodeParamValue(utm.fbp)}`);
+    }
+    utm.subs.forEach((value, index) => {
+      if (value) {
+        params.push(`sub${index + 1}=${encodeParamValue(value)}`);
+      }
+    });
+    return params.join("&");
+  };
+
   const buildUrl = () => {
     if (!utm.domain) return "";
     try {
       const url = new URL(utm.domain);
-      if (utm.fbp) {
-        url.searchParams.set("fbp", utm.fbp);
-      }
-      utm.subs.forEach((value, index) => {
-        if (value) {
-          url.searchParams.set(`sub${index + 1}`, value);
-        }
-      });
-      return url.toString();
+      const query = buildQueryString(url);
+      const base = `${url.origin}${url.pathname}`;
+      const hash = url.hash || "";
+      return query ? `${base}?${query}${hash}` : `${base}${hash}`;
     } catch (error) {
       try {
         const sanitized = utm.domain.startsWith("http")
           ? utm.domain
           : `https://${utm.domain}`;
         const url = new URL(sanitized);
-        if (utm.fbp) {
-          url.searchParams.set("fbp", utm.fbp);
-        }
-        utm.subs.forEach((value, index) => {
-          if (value) {
-            url.searchParams.set(`sub${index + 1}`, value);
-          }
-        });
-        return url.toString();
+        const query = buildQueryString(url);
+        const base = `${url.origin}${url.pathname}`;
+        const hash = url.hash || "";
+        return query ? `${base}?${query}${hash}` : `${base}${hash}`;
       } catch {
         return utm.domain;
       }
