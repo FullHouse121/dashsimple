@@ -56,12 +56,44 @@ const initDb = async () => {
       redeposits INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS user_behavior (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      buyer TEXT,
+      campaign TEXT,
+      country TEXT,
+      region TEXT,
+      city TEXT,
+      placement TEXT,
+      clicks INTEGER,
+      registers INTEGER,
+      ftds INTEGER,
+      redeposits INTEGER,
+      revenue REAL,
+      ftd_revenue REAL,
+      redeposit_revenue REAL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS city TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS region TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS placement TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS buyer TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS campaign TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS country TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS region TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS city TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS placement TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS clicks INTEGER;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS registers INTEGER;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS ftds INTEGER;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS redeposits INTEGER;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS revenue REAL;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
     `CREATE TABLE IF NOT EXISTS goals (
       id SERIAL PRIMARY KEY,
       buyer TEXT NOT NULL,
@@ -183,6 +215,8 @@ const initDb = async () => {
     );`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_keitaro_id
       ON campaigns (keitaro_id);`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_behavior_key
+      ON user_behavior (date, external_id, buyer, campaign, country, placement);`,
     `CREATE INDEX IF NOT EXISTS idx_install_events_date_buyer_country
       ON install_events (date, buyer, country);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
@@ -221,6 +255,7 @@ const allPermissions = [
   "utm",
   "statistics",
   "placements",
+  "user_behavior",
   "geos",
   "devices",
   "domains",
@@ -241,15 +276,25 @@ const roleSeed = [
   },
   {
     name: "Media Buyer Senior",
-    permissions: ["dashboard", "utm", "statistics", "placements", "geos", "goals", "domains", "pixels"],
+    permissions: [
+      "dashboard",
+      "utm",
+      "statistics",
+      "placements",
+      "user_behavior",
+      "geos",
+      "goals",
+      "domains",
+      "pixels",
+    ],
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics", "placements", "geos", "domains", "pixels"],
+    permissions: ["dashboard", "utm", "statistics", "placements", "user_behavior", "geos", "domains", "pixels"],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics", "placements", "geos", "domains", "pixels"],
+    permissions: ["dashboard", "statistics", "placements", "user_behavior", "geos", "domains", "pixels"],
   },
 ];
 
@@ -368,6 +413,67 @@ const selectMediaStats = async (limit) =>
     `SELECT id, date, buyer, country, city, region, spend, revenue, ftd_revenue, redeposit_revenue,
             placement, clicks, installs, registers, ftds, redeposits
      FROM media_stats
+     ORDER BY date DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+const insertUserBehavior = async (payload) => {
+  await query(
+    `INSERT INTO user_behavior (
+      date,
+      external_id,
+      buyer,
+      campaign,
+      country,
+      region,
+      city,
+      placement,
+      clicks,
+      registers,
+      ftds,
+      redeposits,
+      revenue,
+      ftd_revenue,
+      redeposit_revenue
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     ON CONFLICT (date, external_id, buyer, campaign, country, placement)
+     DO UPDATE SET
+       region = EXCLUDED.region,
+       city = EXCLUDED.city,
+       clicks = EXCLUDED.clicks,
+       registers = EXCLUDED.registers,
+       ftds = EXCLUDED.ftds,
+       redeposits = EXCLUDED.redeposits,
+       revenue = EXCLUDED.revenue,
+       ftd_revenue = EXCLUDED.ftd_revenue,
+       redeposit_revenue = EXCLUDED.redeposit_revenue`,
+    [
+      payload.date,
+      payload.external_id,
+      payload.buyer,
+      payload.campaign,
+      payload.country,
+      payload.region,
+      payload.city,
+      payload.placement,
+      payload.clicks,
+      payload.registers,
+      payload.ftds,
+      payload.redeposits,
+      payload.revenue,
+      payload.ftd_revenue,
+      payload.redeposit_revenue,
+    ]
+  );
+};
+
+const selectUserBehavior = async (limit) =>
+  getRows(
+    `SELECT id, date, external_id, buyer, campaign, country, region, city, placement,
+            clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue
+     FROM user_behavior
      ORDER BY date DESC, id DESC
      LIMIT $1`,
     [limit]
@@ -1199,10 +1305,12 @@ const buildAuthHeaders = (apiKey) => {
 const defaultKeitaroMapping = {
   dateField: "day",
   buyerField: "campaign",
+  campaignField: "campaign",
   countryField: "country",
   cityField: "city",
   regionField: "region",
   placementField: "sub_id_1",
+  externalIdField: "external_id",
   spendField: "cost",
   revenueField: "revenue",
   ftdRevenueField: "custom_conversion_8_revenue",
@@ -1706,6 +1814,19 @@ app.get("/api/media-stats", async (req, res) => {
   });
 
   res.json(merged.slice(0, limit));
+});
+
+app.get("/api/user-behavior", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const maxLimitRaw = Number.parseInt(process.env.USER_BEHAVIOR_LIMIT_MAX ?? "5000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 5000;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  let rows = await selectUserBehavior(limit);
+  if (viewerBuyer) {
+    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+  }
+  res.json(rows);
 });
 
 app.get("/api/device-stats", async (req, res) => {
@@ -2483,7 +2604,7 @@ const runKeitaroSync = async ({
   }
 
   const map = mapping || {};
-  const syncTarget = target === "device" ? "device" : "overall";
+  const syncTarget = target === "device" ? "device" : target === "user_behavior" ? "user_behavior" : "overall";
   let preparedPayload = normalizeKeitaroPayload(payload);
   const requiredFields =
     syncTarget === "overall"
@@ -2495,7 +2616,18 @@ const runKeitaroSync = async ({
           map.regionField || defaultKeitaroMapping.regionField,
           map.placementField || defaultKeitaroMapping.placementField,
         ]
-      : [
+      : syncTarget === "user_behavior"
+        ? [
+            map.dateField || defaultKeitaroMapping.dateField,
+            map.buyerField || defaultKeitaroMapping.buyerField,
+            map.campaignField || defaultKeitaroMapping.campaignField,
+            map.countryField || defaultKeitaroMapping.countryField,
+            map.regionField || defaultKeitaroMapping.regionField,
+            map.cityField || defaultKeitaroMapping.cityField,
+            map.placementField || defaultKeitaroMapping.placementField,
+            map.externalIdField || defaultKeitaroMapping.externalIdField,
+          ]
+        : [
           map.dateField || defaultKeitaroMapping.dateField,
           map.buyerField || defaultKeitaroMapping.buyerField,
           map.countryField || defaultKeitaroMapping.countryField,
@@ -2720,6 +2852,35 @@ const runKeitaroSync = async ({
         ftds: Number(ftds) || 0,
         redeposits: Number(redeposits) || 0,
       });
+    } else if (syncTarget === "user_behavior") {
+      const externalId = String(
+        readRowValue(row, map.externalIdField || defaultKeitaroMapping.externalIdField) || ""
+      ).trim();
+      if (!externalId) {
+        skipped += 1;
+        continue;
+      }
+      const campaign = String(
+        readRowValue(row, map.campaignField || map.buyerField || defaultKeitaroMapping.campaignField) || ""
+      ).trim();
+
+      await insertUserBehavior({
+        date,
+        external_id: externalId,
+        buyer,
+        campaign: campaign || null,
+        country,
+        region: region || null,
+        city: city || null,
+        placement: placement || null,
+        clicks: Number(clicks) || 0,
+        registers: Number(registers) || 0,
+        ftds: Number(ftds) || 0,
+        redeposits: Number(redeposits) || 0,
+        revenue,
+        ftd_revenue: ftdRevenue,
+        redeposit_revenue: redepositRevenue,
+      });
     } else {
       const installs = numberFromValue(readRowValue(row, map.installsField));
 
@@ -2794,6 +2955,7 @@ app.all("/api/keitaro/cron", async (req, res) => {
   const targetEnv = String(process.env.KEITARO_TARGET || "").toLowerCase();
   const target = targetParam || targetEnv || "overall";
   const isDeviceTarget = target === "device";
+  const isUserTarget = target === "user_behavior";
   const asyncMode =
     String(req.query.async || req.query.background || "").toLowerCase() === "1" ||
     String(req.query.async || req.query.background || "").toLowerCase() === "true";
@@ -2803,22 +2965,38 @@ app.all("/api/keitaro/cron", async (req, res) => {
   const reportPath =
     (isDeviceTarget
       ? process.env.KEITARO_DEVICE_REPORT_PATH
-      : process.env.KEITARO_REPORT_PATH) || "/admin_api/v1/report/build";
+      : isUserTarget
+        ? process.env.KEITARO_USER_REPORT_PATH
+        : process.env.KEITARO_REPORT_PATH) || "/admin_api/v1/report/build";
   const payloadRaw =
     (isDeviceTarget
       ? process.env.KEITARO_DEVICE_REPORT_PAYLOAD
-      : process.env.KEITARO_REPORT_PAYLOAD) || process.env.KEITARO_REPORT_PAYLOAD;
+      : isUserTarget
+        ? process.env.KEITARO_USER_REPORT_PAYLOAD
+        : process.env.KEITARO_REPORT_PAYLOAD) || process.env.KEITARO_REPORT_PAYLOAD;
   const mapping = parseJsonEnv(
-    isDeviceTarget ? process.env.KEITARO_DEVICE_MAPPING : process.env.KEITARO_MAPPING,
+    isDeviceTarget
+      ? process.env.KEITARO_DEVICE_MAPPING
+      : isUserTarget
+        ? process.env.KEITARO_USER_MAPPING
+        : process.env.KEITARO_MAPPING,
     defaultKeitaroMapping
   );
   const replaceExisting = parseBooleanEnv(
-    isDeviceTarget ? process.env.KEITARO_DEVICE_REPLACE : process.env.KEITARO_REPLACE,
+    isDeviceTarget
+      ? process.env.KEITARO_DEVICE_REPLACE
+      : isUserTarget
+        ? process.env.KEITARO_USER_REPLACE
+        : process.env.KEITARO_REPLACE,
     true
   );
 
   if (!baseUrl || !apiKey || !payloadRaw) {
-    const payloadName = isDeviceTarget ? "KEITARO_DEVICE_REPORT_PAYLOAD" : "KEITARO_REPORT_PAYLOAD";
+    const payloadName = isDeviceTarget
+      ? "KEITARO_DEVICE_REPORT_PAYLOAD"
+      : isUserTarget
+        ? "KEITARO_USER_REPORT_PAYLOAD"
+        : "KEITARO_REPORT_PAYLOAD";
     return res.status(400).json({
       error: `KEITARO_BASE_URL, KEITARO_API_KEY, and ${payloadName} are required.`,
     });

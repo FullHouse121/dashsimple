@@ -49,6 +49,7 @@ import {
   Zap,
   ShieldCheck,
   User,
+  Users,
   Lock,
   Eye,
   EyeOff,
@@ -78,6 +79,7 @@ const navItems = [
   { key: "utm", label: "UTM Builder", icon: Link2 },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "placements", label: "Placement", icon: MousePointerClick },
+  { key: "user_behavior", label: "User Behavior", icon: Users },
   { key: "devices", label: "Devices", icon: Smartphone },
   { key: "domains", label: "Domains", icon: Globe },
   { key: "pixels", label: "Pixels", icon: Zap },
@@ -100,7 +102,7 @@ const navItems = [
 
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
-  { title: "Performance", items: ["statistics", "placements", "devices"] },
+  { title: "Performance", items: ["statistics", "placements", "user_behavior", "devices"] },
   { title: "Operations", items: ["finances", "utm", "domains", "pixels"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
@@ -183,6 +185,7 @@ const permissionOptions = [
   { key: "utm", label: "UTM Builder" },
   { key: "statistics", label: "Statistics" },
   { key: "placements", label: "Placement" },
+  { key: "user_behavior", label: "User Behavior" },
   { key: "devices", label: "Devices" },
   { key: "domains", label: "Domains" },
   { key: "pixels", label: "Pixels" },
@@ -902,6 +905,31 @@ const stringifyKeitaroPayload = (value) => JSON.stringify(value, null, 2);
 const defaultKeitaroPayloadByTarget = {
   overall: stringifyKeitaroPayload(defaultKeitaroOverallPayloadObject),
   device: stringifyKeitaroPayload(defaultKeitaroDevicePayloadObject),
+  user_behavior: stringifyKeitaroPayload({
+    dimensions: ["day", "campaign", "country", "region", "city", "sub_id_1", "external_id"],
+    measures: [
+      "clicks",
+      "regs",
+      "custom_conversion_8",
+      "custom_conversion_7",
+      "custom_conversion_8_revenue",
+      "custom_conversion_7_revenue",
+      "cost",
+    ],
+    range: { interval: "last_7_days", timezone: "Asia/Dubai" },
+    filters: [
+      {
+        name: "campaign",
+        operator: "MATCH_REGEXP",
+        expression: "(Leo|Leticia|Carvalho|Akku|Enzo|Matheus|Sara|ZM ?apps|ZMAPPS)",
+      },
+    ],
+    limit: 1000,
+    offset: 0,
+    sort: [],
+    summary: true,
+    extended: true,
+  }),
 };
 
 const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
@@ -909,10 +937,12 @@ const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
   const defaultKeitaroMapping = {
     dateField: "day",
     buyerField: "campaign",
+    campaignField: "campaign",
     countryField: "country",
     cityField: "city",
     regionField: "region",
     placementField: "sub_id_1",
+    externalIdField: "external_id",
     spendField: "cost",
     revenueField: "revenue",
     ftdRevenueField: "custom_conversion_8_revenue",
@@ -5200,6 +5230,337 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   );
 }
 
+function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange }) {
+  const { t } = useLanguage();
+  const [behaviorEntries, setBehaviorEntries] = React.useState([]);
+  const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
+  const [search, setSearch] = React.useState("");
+
+  const fetchBehavior = React.useCallback(async () => {
+    try {
+      setBehaviorState({ loading: true, error: null });
+      const response = await apiFetch("/api/user-behavior?limit=5000");
+      if (!response.ok) {
+        throw new Error("Failed to load user behavior.");
+      }
+      const data = await response.json();
+      setBehaviorEntries(Array.isArray(data) ? data : []);
+      setBehaviorState({ loading: false, error: null });
+    } catch (error) {
+      setBehaviorState({ loading: false, error: error.message || "Failed to load user behavior." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchBehavior();
+  }, [fetchBehavior]);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      fetchBehavior();
+    };
+    window.addEventListener("keitaro:sync", handleSync);
+    return () => window.removeEventListener("keitaro:sync", handleSync);
+  }, [fetchBehavior]);
+
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const sum = (value) => Number(value || 0);
+
+  const behaviorRows = React.useMemo(
+    () => behaviorEntries.filter((row) => isDateInRange(row.date, periodRange)),
+    [behaviorEntries, periodRange.from, periodRange.to]
+  );
+
+  const userData = React.useMemo(() => {
+    const map = new Map();
+    behaviorRows.forEach((row) => {
+      const externalId = String(row.external_id || row.externalId || "").trim();
+      if (!externalId) return;
+      if (!map.has(externalId)) {
+        map.set(externalId, {
+          externalId,
+          buyer: row.buyer || "",
+          campaign: "",
+          clicks: 0,
+          registers: 0,
+          ftds: 0,
+          redeposits: 0,
+          revenue: 0,
+          campaigns: new Map(),
+        });
+      }
+      const current = map.get(externalId);
+      const ftdRevenueValue = Number.isFinite(Number(row.ftd_revenue ?? row.ftdRevenue))
+        ? Number(row.ftd_revenue ?? row.ftdRevenue)
+        : 0;
+      const redepositRevenueValue = Number.isFinite(
+        Number(row.redeposit_revenue ?? row.redepositRevenue)
+      )
+        ? Number(row.redeposit_revenue ?? row.redepositRevenue)
+        : 0;
+      let revenueValue =
+        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
+      if (!Number.isFinite(revenueValue)) {
+        revenueValue = null;
+      }
+      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
+        revenueValue = ftdRevenueValue + redepositRevenueValue;
+      }
+
+      const campaign = String(row.campaign || "").trim();
+      if (campaign) {
+        const existing = current.campaigns.get(campaign) || 0;
+        current.campaigns.set(campaign, existing + (revenueValue || 0));
+      }
+
+      current.clicks += sum(row.clicks);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.revenue += revenueValue || 0;
+    });
+
+    return Array.from(map.values())
+      .map((row) => {
+        let topCampaign = "";
+        let topValue = -1;
+        row.campaigns.forEach((value, key) => {
+          if (value > topValue) {
+            topValue = value;
+            topCampaign = key;
+          }
+        });
+        return {
+          ...row,
+          campaign: topCampaign || row.campaign,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [behaviorRows]);
+
+  const filteredUsers = React.useMemo(() => {
+    if (!normalizedSearch) return userData;
+    return userData.filter((row) => {
+      const idMatch = row.externalId.toLowerCase().includes(normalizedSearch);
+      const campaignMatch = String(row.campaign || "").toLowerCase().includes(normalizedSearch);
+      return idMatch || campaignMatch;
+    });
+  }, [userData, normalizedSearch]);
+
+  const totalUsers = filteredUsers.length;
+  const topByRevenue = filteredUsers[0] || null;
+  const topByFtds = [...filteredUsers].sort((a, b) => b.ftds - a.ftds)[0] || null;
+  const topByRedeposit = [...filteredUsers].sort((a, b) => b.redeposits - a.redeposits)[0] || null;
+
+  const topUsers = filteredUsers.slice(0, 10).map((row) => ({
+    ...row,
+    label: row.externalId.length > 12 ? `${row.externalId.slice(0, 12)}…` : row.externalId,
+  }));
+
+  return (
+    <>
+      <section className="cards">
+        {[
+          {
+            label: "Tracked Users",
+            value: totalUsers.toLocaleString(),
+            meta: period === "All" ? "All time" : period,
+          },
+          {
+            label: "Top User by Revenue",
+            value: topByRevenue?.externalId || "—",
+            meta: topByRevenue ? formatCurrency(topByRevenue.revenue) : "No data",
+          },
+          {
+            label: "Most FTDs",
+            value: topByFtds?.externalId || "—",
+            meta: topByFtds ? `${topByFtds.ftds.toLocaleString()} FTDs` : "No data",
+          },
+          {
+            label: "Most Redeposits",
+            value: topByRedeposit?.externalId || "—",
+            meta: topByRedeposit ? `${topByRedeposit.redeposits.toLocaleString()} Redeposits` : "No data",
+          },
+        ].map((stat, idx) => (
+          <motion.div
+            key={stat.label}
+            className="card"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.08, duration: 0.5 }}
+          >
+            <div className="card-head">{t(stat.label)}</div>
+            <div className="card-value">{stat.value}</div>
+            <div className="card-meta">{t(stat.meta)}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="panels device-charts">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("User Revenue")}</h3>
+              <p className="panel-subtitle">{t("Top players ranked by revenue.")}</p>
+            </div>
+            <div className="panel-actions">
+              <input
+                className="inline-input"
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("Search external ID or campaign")}
+              />
+              <PeriodSelect
+                value={period}
+                onChange={setPeriod}
+                customRange={customRange}
+                onCustomChange={onCustomChange}
+              />
+            </div>
+          </div>
+          {behaviorState.loading ? (
+            <div className="empty-state">{t("Loading user behavior…")}</div>
+          ) : behaviorState.error ? (
+            <div className="empty-state error">{behaviorState.error}</div>
+          ) : topUsers.length === 0 ? (
+            <div className="empty-state">{t("No user behavior data available.")}</div>
+          ) : (
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={topUsers} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+                  <defs>
+                    <linearGradient id="userRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.2} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [formatCurrency(value), t("Revenue")]}
+                    labelFormatter={(label, payload) =>
+                      payload?.[0]?.payload?.externalId || label
+                    }
+                  />
+                  <Bar dataKey="revenue" fill="url(#userRevenue)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.08 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Conversions by User")}</h3>
+              <p className="panel-subtitle">{t("FTDs and redeposits by external ID.")}</p>
+            </div>
+          </div>
+          {topUsers.length === 0 ? (
+            <div className="empty-state">{t("No conversion data available.")}</div>
+          ) : (
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={topUsers} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name) => [Number(value || 0).toLocaleString(), name]}
+                    labelFormatter={(label, payload) =>
+                      payload?.[0]?.payload?.externalId || label
+                    }
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
+                  <Bar dataKey="ftds" name={t("FTDs")} fill="var(--green)" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="redeposits" name={t("Redeposits")} fill="var(--orange)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+      </section>
+
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("User Behavior")}</h3>
+              <p className="panel-subtitle">{t("External ID performance and campaign attribution.")}</p>
+            </div>
+          </div>
+
+          {behaviorState.loading ? (
+            <div className="empty-state">{t("Loading user behavior…")}</div>
+          ) : behaviorState.error ? (
+            <div className="empty-state error">{behaviorState.error}</div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="empty-state">{t("No user behavior data available.")}</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="entries-table">
+                <thead>
+                  <tr>
+                    <th>{t("External ID")}</th>
+                    <th>{t("Campaign")}</th>
+                    <th>{t("Clicks")}</th>
+                    <th>{t("Registers")}</th>
+                    <th>{t("FTDs")}</th>
+                    <th>{t("Redeposits")}</th>
+                    <th>{t("Revenue")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map((row) => (
+                    <tr key={row.externalId}>
+                      <td>{row.externalId}</td>
+                      <td>{row.campaign || "—"}</td>
+                      <td>{row.clicks.toLocaleString()}</td>
+                      <td>{row.registers.toLocaleString()}</td>
+                      <td>{row.ftds.toLocaleString()}</td>
+                      <td>{row.redeposits.toLocaleString()}</td>
+                      <td>{formatCurrency(row.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.div>
+      </section>
+    </>
+  );
+}
+
 function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const { t } = useLanguage();
   const [deviceEntries, setDeviceEntries] = React.useState([]);
@@ -8013,7 +8374,21 @@ function KeitaroApiView() {
         mapping.buyerField || defaultKeitaroMapping.buyerField,
         mapping.countryField || defaultKeitaroMapping.countryField,
         mapping.cityField || defaultKeitaroMapping.cityField,
+        mapping.regionField || defaultKeitaroMapping.regionField,
         mapping.placementField || defaultKeitaroMapping.placementField,
+      ].forEach((field) => {
+        parsedPayload = ensurePayloadField(parsedPayload, field);
+      });
+    } else if (syncTarget === "user_behavior") {
+      [
+        mapping.dateField || defaultKeitaroMapping.dateField,
+        mapping.buyerField || defaultKeitaroMapping.buyerField,
+        mapping.campaignField || defaultKeitaroMapping.campaignField,
+        mapping.countryField || defaultKeitaroMapping.countryField,
+        mapping.regionField || defaultKeitaroMapping.regionField,
+        mapping.cityField || defaultKeitaroMapping.cityField,
+        mapping.placementField || defaultKeitaroMapping.placementField,
+        mapping.externalIdField || defaultKeitaroMapping.externalIdField,
       ].forEach((field) => {
         parsedPayload = ensurePayloadField(parsedPayload, field);
       });
@@ -8179,6 +8554,7 @@ function KeitaroApiView() {
             <select value={syncTarget} onChange={(event) => setSyncTarget(event.target.value)}>
               <option value="overall">{t("Overall Stats")}</option>
               <option value="device">{t("Device Stats")}</option>
+              <option value="user_behavior">{t("User Behavior")}</option>
             </select>
             <p className="field-hint">{t("Choose where the report data should be stored.")}</p>
           </div>
@@ -8209,6 +8585,13 @@ function KeitaroApiView() {
                 <input value={mapping.buyerField} onChange={handleMappingChange("buyerField")} />
               </div>
               <div className="field">
+                <label>{t("Campaign Field")}</label>
+                <input
+                  value={mapping.campaignField || ""}
+                  onChange={handleMappingChange("campaignField")}
+                />
+              </div>
+              <div className="field">
                 <label>{t("Country Field")}</label>
                 <input value={mapping.countryField} onChange={handleMappingChange("countryField")} />
               </div>
@@ -8225,6 +8608,13 @@ function KeitaroApiView() {
                 <input
                   value={mapping.placementField || ""}
                   onChange={handleMappingChange("placementField")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("External ID Field")}</label>
+                <input
+                  value={mapping.externalIdField || ""}
+                  onChange={handleMappingChange("externalIdField")}
                 />
               </div>
               <div className="field">
@@ -8592,6 +8982,7 @@ export default function App() {
   const isUtm = activeView === "utm";
   const isStats = activeView === "statistics";
   const isPlacements = activeView === "placements";
+  const isUserBehavior = activeView === "user_behavior";
   const isApi = activeView === "api";
   const isGoals = activeView === "streams";
   const isDomains = activeView === "domains";
@@ -8612,6 +9003,7 @@ export default function App() {
       utm: "utm",
       statistics: "statistics",
       placements: "placements",
+      user_behavior: "user_behavior",
       devices: "devices",
       domains: "domains",
       pixels: "pixels",
@@ -8676,6 +9068,9 @@ export default function App() {
     const list = Array.isArray(basePermissions) ? [...basePermissions] : [];
     if (list.includes("statistics") && !list.includes("placements")) {
       list.push("placements");
+    }
+    if (list.includes("statistics") && !list.includes("user_behavior")) {
+      list.push("user_behavior");
     }
     return Array.from(new Set(list));
   }, [rolePermissions]);
@@ -9065,6 +9460,13 @@ export default function App() {
           <StatisticsDashboard />
         ) : isPlacements ? (
           <PlacementsDashboard
+            period={period}
+            setPeriod={setPeriod}
+            customRange={customRange}
+            onCustomChange={handleCustomRange}
+          />
+        ) : isUserBehavior ? (
+          <UserBehaviorDashboard
             period={period}
             setPeriod={setPeriod}
             customRange={customRange}

@@ -2082,6 +2082,29 @@ select {
   box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
 }
 
+.inline-input {
+  background: rgba(16, 18, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  min-width: 200px;
+}
+
+.inline-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: none;
+}
+
+.inline-input:focus {
+  outline: none;
+  border-color: rgba(74, 222, 128, 0.6);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.15);
+}
+
 .status-select {
   min-width: 132px;
   padding-right: 26px;
