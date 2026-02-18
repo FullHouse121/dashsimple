@@ -5306,14 +5306,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
       )
         ? Number(row.redeposit_revenue ?? row.redepositRevenue)
         : 0;
-      let revenueValue =
-        row.revenue === undefined || row.revenue === null ? null : Number(row.revenue);
-      if (!Number.isFinite(revenueValue)) {
-        revenueValue = null;
-      }
-      if (revenueValue === null && (ftdRevenueValue || redepositRevenueValue)) {
-        revenueValue = ftdRevenueValue + redepositRevenueValue;
-      }
+      const revenueValue = ftdRevenueValue + redepositRevenueValue;
 
       const campaign = String(row.campaign || "").trim();
       if (campaign) {
@@ -5404,7 +5397,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
           {
             label: "Top User By Total Revenue",
             value: topByRevenue?.externalId || "—",
-            meta: topByRevenue ? formatCurrency(topByRevenue.revenue) : "No data",
+            meta: topByRevenue ? `${formatCurrency(topByRevenue.revenue)} · FTD + Redeposit` : "No data",
           },
           {
             label: "Top User by Revenue FTD",
