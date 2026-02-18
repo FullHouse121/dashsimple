@@ -2281,6 +2281,14 @@ select {
   font-size: 12px;
 }
 
+.select.select-static {
+  background: rgba(12, 14, 18, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
 .period-select {
   position: relative;
   z-index: 4;

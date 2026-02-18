@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
-const apiFetch = (url, options = {}) => {
+const apiFetch = async (url, options = {}) => {
   const headers = { ...(options.headers || {}) };
   if (typeof window !== "undefined") {
     try {
@@ -68,7 +68,11 @@ const apiFetch = (url, options = {}) => {
       // ignore storage issues
     }
   }
-  return fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers });
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("auth:invalid"));
+  }
+  return response;
 };
 
 const navItems = [
@@ -458,6 +462,7 @@ const translations = {
     Refresh: "Yenile",
     "Refreshing...": "Yenileniyor...",
     "No postback logs yet.": "Henüz postback kaydı yok.",
+    "Session expired. Please sign in again.": "Oturum süresi doldu. Lütfen yeniden giriş yapın.",
     Time: "Zaman",
     Event: "Olay",
     Campaign: "Kampanya",
@@ -1377,8 +1382,18 @@ function ChartTooltip({ active, payload, label, visibleKeys }) {
   );
 }
 
-function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters, onSeeGeos }) {
+function HomeDashboard({
+  period,
+  setPeriod,
+  customRange,
+  onCustomChange,
+  filters,
+  onSeeGeos,
+  authUser,
+  viewerBuyer,
+}) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [hoverSeries, setHoverSeries] = React.useState(null);
   const [selectedSeries, setSelectedSeries] = React.useState([]);
   const [hoverGeo, setHoverGeo] = React.useState(null);
@@ -1391,7 +1406,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   const loadHomeStats = React.useCallback(async () => {
     try {
       setHomeState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=5000");
+      const response = await apiFetch("/api/media-stats?limit=20000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -1417,11 +1432,6 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
-  const normalizeBuyerKey = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normalizedPriorityBuyers = React.useMemo(
-    () => priorityBuyers.map((buyer) => normalizeBuyerKey(buyer)),
-    []
-  );
 
   const sum = (value) => Number(value || 0);
   const readNumeric = (value) => {
@@ -1463,9 +1473,14 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = String(buyer || "").toLowerCase();
     if (!normalizedBuyer) return false;
-    const isAllowed = normalizedPriorityBuyers.some((name) => normalizedBuyer.includes(name));
-    if (!isAllowed) return false;
-    if (buyerFilter === "All") return true;
+    if (buyerFilter === "All") {
+      if (isLeadership) return true;
+      if (viewerBuyer) {
+        const normalizedViewer = String(viewerBuyer || "").toLowerCase();
+        return normalizedBuyer.includes(normalizedViewer);
+      }
+      return true;
+    }
     const normalizedFilter = String(buyerFilter || "").toLowerCase();
     return normalizedBuyer.includes(normalizedFilter);
   };
@@ -1484,7 +1499,7 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
       if (!isDateInRange(row.date, periodRange)) return false;
       return true;
     });
-  }, [homeRows, buyerFilter, countryFilter, periodRange.from, periodRange.to, normalizedPriorityBuyers]);
+  }, [homeRows, buyerFilter, countryFilter, periodRange.from, periodRange.to, isLeadership, viewerBuyer]);
 
   const totals = React.useMemo(
     () =>
@@ -2299,15 +2314,16 @@ function HomeDashboard({ period, setPeriod, customRange, onCustomChange, filters
   );
 }
 
-function GeosDashboard({ filters }) {
+function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [geoRows, setGeoRows] = React.useState([]);
   const [geoState, setGeoState] = React.useState({ loading: true, error: null });
 
   const loadGeos = React.useCallback(async () => {
     try {
       setGeoState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=5000");
+      const response = await apiFetch("/api/media-stats?limit=20000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -2338,10 +2354,6 @@ function GeosDashboard({ filters }) {
   const dateTo = filters?.dateTo;
   const normalizeBuyerKey = (value) =>
     String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normalizedPriorityBuyers = React.useMemo(
-    () => priorityBuyers.map((buyer) => normalizeBuyerKey(buyer)),
-    []
-  );
   const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
   const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
 
@@ -2372,11 +2384,14 @@ function GeosDashboard({ filters }) {
   const matchesBuyer = (buyer) => {
     const normalizedBuyer = normalizeBuyerKey(buyer);
     if (!normalizedBuyer) return false;
-    const isAllowed = normalizedPriorityBuyers.some(
-      (name) => normalizedBuyer.includes(name) || name.includes(normalizedBuyer)
-    );
-    if (!isAllowed) return false;
-    if (isAllSelection(buyerFilter)) return true;
+    if (isAllSelection(buyerFilter)) {
+      if (isLeadership) return true;
+      if (viewerBuyer) {
+        const normalizedViewer = normalizeBuyerKey(viewerBuyer);
+        return normalizedBuyer.includes(normalizedViewer);
+      }
+      return true;
+    }
     const normalizedFilter = normalizeBuyerKey(buyerFilter);
     if (!normalizedFilter) return false;
     return normalizedBuyer.includes(normalizedFilter) || normalizedFilter.includes(normalizedBuyer);
@@ -2395,7 +2410,16 @@ function GeosDashboard({ filters }) {
       if (!isDateInRange(row.date, dateRange)) return false;
       return true;
     });
-  }, [geoRows, buyerFilter, countryFilter, regionFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
+  }, [
+    geoRows,
+    buyerFilter,
+    countryFilter,
+    regionFilter,
+    dateFrom,
+    dateTo,
+    isLeadership,
+    viewerBuyer,
+  ]);
 
   const geoTotals = React.useMemo(() => {
     const map = new Map();
@@ -4209,10 +4233,12 @@ function UtmBuilder() {
   );
 }
 
-function StatisticsDashboard() {
+function StatisticsDashboard({ authUser, viewerBuyer }) {
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
   const [statsForm, setStatsForm] = React.useState({
     date: "2026-02-07",
-    buyer: "DeusInsta",
+    buyer: effectiveBuyer,
     country: "Brazil",
     spend: "",
     clicks: "",
@@ -4222,7 +4248,7 @@ function StatisticsDashboard() {
   });
   const [statsEntries, setStatsEntries] = React.useState([]);
   const [statsState, setStatsState] = React.useState({ loading: true, error: null });
-  const [buyerFilter, setBuyerFilter] = React.useState("All");
+  const [buyerFilter, setBuyerFilter] = React.useState(isLeadership ? "All" : effectiveBuyer);
 
   const updateStatsForm = (key) => (event) => {
     setStatsForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -4231,7 +4257,7 @@ function StatisticsDashboard() {
   const resetStatsForm = () => {
     setStatsForm({
       date: "2026-02-07",
-      buyer: "DeusInsta",
+      buyer: effectiveBuyer,
       country: "Brazil",
       spend: "",
       clicks: "",
@@ -4240,6 +4266,13 @@ function StatisticsDashboard() {
       ftds: "",
     });
   };
+
+  React.useEffect(() => {
+    if (!isLeadership && effectiveBuyer) {
+      setStatsForm((prev) => ({ ...prev, buyer: effectiveBuyer }));
+      setBuyerFilter(effectiveBuyer);
+    }
+  }, [effectiveBuyer, isLeadership]);
 
   const fetchStats = React.useCallback(async () => {
     try {
@@ -4286,11 +4319,13 @@ function StatisticsDashboard() {
     }
   };
 
-  const buyers = Array.from(
-    new Set(["All", ...buyerOptions, ...statsEntries.map((row) => row.buyer).filter(Boolean)])
-  );
+  const buyers = isLeadership
+    ? Array.from(
+        new Set(["All", ...buyerOptions, ...statsEntries.map((row) => row.buyer).filter(Boolean)])
+      )
+    : [effectiveBuyer].filter(Boolean);
   const filteredEntries =
-    buyerFilter === "All"
+    !isLeadership || buyerFilter === "All"
       ? statsEntries
       : statsEntries.filter((row) =>
           String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
@@ -4419,11 +4454,15 @@ function StatisticsDashboard() {
             </div>
             <div className="field">
               <label>Media Buyer</label>
-              <select value={statsForm.buyer} onChange={updateStatsForm("buyer")}>
-                {buyerOptions.map((buyer) => (
-                  <option key={buyer}>{buyer}</option>
-                ))}
-              </select>
+              {isLeadership ? (
+                <select value={statsForm.buyer} onChange={updateStatsForm("buyer")}>
+                  {buyerOptions.map((buyer) => (
+                    <option key={buyer}>{buyer}</option>
+                  ))}
+                </select>
+              ) : (
+                <input value={effectiveBuyer} disabled />
+              )}
             </div>
             <div className="field">
               <label>Country</label>
@@ -4512,11 +4551,19 @@ function StatisticsDashboard() {
               <h3 className="panel-title">Media Buyer Funnel Log</h3>
               <p className="panel-subtitle">Calculated funnel metrics per entry.</p>
             </div>
-            <select className="select" value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
-              {buyers.map((buyer) => (
-                <option key={buyer}>{buyer}</option>
-              ))}
-            </select>
+            {isLeadership ? (
+              <select
+                className="select"
+                value={buyerFilter}
+                onChange={(e) => setBuyerFilter(e.target.value)}
+              >
+                {buyers.map((buyer) => (
+                  <option key={buyer}>{buyer}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="select select-static">{effectiveBuyer}</div>
+            )}
           </div>
 
           {statsState.loading ? (
@@ -4853,7 +4900,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   const fetchPlacements = React.useCallback(async () => {
     try {
       setPlacementState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=5000");
+      const response = await apiFetch("/api/media-stats?limit=20000");
       if (!response.ok) {
         throw new Error("Failed to load placement stats.");
       }
@@ -9304,7 +9351,9 @@ export default function App() {
   const [rolePermissions, setRolePermissions] = React.useState(null);
   const [authUser, setAuthUser] = React.useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("dash-auth") || "null");
+      const stored = JSON.parse(localStorage.getItem("dash-auth") || "null");
+      if (!stored?.token) return null;
+      return stored;
     } catch (error) {
       return null;
     }
@@ -9365,8 +9414,44 @@ export default function App() {
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isProfile = activeView === "profile";
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const showFilters = isFinances || isHome || isGeos;
+  const [viewerBuyer, setViewerBuyer] = React.useState("");
+
+  React.useEffect(() => {
+    if (!authUser) return;
+    if (isLeadership) {
+      setViewerBuyer("");
+      return;
+    }
+    const fallback = authUser?.username || "";
+    setViewerBuyer(fallback);
+    const fetchBuyer = async () => {
+      try {
+        const response = await apiFetch("/api/media-buyers?limit=1");
+        if (!response.ok) return;
+        const data = await response.json();
+        const record = Array.isArray(data) ? data[0] : null;
+        if (record?.name) {
+          setViewerBuyer(record.name);
+        }
+      } catch (error) {
+        // ignore
+      }
+    };
+    fetchBuyer();
+  }, [authUser, isLeadership]);
+
+  const effectiveViewerBuyer = viewerBuyer || authUser?.username || "";
+
+  React.useEffect(() => {
+    if (!authUser || isLeadership || !effectiveViewerBuyer) return;
+    setFilters((prev) => ({
+      ...prev,
+      buyer: effectiveViewerBuyer,
+    }));
+  }, [authUser, effectiveViewerBuyer, isLeadership]);
 
   const viewPermissionMap = React.useMemo(
     () => ({
@@ -9508,6 +9593,16 @@ export default function App() {
       // ignore storage issues
     }
   }, [authUser]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleInvalid = () => {
+      setAuthUser(null);
+      setAuthState({ loading: false, error: t("Session expired. Please sign in again.") });
+    };
+    window.addEventListener("auth:invalid", handleInvalid);
+    return () => window.removeEventListener("auth:invalid", handleInvalid);
+  }, [t]);
 
   React.useEffect(() => {
     if (authUser && !authUser.token) {
@@ -9827,11 +9922,15 @@ export default function App() {
         ) : isRoles ? (
           <RolesDashboard authUser={authUser} />
         ) : isGeos ? (
-          <GeosDashboard filters={filters} />
+          <GeosDashboard
+            filters={filters}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
+          />
         ) : isApi ? (
           <KeitaroApiView />
         ) : isStats ? (
-          <StatisticsDashboard />
+          <StatisticsDashboard authUser={authUser} viewerBuyer={effectiveViewerBuyer} />
         ) : isPlacements ? (
           <PlacementsDashboard
             period={period}
@@ -9863,6 +9962,8 @@ export default function App() {
             onCustomChange={handleCustomRange}
             filters={filters}
             onSeeGeos={() => setActiveView("geos")}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
           />
         )}
       </main>
@@ -9931,14 +10032,18 @@ export default function App() {
 
                 {isHome || isGeos ? (
                   <>
-                    <div className="field">
-                      <label>Media Buyer</label>
-                      <select value={filters.buyer} onChange={updateFilter("buyer")}>
-                        {buyerOptions.map((buyer) => (
-                          <option key={buyer}>{buyer}</option>
-                        ))}
-                      </select>
-                    </div>
+                <div className="field">
+                  <label>Media Buyer</label>
+                  {isLeadership ? (
+                    <select value={filters.buyer} onChange={updateFilter("buyer")}>
+                      {buyerOptions.map((buyer) => (
+                        <option key={buyer}>{buyer}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input value={effectiveViewerBuyer} disabled />
+                  )}
+                </div>
                     {isGeos ? (
                       <div className="field">
                         <label>Region / State</label>
@@ -9998,7 +10103,7 @@ export default function App() {
                       country: "All",
                       city: "All",
                       approach: "All",
-                      buyer: "All",
+                      buyer: isLeadership ? "All" : effectiveViewerBuyer,
                       category: "All",
                       billing: "All",
                       status: "All",

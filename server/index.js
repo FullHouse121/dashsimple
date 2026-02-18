@@ -1751,8 +1751,8 @@ app.delete("/api/expenses/:id", async (req, res) => {
 
 app.get("/api/media-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const maxLimitRaw = Number.parseInt(process.env.MEDIA_STATS_LIMIT_MAX ?? "5000", 10);
-  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 5000;
+  const maxLimitRaw = Number.parseInt(process.env.MEDIA_STATS_LIMIT_MAX ?? "25000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 25000;
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectMediaStats(limit);
