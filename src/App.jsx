@@ -1470,36 +1470,56 @@ function HomeDashboard({
     if (!Number.isFinite(numeric)) return "—";
     return Number.isInteger(numeric) ? numeric.toLocaleString() : numeric.toFixed(2);
   };
+  const normalizeBuyerKey = (value) =>
+    String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
+  const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
   const matchesBuyer = (buyer) => {
-    const normalizedBuyer = String(buyer || "").toLowerCase();
+    const normalizedBuyer = normalizeBuyerKey(buyer);
     if (!normalizedBuyer) return false;
-    if (buyerFilter === "All") {
+    if (isAllSelection(buyerFilter)) {
       if (isLeadership) return true;
       if (viewerBuyer) {
-        const normalizedViewer = String(viewerBuyer || "").toLowerCase();
+        const normalizedViewer = normalizeBuyerKey(viewerBuyer);
         return normalizedBuyer.includes(normalizedViewer);
       }
       return true;
     }
-    const normalizedFilter = String(buyerFilter || "").toLowerCase();
-    return normalizedBuyer.includes(normalizedFilter);
+    const normalizedFilter = normalizeBuyerKey(buyerFilter);
+    if (!normalizedFilter) return false;
+    return normalizedBuyer.includes(normalizedFilter) || normalizedFilter.includes(normalizedBuyer);
   };
-  const matchesCountry = (country) =>
-    countryFilter === "All" || String(country || "") === countryFilter;
+  const matchesCountry = (country) => {
+    if (isAllSelection(countryFilter)) return true;
+    return normalizeFilterValue(country) === normalizeFilterValue(countryFilter);
+  };
 
   const periodRange = React.useMemo(
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
+  const filterRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
+  const effectiveRange = filterRange.from || filterRange.to ? filterRange : periodRange;
 
   const filteredRows = React.useMemo(() => {
     return homeRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       if (!matchesCountry(row.country)) return false;
-      if (!isDateInRange(row.date, periodRange)) return false;
+      if (!isDateInRange(row.date, effectiveRange)) return false;
       return true;
     });
-  }, [homeRows, buyerFilter, countryFilter, periodRange.from, periodRange.to, isLeadership, viewerBuyer]);
+  }, [
+    homeRows,
+    buyerFilter,
+    countryFilter,
+    effectiveRange.from,
+    effectiveRange.to,
+    isLeadership,
+    viewerBuyer,
+  ]);
 
   const totals = React.useMemo(
     () =>
@@ -9418,6 +9438,21 @@ export default function App() {
   const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const showFilters = isFinances || isHome || isGeos;
   const [viewerBuyer, setViewerBuyer] = React.useState("");
+
+  React.useEffect(() => {
+    const range = getPeriodDateRange(period, customRange);
+    const normalized = normalizeDateRange(range.from, range.to);
+    const nextFrom = normalized.from || "";
+    const nextTo = normalized.to || "";
+    setFilters((prev) => {
+      if (prev.dateFrom === nextFrom && prev.dateTo === nextTo) return prev;
+      return {
+        ...prev,
+        dateFrom: nextFrom,
+        dateTo: nextTo,
+      };
+    });
+  }, [period, customRange.from, customRange.to]);
 
   React.useEffect(() => {
     if (!authUser) return;
