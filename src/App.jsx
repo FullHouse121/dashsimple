@@ -5235,6 +5235,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
   const [behaviorEntries, setBehaviorEntries] = React.useState([]);
   const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
   const [search, setSearch] = React.useState("");
+  const [behaviorFilter, setBehaviorFilter] = React.useState("Top User By Total Revenue");
 
   const fetchBehavior = React.useCallback(async () => {
     try {
@@ -5291,6 +5292,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
           ftds: 0,
           redeposits: 0,
           revenue: 0,
+          ftdRevenue: 0,
+          redepositRevenue: 0,
           campaigns: new Map(),
         });
       }
@@ -5323,6 +5326,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
       current.revenue += revenueValue || 0;
+      current.ftdRevenue += ftdRevenueValue || 0;
+      current.redepositRevenue += redepositRevenueValue || 0;
     });
 
     return Array.from(map.values())
@@ -5352,12 +5357,37 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
     });
   }, [userData, normalizedSearch]);
 
+  const behaviorFilterOptions = [
+    "Tracked Users",
+    "Top User By Total Revenue",
+    "Top User by Revenue FTD",
+    "Top User By Redeposit (number)",
+  ];
+
+  const sortedUsers = React.useMemo(() => {
+    const rows = [...filteredUsers];
+    const sortBy = behaviorFilter;
+    const valueFor = (row) => {
+      switch (sortBy) {
+        case "Top User by Revenue FTD":
+          return row.ftdRevenue || 0;
+        case "Top User By Redeposit (number)":
+          return row.redeposits || 0;
+        case "Tracked Users":
+        case "Top User By Total Revenue":
+        default:
+          return row.revenue || 0;
+      }
+    };
+    return rows.sort((a, b) => valueFor(b) - valueFor(a));
+  }, [filteredUsers, behaviorFilter]);
+
   const totalUsers = filteredUsers.length;
-  const topByRevenue = filteredUsers[0] || null;
-  const topByFtds = [...filteredUsers].sort((a, b) => b.ftds - a.ftds)[0] || null;
+  const topByRevenue = [...filteredUsers].sort((a, b) => b.revenue - a.revenue)[0] || null;
+  const topByFtdRevenue = [...filteredUsers].sort((a, b) => b.ftdRevenue - a.ftdRevenue)[0] || null;
   const topByRedeposit = [...filteredUsers].sort((a, b) => b.redeposits - a.redeposits)[0] || null;
 
-  const topUsers = filteredUsers.slice(0, 10).map((row) => ({
+  const topUsers = sortedUsers.slice(0, 10).map((row) => ({
     ...row,
     label: row.externalId.length > 12 ? `${row.externalId.slice(0, 12)}…` : row.externalId,
   }));
@@ -5372,17 +5402,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
             meta: period === "All" ? "All time" : period,
           },
           {
-            label: "Top User by Revenue",
+            label: "Top User By Total Revenue",
             value: topByRevenue?.externalId || "—",
             meta: topByRevenue ? formatCurrency(topByRevenue.revenue) : "No data",
           },
           {
-            label: "Most FTDs",
-            value: topByFtds?.externalId || "—",
-            meta: topByFtds ? `${topByFtds.ftds.toLocaleString()} FTDs` : "No data",
+            label: "Top User by Revenue FTD",
+            value: topByFtdRevenue?.externalId || "—",
+            meta: topByFtdRevenue ? formatCurrency(topByFtdRevenue.ftdRevenue) : "No data",
           },
           {
-            label: "Most Redeposits",
+            label: "Top User By Redeposit (number)",
             value: topByRedeposit?.externalId || "—",
             meta: topByRedeposit ? `${topByRedeposit.redeposits.toLocaleString()} Redeposits` : "No data",
           },
@@ -5421,6 +5451,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("Search external ID or campaign")}
               />
+              <select
+                className="inline-select"
+                value={behaviorFilter}
+                onChange={(event) => setBehaviorFilter(event.target.value)}
+              >
+                {behaviorFilterOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {t(option)}
+                  </option>
+                ))}
+              </select>
               <PeriodSelect
                 value={period}
                 onChange={setPeriod}
