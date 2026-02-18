@@ -161,6 +161,7 @@ const initDb = async () => {
       country TEXT,
       domain TEXT,
       device TEXT,
+      external_id TEXT,
       click_id TEXT,
       source TEXT,
       raw TEXT,
@@ -221,6 +222,7 @@ const initDb = async () => {
       ON install_events (date, buyer, country);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
       ON install_events (click_id, campaign_id);`,
+    `ALTER TABLE install_events ADD COLUMN IF NOT EXISTS external_id TEXT;`,
     `CREATE INDEX IF NOT EXISTS idx_conversion_events_date_buyer_country
       ON conversion_events (date, buyer, country);`,
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os TEXT;`,
@@ -674,8 +676,8 @@ const deleteCampaign = async (id) => query(`DELETE FROM campaigns WHERE id = $1`
 
 const insertInstallEvent = async (payload) => {
   await query(
-    `INSERT INTO install_events (date, campaign_id, buyer, country, domain, device, click_id, source, raw)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `INSERT INTO install_events (date, campaign_id, buyer, country, domain, device, external_id, click_id, source, raw)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       payload.date,
       payload.campaign_id,
@@ -683,6 +685,7 @@ const insertInstallEvent = async (payload) => {
       payload.country,
       payload.domain,
       payload.device,
+      payload.external_id,
       payload.click_id,
       payload.source,
       payload.raw,
@@ -1051,6 +1054,15 @@ const resolvePostbackContext = async (payload) => {
     payload.sub1 ||
     payload.clickid ||
     "";
+  const externalId =
+    payload.external_id ||
+    payload.externalId ||
+    payload.pwauid ||
+    payload.pwa_uid ||
+    payload.pwaid ||
+    payload.user_id ||
+    payload.userid ||
+    "";
   const date =
     normalizeDate(payload.date || payload.timestamp || payload.time || payload.ts || payload.created_at) ||
     new Date().toISOString().slice(0, 10);
@@ -1089,6 +1101,7 @@ const resolvePostbackContext = async (payload) => {
     country: finalCountry,
     domain: finalDomain,
     device: finalDevice,
+    external_id: externalId ? String(externalId).trim() : null,
     click_id: normalizedClick ? String(normalizedClick).trim() : null,
   };
 };
@@ -2347,6 +2360,7 @@ app.all("/api/postbacks/install", async (req, res) => {
       country: context.country,
       domain: context.domain,
       device: context.device,
+      external_id: context.external_id,
       click_id: context.click_id,
       source: String(payload.source || payload.network || payload.from || "postback"),
       raw: JSON.stringify(payload),

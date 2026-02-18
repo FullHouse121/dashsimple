@@ -437,11 +437,34 @@ const translations = {
     "Keitaro Connection": "Keitaro Bağlantısı",
     "Connect your tracker and validate the Admin API key.":
       "Takip sisteminizi bağlayın ve Admin API anahtarını doğrulayın.",
+    "Step 1": "Adım 1",
+    "Step 2": "Adım 2",
+    "Step 3": "Adım 3",
+    "Connection checklist": "Bağlantı kontrol listesi",
+    "Base URL, API key, and report endpoint are required before syncing.":
+      "Senkronizasyondan önce Temel URL, API anahtarı ve rapor uç noktası gereklidir.",
     "Report Sync": "Rapor Senkronizasyonu",
     "Paste a Keitaro report payload and map fields into your statistics table.":
       "Keitaro rapor yükünü yapıştırın ve alanları istatistik tablonuza eşleyin.",
+    "Required parameters": "Gerekli parametreler",
+    "Provide click_id or campaign_id for attribution.":
+      "Eşleştirme için click_id veya campaign_id sağlayın.",
+    "Optional parameters": "İsteğe bağlı parametreler",
+    "external_id, country, buyer, domain, device, status, payout.":
+      "external_id, country, buyer, domain, device, status, payout.",
     "Report Payload (JSON)": "Rapor Yükü (JSON)",
     "Field Mapping": "Alan Eşlemesi",
+    "Map Keitaro fields to dashboard columns.":
+      "Keitaro alanlarını panel sütunlarına eşleyin.",
+    "Hide Mapping": "Eşlemeyi Gizle",
+    "Show Mapping": "Eşlemeyi Göster",
+    "Mapping hidden. Click show to edit fields.":
+      "Eşleme gizli. Alanları düzenlemek için göster'e tıklayın.",
+    "Identity Fields": "Kimlik Alanları",
+    "Geo Fields": "Coğrafi Alanlar",
+    "Performance Fields": "Performans Alanları",
+    "Event Fields": "Etkinlik Alanları",
+    "Device Fields": "Cihaz Alanları",
     "Replace existing entries for the same date + buyer + country":
       "Aynı tarih + alıcı + ülke için mevcut kayıtları değiştir",
     "Test Connection": "Bağlantıyı Test Et",
@@ -449,6 +472,8 @@ const translations = {
     "Sync Now": "Şimdi Senkronize Et",
     "Syncing...": "Senkronize ediliyor...",
     "Load Example": "Örneği Yükle",
+    "Load Overall Example": "Genel Örneği Yükle",
+    "Load Device Example": "Cihaz Örneğini Yükle",
     "Connection verified.": "Bağlantı doğrulandı.",
     "Sync complete.": "Senkronizasyon tamamlandı.",
     "Report payload must be valid JSON.": "Rapor yükü geçerli JSON olmalıdır.",
@@ -8160,6 +8185,7 @@ function KeitaroApiView() {
   const [testState, setTestState] = React.useState({ loading: false, ok: null, message: "" });
   const [syncState, setSyncState] = React.useState({ loading: false, ok: null, message: "" });
   const [syncResult, setSyncResult] = React.useState(null);
+  const [showMapping, setShowMapping] = React.useState(true);
   const previousSyncTargetRef = React.useRef(initialSyncTarget);
   const [campaigns, setCampaigns] = React.useState([]);
   const [campaignState, setCampaignState] = React.useState({ loading: true, error: null });
@@ -8192,7 +8218,7 @@ function KeitaroApiView() {
   }, []);
 
   const postbackExample = postbackUrl
-    ? `${postbackUrl}?campaign_id=123&click_id={clickid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
+    ? `${postbackUrl}?campaign_id=123&click_id={clickid}&external_id={pwauid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
     : "";
 
   const postbackFtdExample = postbackFtdUrl
@@ -8475,10 +8501,18 @@ function KeitaroApiView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <div className="panel-head">
+          <div className="panel-head api-head">
             <div>
+              <span className="api-step">{t("Step 1")}</span>
               <h3 className="panel-title">{t("Keitaro Connection")}</h3>
               <p className="panel-subtitle">{t("Connect your tracker and validate the Admin API key.")}</p>
+            </div>
+          </div>
+
+          <div className="api-banner">
+            <div>
+              <strong>{t("Connection checklist")}</strong>
+              <p>{t("Base URL, API key, and report endpoint are required before syncing.")}</p>
             </div>
           </div>
 
@@ -8535,11 +8569,25 @@ function KeitaroApiView() {
           </div>
 
           <div className="api-section postback-group">
-            <div>
-              <h4 className="panel-title">{t("Postback Receivers")}</h4>
-              <p className="panel-subtitle">
-                {t("Use these endpoints to attach events to Keitaro campaigns.")}
-              </p>
+            <div className="api-section-head">
+              <div>
+                <span className="api-step">{t("Step 2")}</span>
+                <h4 className="panel-title">{t("Postback Receivers")}</h4>
+                <p className="panel-subtitle">
+                  {t("Use these endpoints to attach events to Keitaro campaigns.")}
+                </p>
+              </div>
+            </div>
+
+            <div className="postback-info">
+              <div>
+                <span className="panel-mini">{t("Required parameters")}</span>
+                <p>{t("Provide click_id or campaign_id for attribution.")}</p>
+              </div>
+              <div>
+                <span className="panel-mini">{t("Optional parameters")}</span>
+                <p>{t("external_id, country, buyer, domain, device, status, payout.")}</p>
+              </div>
             </div>
 
             <div className="postback-grid">
@@ -8574,8 +8622,9 @@ function KeitaroApiView() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          <div className="panel-head">
+          <div className="panel-head api-head">
             <div>
+              <span className="api-step">{t("Step 3")}</span>
               <h3 className="panel-title">{t("Report Sync")}</h3>
               <p className="panel-subtitle">
                 {t("Paste a Keitaro report payload and map fields into your statistics table.")}
@@ -8583,14 +8632,26 @@ function KeitaroApiView() {
             </div>
           </div>
 
-          <div className="field">
-            <label>{t("Sync Target")}</label>
-            <select value={syncTarget} onChange={(event) => setSyncTarget(event.target.value)}>
-              <option value="overall">{t("Overall Stats")}</option>
-              <option value="device">{t("Device Stats")}</option>
-              <option value="user_behavior">{t("User Behavior")}</option>
-            </select>
-            <p className="field-hint">{t("Choose where the report data should be stored.")}</p>
+          <div className="api-subgrid">
+            <div className="field">
+              <label>{t("Sync Target")}</label>
+              <select value={syncTarget} onChange={(event) => setSyncTarget(event.target.value)}>
+                <option value="overall">{t("Overall Stats")}</option>
+                <option value="device">{t("Device Stats")}</option>
+                <option value="user_behavior">{t("User Behavior")}</option>
+              </select>
+              <p className="field-hint">{t("Choose where the report data should be stored.")}</p>
+            </div>
+            <div className="field field-inline">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={replaceExisting}
+                  onChange={(event) => setReplaceExisting(event.target.checked)}
+                />
+                {t("Replace existing entries for the same date + buyer + country")}
+              </label>
+            </div>
           </div>
 
           <div className="field">
@@ -8608,129 +8669,157 @@ function KeitaroApiView() {
           </div>
 
           <div className="api-section">
-            <h4 className="panel-mini">{t("Field Mapping")}</h4>
-            <div className="form-grid api-grid">
-              <div className="field">
-                <label>{t("Date Field")}</label>
-                <input value={mapping.dateField} onChange={handleMappingChange("dateField")} />
+            <div className="api-section-head">
+              <div>
+                <h4 className="panel-mini">{t("Field Mapping")}</h4>
+                <p className="panel-subtitle">
+                  {t("Map Keitaro fields to dashboard columns.")}
+                </p>
               </div>
-              <div className="field">
-                <label>{t("Buyer Field")}</label>
-                <input value={mapping.buyerField} onChange={handleMappingChange("buyerField")} />
-              </div>
-              <div className="field">
-                <label>{t("Campaign Field")}</label>
-                <input
-                  value={mapping.campaignField || ""}
-                  onChange={handleMappingChange("campaignField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Country Field")}</label>
-                <input value={mapping.countryField} onChange={handleMappingChange("countryField")} />
-              </div>
-              <div className="field">
-                <label>{t("City Field")}</label>
-                <input value={mapping.cityField || ""} onChange={handleMappingChange("cityField")} />
-              </div>
-              <div className="field">
-                <label>{t("Region Field")}</label>
-                <input value={mapping.regionField || ""} onChange={handleMappingChange("regionField")} />
-              </div>
-              <div className="field">
-                <label>{t("Placement Field")}</label>
-                <input
-                  value={mapping.placementField || ""}
-                  onChange={handleMappingChange("placementField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("External ID Field")}</label>
-                <input
-                  value={mapping.externalIdField || ""}
-                  onChange={handleMappingChange("externalIdField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Spend Field")}</label>
-                <input value={mapping.spendField} onChange={handleMappingChange("spendField")} />
-              </div>
-              <div className="field">
-                <label>{t("Revenue Field")}</label>
-                <input value={mapping.revenueField} onChange={handleMappingChange("revenueField")} />
-              </div>
-              <div className="field">
-                <label>{t("FTD Revenue Field")}</label>
-                <input
-                  value={mapping.ftdRevenueField || ""}
-                  onChange={handleMappingChange("ftdRevenueField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Redeposit Revenue Field")}</label>
-                <input
-                  value={mapping.redepositRevenueField || ""}
-                  onChange={handleMappingChange("redepositRevenueField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Clicks Field")}</label>
-                <input value={mapping.clicksField} onChange={handleMappingChange("clicksField")} />
-              </div>
-              <div className="field">
-                <label>{t("Installs Field")}</label>
-                <input value={mapping.installsField} onChange={handleMappingChange("installsField")} />
-              </div>
-              <div className="field">
-                <label>{t("Registers Field")}</label>
-                <input value={mapping.registersField} onChange={handleMappingChange("registersField")} />
-              </div>
-              <div className="field">
-                <label>{t("FTDs Field")}</label>
-                <input value={mapping.ftdsField} onChange={handleMappingChange("ftdsField")} />
-              </div>
-              <div className="field">
-                <label>{t("Redeposits Field")}</label>
-                <input value={mapping.redepositsField} onChange={handleMappingChange("redepositsField")} />
-              </div>
-              <div className="field">
-                <label>{t("Device Field")}</label>
-                <input value={mapping.deviceField} onChange={handleMappingChange("deviceField")} />
-              </div>
-              <div className="field">
-                <label>{t("OS Field")}</label>
-                <input value={mapping.osField || ""} onChange={handleMappingChange("osField")} />
-              </div>
-              <div className="field">
-                <label>{t("OS Version Field")}</label>
-                <input
-                  value={mapping.osVersionField || ""}
-                  onChange={handleMappingChange("osVersionField")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("OS Icon Field")}</label>
-                <input value={mapping.osIconField || ""} onChange={handleMappingChange("osIconField")} />
-              </div>
-              <div className="field">
-                <label>{t("Device Model Field")}</label>
-                <input
-                  value={mapping.deviceModelField || ""}
-                  onChange={handleMappingChange("deviceModelField")}
-                />
-              </div>
+              <button className="ghost" type="button" onClick={() => setShowMapping((prev) => !prev)}>
+                {showMapping ? t("Hide Mapping") : t("Show Mapping")}
+              </button>
             </div>
-          </div>
-
-          <div className="api-section">
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={replaceExisting}
-                onChange={(event) => setReplaceExisting(event.target.checked)}
-              />
-              {t("Replace existing entries for the same date + buyer + country")}
-            </label>
+            {showMapping ? (
+              <div className="mapping-grid">
+                <div className="mapping-group">
+                  <h5>{t("Identity Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Date Field")}</label>
+                      <input value={mapping.dateField} onChange={handleMappingChange("dateField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Buyer Field")}</label>
+                      <input value={mapping.buyerField} onChange={handleMappingChange("buyerField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Campaign Field")}</label>
+                      <input
+                        value={mapping.campaignField || ""}
+                        onChange={handleMappingChange("campaignField")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("External ID Field")}</label>
+                      <input
+                        value={mapping.externalIdField || ""}
+                        onChange={handleMappingChange("externalIdField")}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="mapping-group">
+                  <h5>{t("Geo Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Country Field")}</label>
+                      <input value={mapping.countryField} onChange={handleMappingChange("countryField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Region Field")}</label>
+                      <input value={mapping.regionField || ""} onChange={handleMappingChange("regionField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("City Field")}</label>
+                      <input value={mapping.cityField || ""} onChange={handleMappingChange("cityField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Placement Field")}</label>
+                      <input
+                        value={mapping.placementField || ""}
+                        onChange={handleMappingChange("placementField")}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="mapping-group">
+                  <h5>{t("Performance Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Spend Field")}</label>
+                      <input value={mapping.spendField} onChange={handleMappingChange("spendField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Revenue Field")}</label>
+                      <input value={mapping.revenueField} onChange={handleMappingChange("revenueField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("FTD Revenue Field")}</label>
+                      <input
+                        value={mapping.ftdRevenueField || ""}
+                        onChange={handleMappingChange("ftdRevenueField")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Redeposit Revenue Field")}</label>
+                      <input
+                        value={mapping.redepositRevenueField || ""}
+                        onChange={handleMappingChange("redepositRevenueField")}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="mapping-group">
+                  <h5>{t("Event Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Clicks Field")}</label>
+                      <input value={mapping.clicksField} onChange={handleMappingChange("clicksField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Installs Field")}</label>
+                      <input value={mapping.installsField} onChange={handleMappingChange("installsField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Registers Field")}</label>
+                      <input value={mapping.registersField} onChange={handleMappingChange("registersField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("FTDs Field")}</label>
+                      <input value={mapping.ftdsField} onChange={handleMappingChange("ftdsField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Redeposits Field")}</label>
+                      <input value={mapping.redepositsField} onChange={handleMappingChange("redepositsField")} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mapping-group">
+                  <h5>{t("Device Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Device Field")}</label>
+                      <input value={mapping.deviceField} onChange={handleMappingChange("deviceField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("OS Field")}</label>
+                      <input value={mapping.osField || ""} onChange={handleMappingChange("osField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("OS Version Field")}</label>
+                      <input
+                        value={mapping.osVersionField || ""}
+                        onChange={handleMappingChange("osVersionField")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("OS Icon Field")}</label>
+                      <input value={mapping.osIconField || ""} onChange={handleMappingChange("osIconField")} />
+                    </div>
+                    <div className="field">
+                      <label>{t("Device Model Field")}</label>
+                      <input
+                        value={mapping.deviceModelField || ""}
+                        onChange={handleMappingChange("deviceModelField")}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="field-hint">{t("Mapping hidden. Click show to edit fields.")}</p>
+            )}
           </div>
 
           <div className="api-actions">
@@ -8754,29 +8843,29 @@ function KeitaroApiView() {
                 )}
               </div>
             )}
-            <button
-              className="ghost"
-              type="button"
-              onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.overall)}
-            >
-              {t("Load Overall Example")}
-            </button>
-            <button
-              className="ghost"
-              type="button"
-              onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.device)}
-            >
-              {t("Load Device Example")}
-            </button>
-            <button
-              className="ghost"
-              type="button"
-              onClick={() =>
-                setPayloadText(defaultKeitaroPayloadByTarget[syncTarget] || defaultKeitaroPayload)
-              }
-            >
-              {t("Load Example")}
-            </button>
+            <div className="api-actions-group">
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setPayloadText(defaultKeitaroPayloadByTarget[syncTarget] || defaultKeitaroPayload)}
+              >
+                {t("Load Example")}
+              </button>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.overall)}
+              >
+                {t("Load Overall Example")}
+              </button>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.device)}
+              >
+                {t("Load Device Example")}
+              </button>
+            </div>
             <button className="action-pill" type="button" onClick={handleSync} disabled={syncState.loading}>
               {syncState.loading ? t("Syncing...") : t("Sync Now")}
             </button>
