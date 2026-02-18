@@ -462,6 +462,7 @@ const translations = {
     Refresh: "Yenile",
     "Refreshing...": "Yenileniyor...",
     "No postback logs yet.": "Henüz postback kaydı yok.",
+    "Add comment": "Yorum ekle",
     "Session expired. Please sign in again.": "Oturum süresi doldu. Lütfen yeniden giriş yapın.",
     Time: "Zaman",
     Event: "Olay",
@@ -6853,6 +6854,11 @@ function DomainsDashboard({ authUser }) {
     }
   };
 
+  const visibleDomains = React.useMemo(() => {
+    if (canManageDomains) return domains;
+    return domains.filter((domain) => domain.owner_id === authUser?.id);
+  }, [canManageDomains, domains, authUser?.id]);
+
   return (
     <section className="form-section">
       <motion.div
@@ -6942,7 +6948,7 @@ function DomainsDashboard({ authUser }) {
           <div className="empty-state">{t("Loading domains…")}</div>
         ) : domainState.error ? (
           <div className="empty-state error">{domainState.error}</div>
-        ) : domains.length === 0 ? (
+        ) : visibleDomains.length === 0 ? (
           <div className="empty-state">{t("No domains added yet.")}</div>
         ) : (
           <div className="table-wrap">
@@ -6959,7 +6965,7 @@ function DomainsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {domains.map((domain) => (
+                {visibleDomains.map((domain) => (
                   <tr key={domain.id}>
                     <td>{domain.domain}</td>
                     <td>{domain.game || "—"}</td>
@@ -7191,6 +7197,26 @@ function PixelsDashboard({ authUser }) {
     }
   };
 
+  const handleCommentEdit = async (pixel) => {
+    if (!pixel?.id) return;
+    const current = pixel.comment || "";
+    const nextValue = window.prompt(t("Add comment"), current);
+    if (nextValue === null) return;
+    try {
+      const response = await apiFetch(`/api/pixels/${pixel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: nextValue }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to update comment.");
+      }
+      await fetchPixels();
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to update comment." });
+    }
+  };
+
   const maskToken = (token) => {
     const value = String(token || "");
     if (value.length <= 12) return value;
@@ -7223,6 +7249,7 @@ function PixelsDashboard({ authUser }) {
   };
 
   const filteredDomains = React.useMemo(() => {
+    if (canManagePixels) return domains;
     const loggedIdRaw = authUser?.id;
     const loggedId =
       loggedIdRaw === null || loggedIdRaw === undefined || loggedIdRaw === ""
@@ -7247,7 +7274,12 @@ function PixelsDashboard({ authUser }) {
       }
       return false;
     });
-  }, [domains, authUser?.id, authUser?.role, normalizeRole]);
+  }, [domains, authUser?.id, authUser?.role, normalizeRole, canManagePixels]);
+
+  const visiblePixels = React.useMemo(() => {
+    if (canManagePixels) return pixels;
+    return pixels.filter((pixel) => pixel.owner_id === authUser?.id);
+  }, [canManagePixels, pixels, authUser?.id]);
 
   return (
     <section className="form-section">
@@ -7372,7 +7404,7 @@ function PixelsDashboard({ authUser }) {
           <div className="empty-state">{t("Loading entries…")}</div>
         ) : pixelState.error ? (
           <div className="empty-state error">{pixelState.error}</div>
-        ) : pixels.length === 0 ? (
+        ) : visiblePixels.length === 0 ? (
           <div className="empty-state">{t("No pixels added yet.")}</div>
         ) : (
           <div className="table-wrap">
@@ -7391,7 +7423,7 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {pixels.map((pixel) => (
+                {visiblePixels.map((pixel) => (
                   <tr key={pixel.id}>
                     <td>{pixel.id}</td>
                     <td className="copy-cell">
@@ -7443,7 +7475,19 @@ function PixelsDashboard({ authUser }) {
                         </span>
                       )}
                     </td>
-                    <td>{pixel.comment || "—"}</td>
+                    <td>
+                      {pixel.comment ? (
+                        pixel.comment
+                      ) : (
+                        <button
+                          className="comment-btn"
+                          type="button"
+                          onClick={() => handleCommentEdit(pixel)}
+                        >
+                          {t("Add comment")}
+                        </button>
+                      )}
+                    </td>
                     <td>{resolveOwnerLabel(pixel)}</td>
                     <td>
                       {canManagePixels ? (

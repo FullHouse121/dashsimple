@@ -2339,11 +2339,27 @@ app.patch("/api/pixels/:id", async (req, res) => {
   if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  const { status } = req.body ?? {};
-  if (!status) {
-    return res.status(400).json({ error: "Status is required." });
+  const { status, comment } = req.body ?? {};
+  const updates = [];
+  const params = [];
+
+  if (status !== undefined && status !== null && status !== "") {
+    updates.push(`status = $${updates.length + 1}`);
+    params.push(status);
   }
-  await query(`UPDATE pixels SET status = $1 WHERE id = $2`, [status, id]);
+
+  if (comment !== undefined) {
+    const normalizedComment = String(comment || "").trim();
+    updates.push(`comment = $${updates.length + 1}`);
+    params.push(normalizedComment || null);
+  }
+
+  if (!updates.length) {
+    return res.status(400).json({ error: "Status or comment is required." });
+  }
+
+  params.push(id);
+  await query(`UPDATE pixels SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
   res.json({ ok: true });
 });
 
@@ -2619,7 +2635,11 @@ app.get("/api/fx", async (req, res) => {
 app.get("/api/roles", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = (await selectRoles(limit)).map((row) => ({
+  let rows = await selectRoles(limit);
+  if (!isLeadership(req.user)) {
+    rows = rows.filter((row) => row.name === req.user?.role);
+  }
+  const normalized = rows.map((row) => ({
     ...row,
     permissions: (() => {
       let permissions = [];
@@ -2641,7 +2661,7 @@ app.get("/api/roles", async (req, res) => {
       return Array.from(new Set(compatPermissions));
     })(),
   }));
-  res.json(rows);
+  res.json(normalized);
 });
 
 app.post("/api/roles", async (req, res) => {

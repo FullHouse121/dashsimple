@@ -2046,6 +2046,23 @@ select {
   letter-spacing: 0.3px;
 }
 
+.comment-btn {
+  background: rgba(54, 208, 124, 0.12);
+  border: 1px solid rgba(54, 208, 124, 0.45);
+  color: #9cf0c3;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+}
+
+.comment-btn:hover {
+  background: rgba(54, 208, 124, 0.2);
+  border-color: rgba(54, 208, 124, 0.7);
+}
+
 .icon-btn.danger {
   color: #ff9c9c;
   border-color: rgba(255, 99, 99, 0.3);
@@ -2144,6 +2161,16 @@ select {
   border-color: rgba(239, 68, 68, 0.5);
   background: linear-gradient(135deg, rgba(239, 68, 68, 0.45), rgba(46, 12, 12, 0.95));
   color: #fecaca;
+}
+
+.pixel-table .status-select {
+  min-width: 112px;
+  padding: 5px 22px 5px 12px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.25px;
+  text-transform: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .status-requested {
