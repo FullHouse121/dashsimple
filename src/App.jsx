@@ -4769,6 +4769,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   const { t } = useLanguage();
   const [placementEntries, setPlacementEntries] = React.useState([]);
   const [placementState, setPlacementState] = React.useState({ loading: true, error: null });
+  const [placementFilter, setPlacementFilter] = React.useState("All placements");
 
   const fetchPlacements = React.useCallback(async () => {
     try {
@@ -4802,6 +4803,15 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
     [period, customRange.from, customRange.to]
   );
   const sum = (value) => Number(value || 0);
+  const normalizePlacementLabel = React.useCallback((value) => {
+    const rawPlacement = String(value || "").trim();
+    const normalizedPlacement = rawPlacement
+      .replace(/^[({\[]?sub[_\s-]*id[_\s-]*1[)\]}]?$/i, "")
+      .replace(/^[({\[]?sub[_\s-]*1[)\]}]?$/i, "")
+      .trim();
+    if (!normalizedPlacement) return "";
+    return normalizedPlacement.replace(/_/g, " ");
+  }, []);
   const placementRows = React.useMemo(() => {
     return placementEntries.filter((row) => {
       if (!isDateInRange(row.date, periodRange)) return false;
@@ -4809,16 +4819,26 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
     });
   }, [placementEntries, periodRange.from, periodRange.to]);
 
+  const placementOptions = React.useMemo(() => {
+    const options = new Set();
+    placementRows.forEach((row) => {
+      const label = normalizePlacementLabel(row.placement);
+      if (label) options.add(label);
+    });
+    return ["All placements", ...Array.from(options).sort((a, b) => a.localeCompare(b))];
+  }, [placementRows, normalizePlacementLabel]);
+
+  React.useEffect(() => {
+    if (!placementOptions.includes(placementFilter)) {
+      setPlacementFilter("All placements");
+    }
+  }, [placementOptions, placementFilter]);
+
   const placementData = React.useMemo(() => {
     const map = new Map();
     placementRows.forEach((row) => {
-      const rawPlacement = String(row.placement || "").trim();
-      const normalizedPlacement = rawPlacement
-        .replace(/^[({\[]?sub[_\s-]*id[_\s-]*1[)\]}]?$/i, "")
-        .replace(/^[({\[]?sub[_\s-]*1[)\]}]?$/i, "")
-        .trim();
-      if (!normalizedPlacement) return;
-      const placement = normalizedPlacement.replace(/_/g, " ");
+      const placement = normalizePlacementLabel(row.placement);
+      if (!placement) return;
       if (!map.has(placement)) {
         map.set(placement, {
           placement,
@@ -4854,9 +4874,14 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
         };
       })
       .sort((a, b) => b.clicks - a.clicks);
-  }, [placementRows]);
+  }, [placementRows, normalizePlacementLabel]);
 
-  const totals = placementData.reduce(
+  const activePlacementData = React.useMemo(() => {
+    if (placementFilter === "All placements") return placementData;
+    return placementData.filter((row) => row.placement === placementFilter);
+  }, [placementData, placementFilter]);
+
+  const totals = activePlacementData.reduce(
     (acc, row) => ({
       clicks: acc.clicks + row.clicks,
       registers: acc.registers + row.registers,
@@ -4866,11 +4891,11 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
     { clicks: 0, registers: 0, ftds: 0, revenue: 0 }
   );
 
-  const topByClicks = placementData[0] || null;
-  const topByRevenue = [...placementData].sort((a, b) => b.revenue - a.revenue)[0] || null;
-  const topByCr = [...placementData].sort((a, b) => b.regToFtd - a.regToFtd)[0] || null;
-  const topChartRows = placementData.slice(0, 10);
-  const topRevenueRows = [...placementData].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  const topByClicks = activePlacementData[0] || null;
+  const topByRevenue = [...activePlacementData].sort((a, b) => b.revenue - a.revenue)[0] || null;
+  const topByCr = [...activePlacementData].sort((a, b) => b.regToFtd - a.regToFtd)[0] || null;
+  const topChartRows = activePlacementData.slice(0, 10);
+  const topRevenueRows = [...activePlacementData].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
 
   const clicksMax = Math.max(
     10,
@@ -4931,12 +4956,25 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
               <h3 className="panel-title">{t("Placement Volume")}</h3>
               <p className="panel-subtitle">{t("Clicks and registers grouped by sub_id_1 placement.")}</p>
             </div>
-            <PeriodSelect
-              value={period}
-              onChange={setPeriod}
-              customRange={customRange}
-              onCustomChange={onCustomChange}
-            />
+            <div className="panel-actions">
+              <select
+                className="inline-select"
+                value={placementFilter}
+                onChange={(event) => setPlacementFilter(event.target.value)}
+              >
+                {placementOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option === "All placements" ? t(option) : option}
+                  </option>
+                ))}
+              </select>
+              <PeriodSelect
+                value={period}
+                onChange={setPeriod}
+                customRange={customRange}
+                onCustomChange={onCustomChange}
+              />
+            </div>
           </div>
           {placementState.loading ? (
             <div className="empty-state">{t("Loading placement stats…")}</div>
@@ -5044,7 +5082,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
         </motion.div>
 
         <motion.div
-          className="panel"
+          className="panel span-2 placement-conversion"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.16 }}
@@ -5059,7 +5097,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
             <div className="empty-state">{t("No conversion rate data available.")}</div>
           ) : (
             <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={320}>
                 <LineChart data={topChartRows} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                   <XAxis dataKey="placement" tickLine={false} axisLine={false} tick={axisTickStyle} />
@@ -5115,7 +5153,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
             <div className="empty-state">{t("Loading placement stats…")}</div>
           ) : placementState.error ? (
             <div className="empty-state error">{placementState.error}</div>
-          ) : placementData.length === 0 ? (
+          ) : activePlacementData.length === 0 ? (
             <div className="empty-state">
               {t("No placement rows found. Check Keitaro payload dimensions and mapping for sub_id_1.")}
             </div>
@@ -5137,7 +5175,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
                   </tr>
                 </thead>
                 <tbody>
-                  {placementData.map((row) => (
+                  {activePlacementData.map((row) => (
                     <tr key={row.placement}>
                       <td>{row.placement}</td>
                       <td>{row.clicks.toLocaleString()}</td>
