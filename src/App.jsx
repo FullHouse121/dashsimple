@@ -452,6 +452,18 @@ const translations = {
     "Optional parameters": "İsteğe bağlı parametreler",
     "external_id, country, buyer, domain, device, status, payout.":
       "external_id, country, buyer, domain, device, status, payout.",
+    "Postback Logs": "Postback Kayıtları",
+    "Latest events received from postbacks.":
+      "Postback üzerinden alınan en son olaylar.",
+    Refresh: "Yenile",
+    "Refreshing...": "Yenileniyor...",
+    "No postback logs yet.": "Henüz postback kaydı yok.",
+    Time: "Zaman",
+    Event: "Olay",
+    Campaign: "Kampanya",
+    "Click ID": "Click ID",
+    "External ID": "External ID",
+    Source: "Kaynak",
     "Report Payload (JSON)": "Rapor Yükü (JSON)",
     "Field Mapping": "Alan Eşlemesi",
     "Map Keitaro fields to dashboard columns.":
@@ -8492,9 +8504,58 @@ function KeitaroApiView() {
     }
   };
 
+  const [postbackLogs, setPostbackLogs] = React.useState([]);
+  const [postbackLogState, setPostbackLogState] = React.useState({
+    loading: false,
+    error: null,
+  });
+
+  const fetchPostbackLogs = React.useCallback(async () => {
+    try {
+      setPostbackLogState({ loading: true, error: null });
+      const response = await apiFetch("/api/postbacks/logs?limit=200");
+      if (!response.ok) {
+        throw new Error("Failed to load postback logs.");
+      }
+      const data = await response.json();
+      setPostbackLogs(Array.isArray(data) ? data : []);
+      setPostbackLogState({ loading: false, error: null });
+    } catch (error) {
+      setPostbackLogState({
+        loading: false,
+        error: error.message || "Failed to load postback logs.",
+      });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchPostbackLogs();
+  }, [fetchPostbackLogs]);
+
+  const formatLogTime = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.valueOf())) return String(value);
+    return date.toLocaleString("en-US", {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const formatEventLabel = (value) => {
+    const label = String(value || "").toLowerCase();
+    if (label === "ftd") return "FTD";
+    if (label === "redeposit") return "Redeposit";
+    if (label === "registration") return "Registration";
+    if (label === "install") return "Install";
+    return label || "—";
+  };
+
   return (
     <>
-      <section className="panels api-panels api-panels--match">
+      <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
@@ -8567,52 +8628,115 @@ function KeitaroApiView() {
               {testState.loading ? t("Testing...") : t("Test Connection")}
             </button>
           </div>
+        </motion.div>
 
-          <div className="api-section postback-group">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.05 }}
+        >
+          <div className="panel-head api-head">
+            <div>
+              <span className="api-step">{t("Step 2")}</span>
+              <h3 className="panel-title">{t("Postback Receivers")}</h3>
+              <p className="panel-subtitle">
+                {t("Use these endpoints to attach events to Keitaro campaigns.")}
+              </p>
+            </div>
+          </div>
+
+          <div className="postback-info">
+            <div>
+              <span className="panel-mini">{t("Required parameters")}</span>
+              <p>{t("Provide click_id or campaign_id for attribution.")}</p>
+            </div>
+            <div>
+              <span className="panel-mini">{t("Optional parameters")}</span>
+              <p>{t("external_id, country, buyer, domain, device, status, payout.")}</p>
+            </div>
+          </div>
+
+          <div className="postback-grid">
+            {postbackItems.map((item) => (
+              <div className="postback-card" key={item.key}>
+                <div className="postback-card-head">
+                  <div className="panel-title">{t(item.title)}</div>
+                  <div className="panel-subtitle">{t(item.subtitle)}</div>
+                </div>
+                <div className="postback-url">
+                  <input className="code-input" value={item.url} readOnly />
+                  <button className="ghost" type="button" onClick={handleCopyPostback(item.url)}>
+                    <Copy size={14} />
+                    {t("Copy URL")}
+                  </button>
+                </div>
+                {item.example ? (
+                  <div className="postback-section">
+                    <span className="panel-mini">{t("Example request")}</span>
+                    <code className="postback-example">{item.example}</code>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="api-section postback-logs">
             <div className="api-section-head">
               <div>
-                <span className="api-step">{t("Step 2")}</span>
-                <h4 className="panel-title">{t("Postback Receivers")}</h4>
-                <p className="panel-subtitle">
-                  {t("Use these endpoints to attach events to Keitaro campaigns.")}
-                </p>
+                <h4 className="panel-title">{t("Postback Logs")}</h4>
+                <p className="panel-subtitle">{t("Latest events received from postbacks.")}</p>
               </div>
+              <button
+                className="ghost"
+                type="button"
+                onClick={fetchPostbackLogs}
+                disabled={postbackLogState.loading}
+              >
+                {postbackLogState.loading ? t("Refreshing...") : t("Refresh")}
+              </button>
             </div>
 
-            <div className="postback-info">
-              <div>
-                <span className="panel-mini">{t("Required parameters")}</span>
-                <p>{t("Provide click_id or campaign_id for attribution.")}</p>
+            {postbackLogState.error ? (
+              <div className="api-status error">{postbackLogState.error}</div>
+            ) : postbackLogs.length === 0 ? (
+              <div className="empty-state">{t("No postback logs yet.")}</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="entries-table postback-table">
+                  <thead>
+                    <tr>
+                      <th>{t("Time")}</th>
+                      <th>{t("Event")}</th>
+                      <th>{t("Media Buyer")}</th>
+                      <th>{t("Campaign")}</th>
+                      <th>{t("Country")}</th>
+                      <th>{t("Click ID")}</th>
+                      <th>{t("External ID")}</th>
+                      <th>{t("Source")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {postbackLogs.map((row) => (
+                      <tr key={row.id}>
+                        <td>{formatLogTime(row.created_at || row.date)}</td>
+                        <td>
+                          <span className={`postback-event ${String(row.event_type || "").toLowerCase()}`}>
+                            {formatEventLabel(row.event_type)}
+                          </span>
+                        </td>
+                        <td>{row.buyer || "—"}</td>
+                        <td>{row.campaign_id || "—"}</td>
+                        <td>{row.country || "—"}</td>
+                        <td className="mono">{row.click_id || "—"}</td>
+                        <td className="mono">{row.external_id || "—"}</td>
+                        <td>{row.source || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <span className="panel-mini">{t("Optional parameters")}</span>
-                <p>{t("external_id, country, buyer, domain, device, status, payout.")}</p>
-              </div>
-            </div>
-
-            <div className="postback-grid">
-              {postbackItems.map((item) => (
-                <div className="postback-card" key={item.key}>
-                  <div className="postback-card-head">
-                    <div className="panel-title">{t(item.title)}</div>
-                    <div className="panel-subtitle">{t(item.subtitle)}</div>
-                  </div>
-                  <div className="postback-url">
-                    <input className="code-input" value={item.url} readOnly />
-                    <button className="ghost" type="button" onClick={handleCopyPostback(item.url)}>
-                      <Copy size={14} />
-                      {t("Copy URL")}
-                    </button>
-                  </div>
-                  {item.example ? (
-                    <div className="postback-section">
-                      <span className="panel-mini">{t("Example request")}</span>
-                      <code className="postback-example">{item.example}</code>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
+            )}
           </div>
         </motion.div>
 
@@ -8873,7 +8997,7 @@ function KeitaroApiView() {
         </motion.div>
       </section>
 
-      <section className="panels api-panels">
+      <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}

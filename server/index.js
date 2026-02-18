@@ -712,6 +712,44 @@ const insertConversionEvent = async (payload) => {
   );
 };
 
+const selectPostbackLogs = async (limit) =>
+  getRows(
+    `SELECT
+      ('install-' || id) AS id,
+      date,
+      created_at,
+      'install' AS event_type,
+      campaign_id,
+      buyer,
+      country,
+      domain,
+      device,
+      click_id,
+      external_id,
+      source,
+      raw
+     FROM install_events
+     UNION ALL
+     SELECT
+      ('conversion-' || id) AS id,
+      date,
+      created_at,
+      event_type,
+      campaign_id,
+      buyer,
+      country,
+      domain,
+      device,
+      click_id,
+      NULL AS external_id,
+      source,
+      raw
+     FROM conversion_events
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+
 const selectInstallTotals = async () =>
   getRows(
     `SELECT date, buyer, country, COUNT(*) as installs
@@ -2372,6 +2410,50 @@ app.all("/api/postbacks/install", async (req, res) => {
   }
 
   res.json({ ok: true });
+});
+
+app.get("/api/postbacks/logs", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const maxLimitRaw = Number.parseInt(process.env.POSTBACK_LOG_LIMIT_MAX ?? "1000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 1000;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+
+  const rows = await selectPostbackLogs(limit);
+  const safeParse = (value) => {
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
+    } catch (error) {
+      return null;
+    }
+  };
+  const resolveExternalId = (row) => {
+    if (row.external_id) return row.external_id;
+    const payload = safeParse(row.raw);
+    if (!payload) return null;
+    return (
+      payload.external_id ||
+      payload.externalId ||
+      payload.pwauid ||
+      payload.pwa_uid ||
+      payload.pwaid ||
+      payload.user_id ||
+      payload.userid ||
+      null
+    );
+  };
+
+  const filtered = viewerBuyer
+    ? rows.filter((row) => buyerMatches(row.buyer, viewerBuyer))
+    : rows;
+
+  const normalized = filtered.map((row) => ({
+    ...row,
+    external_id: resolveExternalId(row),
+  }));
+
+  res.json(normalized);
 });
 
 const handleConversionPostback = (eventType) => async (req, res) => {
