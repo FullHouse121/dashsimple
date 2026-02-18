@@ -2266,7 +2266,7 @@ function GeosDashboard({ filters }) {
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
-  const cityFilter = filters?.city || "All";
+  const regionFilter = filters?.city || "All";
   const dateFrom = filters?.dateFrom;
   const dateTo = filters?.dateTo;
   const normalizeBuyerKey = (value) =>
@@ -2317,18 +2317,18 @@ function GeosDashboard({ filters }) {
 
   const filteredRows = React.useMemo(() => {
     const normalizedCountry = normalizeFilterValue(countryFilter);
-    const normalizedCity = normalizeFilterValue(cityFilter);
+    const normalizedRegion = normalizeFilterValue(regionFilter);
     const dateRange = normalizeDateRange(dateFrom, dateTo);
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       const rowCountry = normalizeFilterValue(row.country);
       if (!isAllSelection(countryFilter) && rowCountry !== normalizedCountry) return false;
-      const rowCity = normalizeFilterValue(row.city);
-      if (!isAllSelection(cityFilter) && !rowCity.includes(normalizedCity)) return false;
+      const rowRegion = normalizeFilterValue(row.region || row.city);
+      if (!isAllSelection(regionFilter) && !rowRegion.includes(normalizedRegion)) return false;
       if (!isDateInRange(row.date, dateRange)) return false;
       return true;
     });
-  }, [geoRows, buyerFilter, countryFilter, cityFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
+  }, [geoRows, buyerFilter, countryFilter, regionFilter, dateFrom, dateTo, normalizedPriorityBuyers]);
 
   const geoTotals = React.useMemo(() => {
     const map = new Map();
@@ -2451,7 +2451,7 @@ function GeosDashboard({ filters }) {
   const cityTotalsAll = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const rawCity = String(row.city || "").trim();
+      const rawCity = String(row.region || row.city || "").trim();
       const countryLabel = String(row.country || "Unknown").trim() || "Unknown";
       const city = rawCity || `Unknown (${countryLabel})`;
       if (!map.has(city)) {
@@ -2741,13 +2741,13 @@ function GeosDashboard({ filters }) {
                 meta: topGeoLtv ? topGeoLtv.country : t("No data"),
               },
               {
-                label: "Top City ARPPU",
+                label: "Top Region ARPPU",
                 value: topCityArppu ? formatCurrency(topCityArppu.arppu) : "—",
                 icon: MapIcon,
                 meta: topCityArppu ? topCityArppu.city : t("No data"),
               },
               {
-                label: "Top City LTV",
+                label: "Top Region LTV",
                 value: topCityLtv ? formatCurrency(topCityLtv.ltv) : "—",
                 icon: MapIcon,
                 meta: topCityLtv ? topCityLtv.city : t("No data"),
@@ -3103,7 +3103,7 @@ function GeosDashboard({ filters }) {
 
           <div className="section-header">
             <div>
-              <h3>{t("City Insights")}</h3>
+              <h3>{t("Region Insights")}</h3>
               <p>{t("Best cities ranked by revenue, ARPPU, and LTV.")}</p>
             </div>
           </div>
@@ -3116,8 +3116,8 @@ function GeosDashboard({ filters }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("Top Cities by Revenue")}</h3>
-                <p className="panel-subtitle">{t("Best performing cities by total revenue.")}</p>
+                <h3 className="panel-title">{t("Top Regions by Revenue")}</h3>
+                <p className="panel-subtitle">{t("Best performing regions by total revenue.")}</p>
               </div>
             </div>
             <div className="chart chart-surface">
@@ -3177,7 +3177,7 @@ function GeosDashboard({ filters }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("LTV (2+ Deposits) by City")}</h3>
+                <h3 className="panel-title">{t("LTV (2+ Deposits) by Region")}</h3>
                 <p className="panel-subtitle">{t("Approximate: Revenue / Redeposits.")}</p>
               </div>
             </div>
@@ -3216,14 +3216,14 @@ function GeosDashboard({ filters }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("ARPPU by City")}</h3>
+                <h3 className="panel-title">{t("ARPPU by Region")}</h3>
                 <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
               </div>
             </div>
             <div className="chart chart-surface">
               <div className="metric-table arppu-matrix">
                 <div className="metric-row metric-header">
-                  <div className="metric-cell city">{t("City")}</div>
+                  <div className="metric-cell city">{t("Region")}</div>
                   <div className="metric-cell value arppu">
                     {t("ARPPU")}
                     <span className="sort-caret">▾</span>
@@ -9165,7 +9165,7 @@ export default function App() {
                     </div>
                     {isGeos ? (
                       <div className="field">
-                        <label>City</label>
+                        <label>Region / State</label>
                         <input
                           type="text"
                           placeholder="All"
