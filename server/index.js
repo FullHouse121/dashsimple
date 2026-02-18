@@ -616,19 +616,23 @@ const insertDomain = async (payload) => {
 
 const selectDomains = async (limit) =>
   getRows(
-    `SELECT id, domain, status, game, platform, owner_role, owner_id, country
-     FROM domains
-     ORDER BY domain ASC, id DESC
+    `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
+            u.username AS owner_name
+     FROM domains d
+     LEFT JOIN users u ON u.id = d.owner_id
+     ORDER BY d.domain ASC, d.id DESC
      LIMIT $1`,
     [limit]
   );
 
 const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT id, domain, status, game, platform, owner_role, owner_id, country
-     FROM domains
-     WHERE owner_id = $1
-     ORDER BY domain ASC, id DESC
+    `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
+            u.username AS owner_name
+     FROM domains d
+     LEFT JOIN users u ON u.id = d.owner_id
+     WHERE d.owner_id = $1
+     ORDER BY d.domain ASC, d.id DESC
      LIMIT $2`,
     [ownerId, limit]
   );

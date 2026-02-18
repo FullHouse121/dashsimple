@@ -6794,7 +6794,14 @@ function DomainsDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>{t("Owner")}</label>
-            <input value={t(domainForm.ownerRole || ownerRole)} disabled />
+            <input
+              value={
+                authUser?.username
+                  ? `${authUser.username} · ${t(domainForm.ownerRole || ownerRole)}`
+                  : t(domainForm.ownerRole || ownerRole)
+              }
+              disabled
+            />
           </div>
           <div className="form-actions">
             <button className="ghost" type="button" onClick={resetDomainForm}>
@@ -6833,7 +6840,7 @@ function DomainsDashboard({ authUser }) {
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
                     <td>{domain.country || "—"}</td>
-                    <td>{domain.owner_role ? t(domain.owner_role) : "—"}</td>
+                    <td>{domain.owner_name || (domain.owner_role ? t(domain.owner_role) : "—")}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
                         <select
