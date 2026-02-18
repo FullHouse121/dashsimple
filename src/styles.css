@@ -2063,6 +2063,15 @@ select {
   border-color: rgba(54, 208, 124, 0.7);
 }
 
+.comment-modal .modal-body {
+  grid-template-columns: 1fr;
+}
+
+.comment-modal textarea {
+  font-family: "Sora", sans-serif;
+  min-height: 140px;
+}
+
 .icon-btn.danger {
   color: #ff9c9c;
   border-color: rgba(255, 99, 99, 0.3);
@@ -2163,7 +2172,8 @@ select {
   color: #fecaca;
 }
 
-.pixel-table .status-select {
+.pixel-table .status-select,
+.domain-table .status-select {
   min-width: 112px;
   padding: 5px 22px 5px 12px;
   border-radius: 12px;

@@ -463,6 +463,7 @@ const translations = {
     "Refreshing...": "Yenileniyor...",
     "No postback logs yet.": "Henüz postback kaydı yok.",
     "Add comment": "Yorum ekle",
+    "Pixel Comment": "Piksel Yorumu",
     "Session expired. Please sign in again.": "Oturum süresi doldu. Lütfen yeniden giriş yapın.",
     Time: "Zaman",
     Event: "Olay",
@@ -7035,6 +7036,11 @@ function PixelsDashboard({ authUser }) {
     top: 0,
     above: true,
   });
+  const [commentModal, setCommentModal] = React.useState({
+    open: false,
+    pixel: null,
+    value: "",
+  });
   const copyToastTimeoutRef = React.useRef(null);
   const normalizeRole = React.useCallback((value) => String(value || "").trim().toLowerCase(), []);
 
@@ -7199,19 +7205,30 @@ function PixelsDashboard({ authUser }) {
 
   const handleCommentEdit = async (pixel) => {
     if (!pixel?.id) return;
-    const current = pixel.comment || "";
-    const nextValue = window.prompt(t("Add comment"), current);
-    if (nextValue === null) return;
+    setCommentModal({
+      open: true,
+      pixel,
+      value: pixel.comment || "",
+    });
+  };
+
+  const closeCommentModal = () => {
+    setCommentModal({ open: false, pixel: null, value: "" });
+  };
+
+  const handleCommentSave = async () => {
+    if (!commentModal.pixel?.id) return;
     try {
-      const response = await apiFetch(`/api/pixels/${pixel.id}`, {
+      const response = await apiFetch(`/api/pixels/${commentModal.pixel.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: nextValue }),
+        body: JSON.stringify({ comment: commentModal.value }),
       });
       if (!response.ok) {
         throw new Error("Failed to update comment.");
       }
       await fetchPixels();
+      closeCommentModal();
     } catch (error) {
       setPixelState({ loading: false, error: error.message || "Failed to update comment." });
     }
@@ -7316,6 +7333,58 @@ function PixelsDashboard({ authUser }) {
                 <span>{copyToast.message}</span>
               </motion.div>
             </div>
+          ) : null}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {commentModal.open ? (
+            <motion.div
+              className="modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeCommentModal}
+            >
+              <motion.div
+                className="modal comment-modal"
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="modal-head">
+                  <div>
+                    <p className="modal-kicker">{t("Pixel Comment")}</p>
+                    <h2>{t("Add comment")}</h2>
+                  </div>
+                  <button className="icon-btn" type="button" onClick={closeCommentModal}>
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <div className="field">
+                    <label>{t("Comment")}</label>
+                    <textarea
+                      rows={4}
+                      value={commentModal.value}
+                      onChange={(event) =>
+                        setCommentModal((prev) => ({ ...prev, value: event.target.value }))
+                      }
+                      placeholder={t("Add a comment")}
+                    />
+                  </div>
+                </div>
+                <div className="modal-actions">
+                  <button className="ghost" type="button" onClick={closeCommentModal}>
+                    {t("Cancel")}
+                  </button>
+                  <button className="action-pill" type="button" onClick={handleCommentSave}>
+                    {t("Save")}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
           ) : null}
         </AnimatePresence>
 
