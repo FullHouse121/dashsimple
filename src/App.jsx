@@ -36,6 +36,7 @@ import {
   Copy,
   RotateCcw,
   MousePointerClick,
+  PlusSquare,
   Download,
   UserPlus,
   CreditCard,
@@ -7553,8 +7554,10 @@ function PixelsDashboard({ authUser }) {
                           className="comment-btn"
                           type="button"
                           onClick={() => handleCommentEdit(pixel)}
+                          aria-label={t("Add comment")}
+                          title={t("Add comment")}
                         >
-                          {t("Add comment")}
+                          <PlusSquare size={18} />
                         </button>
                       )}
                     </td>
