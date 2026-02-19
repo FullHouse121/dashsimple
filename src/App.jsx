@@ -6396,8 +6396,8 @@ function GoalsDashboard({ authUser }) {
   const viewerBuyer = buyerNameFromId || authUser?.username || "";
   const displayGoals = goals
     .filter((goal) => {
-      if (goal.is_global) return !isLeadership;
       if (isLeadership) return true;
+      if (goal.is_global) return true;
       if (!viewerBuyer) return false;
       return goal.buyer === viewerBuyer;
     })
