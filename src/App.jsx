@@ -9965,7 +9965,13 @@ export default function App() {
       if (!response.ok) {
         throw new Error(data?.error || "Invalid credentials.");
       }
-      setAuthUser({ ...data.user, token: data.token });
+      const nextAuth = { ...data.user, token: data.token };
+      try {
+        localStorage.setItem("dash-auth", JSON.stringify(nextAuth));
+      } catch (error) {
+        // ignore storage issues
+      }
+      setAuthUser(nextAuth);
       setAuthState({ loading: false, error: null });
     } catch (error) {
       const message = error.message || "Invalid credentials.";
@@ -9974,6 +9980,11 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    try {
+      localStorage.removeItem("dash-auth");
+    } catch (error) {
+      // ignore storage issues
+    }
     setAuthUser(null);
   };
 
