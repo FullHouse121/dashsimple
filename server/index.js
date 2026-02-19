@@ -2343,7 +2343,9 @@ app.patch("/api/pixels/:id", async (req, res) => {
   if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  const { status, comment } = req.body ?? {};
+  const body = req.body ?? {};
+  const status = body.status ?? req.query?.status;
+  const comment = body.comment ?? req.query?.comment;
   const updates = [];
   const params = [];
 

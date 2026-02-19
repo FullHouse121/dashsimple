@@ -7236,14 +7236,20 @@ function PixelsDashboard({ authUser }) {
     try {
       const fallbackStatus = commentModal.pixel.status || "Active";
       const normalizedComment = String(commentModal.value || "").trim();
-      const response = await apiFetch(`/api/pixels/${commentModal.pixel.id}`, {
+      const query = new URLSearchParams();
+      if (normalizedComment) query.set("comment", normalizedComment);
+      if (fallbackStatus) query.set("status", fallbackStatus);
+      const response = await apiFetch(
+        `/api/pixels/${commentModal.pixel.id}${query.toString() ? `?${query}` : ""}`,
+        {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           comment: normalizedComment,
           status: fallbackStatus,
         }),
-      });
+        }
+      );
       if (!response.ok) {
         throw new Error("Failed to update comment.");
       }
