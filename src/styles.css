@@ -2185,20 +2185,40 @@ select {
   font-size: 12px;
   letter-spacing: 0.2px;
   text-transform: none;
-  background: rgba(8, 12, 10, 0.6);
-  border: 1px solid rgba(54, 208, 124, 0.7);
-  color: #36d07c;
+  background: rgba(16, 18, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text);
   box-shadow: 0 10px 20px rgba(54, 208, 124, 0.08);
 }
 
-.pixel-table .status-select.status-active,
-.pixel-table .status-select.status-pending,
-.pixel-table .status-select.status-paused,
-.pixel-table .status-select.status-expired,
+.pixel-table .status-select.status-active {
+  border-color: rgba(74, 222, 128, 0.55);
+  background: linear-gradient(135deg, rgba(46, 160, 99, 0.45), rgba(22, 36, 28, 0.9));
+  color: #b8f3d1;
+}
+
+.pixel-table .status-select.status-pending {
+  border-color: rgba(250, 204, 21, 0.55);
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.35), rgba(46, 40, 16, 0.95));
+  color: #fde68a;
+}
+
+.pixel-table .status-select.status-paused {
+  border-color: rgba(251, 146, 60, 0.55);
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.35), rgba(46, 27, 14, 0.95));
+  color: #fdba74;
+}
+
+.pixel-table .status-select.status-expired {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.35), rgba(46, 16, 16, 0.95));
+  color: #fecaca;
+}
+
 .pixel-table .status-select.status-blocked {
-  background: rgba(8, 12, 10, 0.6);
-  border-color: rgba(54, 208, 124, 0.7);
-  color: #36d07c;
+  border-color: rgba(239, 68, 68, 0.65);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.45), rgba(46, 12, 12, 0.95));
+  color: #fecaca;
 }
 
 .domain-table .status-select {

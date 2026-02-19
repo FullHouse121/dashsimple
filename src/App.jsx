@@ -7221,10 +7221,14 @@ function PixelsDashboard({ authUser }) {
   const handleCommentSave = async () => {
     if (!commentModal.pixel?.id) return;
     try {
+      const fallbackStatus = commentModal.pixel.status || "Active";
       const response = await apiFetch(`/api/pixels/${commentModal.pixel.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: commentModal.value }),
+        body: JSON.stringify({
+          comment: commentModal.value,
+          status: fallbackStatus,
+        }),
       });
       if (!response.ok) {
         throw new Error("Failed to update comment.");
