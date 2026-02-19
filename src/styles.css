@@ -2229,13 +2229,50 @@ select {
 }
 
 .domain-table .status-select {
-  min-width: 112px;
-  padding: 5px 22px 5px 12px;
-  border-radius: 12px;
-  font-size: 10.5px;
-  letter-spacing: 0.25px;
+  min-width: 120px;
+  padding: 8px 34px 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
   text-transform: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  background: rgba(20, 22, 26, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  box-shadow: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.domain-table .status-select.status-active {
+  border-color: rgba(54, 208, 124, 0.9);
+  color: #36d07c;
+}
+
+.domain-table .status-select.status-pending {
+  border-color: rgba(226, 197, 52, 0.9);
+  color: #e2c534;
+}
+
+.domain-table .status-select.status-paused {
+  border-color: rgba(160, 160, 160, 0.9);
+  color: #a3a3a3;
+}
+
+.domain-table .status-select.status-expired {
+  border-color: rgba(235, 76, 76, 0.95);
+  color: #eb4c4c;
+}
+
+.domain-table .status-select.status-blocked {
+  border-color: rgba(255, 45, 45, 0.95);
+  color: #ff2d2d;
 }
 
 .status-requested {
