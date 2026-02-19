@@ -7239,7 +7239,7 @@ function PixelsDashboard({ authUser }) {
       const query = new URLSearchParams();
       if (normalizedComment) query.set("comment", normalizedComment);
       if (fallbackStatus) query.set("status", fallbackStatus);
-      const response = await apiFetch(
+      let response = await apiFetch(
         `/api/pixels/${commentModal.pixel.id}/comment${query.toString() ? `?${query}` : ""}`,
         {
           method: "POST",
@@ -7250,6 +7250,19 @@ function PixelsDashboard({ authUser }) {
           }),
         }
       );
+      if (response.status === 404) {
+        response = await apiFetch(
+          `/api/pixels/${commentModal.pixel.id}${query.toString() ? `?${query}` : ""}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              comment: normalizedComment,
+              status: fallbackStatus,
+            }),
+          }
+        );
+      }
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to update comment.");
