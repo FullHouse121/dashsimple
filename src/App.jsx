@@ -9565,6 +9565,7 @@ export default function App() {
   const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const showFilters = isFinances || isHome || isGeos;
   const [viewerBuyer, setViewerBuyer] = React.useState("");
+  const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
 
   React.useEffect(() => {
     const range = getPeriodDateRange(period, customRange);
@@ -9809,6 +9810,17 @@ export default function App() {
     };
   }, [filtersOpen]);
 
+  React.useEffect(() => {
+    if (!profileMenuOpen) return;
+    const handleClick = (event) => {
+      if (!event.target.closest(".profile-menu-wrap")) {
+        setProfileMenuOpen(false);
+      }
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [profileMenuOpen]);
+
   const updateFilter = (key) => (event) => {
     const value = event.target.value;
     setFilters((prev) => {
@@ -10038,20 +10050,43 @@ export default function App() {
           )}
 
           <div className="topbar-actions">
-            <button
-              className={`profile profile-clickable${isProfile ? " is-active" : ""}`}
-              type="button"
-              onClick={() => setActiveView("profile")}
-            >
-              <span className="avatar">{profileInitials}</span>
-              <div>
-                <div className="profile-name">{profileName}</div>
-                <div className="profile-role">{t(profileRole)}</div>
-              </div>
-            </button>
-            <button className="ghost" type="button" onClick={handleLogout}>
-              {t("Logout")}
-            </button>
+            <div className="profile-menu-wrap">
+              <button
+                className={`profile profile-clickable${isProfile ? " is-active" : ""}`}
+                type="button"
+                onClick={() => setProfileMenuOpen((prev) => !prev)}
+              >
+                <span className="avatar">{profileInitials}</span>
+                <div>
+                  <div className="profile-role">{t(profileRole)}</div>
+                  <div className="profile-name">{profileName}</div>
+                </div>
+              </button>
+              {profileMenuOpen ? (
+                <div className="profile-menu">
+                  <button
+                    className="profile-menu-item"
+                    type="button"
+                    onClick={() => {
+                      setActiveView("profile");
+                      setProfileMenuOpen(false);
+                    }}
+                  >
+                    {t("Profile")}
+                  </button>
+                  <button
+                    className="profile-menu-item"
+                    type="button"
+                    onClick={() => {
+                      setProfileMenuOpen(false);
+                      handleLogout();
+                    }}
+                  >
+                    {t("Logout")}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 

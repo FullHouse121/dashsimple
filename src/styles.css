@@ -926,6 +926,42 @@ select {
   color: var(--muted);
 }
 
+.profile-menu-wrap {
+  position: relative;
+}
+
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  background: rgba(18, 20, 24, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  min-width: 160px;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  z-index: 5;
+}
+
+.profile-menu-item {
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.profile-menu-item:hover {
+  border-color: rgba(54, 208, 124, 0.5);
+  background: rgba(54, 208, 124, 0.12);
+  color: var(--green);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
