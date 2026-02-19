@@ -2179,46 +2179,50 @@ select {
 }
 
 .pixel-table .status-select {
-  min-width: 112px;
-  padding: 6px 22px 6px 12px;
-  border-radius: 12px;
-  font-size: 12px;
+  min-width: 120px;
+  padding: 8px 34px 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
   letter-spacing: 0.2px;
   text-transform: none;
-  background: rgba(16, 18, 24, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 22, 26, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.2);
   color: var(--text);
-  box-shadow: 0 10px 20px rgba(54, 208, 124, 0.08);
+  box-shadow: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 .pixel-table .status-select.status-active {
-  border-color: rgba(74, 222, 128, 0.55);
-  background: linear-gradient(135deg, rgba(46, 160, 99, 0.45), rgba(22, 36, 28, 0.9));
-  color: #b8f3d1;
+  border-color: rgba(54, 208, 124, 0.9);
+  color: #36d07c;
 }
 
 .pixel-table .status-select.status-pending {
-  border-color: rgba(250, 204, 21, 0.55);
-  background: linear-gradient(135deg, rgba(250, 204, 21, 0.35), rgba(46, 40, 16, 0.95));
-  color: #fde68a;
+  border-color: rgba(226, 197, 52, 0.9);
+  color: #e2c534;
 }
 
 .pixel-table .status-select.status-paused {
-  border-color: rgba(251, 146, 60, 0.55);
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.35), rgba(46, 27, 14, 0.95));
-  color: #fdba74;
+  border-color: rgba(160, 160, 160, 0.9);
+  color: #a3a3a3;
 }
 
 .pixel-table .status-select.status-expired {
-  border-color: rgba(248, 113, 113, 0.6);
-  background: linear-gradient(135deg, rgba(248, 113, 113, 0.35), rgba(46, 16, 16, 0.95));
-  color: #fecaca;
+  border-color: rgba(235, 76, 76, 0.95);
+  color: #eb4c4c;
 }
 
 .pixel-table .status-select.status-blocked {
-  border-color: rgba(239, 68, 68, 0.65);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.45), rgba(46, 12, 12, 0.95));
-  color: #fecaca;
+  border-color: rgba(255, 45, 45, 0.95);
+  color: #ff2d2d;
 }
 
 .domain-table .status-select {
