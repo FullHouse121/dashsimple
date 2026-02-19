@@ -36,7 +36,7 @@ import {
   Copy,
   RotateCcw,
   MousePointerClick,
-  PlusSquare,
+  Plus,
   Download,
   UserPlus,
   CreditCard,
@@ -7561,7 +7561,7 @@ function PixelsDashboard({ authUser }) {
                           aria-label={t("Add comment")}
                           title={t("Add comment")}
                         >
-                          <PlusSquare size={18} />
+                          <Plus size={18} />
                         </button>
                       )}
                     </td>
