@@ -5402,7 +5402,10 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
   const sum = (value) => Number(value || 0);
 
   const behaviorRows = React.useMemo(
-    () => behaviorEntries.filter((row) => isDateInRange(row.date, periodRange)),
+    () =>
+      behaviorEntries.filter((row) =>
+        isDateInRange(row.date || row.day || row.created_at, periodRange)
+      ),
     [behaviorEntries, periodRange.from, periodRange.to]
   );
 

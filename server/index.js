@@ -477,7 +477,8 @@ const insertUserBehavior = async (payload) => {
 const selectUserBehavior = async (limit) =>
   getRows(
     `SELECT id, date, external_id, buyer, campaign, country, region, city, placement,
-            clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue
+            clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue,
+            created_at
      FROM user_behavior
      ORDER BY date DESC, id DESC
      LIMIT $1`,
