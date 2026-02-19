@@ -466,6 +466,15 @@ const translations = {
     "No postback logs yet.": "Henüz postback kaydı yok.",
     "Add comment": "Yorum ekle",
     "Pixel Comment": "Piksel Yorumu",
+    "Change Password": "Şifreyi Değiştir",
+    "Current Password": "Mevcut Şifre",
+    "New Password": "Yeni Şifre",
+    "Confirm Password": "Şifreyi Onayla",
+    "Update Password": "Şifreyi Güncelle",
+    "Password updated.": "Şifre güncellendi.",
+    "Passwords do not match.": "Şifreler eşleşmiyor.",
+    "Reset Password": "Şifreyi Sıfırla",
+    "Password is required.": "Şifre gerekli.",
     "Session expired. Please sign in again.": "Oturum süresi doldu. Lütfen yeniden giriş yapın.",
     Time: "Zaman",
     Event: "Olay",
@@ -7778,6 +7787,29 @@ function RolesDashboard({ authUser }) {
     }
   };
 
+  const handleUserPasswordReset = async (user) => {
+    if (!isLeadership) return;
+    const nextPassword = window.prompt(t("Reset Password"), "");
+    if (nextPassword === null) return;
+    if (!String(nextPassword || "").trim()) {
+      setUserState({ loading: false, error: t("Password is required."), });
+      return;
+    }
+    try {
+      const response = await apiFetch(`/api/users/${user.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: nextPassword }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to update password.");
+      }
+    } catch (error) {
+      setUserState({ loading: false, error: error.message || "Failed to update password." });
+    }
+  };
+
   const handleTeamSubmit = async (event) => {
     event.preventDefault();
     if (!isLeadership) return;
@@ -8003,9 +8035,25 @@ function RolesDashboard({ authUser }) {
                           </div>
                         </td>
                         <td>
-                          <button className="icon-btn" type="button" onClick={() => handleUserDelete(user.id)}>
-                            <Trash2 size={16} />
-                          </button>
+                          {isLeadership ? (
+                            <div className="row-actions">
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                onClick={() => handleUserPasswordReset(user)}
+                                title={t("Reset Password")}
+                              >
+                                <Lock size={16} />
+                              </button>
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                onClick={() => handleUserDelete(user.id)}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ) : null}
                         </td>
                       </tr>
                     );
@@ -8182,6 +8230,16 @@ function ProfileDashboard({ authUser }) {
   const [userRecord, setUserRecord] = React.useState(null);
   const [roleRecord, setRoleRecord] = React.useState(null);
   const [buyerRecord, setBuyerRecord] = React.useState(null);
+  const [passwordForm, setPasswordForm] = React.useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+  const [passwordState, setPasswordState] = React.useState({
+    loading: false,
+    error: null,
+    success: null,
+  });
 
   const loadProfile = React.useCallback(async () => {
     try {
@@ -8222,6 +8280,37 @@ function ProfileDashboard({ authUser }) {
   const buyerName = buyerRecord?.name || t("No buyer linked");
   const verified = userRecord?.verified ? t("Verified") : t("Unverified");
   const permissions = roleRecord?.permissions || [];
+
+  const handlePasswordChange = async (event) => {
+    event.preventDefault();
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordState({ loading: false, error: t("Passwords do not match."), success: null });
+      return;
+    }
+    try {
+      setPasswordState({ loading: true, error: null, success: null });
+      const response = await apiFetch("/api/auth/password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to update password.");
+      }
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      setPasswordState({ loading: false, error: null, success: t("Password updated.") });
+    } catch (error) {
+      setPasswordState({
+        loading: false,
+        error: error.message || "Failed to update password.",
+        success: null,
+      });
+    }
+  };
 
   return (
     <>
@@ -8286,6 +8375,61 @@ function ProfileDashboard({ authUser }) {
               </div>
             </div>
           )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Change Password")}</h3>
+              <p className="panel-subtitle">{t("Secure login")}</p>
+            </div>
+          </div>
+          <form className="form-grid" onSubmit={handlePasswordChange}>
+            <div className="field">
+              <label>{t("Current Password")}</label>
+              <input
+                type="password"
+                value={passwordForm.current}
+                onChange={(event) =>
+                  setPasswordForm((prev) => ({ ...prev, current: event.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="field">
+              <label>{t("New Password")}</label>
+              <input
+                type="password"
+                value={passwordForm.next}
+                onChange={(event) =>
+                  setPasswordForm((prev) => ({ ...prev, next: event.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="field">
+              <label>{t("Confirm Password")}</label>
+              <input
+                type="password"
+                value={passwordForm.confirm}
+                onChange={(event) =>
+                  setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))
+                }
+                required
+              />
+            </div>
+            <div className="form-actions">
+              <button className="action-pill" type="submit" disabled={passwordState.loading}>
+                {passwordState.loading ? t("Saving...") : t("Update Password")}
+              </button>
+            </div>
+            {passwordState.error ? (
+              <div className="form-error">{passwordState.error}</div>
+            ) : null}
+            {passwordState.success ? (
+              <div className="form-success">{passwordState.success}</div>
+            ) : null}
+          </form>
         </div>
 
         <div className="panel">
@@ -9424,7 +9568,20 @@ function KeitaroApiView() {
 
 function LoginScreen({ onLogin, loading, error }) {
   const { t } = useLanguage();
-  const [form, setForm] = React.useState({ username: "", password: "" });
+  const savedLogin = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("dash-remember") || "null");
+    } catch (err) {
+      return null;
+    }
+  }, []);
+  const [form, setForm] = React.useState({
+    username: savedLogin?.username || "",
+    password: savedLogin?.password || "",
+  });
+  const [rememberMe, setRememberMe] = React.useState(
+    Boolean(savedLogin?.username || savedLogin?.password)
+  );
   const [showPassword, setShowPassword] = React.useState(false);
 
   const handleChange = (key) => (event) => {
@@ -9433,6 +9590,18 @@ function LoginScreen({ onLogin, loading, error }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    try {
+      if (rememberMe) {
+        localStorage.setItem(
+          "dash-remember",
+          JSON.stringify({ username: form.username, password: form.password })
+        );
+      } else {
+        localStorage.removeItem("dash-remember");
+      }
+    } catch (err) {
+      // ignore storage errors
+    }
     onLogin(form.username, form.password);
   };
 
@@ -9454,7 +9623,12 @@ function LoginScreen({ onLogin, loading, error }) {
                 <label>{t("Username")}</label>
                 <div className="input-wrap">
                   <User size={16} />
-                  <input value={form.username} onChange={handleChange("username")} required />
+                  <input
+                    value={form.username}
+                    onChange={handleChange("username")}
+                    autoComplete="username"
+                    required
+                  />
                 </div>
               </div>
               <div className="field login-field">
@@ -9465,6 +9639,7 @@ function LoginScreen({ onLogin, loading, error }) {
                     type={showPassword ? "text" : "password"}
                     value={form.password}
                     onChange={handleChange("password")}
+                    autoComplete="current-password"
                     required
                   />
                   <button
@@ -9478,7 +9653,11 @@ function LoginScreen({ onLogin, loading, error }) {
                 </div>
               </div>
               <label className="login-remember">
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                />
                 {t("Remember me")}
               </label>
               {error ? <div className="form-error">{error}</div> : null}

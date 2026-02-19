@@ -478,6 +478,15 @@ select {
   font-size: 12px;
 }
 
+.form-success {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(54, 208, 124, 0.12);
+  color: #9cf0c3;
+  border: 1px solid rgba(54, 208, 124, 0.35);
+  font-size: 12px;
+}
+
 .sidebar-footer {
   margin-top: auto;
   display: flex;
@@ -1965,6 +1974,12 @@ select {
 
 .entries-table td {
   color: var(--text);
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .entries-table tr:hover td {

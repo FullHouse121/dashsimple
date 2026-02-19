@@ -900,6 +900,9 @@ const selectUserByUsername = async (username) =>
     [username]
   );
 
+const updateUserPassword = async (id, passwordHash) =>
+  query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
+
 const deleteUser = async (id) => query(`DELETE FROM users WHERE id = $1`, [id]);
 
 const insertRole = async (payload) => {
@@ -2579,6 +2582,22 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
+app.patch("/api/users/:id/password", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid user id." });
+  }
+  const { password } = req.body ?? {};
+  if (!password) {
+    return res.status(400).json({ error: "Password is required." });
+  }
+  await updateUserPassword(id, hashPassword(password));
+  res.json({ ok: true });
+});
+
 app.delete("/api/users/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -2621,6 +2640,19 @@ app.post("/api/auth/login", async (req, res) => {
       buyerId: user.buyer_id,
     },
   });
+});
+
+app.patch("/api/auth/password", async (req, res) => {
+  const { currentPassword, newPassword } = req.body ?? {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Current and new password are required." });
+  }
+  const user = await selectUserByUsername(String(req.user.username || "").trim());
+  if (!user || !verifyPassword(currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: "Invalid credentials." });
+  }
+  await updateUserPassword(user.id, hashPassword(newPassword));
+  res.json({ ok: true });
 });
 
 app.get("/api/fx", async (req, res) => {
