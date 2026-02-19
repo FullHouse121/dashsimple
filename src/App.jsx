@@ -432,6 +432,7 @@ const translations = {
     "Domains Registry": "Alan Adı Kaydı",
     "Track every domain in use and keep its status updated.":
       "Kullanımdaki tüm alan adlarını takip edin ve durumunu güncel tutun.",
+    Domain: "Alan Adı",
     Game: "Oyun",
     Owner: "Sahip",
     Platform: "Platform",
@@ -8537,19 +8538,19 @@ function KeitaroApiView() {
   }, []);
 
   const postbackExample = postbackUrl
-    ? `${postbackUrl}?campaign_id=123&click_id={clickid}&external_id={pwauid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
+    ? `${postbackUrl}?external_id={pwauid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
     : "";
 
   const postbackFtdExample = postbackFtdUrl
-    ? `${postbackFtdUrl}?campaign_id=123&click_id={clickid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
+    ? `${postbackFtdUrl}?country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
     : "";
 
   const postbackRegistrationExample = postbackRegistrationUrl
-    ? `${postbackRegistrationUrl}?campaign_id=123&click_id={clickid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
+    ? `${postbackRegistrationUrl}?country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
     : "";
 
   const postbackRedepositExample = postbackRedepositUrl
-    ? `${postbackRedepositUrl}?campaign_id=123&click_id={clickid}&country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
+    ? `${postbackRedepositUrl}?country=BR&buyer=DeusInsta&domain=landing.example.com&device=Android`
     : "";
 
   const postbackItems = [
@@ -8956,7 +8957,7 @@ function KeitaroApiView() {
           <div className="postback-info">
             <div>
               <span className="panel-mini">{t("Required parameters")}</span>
-              <p>{t("Provide click_id or campaign_id for attribution.")}</p>
+              <p>{t("Provide buyer and domain (or campaign_id) for attribution.")}</p>
             </div>
             <div>
               <span className="panel-mini">{t("Optional parameters")}</span>
@@ -9016,9 +9017,8 @@ function KeitaroApiView() {
                       <th>{t("Time")}</th>
                       <th>{t("Event")}</th>
                       <th>{t("Media Buyer")}</th>
-                      <th>{t("Campaign")}</th>
+                      <th>{t("Domain")}</th>
                       <th>{t("Country")}</th>
-                      <th>{t("Click ID")}</th>
                       <th>{t("External ID")}</th>
                       <th>{t("Source")}</th>
                     </tr>
@@ -9033,9 +9033,8 @@ function KeitaroApiView() {
                           </span>
                         </td>
                         <td>{row.buyer || "—"}</td>
-                        <td>{row.campaign_id || "—"}</td>
+                        <td>{row.domain || "—"}</td>
                         <td>{row.country || "—"}</td>
-                        <td className="mono">{row.click_id || "—"}</td>
                         <td className="mono">{row.external_id || "—"}</td>
                         <td>{row.source || "—"}</td>
                       </tr>
