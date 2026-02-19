@@ -7251,15 +7251,21 @@ function PixelsDashboard({ authUser }) {
         }
       );
       if (!response.ok) {
-        throw new Error("Failed to update comment.");
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update comment.");
       }
-      setPixels((prev) =>
-        prev.map((item) =>
-          item.id === commentModal.pixel.id
-            ? { ...item, comment: normalizedComment || null }
-            : item
-        )
-      );
+      const updated = await response.json().catch(() => null);
+      if (updated?.id) {
+        setPixels((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      } else {
+        setPixels((prev) =>
+          prev.map((item) =>
+            item.id === commentModal.pixel.id
+              ? { ...item, comment: normalizedComment || null }
+              : item
+          )
+        );
+      }
       await fetchPixels();
       closeCommentModal();
     } catch (error) {

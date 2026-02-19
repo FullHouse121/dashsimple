@@ -2366,7 +2366,13 @@ app.patch("/api/pixels/:id", async (req, res) => {
 
   params.push(id);
   await query(`UPDATE pixels SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
-  res.json({ ok: true });
+  const updated = await getRow(
+    `SELECT id, pixel_id, token_eaag, flows, geo, status, comment, owner_role, owner_id, created_at
+     FROM pixels
+     WHERE id = $1`,
+    [id]
+  );
+  res.json(updated || { ok: true });
 });
 
 app.delete("/api/pixels/:id", async (req, res) => {
