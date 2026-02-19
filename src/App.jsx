@@ -678,6 +678,7 @@ const translations = {
     "Assign Media Buyer": "Medya Alıcısı Ata",
     "User Accounts": "Kullanıcı Hesapları",
     "Logged Media Buyer": "Giriş yapan medya alıcısı",
+    "Logged as {role}": "Giriş yapan: {role}",
     Documentation: "Dokümantasyon",
     "System Documentation": "Sistem Dokümantasyonu",
     "Everything you need to operate the dashboard, manage data, and onboard media buyers.":
@@ -9968,11 +9969,10 @@ export default function App() {
         </div>
 
         <div className="sidebar-section">
-          <p className="section-title">{t("Logged Media Buyer")}</p>
+          <p className="section-title">{t("Logged as {role}", { role: t(profileRole) })}</p>
           <button className="team-pill" type="button">
             <Trophy size={16} />
             {profileName}
-            <span className="chev">▾</span>
           </button>
         </div>
 
