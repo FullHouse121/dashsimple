@@ -7240,14 +7240,14 @@ function PixelsDashboard({ authUser }) {
       if (normalizedComment) query.set("comment", normalizedComment);
       if (fallbackStatus) query.set("status", fallbackStatus);
       const response = await apiFetch(
-        `/api/pixels/${commentModal.pixel.id}${query.toString() ? `?${query}` : ""}`,
+        `/api/pixels/${commentModal.pixel.id}/comment${query.toString() ? `?${query}` : ""}`,
         {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          comment: normalizedComment,
-          status: fallbackStatus,
-        }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            comment: normalizedComment,
+            status: fallbackStatus,
+          }),
         }
       );
       if (!response.ok) {

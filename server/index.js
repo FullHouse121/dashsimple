@@ -2375,6 +2375,50 @@ app.patch("/api/pixels/:id", async (req, res) => {
   res.json(updated || { ok: true });
 });
 
+app.post("/api/pixels/:id/comment", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid pixel id." });
+  }
+  const pixel = await selectPixelById(id);
+  if (!pixel) {
+    return res.status(404).json({ error: "Pixel not found." });
+  }
+  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const body = req.body ?? {};
+  const comment = body.comment ?? req.query?.comment;
+  const status = body.status ?? req.query?.status;
+  const updates = [];
+  const params = [];
+
+  if (comment !== undefined) {
+    const normalizedComment = String(comment || "").trim();
+    updates.push(`comment = $${updates.length + 1}`);
+    params.push(normalizedComment || null);
+  }
+
+  if (status !== undefined && status !== null && status !== "") {
+    updates.push(`status = $${updates.length + 1}`);
+    params.push(status);
+  }
+
+  if (!updates.length) {
+    return res.status(400).json({ error: "Comment or status is required." });
+  }
+
+  params.push(id);
+  await query(`UPDATE pixels SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+  const updated = await getRow(
+    `SELECT id, pixel_id, token_eaag, flows, geo, status, comment, owner_role, owner_id, created_at
+     FROM pixels
+     WHERE id = $1`,
+    [id]
+  );
+  res.json(updated || { ok: true });
+});
+
 app.delete("/api/pixels/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {
