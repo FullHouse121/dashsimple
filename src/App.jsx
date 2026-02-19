@@ -7302,6 +7302,58 @@ function PixelsDashboard({ authUser }) {
 
   return (
     <section className="form-section">
+      <AnimatePresence>
+        {commentModal.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeCommentModal}
+          >
+            <motion.div
+              className="modal comment-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Pixel Comment")}</p>
+                  <h2>{t("Add comment")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closeCommentModal}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="field">
+                  <label>{t("Comment")}</label>
+                  <textarea
+                    rows={4}
+                    value={commentModal.value}
+                    onChange={(event) =>
+                      setCommentModal((prev) => ({ ...prev, value: event.target.value }))
+                    }
+                    placeholder={t("Add a comment")}
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={closeCommentModal}>
+                  {t("Cancel")}
+                </button>
+                <button className="action-pill" type="button" onClick={handleCommentSave}>
+                  {t("Save")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div
         className="panel"
         initial={{ opacity: 0, y: 20 }}
@@ -7335,58 +7387,6 @@ function PixelsDashboard({ authUser }) {
                 <span>{copyToast.message}</span>
               </motion.div>
             </div>
-          ) : null}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {commentModal.open ? (
-            <motion.div
-              className="modal-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={closeCommentModal}
-            >
-              <motion.div
-                className="modal comment-modal"
-                initial={{ opacity: 0, y: 20, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                transition={{ duration: 0.2 }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="modal-head">
-                  <div>
-                    <p className="modal-kicker">{t("Pixel Comment")}</p>
-                    <h2>{t("Add comment")}</h2>
-                  </div>
-                  <button className="icon-btn" type="button" onClick={closeCommentModal}>
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="modal-body">
-                  <div className="field">
-                    <label>{t("Comment")}</label>
-                    <textarea
-                      rows={4}
-                      value={commentModal.value}
-                      onChange={(event) =>
-                        setCommentModal((prev) => ({ ...prev, value: event.target.value }))
-                      }
-                      placeholder={t("Add a comment")}
-                    />
-                  </div>
-                </div>
-                <div className="modal-actions">
-                  <button className="ghost" type="button" onClick={closeCommentModal}>
-                    {t("Cancel")}
-                  </button>
-                  <button className="action-pill" type="button" onClick={handleCommentSave}>
-                    {t("Save")}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
           ) : null}
         </AnimatePresence>
 
