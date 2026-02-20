@@ -2998,33 +2998,39 @@ const runKeitaroSync = async ({
     reportPath || "/admin_api/v1/report/build"
   )}`;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...buildAuthHeaders(apiKey),
-    },
-    body: JSON.stringify(preparedPayload),
-  });
+  const fetchReport = async (reportPayload) => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...buildAuthHeaders(apiKey),
+      },
+      body: JSON.stringify(reportPayload),
+    });
 
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(
-      data?.error || data?.message || "Failed to build report."
-    );
-    error.status = response.status;
-    throw error;
-  }
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      const error = new Error(
+        data?.error || data?.message || "Failed to build report."
+      );
+      error.status = response.status;
+      throw error;
+    }
 
-  const rows = Array.isArray(data)
-    ? data
-    : data?.rows || data?.data?.rows || data?.result || [];
+    const rows = Array.isArray(data)
+      ? data
+      : data?.rows || data?.data?.rows || data?.result || [];
 
-  if (!Array.isArray(rows)) {
-    const error = new Error("Unexpected report response format.");
-    error.status = 400;
-    throw error;
-  }
+    if (!Array.isArray(rows)) {
+      const error = new Error("Unexpected report response format.");
+      error.status = 400;
+      throw error;
+    }
+
+    return { data, rows };
+  };
+
+  const { data, rows } = await fetchReport(preparedPayload);
 
   const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
     ? preparedPayload.dimensions
@@ -3125,14 +3131,80 @@ const runKeitaroSync = async ({
     return rawRow;
   };
 
+  const normalizedRows = rows.map((rawRow) => normalizeReportRow(rawRow));
+
+  const fallbackSpendByKey = new Map();
+  if (syncTarget === "overall") {
+    const fallbackDateField = map.dateField || defaultKeitaroMapping.dateField;
+    const fallbackBuyerField = map.buyerField || defaultKeitaroMapping.buyerField;
+    const fallbackCountryField = map.countryField || defaultKeitaroMapping.countryField;
+    const fallbackClicksField = map.clicksField || defaultKeitaroMapping.clicksField;
+    const fallbackSpendField = map.spendField || defaultKeitaroMapping.spendField;
+
+    const fallbackDimensions = [fallbackDateField, fallbackBuyerField, fallbackCountryField];
+    const fallbackMeasures = Array.from(new Set([fallbackClicksField, fallbackSpendField])).filter(Boolean);
+    const fallbackPayload = normalizeKeitaroPayload({
+      ...preparedPayload,
+      dimensions: fallbackDimensions,
+      grouping: fallbackDimensions,
+      measures: fallbackMeasures,
+      metrics: fallbackMeasures,
+    });
+
+    try {
+      const { rows: fallbackRows } = await fetchReport(fallbackPayload);
+      const fallbackColumns = [...fallbackDimensions, ...fallbackMeasures];
+      fallbackRows.forEach((row) => {
+        const normalizedRow = Array.isArray(row)
+          ? row.reduce((acc, value, index) => {
+              const key = fallbackColumns[index] || `col_${index}`;
+              acc[key] = value;
+              return acc;
+            }, {})
+          : row;
+        const date = normalizeDate(readRowValue(normalizedRow, fallbackDateField));
+        if (!date) return;
+        const buyer = String(readRowValue(normalizedRow, fallbackBuyerField) || "Keitaro");
+        const country = String(readRowValue(normalizedRow, fallbackCountryField) || "");
+        const spend = readFirstNumericValue(normalizedRow, [
+          fallbackSpendField,
+          "cost",
+          "spend",
+          "expenses",
+          "profitability",
+        ]);
+        if (spend === null) return;
+        const clicks = readFirstNumericValue(normalizedRow, [fallbackClicksField, "clicks"]) ?? 0;
+        const key = `${date}|${buyer}|${country}`;
+        fallbackSpendByKey.set(key, { spend, clicks });
+      });
+    } catch (error) {
+      console.warn("Keitaro spend fallback sync failed:", error?.message || error);
+    }
+  }
+
+  const detailedClicksByKey = new Map();
+  if (syncTarget === "overall") {
+    normalizedRows.forEach((row) => {
+      const date = normalizeDate(readRowValue(row, map.dateField));
+      if (!date) return;
+      const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
+      const country = String(readRowValue(row, map.countryField) || "");
+      const key = `${date}|${buyer}|${country}`;
+      const clicks = readFirstNumericValue(row, [map.clicksField || defaultKeitaroMapping.clicksField, "clicks"]) ?? 0;
+      detailedClicksByKey.set(key, (detailedClicksByKey.get(key) || 0) + Math.max(0, Number(clicks) || 0));
+    });
+  }
+
+  const fallbackSpendAssignedForZeroClickGroups = new Set();
+
   let inserted = 0;
   let skipped = 0;
   let placementsExtracted = 0;
   const placementSamples = new Set();
   const clearedOverallKeys = new Set();
 
-  for (const rawRow of rows) {
-    const row = normalizeReportRow(rawRow);
+  for (const row of normalizedRows) {
     const date = normalizeDate(readRowValue(row, map.dateField));
     if (!date) {
       skipped += 1;
@@ -3199,6 +3271,7 @@ const runKeitaroSync = async ({
         placementSamples.add(placement);
       }
     }
+    const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
     let spend = readFirstNumericValue(row, [
       map.spendField,
       "cost",
@@ -3206,10 +3279,21 @@ const runKeitaroSync = async ({
       "expenses",
       "profitability",
     ]);
+    if (syncTarget === "overall" && (spend === null || spend === 0)) {
+      const fallback = fallbackSpendByKey.get(baseRowKey);
+      if (fallback && Number.isFinite(fallback.spend)) {
+        const groupClicks = detailedClicksByKey.get(baseRowKey) || 0;
+        if (groupClicks > 0 && clicks > 0) {
+          spend = fallback.spend * (clicks / groupClicks);
+        } else if (groupClicks <= 0 && !fallbackSpendAssignedForZeroClickGroups.has(baseRowKey)) {
+          spend = fallback.spend;
+          fallbackSpendAssignedForZeroClickGroups.add(baseRowKey);
+        }
+      }
+    }
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
     let revenue = numberFromValue(readRowValue(row, map.revenueField));
-    const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
     const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
     const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
     const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
