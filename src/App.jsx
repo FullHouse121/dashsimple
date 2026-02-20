@@ -5417,11 +5417,17 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     () =>
       campaignEntries.filter((row) => {
         if (!isDateInRange(row.date, periodRange)) return false;
-        const campaignName = normalizeText(row.campaign_name || row.campaign);
+        const campaignName = normalizeText(row.campaign_name || row.campaign || row.buyer);
         const adsetName = normalizeText(row.adset_name);
         const adName = normalizeText(row.ad_name);
         const domain = normalizeDomain(row.domain || row.site || row.flows);
-        return Boolean(campaignName || adsetName || adName || domain);
+        const hasVolume =
+          sum(row.clicks) > 0 ||
+          sum(row.registers) > 0 ||
+          sum(row.ftds) > 0 ||
+          sum(row.redeposits) > 0;
+        const hasValue = sum(row.spend) > 0 || sum(row.revenue) > 0;
+        return Boolean(campaignName || adsetName || adName || domain || hasVolume || hasValue);
       }),
     [campaignEntries, periodRange.from, periodRange.to]
   );
@@ -5473,7 +5479,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     filteredRows.forEach((row) => {
       const buyer = normalizeText(row.buyer) || "Unknown buyer";
       const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
-      const campaignName = normalizeText(row.campaign_name || row.campaign) || "Unknown campaign";
+      const campaignName =
+        normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
       const adsetName = normalizeText(row.adset_name) || "Unknown adset";
       const adName = normalizeText(row.ad_name) || "Unknown ad";
       const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
@@ -5520,7 +5527,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     filteredRows.forEach((row) => {
       const buyer = normalizeText(row.buyer) || "Unknown buyer";
       const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
-      const campaignName = normalizeText(row.campaign_name || row.campaign) || "Unknown campaign";
+      const campaignName =
+        normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
       const adsetName = normalizeText(row.adset_name) || "Unknown adset";
       const adName = normalizeText(row.ad_name) || "Unknown ad";
       const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
