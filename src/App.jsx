@@ -5693,6 +5693,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   );
 
   const campaignAgg = React.useMemo(() => {
+    const isUnknownLabel = (value) => /^unknown\b/i.test(String(value || "").trim());
     const map = new Map();
     filteredRows.forEach((row) => {
       const buyer = row.buyerLabel;
@@ -5720,6 +5721,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         });
       }
       const current = map.get(key);
+      if (isUnknownLabel(current.adsetName) && !isUnknownLabel(adsetName)) {
+        current.adsetName = adsetName;
+      }
+      if (isUnknownLabel(current.adName) && !isUnknownLabel(adName)) {
+        current.adName = adName;
+      }
       current.clicks += sum(row.clicks);
       current.conversions += conversions;
       current.registers += sum(row.registers);
@@ -5740,6 +5747,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   }, [filteredRows]);
 
   const creativeAgg = React.useMemo(() => {
+    const isUnknownLabel = (value) => /^unknown\b/i.test(String(value || "").trim());
     const map = new Map();
     filteredRows.forEach((row) => {
       const buyer = row.buyerLabel;
@@ -5769,7 +5777,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       current.revenue += sum(row.revenue);
     });
 
-    return Array.from(map.values())
+    const baseRows = Array.from(map.values())
       .map((row) => ({
         ...row,
         cpc: row.clicks > 0 ? row.spend / row.clicks : 0,
@@ -5777,6 +5785,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         cr: row.clicks > 0 ? (row.conversions / row.clicks) * 100 : 0,
       }))
       .sort((a, b) => b.conversions - a.conversions);
+
+    const hasNamedCreative = baseRows.some((row) => !isUnknownLabel(row.adName));
+    return hasNamedCreative ? baseRows.filter((row) => !isUnknownLabel(row.adName)) : baseRows;
   }, [filteredRows]);
 
   const growthSeries = React.useMemo(() => {

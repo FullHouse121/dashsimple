@@ -1134,6 +1134,40 @@ const normalizeDomainValue = (value) => {
   return hostCandidate.toLowerCase();
 };
 
+const sanitizeTemplateValue = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const normalized = text.toLowerCase();
+  if (["unknown", "(not set)", "not set", "n/a", "na", "null", "undefined", "-"].includes(normalized)) {
+    return "";
+  }
+
+  const compact = normalized.replace(/\s+/g, "");
+  const isBraceSubToken = /^\{+\s*sub(?:[_\s-]*id)?[_\s-]*\d+\s*\}+$/i.test(text);
+  const isParenSubToken = /^\(+\s*sub(?:[_\s-]*id)?[_\s-]*\d+\s*\)+$/i.test(text);
+  const isPlainSubToken = /^sub(?:[_\s-]*id)?[_\s-]*\d+$/i.test(text);
+  const isBracketSubToken = /^\[+\s*sub(?:[_\s-]*id)?[_\s-]*\d+\s*\]+$/i.test(text);
+  if (isBraceSubToken || isParenSubToken || isBracketSubToken || isPlainSubToken) {
+    return "";
+  }
+
+  if (compact === "{sub}" || compact === "{{sub}}" || compact === "(sub)" || compact === "[sub]") {
+    return "";
+  }
+
+  return text;
+};
+
+const readFirstUsefulValue = (row, candidates) => {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const raw = readRowValue(row, candidate);
+    const clean = sanitizeTemplateValue(raw);
+    if (clean) return clean;
+  }
+  return "";
+};
+
 const resolvePostbackContext = async (payload) => {
   const campaignId =
     payload.campaign_id ||
@@ -2983,7 +3017,21 @@ const runKeitaroSync = async ({
     throw error;
   }
 
-  const extractColumnNames = (responseData, requestPayload) => {
+  const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
+    ? preparedPayload.dimensions
+    : Array.isArray(preparedPayload?.grouping)
+      ? preparedPayload.grouping
+      : [];
+  const payloadMeasures = Array.isArray(preparedPayload?.measures)
+    ? preparedPayload.measures
+    : Array.isArray(preparedPayload?.metrics)
+      ? preparedPayload.metrics
+      : [];
+  const payloadColumnNames = [...payloadDimensions, ...payloadMeasures]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  const extractColumnNames = (responseData, expectedLength = 0) => {
     const candidates = [
       responseData?.meta,
       responseData?.data?.meta,
@@ -3007,38 +3055,33 @@ const runKeitaroSync = async ({
         .map((name) => String(name || "").trim())
         .filter(Boolean);
       const usefulCount = names.filter((name) => isUsefulColumnName(name)).length;
-      if (names.length > 0 && usefulCount >= Math.max(1, Math.ceil(names.length * 0.4))) {
+      if (expectedLength > 0 && names.length === expectedLength) {
+        return names;
+      }
+      if (expectedLength <= 0 && names.length > 0 && usefulCount >= Math.max(1, Math.ceil(names.length * 0.4))) {
         return names;
       }
     }
-
-    const payloadDimensions = Array.isArray(requestPayload?.dimensions)
-      ? requestPayload.dimensions
-      : Array.isArray(requestPayload?.grouping)
-        ? requestPayload.grouping
-        : [];
-    const payloadMeasures = Array.isArray(requestPayload?.measures)
-      ? requestPayload.measures
-      : Array.isArray(requestPayload?.metrics)
-        ? requestPayload.metrics
-        : [];
-    const fallback = [...payloadDimensions, ...payloadMeasures]
-      .map((item) => String(item || "").trim())
-      .filter(Boolean);
-    return fallback;
+    return [];
   };
 
-  const columnNames = extractColumnNames(data, preparedPayload);
-  const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
-    ? preparedPayload.dimensions
-    : Array.isArray(preparedPayload?.grouping)
-      ? preparedPayload.grouping
-      : [];
-  const payloadMeasures = Array.isArray(preparedPayload?.measures)
-    ? preparedPayload.measures
-    : Array.isArray(preparedPayload?.metrics)
-      ? preparedPayload.metrics
-      : [];
+  const firstArrayRow = rows.find((row) => Array.isArray(row));
+  const firstArrayRowLength = Array.isArray(firstArrayRow) ? firstArrayRow.length : 0;
+  let columnNames = [];
+  if (firstArrayRowLength > 0 && payloadColumnNames.length >= firstArrayRowLength) {
+    columnNames = payloadColumnNames.slice(0, firstArrayRowLength);
+  } else {
+    const strictMetaNames = extractColumnNames(data, firstArrayRowLength);
+    if (strictMetaNames.length > 0) {
+      columnNames = strictMetaNames.slice(0, firstArrayRowLength || strictMetaNames.length);
+    } else if (payloadColumnNames.length > 0) {
+      columnNames = firstArrayRowLength > 0
+        ? payloadColumnNames.slice(0, firstArrayRowLength)
+        : payloadColumnNames;
+    } else {
+      columnNames = extractColumnNames(data);
+    }
+  }
 
   const normalizeReportRow = (rawRow) => {
     if (Array.isArray(rawRow)) {
@@ -3102,21 +3145,45 @@ const runKeitaroSync = async ({
 
     const city = resolveCityValue(row, map.cityField);
     const region = resolveRegionValue(row, map.regionField || defaultKeitaroMapping.regionField);
-    const placement = String(
-      readPlacementValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
-    ).trim();
-    const domain = normalizeDomainValue(
-      readRowValue(row, map.domainField || defaultKeitaroMapping.domainField)
+    const placement = sanitizeTemplateValue(
+      readPlacementValue(row, map.placementField || defaultKeitaroMapping.placementField)
     );
-    const campaignName = String(
-      readRowValue(row, map.campaignNameField || defaultKeitaroMapping.campaignNameField) || ""
-    ).trim();
-    const adsetName = String(
-      readRowValue(row, map.adsetNameField || defaultKeitaroMapping.adsetNameField) || ""
-    ).trim();
-    const adName = String(
-      readRowValue(row, map.adNameField || defaultKeitaroMapping.adNameField) || ""
-    ).trim();
+    const domain = normalizeDomainValue(
+      readFirstUsefulValue(row, [
+        map.domainField || defaultKeitaroMapping.domainField,
+        "source",
+        "site",
+        "domain",
+        "landing",
+      ])
+    );
+    const campaignName = readFirstUsefulValue(row, [
+      map.campaignNameField || defaultKeitaroMapping.campaignNameField,
+      "sub_id_3",
+      "sub3",
+      "sub_3",
+      "sub id 3",
+      "campaign_name",
+      "campaign",
+    ]);
+    const adsetName = readFirstUsefulValue(row, [
+      map.adsetNameField || defaultKeitaroMapping.adsetNameField,
+      "sub_id_4",
+      "sub4",
+      "sub_4",
+      "sub id 4",
+      "adset",
+      "adset_name",
+    ]);
+    const adName = readFirstUsefulValue(row, [
+      map.adNameField || defaultKeitaroMapping.adNameField,
+      "sub_id_5",
+      "sub5",
+      "sub_5",
+      "sub id 5",
+      "ad",
+      "ad_name",
+    ]);
     if (placement) {
       placementsExtracted += 1;
       if (placementSamples.size < 5) {
