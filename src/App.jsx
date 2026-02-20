@@ -910,7 +910,7 @@ const LanguageContext = React.createContext({
 const useLanguage = () => React.useContext(LanguageContext);
 
 const defaultKeitaroOverallPayloadObject = {
-  dimensions: ["day", "campaign", "country", "city", "sub_id_1", "site", "sub_id_3", "sub_id_4", "sub_id_5"],
+  dimensions: ["day", "campaign", "country", "city", "sub_id_1", "source", "sub_id_3", "sub_id_4", "sub_id_5"],
   measures: [
     "clicks",
     "regs",
@@ -1003,7 +1003,7 @@ const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
     cityField: "city",
     regionField: "region",
     placementField: "sub_id_1",
-    domainField: "site",
+    domainField: "source",
     campaignNameField: "sub_id_3",
     adsetNameField: "sub_id_4",
     adNameField: "sub_id_5",
@@ -5521,7 +5521,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     () =>
       campaignEntries
         .map((row) => {
-          const domainRaw = normalizeDomain(row.domain || row.site || row.flows);
+          const domainRaw = normalizeDomain(row.domain || row.source || row.site || row.flows);
           const buyerLabel = normalizeText(row.buyer) || "Unknown buyer";
           const campaignLabel = normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
           const mappedDomain = resolveMappedDomain(campaignLabel, buyerLabel);
@@ -5760,8 +5760,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
         if (!isDateInRange(row.date, prevRange)) return false;
         const buyer = normalizeText(row.buyer);
         const domain = toDomainKey(
-          resolveRegisteredDomain(row.domain || row.site || row.flows) ||
-            normalizeDomain(row.domain || row.site || row.flows)
+          resolveRegisteredDomain(row.domain || row.source || row.site || row.flows) ||
+            normalizeDomain(row.domain || row.source || row.site || row.flows)
         );
         if (buyerFilter !== "All buyers" && buyer !== buyerFilter) return false;
         if (domainFilter !== "All domains" && domain !== toDomainKey(domainFilter)) return false;
@@ -5870,7 +5870,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
           ) : campaignState.error ? (
             <div className="empty-state error">{campaignState.error}</div>
           ) : growthSeries.length === 0 ? (
-            <div className="empty-state">{t("No campaign data yet. Sync Keitaro with sub_id_3, sub_id_4, sub_id_5 and site.")}</div>
+            <div className="empty-state">{t("No campaign data yet. Sync Keitaro with sub_id_3, sub_id_4, sub_id_5 and source.")}</div>
           ) : (
             <div className="chart chart-surface">
               <ResponsiveContainer width="100%" height={280}>

@@ -1419,7 +1419,7 @@ const defaultKeitaroMapping = {
   cityField: "city",
   regionField: "region",
   placementField: "sub_id_1",
-  domainField: "site",
+  domainField: "source",
   campaignNameField: "sub_id_3",
   adsetNameField: "sub_id_4",
   adNameField: "sub_id_5",
