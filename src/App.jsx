@@ -8940,6 +8940,8 @@ function KeitaroApiView() {
       items.map((item) => {
         const key = String(item || "").trim().toLowerCase();
         if (key === "registrations" || key === "registration") return "regs";
+        if (key === "ftd" || key === "ftds") return "custom_conversion_8";
+        if (key === "redeposit" || key === "redeposits") return "custom_conversion_7";
         return item;
       });
     if (parsedPayload && typeof parsedPayload === "object") {
