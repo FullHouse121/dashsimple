@@ -9818,18 +9818,16 @@ function KeitaroApiView() {
     loading: false,
     error: null,
   });
-  const [showAllPostbackLogs, setShowAllPostbackLogs] = React.useState(false);
 
   const fetchPostbackLogs = React.useCallback(async () => {
     try {
       setPostbackLogState({ loading: true, error: null });
-      const response = await apiFetch("/api/postbacks/logs?limit=200");
+      const response = await apiFetch("/api/postbacks/logs?limit=10");
       if (!response.ok) {
         throw new Error("Failed to load postback logs.");
       }
       const data = await response.json();
       setPostbackLogs(Array.isArray(data) ? data : []);
-      setShowAllPostbackLogs(false);
       setPostbackLogState({ loading: false, error: null });
     } catch (error) {
       setPostbackLogState({
@@ -9865,8 +9863,8 @@ function KeitaroApiView() {
   };
 
   const visiblePostbackLogs = React.useMemo(
-    () => (showAllPostbackLogs ? postbackLogs : postbackLogs.slice(0, 10)),
-    [postbackLogs, showAllPostbackLogs]
+    () => postbackLogs.slice(0, 10),
+    [postbackLogs]
   );
 
   return (
@@ -10051,17 +10049,6 @@ function KeitaroApiView() {
                     </tbody>
                   </table>
                 </div>
-                {postbackLogs.length > 10 ? (
-                  <div className="api-actions" style={{ marginTop: 10 }}>
-                    <button
-                      className="ghost"
-                      type="button"
-                      onClick={() => setShowAllPostbackLogs((prev) => !prev)}
-                    >
-                      {showAllPostbackLogs ? t("Show Less") : t("See More")}
-                    </button>
-                  </div>
-                ) : null}
               </div>
             )}
           </div>
