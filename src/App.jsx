@@ -27,6 +27,7 @@ import {
   Home,
   Wallet,
   BarChart3,
+  Megaphone,
   Trophy,
   SlidersHorizontal,
   X,
@@ -83,6 +84,7 @@ const navItems = [
   { key: "finances", label: "Finances", icon: Wallet },
   { key: "utm", label: "UTM Builder", icon: Link2 },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
+  { key: "campaigns", label: "Campaigns", icon: Megaphone },
   { key: "placements", label: "Placement", icon: MousePointerClick },
   { key: "user_behavior", label: "User Behavior", icon: Users },
   { key: "devices", label: "Devices", icon: Smartphone },
@@ -107,7 +109,7 @@ const navItems = [
 
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
-  { title: "Performance", items: ["statistics", "placements", "user_behavior", "devices"] },
+  { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
   { title: "Operations", items: ["finances", "utm", "domains", "pixels"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
@@ -189,6 +191,7 @@ const permissionOptions = [
   { key: "finances", label: "Finances" },
   { key: "utm", label: "UTM Builder" },
   { key: "statistics", label: "Statistics" },
+  { key: "campaigns", label: "Campaigns" },
   { key: "placements", label: "Placement" },
   { key: "user_behavior", label: "User Behavior" },
   { key: "devices", label: "Devices" },
@@ -907,7 +910,7 @@ const LanguageContext = React.createContext({
 const useLanguage = () => React.useContext(LanguageContext);
 
 const defaultKeitaroOverallPayloadObject = {
-  dimensions: ["day", "campaign", "country", "city", "sub_id_1"],
+  dimensions: ["day", "campaign", "country", "city", "sub_id_1", "site", "sub_id_3", "sub_id_4", "sub_id_5"],
   measures: [
     "clicks",
     "regs",
@@ -1000,6 +1003,10 @@ const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
     cityField: "city",
     regionField: "region",
     placementField: "sub_id_1",
+    domainField: "site",
+    campaignNameField: "sub_id_3",
+    adsetNameField: "sub_id_4",
+    adNameField: "sub_id_5",
     externalIdField: "external_id",
     spendField: "cost",
     revenueField: "revenue",
@@ -5361,6 +5368,529 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   );
 }
 
+function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) {
+  const { t } = useLanguage();
+  const [campaignEntries, setCampaignEntries] = React.useState([]);
+  const [campaignState, setCampaignState] = React.useState({ loading: true, error: null });
+  const [buyerFilter, setBuyerFilter] = React.useState("All buyers");
+  const [domainFilter, setDomainFilter] = React.useState("All domains");
+
+  const fetchCampaigns = React.useCallback(async () => {
+    try {
+      setCampaignState({ loading: true, error: null });
+      const response = await apiFetch("/api/media-stats?limit=20000");
+      if (!response.ok) {
+        throw new Error("Failed to load campaign stats.");
+      }
+      const data = await response.json();
+      setCampaignEntries(Array.isArray(data) ? data : []);
+      setCampaignState({ loading: false, error: null });
+    } catch (error) {
+      setCampaignState({ loading: false, error: error.message || "Failed to load campaign stats." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  React.useEffect(() => {
+    const handleSync = () => fetchCampaigns();
+    window.addEventListener("keitaro:sync", handleSync);
+    return () => window.removeEventListener("keitaro:sync", handleSync);
+  }, [fetchCampaigns]);
+
+  const periodRange = React.useMemo(
+    () => getPeriodDateRange(period, customRange),
+    [period, customRange.from, customRange.to]
+  );
+  const sum = (value) => Number(value || 0);
+  const normalizeText = (value) => String(value || "").trim();
+  const normalizeDomain = (value) => {
+    const text = normalizeText(value);
+    if (!text) return "";
+    const withoutProtocol = text.replace(/^https?:\/\//i, "");
+    return withoutProtocol.split("/")[0].trim().toLowerCase();
+  };
+
+  const campaignRows = React.useMemo(
+    () =>
+      campaignEntries.filter((row) => {
+        if (!isDateInRange(row.date, periodRange)) return false;
+        const campaignName = normalizeText(row.campaign_name || row.campaign);
+        const adsetName = normalizeText(row.adset_name);
+        const adName = normalizeText(row.ad_name);
+        const domain = normalizeDomain(row.domain || row.site || row.flows);
+        return Boolean(campaignName || adsetName || adName || domain);
+      }),
+    [campaignEntries, periodRange.from, periodRange.to]
+  );
+
+  const buyerOptionsLocal = React.useMemo(() => {
+    const values = new Set();
+    campaignRows.forEach((row) => {
+      const buyer = normalizeText(row.buyer);
+      if (buyer) values.add(buyer);
+    });
+    return ["All buyers", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
+  }, [campaignRows]);
+
+  const domainOptionsLocal = React.useMemo(() => {
+    const values = new Set();
+    campaignRows.forEach((row) => {
+      const domain = normalizeDomain(row.domain || row.site || row.flows);
+      if (domain) values.add(domain);
+    });
+    return ["All domains", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
+  }, [campaignRows]);
+
+  React.useEffect(() => {
+    if (!buyerOptionsLocal.includes(buyerFilter)) {
+      setBuyerFilter("All buyers");
+    }
+  }, [buyerOptionsLocal, buyerFilter]);
+
+  React.useEffect(() => {
+    if (!domainOptionsLocal.includes(domainFilter)) {
+      setDomainFilter("All domains");
+    }
+  }, [domainOptionsLocal, domainFilter]);
+
+  const filteredRows = React.useMemo(
+    () =>
+      campaignRows.filter((row) => {
+        const buyer = normalizeText(row.buyer);
+        const domain = normalizeDomain(row.domain || row.site || row.flows);
+        if (buyerFilter !== "All buyers" && buyer !== buyerFilter) return false;
+        if (domainFilter !== "All domains" && domain !== domainFilter) return false;
+        return true;
+      }),
+    [campaignRows, buyerFilter, domainFilter]
+  );
+
+  const campaignAgg = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const buyer = normalizeText(row.buyer) || "Unknown buyer";
+      const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
+      const campaignName = normalizeText(row.campaign_name || row.campaign) || "Unknown campaign";
+      const adsetName = normalizeText(row.adset_name) || "Unknown adset";
+      const adName = normalizeText(row.ad_name) || "Unknown ad";
+      const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
+      const key = `${buyer}|${domain}|${campaignName}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          buyer,
+          domain,
+          campaignName,
+          adsetName,
+          adName,
+          clicks: 0,
+          conversions: 0,
+          registers: 0,
+          ftds: 0,
+          redeposits: 0,
+          spend: 0,
+          revenue: 0,
+        });
+      }
+      const current = map.get(key);
+      current.clicks += sum(row.clicks);
+      current.conversions += conversions;
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.spend += sum(row.spend);
+      current.revenue += sum(row.revenue);
+    });
+
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        cpc: row.clicks > 0 ? row.spend / row.clicks : 0,
+        cpa: row.conversions > 0 ? row.spend / row.conversions : 0,
+        cr: row.clicks > 0 ? (row.conversions / row.clicks) * 100 : 0,
+      }))
+      .sort((a, b) => b.conversions - a.conversions);
+  }, [filteredRows]);
+
+  const creativeAgg = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const buyer = normalizeText(row.buyer) || "Unknown buyer";
+      const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
+      const campaignName = normalizeText(row.campaign_name || row.campaign) || "Unknown campaign";
+      const adsetName = normalizeText(row.adset_name) || "Unknown adset";
+      const adName = normalizeText(row.ad_name) || "Unknown ad";
+      const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
+      const key = `${buyer}|${domain}|${campaignName}|${adsetName}|${adName}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          buyer,
+          domain,
+          campaignName,
+          adsetName,
+          adName,
+          clicks: 0,
+          conversions: 0,
+          spend: 0,
+          revenue: 0,
+        });
+      }
+      const current = map.get(key);
+      current.clicks += sum(row.clicks);
+      current.conversions += conversions;
+      current.spend += sum(row.spend);
+      current.revenue += sum(row.revenue);
+    });
+
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        cpc: row.clicks > 0 ? row.spend / row.clicks : 0,
+        cpa: row.conversions > 0 ? row.spend / row.conversions : 0,
+        cr: row.clicks > 0 ? (row.conversions / row.clicks) * 100 : 0,
+      }))
+      .sort((a, b) => b.conversions - a.conversions);
+  }, [filteredRows]);
+
+  const growthSeries = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const date = String(row.date || "").trim();
+      if (!date) return;
+      if (!map.has(date)) {
+        map.set(date, { date, clicks: 0, conversions: 0, spend: 0, revenue: 0 });
+      }
+      const current = map.get(date);
+      current.clicks += sum(row.clicks);
+      current.conversions += sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
+      current.spend += sum(row.spend);
+      current.revenue += sum(row.revenue);
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredRows]);
+
+  const totals = React.useMemo(
+    () =>
+      filteredRows.reduce(
+        (acc, row) => {
+          acc.clicks += sum(row.clicks);
+          acc.conversions += sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
+          acc.spend += sum(row.spend);
+          acc.revenue += sum(row.revenue);
+          return acc;
+        },
+        { clicks: 0, conversions: 0, spend: 0, revenue: 0 }
+      ),
+    [filteredRows]
+  );
+
+  const topCampaign = campaignAgg[0] || null;
+  const topCreative = creativeAgg[0] || null;
+  const compareCampaign = campaignAgg[1] || null;
+  const comparisonDelta =
+    topCampaign && compareCampaign && compareCampaign.conversions > 0
+      ? ((topCampaign.conversions - compareCampaign.conversions) / compareCampaign.conversions) * 100
+      : null;
+
+  const growthPercent = React.useMemo(() => {
+    if (!periodRange.from || !periodRange.to) return null;
+    const fromDate = new Date(`${periodRange.from}T00:00:00`);
+    const toDate = new Date(`${periodRange.to}T00:00:00`);
+    if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime())) return null;
+    const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
+    const prevTo = new Date(fromDate);
+    prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo);
+    prevFrom.setDate(prevFrom.getDate() - (days - 1));
+    const prevRange = { from: formatIsoDate(prevFrom), to: formatIsoDate(prevTo) };
+
+    const previousClicks = campaignEntries
+      .filter((row) => {
+        if (!isDateInRange(row.date, prevRange)) return false;
+        const buyer = normalizeText(row.buyer);
+        const domain = normalizeDomain(row.domain || row.site || row.flows);
+        if (buyerFilter !== "All buyers" && buyer !== buyerFilter) return false;
+        if (domainFilter !== "All domains" && domain !== domainFilter) return false;
+        return true;
+      })
+      .reduce((sumValue, row) => sumValue + sum(row.clicks), 0);
+
+    if (previousClicks <= 0) return null;
+    return ((totals.clicks - previousClicks) / previousClicks) * 100;
+  }, [
+    periodRange.from,
+    periodRange.to,
+    campaignEntries,
+    buyerFilter,
+    domainFilter,
+    totals.clicks,
+  ]);
+
+  const campaignChartRows = campaignAgg.slice(0, 10).map((row) => ({
+    ...row,
+    shortName: row.campaignName.length > 20 ? `${row.campaignName.slice(0, 20)}...` : row.campaignName,
+  }));
+  const creativeChartRows = creativeAgg.slice(0, 10).map((row) => ({
+    ...row,
+    shortName: row.adName.length > 18 ? `${row.adName.slice(0, 18)}...` : row.adName,
+  }));
+  const campaignTableRows = campaignAgg.slice(0, 30);
+
+  return (
+    <>
+      <section className="cards">
+        {[
+          {
+            label: "Clicks",
+            value: totals.clicks.toLocaleString(),
+            meta: period === "All" ? "All time" : period,
+          },
+          {
+            label: "Conversions",
+            value: totals.conversions.toLocaleString(),
+            meta: "Registers + FTD + Redeposits",
+          },
+          {
+            label: "Campaigns growth",
+            value: growthPercent === null ? "—" : `${growthPercent.toFixed(2)}%`,
+            meta: growthPercent === null ? "No previous period data" : "Vs previous period clicks",
+          },
+          {
+            label: "Creatives Success",
+            value: topCreative?.shortName || "—",
+            meta: topCreative
+              ? `${topCreative.conversions.toLocaleString()} conv · CPA ${formatCurrency(topCreative.cpa)}`
+              : "No creative data",
+          },
+          {
+            label: "Comparisons",
+            value: topCampaign?.shortName || "—",
+            meta:
+              comparisonDelta === null || !compareCampaign
+                ? "Need at least 2 campaigns"
+                : `${comparisonDelta.toFixed(2)}% vs ${compareCampaign.shortName}`,
+          },
+        ].map((stat, idx) => (
+          <motion.div
+            key={`${stat.label}-${idx}`}
+            className="card"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.08, duration: 0.5 }}
+          >
+            <div className="card-head">{t(stat.label)}</div>
+            <div className="card-value">{stat.value}</div>
+            <div className="card-meta">{t(stat.meta)}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="panels device-charts">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Campaign Growth")}</h3>
+              <p className="panel-subtitle">{t("Clicks and conversions over time.")}</p>
+            </div>
+            <div className="panel-actions">
+              <select className="inline-select" value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
+                {buyerOptionsLocal.map((option) => (
+                  <option key={option} value={option}>
+                    {option === "All buyers" ? t(option) : option}
+                  </option>
+                ))}
+              </select>
+              <select className="inline-select" value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}>
+                {domainOptionsLocal.map((option) => (
+                  <option key={option} value={option}>
+                    {option === "All domains" ? t(option) : option}
+                  </option>
+                ))}
+              </select>
+              <PeriodSelect
+                value={period}
+                onChange={setPeriod}
+                customRange={customRange}
+                onCustomChange={onCustomChange}
+              />
+            </div>
+          </div>
+          {campaignState.loading ? (
+            <div className="empty-state">{t("Loading campaign stats…")}</div>
+          ) : campaignState.error ? (
+            <div className="empty-state error">{campaignState.error}</div>
+          ) : growthSeries.length === 0 ? (
+            <div className="empty-state">{t("No campaign data yet. Sync Keitaro with sub_id_3, sub_id_4, sub_id_5 and site.")}</div>
+          ) : (
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={280}>
+                <ComposedChart data={growthSeries} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+                  <defs>
+                    <linearGradient id="campaignGrowthClicks" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={axisTickStyle} tickFormatter={formatShortDate} />
+                  <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={formatShortDate}
+                    formatter={(value, name) => [Number(value || 0).toLocaleString(), name]}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
+                  <Area type="monotone" dataKey="clicks" name={t("Clicks")} fill="url(#campaignGrowthClicks)" stroke="var(--blue)" strokeWidth={2} />
+                  <Line type="monotone" dataKey="conversions" name={t("Conversions")} stroke="var(--green)" strokeWidth={2.2} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.08 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Campaign Comparisons")}</h3>
+              <p className="panel-subtitle">{t("Top campaigns by clicks and conversions.")}</p>
+            </div>
+          </div>
+          {campaignChartRows.length === 0 ? (
+            <div className="empty-state">{t("No campaign comparison data.")}</div>
+          ) : (
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={campaignChartRows} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="shortName" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name) => [Number(value || 0).toLocaleString(), name]}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
+                  <Bar dataKey="clicks" name={t("Clicks")} fill="var(--blue)" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="conversions" name={t("Conversions")} fill="var(--purple)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div
+          className="panel span-2 placement-conversion"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.16 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Creatives Success")}</h3>
+              <p className="panel-subtitle">{t("Creative-level CPC, CPA, and conversion performance.")}</p>
+            </div>
+          </div>
+          {creativeChartRows.length === 0 ? (
+            <div className="empty-state">{t("No creative data available.")}</div>
+          ) : (
+            <div className="chart chart-surface">
+              <ResponsiveContainer width="100%" height={330}>
+                <ComposedChart data={creativeChartRows} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="shortName" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <YAxis yAxisId="volume" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <YAxis yAxisId="cost" orientation="right" tickLine={false} axisLine={false} tick={axisTickStyle} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name) => {
+                      if (name === "CPC" || name === "CPA") return [formatCurrency(value), name];
+                      return [Number(value || 0).toLocaleString(), name];
+                    }}
+                  />
+                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
+                  <Bar yAxisId="volume" dataKey="conversions" name={t("Conversions")} fill="var(--green)" radius={[8, 8, 0, 0]} />
+                  <Line yAxisId="cost" type="monotone" dataKey="cpc" name="CPC" stroke="var(--blue)" strokeWidth={2} dot={false} />
+                  <Line yAxisId="cost" type="monotone" dataKey="cpa" name="CPA" stroke="var(--orange)" strokeWidth={2} dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+      </section>
+
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Campaign and Creative Breakdown")}</h3>
+              <p className="panel-subtitle">{t("Assigned to buyer and domain with CPC/CPA comparison.")}</p>
+            </div>
+          </div>
+          {campaignState.loading ? (
+            <div className="empty-state">{t("Loading campaign stats…")}</div>
+          ) : campaignState.error ? (
+            <div className="empty-state error">{campaignState.error}</div>
+          ) : campaignTableRows.length === 0 ? (
+            <div className="empty-state">{t("No campaign rows found.")}</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="entries-table">
+                <thead>
+                  <tr>
+                    <th>{t("Media Buyer")}</th>
+                    <th>{t("Domain")}</th>
+                    <th>{t("Campaign")}</th>
+                    <th>{t("Adset")}</th>
+                    <th>{t("Ad")}</th>
+                    <th>{t("Clicks")}</th>
+                    <th>{t("Conversions")}</th>
+                    <th>CPC</th>
+                    <th>CPA</th>
+                    <th>{t("Revenue")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaignTableRows.map((row, idx) => (
+                    <tr key={`${row.buyer}-${row.domain}-${row.campaignName}-${idx}`}>
+                      <td>{row.buyer}</td>
+                      <td>{row.domain}</td>
+                      <td>{row.campaignName}</td>
+                      <td>{row.adsetName}</td>
+                      <td>{row.adName}</td>
+                      <td>{row.clicks.toLocaleString()}</td>
+                      <td>{row.conversions.toLocaleString()}</td>
+                      <td>{formatCurrency(row.cpc)}</td>
+                      <td>{formatCurrency(row.cpa)}</td>
+                      <td>{formatCurrency(row.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </motion.div>
+      </section>
+    </>
+  );
+}
+
 function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const { t } = useLanguage();
   const [behaviorEntries, setBehaviorEntries] = React.useState([]);
@@ -8963,6 +9493,10 @@ function KeitaroApiView() {
         mapping.cityField || defaultKeitaroMapping.cityField,
         mapping.regionField || defaultKeitaroMapping.regionField,
         mapping.placementField || defaultKeitaroMapping.placementField,
+        mapping.domainField || defaultKeitaroMapping.domainField,
+        mapping.campaignNameField || defaultKeitaroMapping.campaignNameField,
+        mapping.adsetNameField || defaultKeitaroMapping.adsetNameField,
+        mapping.adNameField || defaultKeitaroMapping.adNameField,
       ].forEach((field) => {
         parsedPayload = ensurePayloadField(parsedPayload, field);
       });
@@ -9418,6 +9952,39 @@ function KeitaroApiView() {
                         onChange={handleMappingChange("placementField")}
                       />
                     </div>
+                    <div className="field">
+                      <label>{t("Domain Field")}</label>
+                      <input
+                        value={mapping.domainField || ""}
+                        onChange={handleMappingChange("domainField")}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="mapping-group">
+                  <h5>{t("Campaign Fields")}</h5>
+                  <div className="mapping-fields">
+                    <div className="field">
+                      <label>{t("Campaign Name Field")}</label>
+                      <input
+                        value={mapping.campaignNameField || ""}
+                        onChange={handleMappingChange("campaignNameField")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Adset Name Field")}</label>
+                      <input
+                        value={mapping.adsetNameField || ""}
+                        onChange={handleMappingChange("adsetNameField")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Ad Name Field")}</label>
+                      <input
+                        value={mapping.adNameField || ""}
+                        onChange={handleMappingChange("adNameField")}
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="mapping-group">
@@ -9828,6 +10395,7 @@ export default function App() {
   const isGeos = activeView === "geos";
   const isUtm = activeView === "utm";
   const isStats = activeView === "statistics";
+  const isCampaigns = activeView === "campaigns";
   const isPlacements = activeView === "placements";
   const isUserBehavior = activeView === "user_behavior";
   const isApi = activeView === "api";
@@ -9901,6 +10469,7 @@ export default function App() {
       finances: "finances",
       utm: "utm",
       statistics: "statistics",
+      campaigns: "campaigns",
       placements: "placements",
       user_behavior: "user_behavior",
       devices: "devices",
@@ -9967,6 +10536,9 @@ export default function App() {
     const list = Array.isArray(basePermissions) ? [...basePermissions] : [];
     if (list.includes("statistics") && !list.includes("placements")) {
       list.push("placements");
+    }
+    if (list.includes("statistics") && !list.includes("campaigns")) {
+      list.push("campaigns");
     }
     if (list.includes("statistics") && !list.includes("user_behavior")) {
       list.push("user_behavior");
@@ -10415,6 +10987,13 @@ export default function App() {
           <KeitaroApiView />
         ) : isStats ? (
           <StatisticsDashboard authUser={authUser} viewerBuyer={effectiveViewerBuyer} />
+        ) : isCampaigns ? (
+          <CampaignsDashboard
+            period={period}
+            setPeriod={setPeriod}
+            customRange={customRange}
+            onCustomChange={handleCustomRange}
+          />
         ) : isPlacements ? (
           <PlacementsDashboard
             period={period}

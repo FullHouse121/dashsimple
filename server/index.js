@@ -45,6 +45,10 @@ const initDb = async () => {
       city TEXT,
       region TEXT,
       placement TEXT,
+      domain TEXT,
+      campaign_name TEXT,
+      adset_name TEXT,
+      ad_name TEXT,
       spend REAL,
       revenue REAL,
       ftd_revenue REAL,
@@ -81,6 +85,10 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS city TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS region TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS placement TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS domain TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS campaign_name TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS adset_name TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ad_name TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS buyer TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS campaign TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS country TEXT;`,
@@ -259,6 +267,7 @@ const allPermissions = [
   "finances",
   "utm",
   "statistics",
+  "campaigns",
   "placements",
   "user_behavior",
   "geos",
@@ -285,6 +294,7 @@ const roleSeed = [
       "dashboard",
       "utm",
       "statistics",
+      "campaigns",
       "placements",
       "user_behavior",
       "geos",
@@ -295,11 +305,30 @@ const roleSeed = [
   },
   {
     name: "Media Buyer",
-    permissions: ["dashboard", "utm", "statistics", "placements", "user_behavior", "geos", "domains", "pixels"],
+    permissions: [
+      "dashboard",
+      "utm",
+      "statistics",
+      "campaigns",
+      "placements",
+      "user_behavior",
+      "geos",
+      "domains",
+      "pixels",
+    ],
   },
   {
     name: "Media Buyer Junior",
-    permissions: ["dashboard", "statistics", "placements", "user_behavior", "geos", "domains", "pixels"],
+    permissions: [
+      "dashboard",
+      "statistics",
+      "campaigns",
+      "placements",
+      "user_behavior",
+      "geos",
+      "domains",
+      "pixels",
+    ],
   },
 ];
 
@@ -380,6 +409,10 @@ const insertMediaStat = async (payload) => {
       city,
       region,
       placement,
+      domain,
+      campaign_name,
+      adset_name,
+      ad_name,
       spend,
       revenue,
       ftd_revenue,
@@ -390,7 +423,7 @@ const insertMediaStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      RETURNING id`,
     [
       payload.date,
@@ -399,6 +432,10 @@ const insertMediaStat = async (payload) => {
       payload.city,
       payload.region,
       payload.placement,
+      payload.domain,
+      payload.campaign_name,
+      payload.adset_name,
+      payload.ad_name,
       payload.spend,
       payload.revenue,
       payload.ftd_revenue,
@@ -415,8 +452,8 @@ const insertMediaStat = async (payload) => {
 
 const selectMediaStats = async (limit) =>
   getRows(
-    `SELECT id, date, buyer, country, city, region, spend, revenue, ftd_revenue, redeposit_revenue,
-            placement, clicks, installs, registers, ftds, redeposits
+    `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
+            spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits
      FROM media_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
@@ -1088,6 +1125,15 @@ const resolveRegionValue = (row, preferredField) => {
   return "";
 };
 
+const normalizeDomainValue = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const withoutProtocol = text.replace(/^https?:\/\//i, "");
+  const hostCandidate = withoutProtocol.split("/")[0].trim();
+  if (!hostCandidate) return text;
+  return hostCandidate.toLowerCase();
+};
+
 const resolvePostbackContext = async (payload) => {
   const campaignId =
     payload.campaign_id ||
@@ -1373,6 +1419,10 @@ const defaultKeitaroMapping = {
   cityField: "city",
   regionField: "region",
   placementField: "sub_id_1",
+  domainField: "site",
+  campaignNameField: "sub_id_3",
+  adsetNameField: "sub_id_4",
+  adNameField: "sub_id_5",
   externalIdField: "external_id",
   spendField: "cost",
   revenueField: "revenue",
@@ -1834,6 +1884,10 @@ app.get("/api/media-stats", async (req, res) => {
       country: row.country,
       city: null,
       placement: null,
+      domain: null,
+      campaign_name: null,
+      adset_name: null,
+      ad_name: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
@@ -1858,6 +1912,10 @@ app.get("/api/media-stats", async (req, res) => {
       country: row.country,
       city: null,
       placement: null,
+      domain: null,
+      campaign_name: null,
+      adset_name: null,
+      ad_name: null,
       spend: null,
       revenue: null,
       ftdRevenue: null,
@@ -1957,6 +2015,13 @@ app.post("/api/media-stats", async (req, res) => {
     country,
     city,
     placement,
+    domain,
+    campaignName,
+    adsetName,
+    adName,
+    campaign_name,
+    adset_name,
+    ad_name,
     spend,
     revenue,
     ftdRevenue,
@@ -2045,6 +2110,10 @@ app.post("/api/media-stats", async (req, res) => {
     country: country || "",
     city: city || null,
     placement: placement || null,
+    domain: normalizeDomainValue(domain) || null,
+    campaign_name: campaignName || campaign_name || null,
+    adset_name: adsetName || adset_name || null,
+    ad_name: adName || ad_name || null,
     spend: parsedSpend,
     revenue: parsedRevenue,
     ftd_revenue: parsedFtdRevenue,
@@ -2743,6 +2812,12 @@ app.get("/api/roles", async (req, res) => {
       ) {
         compatPermissions.push("placements");
       }
+      if (
+        compatPermissions.includes("statistics") &&
+        !compatPermissions.includes("campaigns")
+      ) {
+        compatPermissions.push("campaigns");
+      }
       return Array.from(new Set(compatPermissions));
     })(),
   }));
@@ -2846,6 +2921,10 @@ const runKeitaroSync = async ({
           map.cityField || defaultKeitaroMapping.cityField,
           map.regionField || defaultKeitaroMapping.regionField,
           map.placementField || defaultKeitaroMapping.placementField,
+          map.domainField || defaultKeitaroMapping.domainField,
+          map.campaignNameField || defaultKeitaroMapping.campaignNameField,
+          map.adsetNameField || defaultKeitaroMapping.adsetNameField,
+          map.adNameField || defaultKeitaroMapping.adNameField,
         ]
       : syncTarget === "user_behavior"
         ? [
@@ -3026,6 +3105,18 @@ const runKeitaroSync = async ({
     const placement = String(
       readPlacementValue(row, map.placementField || defaultKeitaroMapping.placementField) || ""
     ).trim();
+    const domain = normalizeDomainValue(
+      readRowValue(row, map.domainField || defaultKeitaroMapping.domainField)
+    );
+    const campaignName = String(
+      readRowValue(row, map.campaignNameField || defaultKeitaroMapping.campaignNameField) || ""
+    ).trim();
+    const adsetName = String(
+      readRowValue(row, map.adsetNameField || defaultKeitaroMapping.adsetNameField) || ""
+    ).trim();
+    const adName = String(
+      readRowValue(row, map.adNameField || defaultKeitaroMapping.adNameField) || ""
+    ).trim();
     if (placement) {
       placementsExtracted += 1;
       if (placementSamples.size < 5) {
@@ -3122,6 +3213,10 @@ const runKeitaroSync = async ({
         city: city || null,
         region: region || null,
         placement: placement || null,
+        domain: domain || null,
+        campaign_name: campaignName || null,
+        adset_name: adsetName || null,
+        ad_name: adName || null,
         spend,
         revenue,
         ftd_revenue: ftdRevenue,
