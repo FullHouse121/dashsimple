@@ -1149,6 +1149,34 @@ const isDateInRange = (value, range) => {
   if (range?.to && day > range.to) return false;
   return true;
 };
+const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
+const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
+const normalizeBuyerKey = (value) =>
+  String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const matchesBuyerFilter = (buyer, selectedBuyer, viewerBuyer, isLeadership) => {
+  const normalizedBuyer = normalizeBuyerKey(buyer);
+  if (!normalizedBuyer) return false;
+  if (!isLeadership) {
+    if (!viewerBuyer) return true;
+    const normalizedViewer = normalizeBuyerKey(viewerBuyer);
+    if (!normalizedViewer) return true;
+    return (
+      normalizedBuyer.includes(normalizedViewer) ||
+      normalizedViewer.includes(normalizedBuyer)
+    );
+  }
+  if (isAllSelection(selectedBuyer)) return true;
+  const normalizedSelected = normalizeBuyerKey(selectedBuyer);
+  if (!normalizedSelected) return false;
+  return (
+    normalizedBuyer.includes(normalizedSelected) ||
+    normalizedSelected.includes(normalizedBuyer)
+  );
+};
+const matchesCountryFilter = (country, selectedCountry) => {
+  if (isAllSelection(selectedCountry)) return true;
+  return normalizeFilterValue(country) === normalizeFilterValue(selectedCountry);
+};
 const formatShortDate = (value) => {
   if (!value) return "";
   const parts = value.split("-");
@@ -4276,9 +4304,15 @@ function UtmBuilder() {
   );
 }
 
-function StatisticsDashboard({ authUser, viewerBuyer }) {
+function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
+  const globalBuyerFilter = filters?.buyer || "All";
+  const globalCountryFilter = filters?.country || "All";
+  const globalDateRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
   const [statsForm, setStatsForm] = React.useState({
     date: "2026-02-07",
     buyer: effectiveBuyer,
@@ -4367,12 +4401,21 @@ function StatisticsDashboard({ authUser, viewerBuyer }) {
         new Set(["All", ...buyerOptions, ...statsEntries.map((row) => row.buyer).filter(Boolean)])
       )
     : [effectiveBuyer].filter(Boolean);
-  const filteredEntries =
-    !isLeadership || buyerFilter === "All"
-      ? statsEntries
-      : statsEntries.filter((row) =>
-          String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
-        );
+  const filteredEntries = statsEntries.filter((row) => {
+    if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+      return false;
+    }
+    if (
+      isLeadership &&
+      !isAllSelection(buyerFilter) &&
+      !String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
+    ) {
+      return false;
+    }
+    if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+    if (!isDateInRange(row.date, globalDateRange)) return false;
+    return true;
+  });
 
   const sum = (value) => Number(value || 0);
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
@@ -4934,8 +4977,10 @@ function StatisticsDashboard({ authUser, viewerBuyer }) {
   );
 }
 
-function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange }) {
+function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [placementEntries, setPlacementEntries] = React.useState([]);
   const [placementState, setPlacementState] = React.useState({ loading: true, error: null });
   const [placementFilter, setPlacementFilter] = React.useState("All placements");
@@ -4971,6 +5016,14 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
+  const globalDateRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
+  const effectiveDateRange =
+    globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
+  const globalBuyerFilter = filters?.buyer || "All";
+  const globalCountryFilter = filters?.country || "All";
   const sum = (value) => Number(value || 0);
   const normalizePlacementLabel = React.useCallback((value) => {
     const rawPlacement = String(value || "").trim();
@@ -4983,10 +5036,22 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   }, []);
   const placementRows = React.useMemo(() => {
     return placementEntries.filter((row) => {
-      if (!isDateInRange(row.date, periodRange)) return false;
+      if (!isDateInRange(row.date, effectiveDateRange)) return false;
+      if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+        return false;
+      }
+      if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
       return true;
     });
-  }, [placementEntries, periodRange.from, periodRange.to]);
+  }, [
+    placementEntries,
+    effectiveDateRange.from,
+    effectiveDateRange.to,
+    globalBuyerFilter,
+    globalCountryFilter,
+    effectiveBuyer,
+    isLeadership,
+  ]);
 
   const placementOptions = React.useMemo(() => {
     const options = new Set();
@@ -5368,8 +5433,10 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
   );
 }
 
-function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) {
+function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [campaignEntries, setCampaignEntries] = React.useState([]);
   const [registeredDomains, setRegisteredDomains] = React.useState([]);
   const [campaignMappings, setCampaignMappings] = React.useState([]);
@@ -5516,6 +5583,14 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
+  const globalDateRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
+  const effectiveDateRange =
+    globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
+  const globalBuyerFilter = filters?.buyer || "All";
+  const globalCountryFilter = filters?.country || "All";
 
   const campaignRows = React.useMemo(
     () =>
@@ -5551,7 +5626,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
           };
         })
         .filter((row) => {
-          if (!isDateInRange(row.date, periodRange)) return false;
+          if (!isDateInRange(row.date, effectiveDateRange)) return false;
+          if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+            return false;
+          }
+          if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
           return Boolean(
             row.campaignLabel ||
               row.adsetLabel ||
@@ -5564,8 +5643,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
         }),
     [
       campaignEntries,
-      periodRange.from,
-      periodRange.to,
+      effectiveDateRange.from,
+      effectiveDateRange.to,
+      globalBuyerFilter,
+      globalCountryFilter,
+      effectiveBuyer,
+      isLeadership,
       resolveMappedDomain,
       resolveRegisteredDomain,
     ]
@@ -5747,9 +5830,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
       : null;
 
   const growthPercent = React.useMemo(() => {
-    if (!periodRange.from || !periodRange.to) return null;
-    const fromDate = new Date(`${periodRange.from}T00:00:00`);
-    const toDate = new Date(`${periodRange.to}T00:00:00`);
+    if (!effectiveDateRange.from || !effectiveDateRange.to) return null;
+    const fromDate = new Date(`${effectiveDateRange.from}T00:00:00`);
+    const toDate = new Date(`${effectiveDateRange.to}T00:00:00`);
     if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime())) return null;
     const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
     const prevTo = new Date(fromDate);
@@ -5761,6 +5844,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     const previousClicks = campaignEntries
       .filter((row) => {
         if (!isDateInRange(row.date, prevRange)) return false;
+        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+          return false;
+        }
+        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
         const buyer = normalizeText(row.buyer);
         const domain = toDomainKey(
           resolveRegisteredDomain(row.domain || row.source || row.site || row.flows) ||
@@ -5775,11 +5862,15 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     if (previousClicks <= 0) return null;
     return ((totals.clicks - previousClicks) / previousClicks) * 100;
   }, [
-    periodRange.from,
-    periodRange.to,
+    effectiveDateRange.from,
+    effectiveDateRange.to,
     campaignEntries,
     buyerFilter,
     domainFilter,
+    globalBuyerFilter,
+    globalCountryFilter,
+    effectiveBuyer,
+    isLeadership,
     resolveRegisteredDomain,
     totals.clicks,
   ]);
@@ -6075,8 +6166,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
   );
 }
 
-function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange }) {
+function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [behaviorEntries, setBehaviorEntries] = React.useState([]);
   const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
   const [search, setSearch] = React.useState("");
@@ -6113,16 +6206,39 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
+  const globalDateRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
+  const effectiveDateRange =
+    globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
+  const globalBuyerFilter = filters?.buyer || "All";
+  const globalCountryFilter = filters?.country || "All";
 
   const normalizedSearch = search.trim().toLowerCase();
   const sum = (value) => Number(value || 0);
 
   const behaviorRows = React.useMemo(
     () =>
-      behaviorEntries.filter((row) =>
-        isDateInRange(row.date || row.day || row.created_at, periodRange)
-      ),
-    [behaviorEntries, periodRange.from, periodRange.to]
+      behaviorEntries.filter((row) => {
+        if (!isDateInRange(row.date || row.day || row.created_at, effectiveDateRange)) {
+          return false;
+        }
+        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+          return false;
+        }
+        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        return true;
+      }),
+    [
+      behaviorEntries,
+      effectiveDateRange.from,
+      effectiveDateRange.to,
+      globalBuyerFilter,
+      globalCountryFilter,
+      effectiveBuyer,
+      isLeadership,
+    ]
   );
 
   const userData = React.useMemo(() => {
@@ -6443,14 +6559,24 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange 
   );
 }
 
-function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
+function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [deviceEntries, setDeviceEntries] = React.useState([]);
   const [deviceState, setDeviceState] = React.useState({ loading: true, error: null });
   const periodRange = React.useMemo(
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
+  const globalDateRange = React.useMemo(
+    () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
+    [filters?.dateFrom, filters?.dateTo]
+  );
+  const effectiveDateRange =
+    globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
+  const globalBuyerFilter = filters?.buyer || "All";
+  const globalCountryFilter = filters?.country || "All";
 
   const fetchDeviceStats = React.useCallback(async () => {
     try {
@@ -6480,8 +6606,24 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange }) {
   }, [fetchDeviceStats]);
 
   const filteredDeviceEntries = React.useMemo(
-    () => deviceEntries.filter((row) => isDateInRange(row.date, periodRange)),
-    [deviceEntries, periodRange.from, periodRange.to]
+    () =>
+      deviceEntries.filter((row) => {
+        if (!isDateInRange(row.date, effectiveDateRange)) return false;
+        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+          return false;
+        }
+        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        return true;
+      }),
+    [
+      deviceEntries,
+      effectiveDateRange.from,
+      effectiveDateRange.to,
+      globalBuyerFilter,
+      globalCountryFilter,
+      effectiveBuyer,
+      isLeadership,
+    ]
   );
 
   const sum = (value) => Number(value || 0);
@@ -10592,7 +10734,9 @@ export default function App() {
   const isProfile = activeView === "profile";
   const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
-  const showFilters = isFinances || isHome || isGeos;
+  const usesPerformanceFilters =
+    isHome || isGeos || isStats || isCampaigns || isPlacements || isUserBehavior || isDevices;
+  const showFilters = isFinances || usesPerformanceFilters;
   const [viewerBuyer, setViewerBuyer] = React.useState("");
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
 
@@ -11170,13 +11314,20 @@ export default function App() {
         ) : isApi ? (
           <KeitaroApiView />
         ) : isStats ? (
-          <StatisticsDashboard authUser={authUser} viewerBuyer={effectiveViewerBuyer} />
+          <StatisticsDashboard
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
+            filters={filters}
+          />
         ) : isCampaigns ? (
           <CampaignsDashboard
             period={period}
             setPeriod={setPeriod}
             customRange={customRange}
             onCustomChange={handleCustomRange}
+            filters={filters}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
           />
         ) : isPlacements ? (
           <PlacementsDashboard
@@ -11184,6 +11335,9 @@ export default function App() {
             setPeriod={setPeriod}
             customRange={customRange}
             onCustomChange={handleCustomRange}
+            filters={filters}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
           />
         ) : isUserBehavior ? (
           <UserBehaviorDashboard
@@ -11191,6 +11345,9 @@ export default function App() {
             setPeriod={setPeriod}
             customRange={customRange}
             onCustomChange={handleCustomRange}
+            filters={filters}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
           />
         ) : isDevices ? (
           <DevicesDashboard
@@ -11198,6 +11355,9 @@ export default function App() {
             setPeriod={setPeriod}
             customRange={customRange}
             onCustomChange={handleCustomRange}
+            filters={filters}
+            authUser={authUser}
+            viewerBuyer={effectiveViewerBuyer}
           />
         ) : isDocs ? (
           <DocumentationDashboard />
@@ -11277,7 +11437,7 @@ export default function App() {
                   </select>
                 </div>
 
-                {isHome || isGeos ? (
+                {usesPerformanceFilters ? (
                   <>
                 <div className="field">
                   <label>Media Buyer</label>
