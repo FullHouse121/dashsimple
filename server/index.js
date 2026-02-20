@@ -1005,6 +1005,15 @@ const numberFromValue = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const readFirstNumericValue = (row, candidates) => {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const value = numberFromValue(readRowValue(row, candidate));
+    if (value !== null) return value;
+  }
+  return null;
+};
+
 const normalizeDate = (value) => {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") {
@@ -3190,7 +3199,13 @@ const runKeitaroSync = async ({
         placementSamples.add(placement);
       }
     }
-    const spend = numberFromValue(readRowValue(row, map.spendField));
+    let spend = readFirstNumericValue(row, [
+      map.spendField,
+      "cost",
+      "spend",
+      "expenses",
+      "profitability",
+    ]);
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
     const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
     let revenue = numberFromValue(readRowValue(row, map.revenueField));
