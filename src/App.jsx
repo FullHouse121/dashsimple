@@ -4326,6 +4326,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const [statsEntries, setStatsEntries] = React.useState([]);
   const [statsState, setStatsState] = React.useState({ loading: true, error: null });
   const [buyerFilter, setBuyerFilter] = React.useState(isLeadership ? "All" : effectiveBuyer);
+  const [showAllStatsRows, setShowAllStatsRows] = React.useState(false);
 
   const updateStatsForm = (key) => (event) => {
     setStatsForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -4454,6 +4455,11 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     if (!isDateInRange(row.date, globalDateRange)) return false;
     return true;
   });
+
+  React.useEffect(() => {
+    setShowAllStatsRows(false);
+  }, [buyerFilter, globalBuyerFilter, globalCountryFilter, globalDateRange.from, globalDateRange.to]);
+
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
   const toPercent = (num, denom) => {
     const value = safeDivide(num, denom);
@@ -4530,6 +4536,20 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const volumeDomainMax = volumeMax > 0 ? Math.ceil(volumeMax * 1.15) : 10;
   const rateDomainMax = Math.min(100, Math.max(10, Math.ceil((rateMax || 0) / 5) * 5));
   const costDomainMax = costMax > 0 ? Math.ceil(costMax * 1.2) : 10;
+  const rankedEntries = React.useMemo(() => {
+    return [...filteredEntries].sort((a, b) => {
+      const ftdDiff = sum(b.ftds) - sum(a.ftds);
+      if (ftdDiff !== 0) return ftdDiff;
+      const regDiff = sum(b.registers) - sum(a.registers);
+      if (regDiff !== 0) return regDiff;
+      const clickDiff = sum(b.clicks) - sum(a.clicks);
+      if (clickDiff !== 0) return clickDiff;
+      const spendDiff = sum(b.spend) - sum(a.spend);
+      if (spendDiff !== 0) return spendDiff;
+      return String(b.date || "").localeCompare(String(a.date || ""));
+    });
+  }, [filteredEntries]);
+  const visibleEntries = showAllStatsRows ? rankedEntries : rankedEntries.slice(0, 10);
 
   return (
     <>
@@ -4588,68 +4608,81 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           ) : filteredEntries.length === 0 ? (
             <div className="empty-state">No entries yet. Add your first stats row above.</div>
           ) : (
-            <div className="table-wrap">
-              <table className="entries-table stats-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Buyer</th>
-                    <th>Country</th>
-                    <th>Spend</th>
-                    <th>Clicks</th>
-                    <th>Installs</th>
-                    <th>Registers</th>
-                    <th>FTDs</th>
-                    <th>C2I</th>
-                    <th>C2R</th>
-                    <th>C2FTD</th>
-                    <th>R2D</th>
-                    <th>CPC</th>
-                    <th>CPI</th>
-                    <th>CPR</th>
-                    <th>CPP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEntries.map((row) => {
-                    const spend = sum(row.spend);
-                    const clicks = sum(row.clicks);
-                    const installs = sum(row.installs);
-                    const registers = sum(row.registers);
-                    const ftds = sum(row.ftds);
-                    const c2i = toPercent(installs, clicks);
-                    const c2r = toPercent(registers, clicks);
-                    const c2f = toPercent(ftds, clicks);
-                    const r2d = toPercent(ftds, registers);
-                    const cpc = toCost(spend, clicks);
-                    const cpi = toCost(spend, installs);
-                    const cpr = toCost(spend, registers);
-                    const cpp = toCost(spend, ftds);
+            <>
+              <div className="table-wrap">
+                <table className="entries-table stats-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Buyer</th>
+                      <th>Country</th>
+                      <th>Spend</th>
+                      <th>Clicks</th>
+                      <th>Installs</th>
+                      <th>Registers</th>
+                      <th>FTDs</th>
+                      <th>C2I</th>
+                      <th>C2R</th>
+                      <th>C2FTD</th>
+                      <th>R2D</th>
+                      <th>CPC</th>
+                      <th>CPI</th>
+                      <th>CPR</th>
+                      <th>CPP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleEntries.map((row) => {
+                      const spend = sum(row.spend);
+                      const clicks = sum(row.clicks);
+                      const installs = sum(row.installs);
+                      const registers = sum(row.registers);
+                      const ftds = sum(row.ftds);
+                      const c2i = toPercent(installs, clicks);
+                      const c2r = toPercent(registers, clicks);
+                      const c2f = toPercent(ftds, clicks);
+                      const r2d = toPercent(ftds, registers);
+                      const cpc = toCost(spend, clicks);
+                      const cpi = toCost(spend, installs);
+                      const cpr = toCost(spend, registers);
+                      const cpp = toCost(spend, ftds);
 
-                    return (
-                      <tr key={row.id}>
-                        <td>{row.date}</td>
-                        <td>{row.buyer}</td>
-                        <td>{row.country || "—"}</td>
-                        <td>{spend ? formatCurrency(spend) : "—"}</td>
-                        <td>{clicks.toLocaleString()}</td>
-                        <td>{installs ? installs.toLocaleString() : "—"}</td>
-                        <td>{registers.toLocaleString()}</td>
-                        <td>{ftds.toLocaleString()}</td>
-                        <td>{fmtPercent(c2i)}</td>
-                        <td>{fmtPercent(c2r)}</td>
-                        <td>{fmtPercent(c2f)}</td>
-                        <td>{fmtPercent(r2d)}</td>
-                        <td>{fmtCost(cpc)}</td>
-                        <td>{fmtCost(cpi)}</td>
-                        <td>{fmtCost(cpr)}</td>
-                        <td>{fmtCost(cpp)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      return (
+                        <tr key={`${row.id || "stat"}-${row.date}-${row.buyer}-${row.country || ""}`}>
+                          <td>{row.date}</td>
+                          <td>{row.buyer}</td>
+                          <td>{row.country || "—"}</td>
+                          <td>{spend ? formatCurrency(spend) : "—"}</td>
+                          <td>{clicks.toLocaleString()}</td>
+                          <td>{installs ? installs.toLocaleString() : "—"}</td>
+                          <td>{registers.toLocaleString()}</td>
+                          <td>{ftds.toLocaleString()}</td>
+                          <td>{fmtPercent(c2i)}</td>
+                          <td>{fmtPercent(c2r)}</td>
+                          <td>{fmtPercent(c2f)}</td>
+                          <td>{fmtPercent(r2d)}</td>
+                          <td>{fmtCost(cpc)}</td>
+                          <td>{fmtCost(cpi)}</td>
+                          <td>{fmtCost(cpr)}</td>
+                          <td>{fmtCost(cpp)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {rankedEntries.length > 10 ? (
+                <div className="api-actions" style={{ marginTop: 10 }}>
+                  <button
+                    className="ghost"
+                    type="button"
+                    onClick={() => setShowAllStatsRows((prev) => !prev)}
+                  >
+                    {showAllStatsRows ? "Show Less" : "See More"}
+                  </button>
+                </div>
+              ) : null}
+            </>
           )}
         </motion.div>
       </section>
