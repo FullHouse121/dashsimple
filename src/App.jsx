@@ -4354,7 +4354,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const fetchStats = React.useCallback(async () => {
     try {
       setStatsState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=300");
+      const response = await apiFetch("/api/media-stats?limit=20000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -4396,12 +4396,50 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     }
   };
 
+  const sum = (value) => Number(value || 0);
+
+  const normalizedEntries = React.useMemo(() => {
+    const map = new Map();
+    statsEntries.forEach((row) => {
+      const date = String(row.date || "");
+      const buyer = String(row.buyer || "");
+      const country = String(row.country || "");
+      const key = `${date}|${buyer}|${country}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          id: row.id,
+          date,
+          buyer,
+          country,
+          spend: 0,
+          clicks: 0,
+          installs: 0,
+          registers: 0,
+          ftds: 0,
+        });
+      }
+      const current = map.get(key);
+      current.spend += sum(row.spend);
+      current.clicks += sum(row.clicks);
+      current.installs += sum(row.installs);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      if (!current.id && row.id) current.id = row.id;
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+      const dateSort = String(b.date || "").localeCompare(String(a.date || ""));
+      if (dateSort !== 0) return dateSort;
+      return (b.id || 0) - (a.id || 0);
+    });
+  }, [statsEntries]);
+
   const buyers = isLeadership
     ? Array.from(
-        new Set(["All", ...buyerOptions, ...statsEntries.map((row) => row.buyer).filter(Boolean)])
+        new Set(["All", ...buyerOptions, ...normalizedEntries.map((row) => row.buyer).filter(Boolean)])
       )
     : [effectiveBuyer].filter(Boolean);
-  const filteredEntries = statsEntries.filter((row) => {
+  const filteredEntries = normalizedEntries.filter((row) => {
     if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
       return false;
     }
@@ -4416,8 +4454,6 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     if (!isDateInRange(row.date, globalDateRange)) return false;
     return true;
   });
-
-  const sum = (value) => Number(value || 0);
   const safeDivide = (num, denom) => (denom > 0 ? num / denom : null);
   const toPercent = (num, denom) => {
     const value = safeDivide(num, denom);
