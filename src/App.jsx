@@ -8994,7 +8994,7 @@ function KeitaroApiView() {
     }
 
     try {
-      let response = await apiFetch("/api/keitaro/sync", {
+      let response = await apiFetch("/api/keitaro/sync?async=1", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -9005,10 +9005,11 @@ function KeitaroApiView() {
           mapping,
           replaceExisting,
           target: syncTarget,
+          async: true,
         }),
       });
-      if (response.status === 504 || response.status === 502) {
-        response = await apiFetch("/api/keitaro/sync?async=1", {
+      if (response.status === 404 || response.status === 405) {
+        response = await apiFetch("/api/keitaro/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -9019,9 +9020,13 @@ function KeitaroApiView() {
             mapping,
             replaceExisting,
             target: syncTarget,
-            async: true,
           }),
         });
+      }
+      if (response.status === 504 || response.status === 502) {
+        throw new Error(
+          "Gateway timeout. Backend is still running sync in foreground. Redeploy Render with the latest backend code."
+        );
       }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
