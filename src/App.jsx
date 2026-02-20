@@ -5720,12 +5720,13 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
           acc.clicks += sum(row.clicks);
           acc.installs += sum(row.installs);
           acc.registers += sum(row.registers);
+          acc.ftds += sum(row.ftds);
           acc.conversions += sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
           acc.spend += sum(row.spend);
           acc.revenue += sum(row.revenue);
           return acc;
         },
-        { clicks: 0, installs: 0, registers: 0, conversions: 0, spend: 0, revenue: 0 }
+        { clicks: 0, installs: 0, registers: 0, ftds: 0, conversions: 0, spend: 0, revenue: 0 }
       ),
     [filteredRows]
   );
@@ -5734,6 +5735,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
   const costPerInstall = totals.installs > 0 ? totals.spend / totals.installs : null;
   const costPerRegister = totals.registers > 0 ? totals.spend / totals.registers : null;
   const costPerConversion = totals.conversions > 0 ? totals.spend / totals.conversions : null;
+  const costPerLead = totals.installs > 0 ? totals.spend / totals.installs : null;
+  const costPerPurchase = totals.ftds > 0 ? totals.spend / totals.ftds : null;
 
   const topCampaign = campaignAgg[0] || null;
   const topCreative = creativeAgg[0] || null;
@@ -5826,6 +5829,43 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
             <div className="card-head">{t(stat.label)}</div>
             <div className="card-value">{stat.value}</div>
             <div className="card-meta">{t(stat.meta)}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="cards">
+        {[
+          {
+            label: "CPC",
+            value: costPerClick === null ? "—" : formatCurrency(costPerClick),
+            meta: `${totals.clicks.toLocaleString()} ${t("Clicks")}`,
+          },
+          {
+            label: "Cost per Lead",
+            value: costPerLead === null ? "—" : formatCurrency(costPerLead),
+            meta: `${totals.installs.toLocaleString()} ${t("Installs")}`,
+          },
+          {
+            label: "Cost per Register",
+            value: costPerRegister === null ? "—" : formatCurrency(costPerRegister),
+            meta: `${totals.registers.toLocaleString()} ${t("Register")}`,
+          },
+          {
+            label: "Cost per Purchase",
+            value: costPerPurchase === null ? "—" : formatCurrency(costPerPurchase),
+            meta: `${totals.ftds.toLocaleString()} ${t("FTD")}`,
+          },
+        ].map((stat, idx) => (
+          <motion.div
+            key={`cost-${stat.label}-${idx}`}
+            className="card"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.06, duration: 0.4 }}
+          >
+            <div className="card-head">{t(stat.label)}</div>
+            <div className="card-value">{stat.value}</div>
+            <div className="card-meta">{stat.meta}</div>
           </motion.div>
         ))}
       </section>
