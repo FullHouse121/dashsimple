@@ -5371,19 +5371,131 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange })
 function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) {
   const { t } = useLanguage();
   const [campaignEntries, setCampaignEntries] = React.useState([]);
+  const [registeredDomains, setRegisteredDomains] = React.useState([]);
+  const [campaignMappings, setCampaignMappings] = React.useState([]);
   const [campaignState, setCampaignState] = React.useState({ loading: true, error: null });
   const [buyerFilter, setBuyerFilter] = React.useState("All buyers");
   const [domainFilter, setDomainFilter] = React.useState("All domains");
+  const sum = (value) => Number(value || 0);
+  const normalizeText = (value) => String(value || "").trim();
+  const normalizeDomain = (value) => {
+    const text = normalizeText(value);
+    if (!text) return "";
+    const withoutProtocol = text.replace(/^https?:\/\//i, "");
+    return withoutProtocol.split("/")[0].trim().toLowerCase();
+  };
+  const toDomainKey = (value) => normalizeDomain(value).replace(/^www\./i, "");
+
+  const registeredDomainMap = React.useMemo(() => {
+    const map = new Map();
+    registeredDomains.forEach((domain) => {
+      const key = toDomainKey(domain);
+      if (key && !map.has(key)) {
+        map.set(key, domain);
+      }
+    });
+    return map;
+  }, [registeredDomains]);
+
+  const resolveRegisteredDomain = React.useCallback(
+    (value) => {
+      const key = toDomainKey(value);
+      if (!key) return "";
+      if (registeredDomainMap.has(key)) {
+        return registeredDomainMap.get(key) || "";
+      }
+      for (const [registeredKey, registeredValue] of registeredDomainMap.entries()) {
+        if (key.endsWith(`.${registeredKey}`) || registeredKey.endsWith(`.${key}`)) {
+          return registeredValue;
+        }
+      }
+      return "";
+    },
+    [registeredDomainMap]
+  );
+
+  const normalizeCampaignKey = React.useCallback(
+    (value) => normalizeText(value).toLowerCase().replace(/\s+/g, " ").trim(),
+    []
+  );
+
+  const campaignDomainLookup = React.useMemo(() => {
+    const byCampaign = new Map();
+    const byBuyer = new Map();
+
+    campaignMappings.forEach((row) => {
+      const campaignKey = normalizeCampaignKey(row?.name);
+      const buyerKey = normalizeCampaignKey(row?.buyer);
+      const domainValue = normalizeDomain(row?.domain);
+      if (!domainValue) return;
+
+      if (campaignKey && !byCampaign.has(campaignKey)) {
+        byCampaign.set(campaignKey, domainValue);
+      }
+      if (buyerKey) {
+        if (!byBuyer.has(buyerKey)) {
+          byBuyer.set(buyerKey, new Set());
+        }
+        byBuyer.get(buyerKey).add(domainValue);
+      }
+    });
+
+    return { byCampaign, byBuyer };
+  }, [campaignMappings, normalizeCampaignKey]);
+
+  const resolveMappedDomain = React.useCallback(
+    (campaignValue, buyerValue) => {
+      const campaignKey = normalizeCampaignKey(campaignValue);
+      if (campaignKey && campaignDomainLookup.byCampaign.has(campaignKey)) {
+        return campaignDomainLookup.byCampaign.get(campaignKey) || "";
+      }
+
+      const buyerKey = normalizeCampaignKey(buyerValue);
+      if (!buyerKey) return "";
+      const domains = campaignDomainLookup.byBuyer.get(buyerKey);
+      if (!domains || domains.size !== 1) return "";
+      return Array.from(domains)[0] || "";
+    },
+    [campaignDomainLookup, normalizeCampaignKey]
+  );
 
   const fetchCampaigns = React.useCallback(async () => {
     try {
       setCampaignState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=20000");
-      if (!response.ok) {
+      const [statsResponse, domainsResponse, mappingsResponse] = await Promise.all([
+        apiFetch("/api/media-stats?limit=20000"),
+        apiFetch("/api/domains?limit=500"),
+        apiFetch("/api/campaigns?limit=500"),
+      ]);
+
+      if (!statsResponse.ok) {
         throw new Error("Failed to load campaign stats.");
       }
-      const data = await response.json();
+      const data = await statsResponse.json();
       setCampaignEntries(Array.isArray(data) ? data : []);
+
+      if (domainsResponse.ok) {
+        const domainsData = await domainsResponse.json();
+        const normalized = Array.isArray(domainsData)
+          ? Array.from(
+              new Set(
+                domainsData
+                  .map((row) => normalizeDomain(row?.domain))
+                  .filter(Boolean)
+              )
+            ).sort((a, b) => a.localeCompare(b))
+          : [];
+        setRegisteredDomains(normalized);
+      } else {
+        setRegisteredDomains([]);
+      }
+
+      if (mappingsResponse.ok) {
+        const mappingsData = await mappingsResponse.json();
+        setCampaignMappings(Array.isArray(mappingsData) ? mappingsData : []);
+      } else {
+        setCampaignMappings([]);
+      }
       setCampaignState({ loading: false, error: null });
     } catch (error) {
       setCampaignState({ loading: false, error: error.message || "Failed to load campaign stats." });
@@ -5404,32 +5516,59 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     () => getPeriodDateRange(period, customRange),
     [period, customRange.from, customRange.to]
   );
-  const sum = (value) => Number(value || 0);
-  const normalizeText = (value) => String(value || "").trim();
-  const normalizeDomain = (value) => {
-    const text = normalizeText(value);
-    if (!text) return "";
-    const withoutProtocol = text.replace(/^https?:\/\//i, "");
-    return withoutProtocol.split("/")[0].trim().toLowerCase();
-  };
 
   const campaignRows = React.useMemo(
     () =>
-      campaignEntries.filter((row) => {
-        if (!isDateInRange(row.date, periodRange)) return false;
-        const campaignName = normalizeText(row.campaign_name || row.campaign || row.buyer);
-        const adsetName = normalizeText(row.adset_name);
-        const adName = normalizeText(row.ad_name);
-        const domain = normalizeDomain(row.domain || row.site || row.flows);
-        const hasVolume =
-          sum(row.clicks) > 0 ||
-          sum(row.registers) > 0 ||
-          sum(row.ftds) > 0 ||
-          sum(row.redeposits) > 0;
-        const hasValue = sum(row.spend) > 0 || sum(row.revenue) > 0;
-        return Boolean(campaignName || adsetName || adName || domain || hasVolume || hasValue);
-      }),
-    [campaignEntries, periodRange.from, periodRange.to]
+      campaignEntries
+        .map((row) => {
+          const domainRaw = normalizeDomain(row.domain || row.site || row.flows);
+          const buyerLabel = normalizeText(row.buyer) || "Unknown buyer";
+          const campaignLabel = normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
+          const mappedDomain = resolveMappedDomain(campaignLabel, buyerLabel);
+          const assignedDomain =
+            resolveRegisteredDomain(domainRaw) ||
+            resolveRegisteredDomain(mappedDomain) ||
+            normalizeDomain(mappedDomain);
+          const adsetLabel = normalizeText(row.adset_name) || "Unknown adset";
+          const adLabel = normalizeText(row.ad_name) || "Unknown ad";
+          const hasVolume =
+            sum(row.clicks) > 0 ||
+            sum(row.registers) > 0 ||
+            sum(row.ftds) > 0 ||
+            sum(row.redeposits) > 0;
+          const hasValue = sum(row.spend) > 0 || sum(row.revenue) > 0;
+          return {
+            ...row,
+            buyerLabel,
+            domainRaw,
+            mappedDomain,
+            assignedDomain,
+            campaignLabel,
+            adsetLabel,
+            adLabel,
+            hasVolume,
+            hasValue,
+          };
+        })
+        .filter((row) => {
+          if (!isDateInRange(row.date, periodRange)) return false;
+          return Boolean(
+            row.campaignLabel ||
+              row.adsetLabel ||
+              row.adLabel ||
+              row.assignedDomain ||
+              row.domainRaw ||
+              row.hasVolume ||
+              row.hasValue
+          );
+        }),
+    [
+      campaignEntries,
+      periodRange.from,
+      periodRange.to,
+      resolveMappedDomain,
+      resolveRegisteredDomain,
+    ]
   );
 
   const buyerOptionsLocal = React.useMemo(() => {
@@ -5441,14 +5580,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     return ["All buyers", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
   }, [campaignRows]);
 
-  const domainOptionsLocal = React.useMemo(() => {
-    const values = new Set();
-    campaignRows.forEach((row) => {
-      const domain = normalizeDomain(row.domain || row.site || row.flows);
-      if (domain) values.add(domain);
-    });
-    return ["All domains", ...Array.from(values).sort((a, b) => a.localeCompare(b))];
-  }, [campaignRows]);
+  const domainOptionsLocal = React.useMemo(
+    () => ["All domains", ...registeredDomains],
+    [registeredDomains]
+  );
 
   React.useEffect(() => {
     if (!buyerOptionsLocal.includes(buyerFilter)) {
@@ -5466,9 +5601,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     () =>
       campaignRows.filter((row) => {
         const buyer = normalizeText(row.buyer);
-        const domain = normalizeDomain(row.domain || row.site || row.flows);
+        const domain = toDomainKey(row.assignedDomain || row.domainRaw);
         if (buyerFilter !== "All buyers" && buyer !== buyerFilter) return false;
-        if (domainFilter !== "All domains" && domain !== domainFilter) return false;
+        if (domainFilter !== "All domains" && domain !== toDomainKey(domainFilter)) return false;
         return true;
       }),
     [campaignRows, buyerFilter, domainFilter]
@@ -5477,12 +5612,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
   const campaignAgg = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const buyer = normalizeText(row.buyer) || "Unknown buyer";
-      const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
-      const campaignName =
-        normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
-      const adsetName = normalizeText(row.adset_name) || "Unknown adset";
-      const adName = normalizeText(row.ad_name) || "Unknown ad";
+      const buyer = row.buyerLabel;
+      const domain = row.assignedDomain || row.domainRaw || "unassigned.domain";
+      const campaignName = row.campaignLabel;
+      const adsetName = row.adsetLabel;
+      const adName = row.adLabel;
       const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
       const key = `${buyer}|${domain}|${campaignName}`;
 
@@ -5525,12 +5659,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
   const creativeAgg = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const buyer = normalizeText(row.buyer) || "Unknown buyer";
-      const domain = normalizeDomain(row.domain || row.site || row.flows) || "unknown.domain";
-      const campaignName =
-        normalizeText(row.campaign_name || row.campaign || row.buyer) || "Unknown campaign";
-      const adsetName = normalizeText(row.adset_name) || "Unknown adset";
-      const adName = normalizeText(row.ad_name) || "Unknown ad";
+      const buyer = row.buyerLabel;
+      const domain = row.assignedDomain || row.domainRaw || "unassigned.domain";
+      const campaignName = row.campaignLabel;
+      const adsetName = row.adsetLabel;
+      const adName = row.adLabel;
       const conversions = sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
       const key = `${buyer}|${domain}|${campaignName}|${adsetName}|${adName}`;
       if (!map.has(key)) {
@@ -5585,15 +5718,22 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
       filteredRows.reduce(
         (acc, row) => {
           acc.clicks += sum(row.clicks);
+          acc.installs += sum(row.installs);
+          acc.registers += sum(row.registers);
           acc.conversions += sum(row.registers) + sum(row.ftds) + sum(row.redeposits);
           acc.spend += sum(row.spend);
           acc.revenue += sum(row.revenue);
           return acc;
         },
-        { clicks: 0, conversions: 0, spend: 0, revenue: 0 }
+        { clicks: 0, installs: 0, registers: 0, conversions: 0, spend: 0, revenue: 0 }
       ),
     [filteredRows]
   );
+
+  const costPerClick = totals.clicks > 0 ? totals.spend / totals.clicks : null;
+  const costPerInstall = totals.installs > 0 ? totals.spend / totals.installs : null;
+  const costPerRegister = totals.registers > 0 ? totals.spend / totals.registers : null;
+  const costPerConversion = totals.conversions > 0 ? totals.spend / totals.conversions : null;
 
   const topCampaign = campaignAgg[0] || null;
   const topCreative = creativeAgg[0] || null;
@@ -5619,9 +5759,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
       .filter((row) => {
         if (!isDateInRange(row.date, prevRange)) return false;
         const buyer = normalizeText(row.buyer);
-        const domain = normalizeDomain(row.domain || row.site || row.flows);
+        const domain = toDomainKey(
+          resolveRegisteredDomain(row.domain || row.site || row.flows) ||
+            normalizeDomain(row.domain || row.site || row.flows)
+        );
         if (buyerFilter !== "All buyers" && buyer !== buyerFilter) return false;
-        if (domainFilter !== "All domains" && domain !== domainFilter) return false;
+        if (domainFilter !== "All domains" && domain !== toDomainKey(domainFilter)) return false;
         return true;
       })
       .reduce((sumValue, row) => sumValue + sum(row.clicks), 0);
@@ -5634,6 +5777,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
     campaignEntries,
     buyerFilter,
     domainFilter,
+    resolveRegisteredDomain,
     totals.clicks,
   ]);
 
@@ -5654,32 +5798,22 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
           {
             label: "Clicks",
             value: totals.clicks.toLocaleString(),
-            meta: period === "All" ? "All time" : period,
+            meta: `CPC ${costPerClick === null ? "—" : formatCurrency(costPerClick)}`,
           },
           {
-            label: "Conversions",
+            label: "Installs",
+            value: totals.installs.toLocaleString(),
+            meta: `Cost per Install ${costPerInstall === null ? "—" : formatCurrency(costPerInstall)}`,
+          },
+          {
+            label: "Register",
+            value: totals.registers.toLocaleString(),
+            meta: `Cost per Register ${costPerRegister === null ? "—" : formatCurrency(costPerRegister)}`,
+          },
+          {
+            label: "Conversion",
             value: totals.conversions.toLocaleString(),
-            meta: "Registers + FTD + Redeposits",
-          },
-          {
-            label: "Campaigns growth",
-            value: growthPercent === null ? "—" : `${growthPercent.toFixed(2)}%`,
-            meta: growthPercent === null ? "No previous period data" : "Vs previous period clicks",
-          },
-          {
-            label: "Creatives Success",
-            value: topCreative?.shortName || "—",
-            meta: topCreative
-              ? `${topCreative.conversions.toLocaleString()} conv · CPA ${formatCurrency(topCreative.cpa)}`
-              : "No creative data",
-          },
-          {
-            label: "Comparisons",
-            value: topCampaign?.shortName || "—",
-            meta:
-              comparisonDelta === null || !compareCampaign
-                ? "Need at least 2 campaigns"
-                : `${comparisonDelta.toFixed(2)}% vs ${compareCampaign.shortName}`,
+            meta: `Cost per Conversion ${costPerConversion === null ? "—" : formatCurrency(costPerConversion)}`,
           },
         ].map((stat, idx) => (
           <motion.div
@@ -5848,7 +5982,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange }) 
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Campaign and Creative Breakdown")}</h3>
-              <p className="panel-subtitle">{t("Assigned to buyer and domain with CPC/CPA comparison.")}</p>
+              <p className="panel-subtitle">
+                {t("Assigned to buyer and domain using clicks and conversion logs with CPC/CPA comparison.")}
+              </p>
             </div>
           </div>
           {campaignState.loading ? (
