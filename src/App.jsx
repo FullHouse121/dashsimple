@@ -464,6 +464,8 @@ const translations = {
     Refresh: "Yenile",
     "Refreshing...": "Yenileniyor...",
     "No postback logs yet.": "Henüz postback kaydı yok.",
+    "See More": "Daha Fazla",
+    "Show Less": "Daha Az Göster",
     "Add comment": "Yorum ekle",
     "Pixel Comment": "Piksel Yorumu",
     "Change Password": "Şifreyi Değiştir",
@@ -9047,6 +9049,7 @@ function KeitaroApiView() {
     loading: false,
     error: null,
   });
+  const [showAllPostbackLogs, setShowAllPostbackLogs] = React.useState(false);
 
   const fetchPostbackLogs = React.useCallback(async () => {
     try {
@@ -9057,6 +9060,7 @@ function KeitaroApiView() {
       }
       const data = await response.json();
       setPostbackLogs(Array.isArray(data) ? data : []);
+      setShowAllPostbackLogs(false);
       setPostbackLogState({ loading: false, error: null });
     } catch (error) {
       setPostbackLogState({
@@ -9090,6 +9094,11 @@ function KeitaroApiView() {
     if (label === "install") return "Install";
     return label || "—";
   };
+
+  const visiblePostbackLogs = React.useMemo(
+    () => (showAllPostbackLogs ? postbackLogs : postbackLogs.slice(0, 10)),
+    [postbackLogs, showAllPostbackLogs]
+  );
 
   return (
     <>
@@ -9240,37 +9249,50 @@ function KeitaroApiView() {
             ) : postbackLogs.length === 0 ? (
               <div className="empty-state">{t("No postback logs yet.")}</div>
             ) : (
-              <div className="table-wrap">
-                <table className="entries-table postback-table">
-                  <thead>
-                    <tr>
-                      <th>{t("Time")}</th>
-                      <th>{t("Event")}</th>
-                      <th>{t("Media Buyer")}</th>
-                      <th>{t("Domain")}</th>
-                      <th>{t("Country")}</th>
-                      <th>{t("External ID")}</th>
-                      <th>{t("Source")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {postbackLogs.map((row) => (
-                      <tr key={row.id}>
-                        <td>{formatLogTime(row.created_at || row.date)}</td>
-                        <td>
-                          <span className={`postback-event ${String(row.event_type || "").toLowerCase()}`}>
-                            {formatEventLabel(row.event_type)}
-                          </span>
-                        </td>
-                        <td>{row.buyer || "—"}</td>
-                        <td>{row.domain || "—"}</td>
-                        <td>{row.country || "—"}</td>
-                        <td className="mono">{row.external_id || "—"}</td>
-                        <td>{row.source || "—"}</td>
+              <div>
+                <div className="table-wrap">
+                  <table className="entries-table postback-table">
+                    <thead>
+                      <tr>
+                        <th>{t("Time")}</th>
+                        <th>{t("Event")}</th>
+                        <th>{t("Media Buyer")}</th>
+                        <th>{t("Domain")}</th>
+                        <th>{t("Country")}</th>
+                        <th>{t("External ID")}</th>
+                        <th>{t("Source")}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {visiblePostbackLogs.map((row) => (
+                        <tr key={row.id}>
+                          <td>{formatLogTime(row.created_at || row.date)}</td>
+                          <td>
+                            <span className={`postback-event ${String(row.event_type || "").toLowerCase()}`}>
+                              {formatEventLabel(row.event_type)}
+                            </span>
+                          </td>
+                          <td>{row.buyer || "—"}</td>
+                          <td>{row.domain || "—"}</td>
+                          <td>{row.country || "—"}</td>
+                          <td className="mono">{row.external_id || "—"}</td>
+                          <td>{row.source || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {postbackLogs.length > 10 ? (
+                  <div className="api-actions" style={{ marginTop: 10 }}>
+                    <button
+                      className="ghost"
+                      type="button"
+                      onClick={() => setShowAllPostbackLogs((prev) => !prev)}
+                    >
+                      {showAllPostbackLogs ? t("Show Less") : t("See More")}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
