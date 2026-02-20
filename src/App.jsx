@@ -8936,6 +8936,21 @@ function KeitaroApiView() {
       return;
     }
 
+    const normalizeMeasures = (items) =>
+      items.map((item) => {
+        const key = String(item || "").trim().toLowerCase();
+        if (key === "registrations" || key === "registration") return "regs";
+        return item;
+      });
+    if (parsedPayload && typeof parsedPayload === "object") {
+      if (Array.isArray(parsedPayload.measures)) {
+        parsedPayload = { ...parsedPayload, measures: normalizeMeasures(parsedPayload.measures) };
+      }
+      if (Array.isArray(parsedPayload.metrics)) {
+        parsedPayload = { ...parsedPayload, metrics: normalizeMeasures(parsedPayload.metrics) };
+      }
+    }
+
     if (syncTarget === "overall") {
       [
         mapping.dateField || defaultKeitaroMapping.dateField,
