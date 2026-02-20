@@ -3271,8 +3271,34 @@ app.post("/api/keitaro/sync", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   const { baseUrl, apiKey, reportPath, payload, mapping, replaceExisting, target } = req.body ?? {};
+  const asyncMode =
+    String(req.query.async || req.query.background || req.body?.async || "")
+      .toLowerCase()
+      .trim() === "1" ||
+    String(req.query.async || req.query.background || req.body?.async || "")
+      .toLowerCase()
+      .trim() === "true";
 
   try {
+    if (asyncMode) {
+      setTimeout(async () => {
+        try {
+          await runKeitaroSync({
+            baseUrl,
+            apiKey,
+            reportPath,
+            payload,
+            mapping,
+            replaceExisting,
+            target,
+          });
+        } catch (error) {
+          console.error("Async Keitaro sync failed:", error);
+        }
+      }, 0);
+      return res.json({ ok: true, async: true, message: "Sync started." });
+    }
+
     const result = await runKeitaroSync({
       baseUrl,
       apiKey,

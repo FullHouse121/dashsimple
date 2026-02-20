@@ -8992,7 +8992,7 @@ function KeitaroApiView() {
     }
 
     try {
-      const response = await apiFetch("/api/keitaro/sync", {
+      let response = await apiFetch("/api/keitaro/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -9005,13 +9005,38 @@ function KeitaroApiView() {
           target: syncTarget,
         }),
       });
+      if (response.status === 504 || response.status === 502) {
+        response = await apiFetch("/api/keitaro/sync?async=1", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            baseUrl,
+            apiKey,
+            reportPath,
+            payload: parsedPayload,
+            mapping,
+            replaceExisting,
+            target: syncTarget,
+            async: true,
+          }),
+        });
+      }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data?.error || "Sync failed.");
       }
-      setSyncState({ loading: false, ok: true, message: "Sync complete." });
-      setSyncResult(data);
-      window.dispatchEvent(new Event("keitaro:sync"));
+      if (data?.async) {
+        setSyncState({
+          loading: false,
+          ok: true,
+          message: "Sync started. Refresh in a few minutes to see results.",
+        });
+        setSyncResult(null);
+      } else {
+        setSyncState({ loading: false, ok: true, message: "Sync complete." });
+        setSyncResult(data);
+        window.dispatchEvent(new Event("keitaro:sync"));
+      }
     } catch (error) {
       setSyncState({ loading: false, ok: false, message: error.message || "Sync failed." });
     }
