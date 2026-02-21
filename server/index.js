@@ -3505,7 +3505,7 @@ const runKeitaroSync = async ({
       }, {});
     };
     const extractFallbackStats = (row) => {
-      const spend = readFirstNumericValue(row, [fallbackSpendField, "cost", "spend", "expenses"]);
+      const spend = readFirstNumericValue(row, ["cost", fallbackSpendField, "spend", "expenses"]);
       if (spend === null) return null;
       const clicks = readFirstNumericValue(row, [fallbackClicksField, "clicks"]) ?? 0;
       return { spend, clicks };
@@ -3739,12 +3739,7 @@ const runKeitaroSync = async ({
       "campaign_unique_clicks",
       "uc_campaign",
     ]) ?? 0;
-    let spend = readFirstNumericValue(row, [
-      map.spendField,
-      "cost",
-      "spend",
-      "expenses",
-    ]);
+    let spend = readFirstNumericValue(row, ["cost", map.spendField, "spend", "expenses"]);
     if (syncTarget === "overall") {
       const keyDateBuyer = `${date}|${buyer}`;
       const keyDateCountry = `${date}|${country}`;
@@ -3806,12 +3801,37 @@ const runKeitaroSync = async ({
         spend = fallbackSpend;
       }
     }
-    const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
-    const redepositRevenue = numberFromValue(readRowValue(row, map.redepositRevenueField));
-    let revenue = numberFromValue(readRowValue(row, map.revenueField));
-    const registers = numberFromValue(readRowValue(row, map.registersField)) ?? 0;
-    const ftds = numberFromValue(readRowValue(row, map.ftdsField)) ?? 0;
-    const redeposits = numberFromValue(readRowValue(row, map.redepositsField)) ?? 0;
+    const ftdRevenue = readFirstNumericValue(row, [
+      map.ftdRevenueField,
+      defaultKeitaroMapping.ftdRevenueField,
+      "ftd_revenue",
+    ]);
+    const redepositRevenue = readFirstNumericValue(row, [
+      map.redepositRevenueField,
+      defaultKeitaroMapping.redepositRevenueField,
+      "redeposit_revenue",
+    ]);
+    let revenue = readFirstNumericValue(row, [
+      map.revenueField,
+      defaultKeitaroMapping.revenueField,
+      "revenue",
+    ]);
+    const registers = readFirstNumericValue(row, [
+      map.registersField,
+      defaultKeitaroMapping.registersField,
+      "regs",
+      "registers",
+    ]) ?? 0;
+    const ftds = readFirstNumericValue(row, [
+      map.ftdsField,
+      defaultKeitaroMapping.ftdsField,
+      "ftds",
+    ]) ?? 0;
+    const redeposits = readFirstNumericValue(row, [
+      map.redepositsField,
+      defaultKeitaroMapping.redepositsField,
+      "redeposits",
+    ]) ?? 0;
 
     const derivedRevenue =
       (ftdRevenue !== null ? ftdRevenue : 0) +
