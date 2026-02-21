@@ -1506,11 +1506,19 @@ const applyKeitaroRange = (payload) => {
   const rangeDays = Number.parseInt(rangeDaysRaw || "", 10);
   const rangeFrom = process.env.KEITARO_RANGE_FROM || "";
   const rangeTo = process.env.KEITARO_RANGE_TO || "";
+  const rangeForceCustom = parseBooleanEnv(process.env.KEITARO_RANGE_FORCE_CUSTOM, false);
+  const payloadRange = payload.range && typeof payload.range === "object" ? payload.range : {};
+  const payloadInterval = String(payloadRange.interval || "").toLowerCase();
+  const hasPresetInterval = Boolean(payloadInterval && payloadInterval !== "custom");
 
   let from = rangeFrom;
   let to = rangeTo;
 
   if ((!from || !to) && Number.isFinite(rangeDays) && rangeDays > 0) {
+    // Keep payload intervals like "this_month" / "first_day_of_this_month" unless forced.
+    if (hasPresetInterval && !rangeForceCustom) {
+      return payload;
+    }
     const today = new Date();
     const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
     const start = new Date(end);
@@ -1521,11 +1529,10 @@ const applyKeitaroRange = (payload) => {
 
   if (!from || !to) return payload;
 
-  const existingRange = payload.range && typeof payload.range === "object" ? payload.range : {};
   return {
     ...payload,
     range: {
-      ...existingRange,
+      ...payloadRange,
       interval: "custom",
       from,
       to,
