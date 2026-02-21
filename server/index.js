@@ -1490,6 +1490,89 @@ const readRowValue = (row, key) => {
   return null;
 };
 
+const readRowValueExact = (row, key) => {
+  if (!row || !key) return null;
+  const field = String(key || "").trim();
+  if (!field) return null;
+
+  const findExactObjectValue = (obj, candidate) => {
+    if (!obj || typeof obj !== "object") return null;
+    if (Object.prototype.hasOwnProperty.call(obj, candidate)) {
+      return extractRowPrimitive(obj[candidate]);
+    }
+
+    const keys = Object.keys(obj);
+    const lower = candidate.toLowerCase();
+    const normalized = lower.replace(/[^a-z0-9]/g, "");
+    const caseMatch = keys.find((k) => String(k).toLowerCase() === lower);
+    if (caseMatch) {
+      return extractRowPrimitive(obj[caseMatch]);
+    }
+    const normalizedMatch = keys.find(
+      (k) => String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normalized
+    );
+    if (normalizedMatch) {
+      return extractRowPrimitive(obj[normalizedMatch]);
+    }
+    return null;
+  };
+
+  if (Object.prototype.hasOwnProperty.call(row, field)) {
+    return extractRowPrimitive(row[field]);
+  }
+
+  const altField = field.replace(/\./g, "_");
+  if (altField !== field && Object.prototype.hasOwnProperty.call(row, altField)) {
+    return extractRowPrimitive(row[altField]);
+  }
+
+  const topLevelFound = findExactObjectValue(row, field);
+  if (topLevelFound !== null && topLevelFound !== undefined) {
+    return topLevelFound;
+  }
+
+  const nestedContainers = [
+    "dimensions",
+    "dimension",
+    "measures",
+    "metrics",
+    "grouping",
+    "groupings",
+    "data",
+    "values",
+  ];
+  for (const container of nestedContainers) {
+    const containerObj = row[container];
+    const nestedValue = findExactObjectValue(containerObj, field);
+    if (nestedValue !== null && nestedValue !== undefined) {
+      return nestedValue;
+    }
+  }
+
+  if (field.includes(".") || field.includes("[")) {
+    const path = field.replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean);
+    let current = row;
+    for (const part of path) {
+      if (current === null || current === undefined || typeof current !== "object") {
+        return null;
+      }
+      current = current[part];
+    }
+    return extractRowPrimitive(current);
+  }
+
+  return null;
+};
+
+const readFirstNumericValueExact = (row, candidates) => {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const value = numberFromValue(readRowValueExact(row, candidate));
+    if (value !== null) return value;
+  }
+  return null;
+};
+
 const placementKeyPattern = /(sub[\s_-]*id[\s_-]*1|sub[\s_-]*1|placement)/i;
 const readPlacementValue = (row, mappedField) => {
   const candidates = [
@@ -3505,7 +3588,7 @@ const runKeitaroSync = async ({
       }, {});
     };
     const extractFallbackStats = (row) => {
-      const spend = readFirstNumericValue(row, ["cost", fallbackSpendField, "spend", "expenses"]);
+      const spend = readFirstNumericValueExact(row, ["cost", fallbackSpendField, "spend", "expenses"]);
       if (spend === null) return null;
       const clicks = readFirstNumericValue(row, [fallbackClicksField, "clicks"]) ?? 0;
       return { spend, clicks };
@@ -3739,7 +3822,7 @@ const runKeitaroSync = async ({
       "campaign_unique_clicks",
       "uc_campaign",
     ]) ?? 0;
-    let spend = readFirstNumericValue(row, ["cost", map.spendField, "spend", "expenses"]);
+    let spend = readFirstNumericValueExact(row, ["cost", map.spendField, "spend", "expenses"]);
     if (syncTarget === "overall") {
       const keyDateBuyer = `${date}|${buyer}`;
       const keyDateCountry = `${date}|${country}`;
@@ -3801,17 +3884,17 @@ const runKeitaroSync = async ({
         spend = fallbackSpend;
       }
     }
-    const ftdRevenue = readFirstNumericValue(row, [
+    const ftdRevenue = readFirstNumericValueExact(row, [
       map.ftdRevenueField,
       defaultKeitaroMapping.ftdRevenueField,
       "ftd_revenue",
     ]);
-    const redepositRevenue = readFirstNumericValue(row, [
+    const redepositRevenue = readFirstNumericValueExact(row, [
       map.redepositRevenueField,
       defaultKeitaroMapping.redepositRevenueField,
       "redeposit_revenue",
     ]);
-    let revenue = readFirstNumericValue(row, [
+    let revenue = readFirstNumericValueExact(row, [
       map.revenueField,
       defaultKeitaroMapping.revenueField,
       "revenue",
