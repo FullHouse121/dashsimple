@@ -5790,7 +5790,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const costPerClick = totals.clicks > 0 ? totals.spend / totals.clicks : null;
   const costPerInstall = totals.installs > 0 ? totals.spend / totals.installs : null;
   const costPerRegister = totals.registers > 0 ? totals.spend / totals.registers : null;
-  const costPerConversion = totals.conversions > 0 ? totals.spend / totals.conversions : null;
+  const costPerConversion = totals.ftds > 0 ? totals.spend / totals.ftds : null;
   const costPerLead = totals.installs > 0 ? totals.spend / totals.installs : null;
   const costPerPurchase = totals.ftds > 0 ? totals.spend / totals.ftds : null;
 
@@ -5879,8 +5879,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           },
           {
             label: "Conversion",
-            value: totals.conversions.toLocaleString(),
-            meta: `Cost per Conversion ${costPerConversion === null ? "—" : formatCurrency(costPerConversion)}`,
+            value: totals.ftds.toLocaleString(),
+            meta: `Cost per FTD ${costPerConversion === null ? "—" : formatCurrency(costPerConversion)}`,
           },
         ].map((stat, idx) => (
           <motion.div
