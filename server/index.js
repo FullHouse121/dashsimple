@@ -682,6 +682,17 @@ const selectDomainsByOwner = async (ownerId, limit) =>
 const selectDomainById = async (id) =>
   getRow(`SELECT id, owner_id FROM domains WHERE id = $1`, [id]);
 
+const selectDomainByNameWithOwner = async (domain) =>
+  getRow(
+    `SELECT d.id, d.domain, d.country, d.owner_id, u.username AS owner_name
+     FROM domains d
+     LEFT JOIN users u ON u.id = d.owner_id
+     WHERE LOWER(d.domain) = LOWER($1)
+     ORDER BY d.id DESC
+     LIMIT 1`,
+    [domain]
+  );
+
 const deleteDomain = async (id) => query(`DELETE FROM domains WHERE id = $1`, [id]);
 
 const insertCampaign = async (payload) => {
@@ -716,6 +727,17 @@ const selectCampaignByKey = async (keitaroId, name) =>
      WHERE keitaro_id = $1 OR name = $2
      LIMIT 1`,
     [keitaroId, name]
+  );
+
+const selectCampaignByDomainBuyer = async (domain, buyer) =>
+  getRow(
+    `SELECT id, keitaro_id, name, buyer, country, domain
+     FROM campaigns
+     WHERE ($1::text = '' OR LOWER(COALESCE(domain, '')) = LOWER($1))
+       AND ($2::text = '' OR LOWER(COALESCE(buyer, '')) = LOWER($2))
+     ORDER BY id DESC
+     LIMIT 1`,
+    [String(domain || ""), String(buyer || "")]
   );
 
 const deleteCampaign = async (id) => query(`DELETE FROM campaigns WHERE id = $1`, [id]);
@@ -801,6 +823,15 @@ const selectInstallTotals = async () =>
     `SELECT date, buyer, country, COUNT(*) as installs
      FROM install_events
      GROUP BY date, buyer, country`
+  );
+
+const selectInstallTotalsByExternalId = async () =>
+  getRows(
+    `SELECT date, external_id, buyer, country, domain, COUNT(*) as installs
+     FROM install_events
+     WHERE external_id IS NOT NULL
+       AND TRIM(external_id) <> ''
+     GROUP BY date, external_id, buyer, country, domain`
   );
 
 const selectConversionTotals = async () =>
@@ -938,6 +969,18 @@ const selectUserByUsername = async (username) =>
     [username]
   );
 
+const selectUserByUsernameLoose = async (username) =>
+  getRow(
+    `SELECT id, username, role, buyer_id
+     FROM users
+     WHERE LOWER(username) = LOWER($1)
+        OR REGEXP_REPLACE(LOWER(username), '[^a-z0-9]+', '', 'g')
+           = REGEXP_REPLACE(LOWER($1), '[^a-z0-9]+', '', 'g')
+     ORDER BY CASE WHEN LOWER(username) = LOWER($1) THEN 0 ELSE 1 END, id ASC
+     LIMIT 1`,
+    [String(username || "")]
+  );
+
 const updateUserPassword = async (id, passwordHash) =>
   query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
 
@@ -977,6 +1020,11 @@ const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
 const postbackSecret = process.env.POSTBACK_SECRET || "";
 const keitaroCronSecret = process.env.KEITARO_CRON_SECRET || "";
+const keitaroSyncState = {
+  overall: false,
+  device: false,
+  user_behavior: false,
+};
 const fxBase = String(process.env.FX_BASE || "USD").toUpperCase();
 const fxTarget = String(process.env.FX_TARGET || "USD").toUpperCase();
 const fxProvider = String(process.env.FX_PROVIDER || "google").toLowerCase();
@@ -1143,6 +1191,80 @@ const normalizeDomainValue = (value) => {
   return hostCandidate.toLowerCase();
 };
 
+const regionDisplayNames =
+  typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+const countryCodeFallback = {
+  BR: "Brazil",
+  US: "United States",
+  TR: "Turkey",
+  DE: "Germany",
+  FR: "France",
+  GB: "United Kingdom",
+  ES: "Spain",
+  IT: "Italy",
+  NL: "Netherlands",
+  SE: "Sweden",
+  NO: "Norway",
+  CA: "Canada",
+  AU: "Australia",
+  NZ: "New Zealand",
+  JP: "Japan",
+  KR: "South Korea",
+  IN: "India",
+  VN: "Vietnam",
+  AR: "Argentina",
+  CL: "Chile",
+  CO: "Colombia",
+  PE: "Peru",
+  VE: "Venezuela",
+  EC: "Ecuador",
+  BO: "Bolivia",
+  PY: "Paraguay",
+  RO: "Romania",
+  AL: "Albania",
+  MA: "Morocco",
+  DZ: "Algeria",
+  TN: "Tunisia",
+  RU: "Russia",
+  UA: "Ukraine",
+  PL: "Poland",
+  NG: "Nigeria",
+  EE: "Estonia",
+  AZ: "Azerbaijan",
+  IR: "Iran",
+  IQ: "Iraq",
+  CR: "Costa Rica",
+  CH: "Switzerland",
+  EG: "Egypt",
+};
+
+const normalizeCountryInput = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  const normalized = text.toUpperCase();
+  if (/^[A-Z]{2}$/.test(normalized)) {
+    const intlLabel = regionDisplayNames?.of(normalized);
+    if (intlLabel && intlLabel.toUpperCase() !== normalized) {
+      return intlLabel;
+    }
+    return countryCodeFallback[normalized] || normalized;
+  }
+
+  return text;
+};
+
+const normalizeExternalIdValue = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\{.+\}$/.test(text)) return "";
+  if (/^\{\{.+\}\}$/.test(text)) return "";
+  return text;
+};
+
 const sanitizeTemplateValue = (value) => {
   const text = String(value ?? "").trim();
   if (!text) return "";
@@ -1175,6 +1297,16 @@ const readFirstUsefulValue = (row, candidates) => {
     if (clean) return clean;
   }
   return "";
+};
+
+const resolveSyncBuyer = (row, map = {}) => {
+  const value = readFirstUsefulValue(row, [
+    map.buyerField || defaultKeitaroMapping.buyerField,
+    map.campaignField || defaultKeitaroMapping.campaignField,
+    "campaign",
+    "campaign_group",
+  ]);
+  return value || "Keitaro";
 };
 
 const resolvePostbackContext = async (payload) => {
@@ -1221,17 +1353,34 @@ const resolvePostbackContext = async (payload) => {
   if (campaignId) {
     mapped = await selectCampaignByKey(String(campaignId).trim(), String(campaignId).trim());
   }
+  const normalizedDomainInput = normalizeDomainValue(domain);
+  if (!mapped && (normalizedDomainInput || buyer)) {
+    mapped = await selectCampaignByDomainBuyer(normalizedDomainInput, String(buyer || "").trim());
+    if (!mapped && normalizedDomainInput) {
+      mapped = await selectCampaignByDomainBuyer(normalizedDomainInput, "");
+    }
+  }
   if (!buyer && mapped?.buyer) buyer = mapped.buyer;
   if (!country && mapped?.country) country = mapped.country;
   if (!domain && mapped?.domain) domain = mapped.domain;
 
-  const finalBuyer = String(buyer || campaignId || "Unknown").trim();
-  const finalCountry = String(country || "").trim();
-  const finalDomain = String(domain || "").trim();
+  const finalDomain = normalizeDomainValue(domain || mapped?.domain || "");
+  const domainOwner = finalDomain ? await selectDomainByNameWithOwner(finalDomain) : null;
+  if (!buyer && domainOwner?.owner_name) {
+    buyer = domainOwner.owner_name;
+  }
+
+  const buyerInput = String(buyer || "").trim();
+  const canonicalBuyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
+  const finalBuyer = String(
+    canonicalBuyerMatch?.username || buyerInput || mapped?.buyer || campaignId || domainOwner?.owner_name || "Unknown"
+  ).trim();
+  const finalCountry = normalizeCountryInput(country || mapped?.country || domainOwner?.country || "");
   const finalDevice = normalizeDevice(device);
 
   const normalizedCampaign = campaignId || mapped?.keitaro_id || mapped?.name || null;
   const normalizedClick = clickId || null;
+  const normalizedExternalId = normalizeExternalIdValue(externalId);
 
   return {
     date,
@@ -1240,7 +1389,7 @@ const resolvePostbackContext = async (payload) => {
     country: finalCountry,
     domain: finalDomain,
     device: finalDevice,
-    external_id: externalId ? String(externalId).trim() : null,
+    external_id: normalizedExternalId || null,
     click_id: normalizedClick ? String(normalizedClick).trim() : null,
   };
 };
@@ -1420,6 +1569,31 @@ const ensurePayloadField = (payload, field) => {
   }
 
   return { ...payload, dimensions: [rawField] };
+};
+
+const ensurePayloadMeasure = (payload, measure) => {
+  if (!payload || typeof payload !== "object" || !measure) return payload;
+  const rawMeasure = String(measure).trim();
+  if (!rawMeasure) return payload;
+  const normalizedMeasure = rawMeasure.toLowerCase();
+
+  const appendMeasure = (items) => {
+    const next = Array.isArray(items) ? [...items] : [];
+    const exists = next.some(
+      (item) => String(item || "").trim().toLowerCase() === normalizedMeasure
+    );
+    if (!exists) {
+      next.push(rawMeasure);
+    }
+    return next;
+  };
+
+  const nextPayload = { ...payload };
+  nextPayload.measures = appendMeasure(payload.measures);
+  if (Array.isArray(payload.metrics)) {
+    nextPayload.metrics = appendMeasure(payload.metrics);
+  }
+  return nextPayload;
 };
 
 const normalizeKeitaroPayload = (payload) => {
@@ -1838,7 +2012,16 @@ app.patch("/api/expenses/:id", async (req, res) => {
     return res.status(400).json({ error: "Missing status." });
   }
   await query("UPDATE expenses SET status = $1 WHERE id = $2", [status, id]);
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    assigned: {
+      buyer: context.buyer,
+      domain: context.domain,
+      country: context.country,
+      campaign_id: context.campaign_id,
+      external_id: context.external_id,
+    },
+  });
 });
 
 app.delete("/api/expenses/:id", async (req, res) => {
@@ -1855,8 +2038,8 @@ app.delete("/api/expenses/:id", async (req, res) => {
 
 app.get("/api/media-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const maxLimitRaw = Number.parseInt(process.env.MEDIA_STATS_LIMIT_MAX ?? "25000", 10);
-  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 25000;
+  const maxLimitRaw = Number.parseInt(process.env.MEDIA_STATS_LIMIT_MAX ?? "100000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 100000;
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectMediaStats(limit);
@@ -1994,10 +2177,69 @@ app.get("/api/user-behavior", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectUserBehavior(limit);
+  let installRows = await selectInstallTotalsByExternalId();
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    installRows = installRows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
   }
-  res.json(rows);
+
+  const merged = new Map();
+  rows.forEach((row) => {
+    const date = String(row.date || "");
+    const externalId = String(row.external_id || "").trim();
+    const buyer = String(row.buyer || "");
+    const country = String(row.country || "");
+    const key = `${date}|${externalId}|${buyer}|${country}`;
+    merged.set(key, {
+      ...row,
+      installs: Number(row.installs || 0),
+    });
+  });
+
+  installRows.forEach((row) => {
+    const date = String(row.date || "");
+    const externalId = String(row.external_id || "").trim();
+    if (!externalId) return;
+    const buyer = String(row.buyer || "");
+    const country = String(row.country || "");
+    const installs = Number(row.installs || 0);
+    const key = `${date}|${externalId}|${buyer}|${country}`;
+    if (merged.has(key)) {
+      const current = merged.get(key);
+      current.installs = Number(current.installs || 0) + installs;
+      if (!current.domain && row.domain) {
+        current.domain = row.domain;
+      }
+      return;
+    }
+
+    merged.set(key, {
+      id: null,
+      date,
+      external_id: externalId,
+      buyer,
+      campaign: null,
+      country,
+      region: null,
+      city: null,
+      placement: null,
+      clicks: 0,
+      registers: 0,
+      ftds: 0,
+      redeposits: 0,
+      revenue: 0,
+      ftd_revenue: 0,
+      redeposit_revenue: 0,
+      installs,
+      domain: row.domain || null,
+      created_at: null,
+    });
+  });
+
+  const output = Array.from(merged.values())
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+    .slice(0, limit);
+  res.json(output);
 });
 
 app.get("/api/device-stats", async (req, res) => {
@@ -2999,6 +3241,37 @@ const runKeitaroSync = async ({
   requiredFields.forEach((field) => {
     preparedPayload = ensurePayloadField(preparedPayload, field);
   });
+  const requiredMeasures =
+    syncTarget === "overall"
+      ? [
+          map.spendField || defaultKeitaroMapping.spendField,
+          map.clicksField || defaultKeitaroMapping.clicksField,
+          map.registersField || defaultKeitaroMapping.registersField,
+          map.ftdsField || defaultKeitaroMapping.ftdsField,
+          map.redepositsField || defaultKeitaroMapping.redepositsField,
+          map.ftdRevenueField || defaultKeitaroMapping.ftdRevenueField,
+          map.redepositRevenueField || defaultKeitaroMapping.redepositRevenueField,
+        ]
+      : syncTarget === "user_behavior"
+        ? [
+            map.clicksField || defaultKeitaroMapping.clicksField,
+            map.registersField || defaultKeitaroMapping.registersField,
+            map.ftdsField || defaultKeitaroMapping.ftdsField,
+            map.redepositsField || defaultKeitaroMapping.redepositsField,
+            map.ftdRevenueField || defaultKeitaroMapping.ftdRevenueField,
+            map.redepositRevenueField || defaultKeitaroMapping.redepositRevenueField,
+          ]
+        : [
+          map.spendField || defaultKeitaroMapping.spendField,
+          map.revenueField || defaultKeitaroMapping.revenueField,
+          map.clicksField || defaultKeitaroMapping.clicksField,
+          map.registersField || defaultKeitaroMapping.registersField,
+          map.ftdsField || defaultKeitaroMapping.ftdsField,
+          map.redepositsField || defaultKeitaroMapping.redepositsField,
+        ];
+  requiredMeasures.forEach((measure) => {
+    preparedPayload = ensurePayloadMeasure(preparedPayload, measure);
+  });
   preparedPayload = normalizeKeitaroPayload(preparedPayload);
 
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
@@ -3037,20 +3310,29 @@ const runKeitaroSync = async ({
     return { data, rows };
   };
 
-  const fetchAllReportRows = async (reportPayload) => {
+  const iterateReportPages = async (reportPayload, onPage) => {
     const pageLimitRaw = Number.parseInt(String(reportPayload?.limit ?? ""), 10);
     const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 0;
     const startOffsetRaw = Number.parseInt(String(reportPayload?.offset ?? ""), 10);
     const startOffset = Number.isFinite(startOffsetRaw) && startOffsetRaw >= 0 ? startOffsetRaw : 0;
 
     if (pageLimit <= 0) {
-      return fetchReportPage(reportPayload);
+      const { data: singleData, rows: singleRows } = await fetchReportPage(reportPayload);
+      if (onPage) {
+        await onPage({
+          rows: singleRows,
+          data: singleData,
+          pageIndex: 0,
+          offset: startOffset,
+        });
+      }
+      return { totalRows: singleRows.length, firstData: singleData };
     }
 
     const maxPagesRaw = Number.parseInt(String(process.env.KEITARO_MAX_PAGES || ""), 10);
     const maxPages = Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 ? maxPagesRaw : 200;
     let firstData = null;
-    const allRows = [];
+    let totalRows = 0;
 
     for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
       const offset = startOffset + pageIndex * pageLimit;
@@ -3059,11 +3341,14 @@ const runKeitaroSync = async ({
       if (pageIndex === 0) {
         firstData = data;
       }
-      allRows.push(...rows);
+      totalRows += rows.length;
+      if (onPage) {
+        await onPage({ rows, data, pageIndex, offset });
+      }
 
       const totalRaw = data?.total ?? data?.data?.total ?? data?.result?.total;
       const total = Number.parseInt(String(totalRaw ?? ""), 10);
-      if (Number.isFinite(total) && total >= 0 && allRows.length >= total) {
+      if (Number.isFinite(total) && total >= 0 && totalRows >= total) {
         break;
       }
       if (rows.length < pageLimit) {
@@ -3071,10 +3356,8 @@ const runKeitaroSync = async ({
       }
     }
 
-    return { data: firstData, rows: allRows };
+    return { totalRows, firstData };
   };
-
-  const { data, rows } = await fetchAllReportRows(preparedPayload);
 
   const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
     ? preparedPayload.dimensions
@@ -3124,23 +3407,36 @@ const runKeitaroSync = async ({
     return [];
   };
 
-  const firstArrayRow = rows.find((row) => Array.isArray(row));
-  const firstArrayRowLength = Array.isArray(firstArrayRow) ? firstArrayRow.length : 0;
   let columnNames = [];
-  if (firstArrayRowLength > 0 && payloadColumnNames.length >= firstArrayRowLength) {
-    columnNames = payloadColumnNames.slice(0, firstArrayRowLength);
-  } else {
-    const strictMetaNames = extractColumnNames(data, firstArrayRowLength);
+  let columnNamesResolved = false;
+  const resolveColumnNames = (pageRows, responseData) => {
+    if (columnNamesResolved) return;
+    const firstArrayRow = pageRows.find((row) => Array.isArray(row));
+    const firstArrayRowLength = Array.isArray(firstArrayRow) ? firstArrayRow.length : 0;
+    if (firstArrayRowLength > 0 && payloadColumnNames.length >= firstArrayRowLength) {
+      columnNames = payloadColumnNames.slice(0, firstArrayRowLength);
+      columnNamesResolved = true;
+      return;
+    }
+    const strictMetaNames = extractColumnNames(responseData, firstArrayRowLength);
     if (strictMetaNames.length > 0) {
       columnNames = strictMetaNames.slice(0, firstArrayRowLength || strictMetaNames.length);
-    } else if (payloadColumnNames.length > 0) {
+      columnNamesResolved = true;
+      return;
+    }
+    if (payloadColumnNames.length > 0) {
       columnNames = firstArrayRowLength > 0
         ? payloadColumnNames.slice(0, firstArrayRowLength)
         : payloadColumnNames;
-    } else {
-      columnNames = extractColumnNames(data);
+      columnNamesResolved = true;
+      return;
     }
-  }
+    const looseMetaNames = extractColumnNames(responseData);
+    if (looseMetaNames.length > 0) {
+      columnNames = looseMetaNames;
+      columnNamesResolved = true;
+    }
+  };
 
   const normalizeReportRow = (rawRow) => {
     if (Array.isArray(rawRow)) {
@@ -3175,9 +3471,12 @@ const runKeitaroSync = async ({
     return rawRow;
   };
 
-  const normalizedRows = rows.map((rawRow) => normalizeReportRow(rawRow));
-
-  const fallbackSpendByKey = new Map();
+  const fallbackSpendByDateBuyerCountry = new Map();
+  const fallbackSpendByDateBuyer = new Map();
+  const fallbackSpendByDateCountry = new Map();
+  const fallbackSpendByDate = new Map();
+  const fallbackSpendByBuyer = new Map();
+  const fallbackSpendByCampaignId = new Map();
   if (syncTarget === "overall") {
     const fallbackDateField = map.dateField || defaultKeitaroMapping.dateField;
     const fallbackBuyerField = map.buyerField || defaultKeitaroMapping.buyerField;
@@ -3185,88 +3484,196 @@ const runKeitaroSync = async ({
     const fallbackClicksField = map.clicksField || defaultKeitaroMapping.clicksField;
     const fallbackSpendField = map.spendField || defaultKeitaroMapping.spendField;
 
-    const fallbackDimensions = [fallbackDateField, fallbackBuyerField, fallbackCountryField];
     const fallbackMeasures = Array.from(new Set([fallbackClicksField, fallbackSpendField])).filter(Boolean);
-    const fallbackPayload = normalizeKeitaroPayload({
-      ...preparedPayload,
-      dimensions: fallbackDimensions,
-      grouping: fallbackDimensions,
-      measures: fallbackMeasures,
-      metrics: fallbackMeasures,
-    });
+    const normalizeFallbackRow = (row, dimensions) => {
+      if (!Array.isArray(row)) return row;
+      const fallbackColumns = [...dimensions, ...fallbackMeasures];
+      return row.reduce((acc, value, index) => {
+        const key = fallbackColumns[index] || `col_${index}`;
+        acc[key] = value;
+        return acc;
+      }, {});
+    };
+    const extractFallbackStats = (row) => {
+      const spend = readFirstNumericValue(row, [fallbackSpendField, "cost", "spend", "expenses"]);
+      if (spend === null) return null;
+      const clicks = readFirstNumericValue(row, [fallbackClicksField, "clicks"]) ?? 0;
+      return { spend, clicks };
+    };
 
-    try {
-      const { rows: fallbackRows } = await fetchAllReportRows(fallbackPayload);
-      const fallbackColumns = [...fallbackDimensions, ...fallbackMeasures];
-      fallbackRows.forEach((row) => {
-        const normalizedRow = Array.isArray(row)
-          ? row.reduce((acc, value, index) => {
-              const key = fallbackColumns[index] || `col_${index}`;
-              acc[key] = value;
-              return acc;
-            }, {})
-          : row;
-        const date = normalizeDate(readRowValue(normalizedRow, fallbackDateField));
-        if (!date) return;
-        const buyer = String(readRowValue(normalizedRow, fallbackBuyerField) || "Keitaro");
-        const country = String(readRowValue(normalizedRow, fallbackCountryField) || "");
-        const spend = readFirstNumericValue(normalizedRow, [
-          fallbackSpendField,
-          "cost",
-          "spend",
-          "expenses",
-          "profitability",
-        ]);
-        if (spend === null) return;
-        const clicks = readFirstNumericValue(normalizedRow, [fallbackClicksField, "clicks"]) ?? 0;
-        const key = `${date}|${buyer}|${country}`;
-        fallbackSpendByKey.set(key, { spend, clicks });
+    const fallbackLevels = [
+      {
+        dimensions: [fallbackDateField, fallbackBuyerField, fallbackCountryField],
+        keyBuilder: (row) => {
+          const date = normalizeDate(readRowValue(row, fallbackDateField));
+          const buyer = resolveSyncBuyer(row, map);
+          const country = String(readRowValue(row, fallbackCountryField) || "");
+          if (!date) return null;
+          return `${date}|${buyer}|${country}`;
+        },
+        sink: fallbackSpendByDateBuyerCountry,
+      },
+      {
+        dimensions: [fallbackDateField, fallbackBuyerField],
+        keyBuilder: (row) => {
+          const date = normalizeDate(readRowValue(row, fallbackDateField));
+          const buyer = resolveSyncBuyer(row, map);
+          if (!date) return null;
+          return `${date}|${buyer}`;
+        },
+        sink: fallbackSpendByDateBuyer,
+      },
+      {
+        dimensions: [fallbackDateField, fallbackCountryField],
+        keyBuilder: (row) => {
+          const date = normalizeDate(readRowValue(row, fallbackDateField));
+          const country = String(readRowValue(row, fallbackCountryField) || "");
+          if (!date) return null;
+          return `${date}|${country}`;
+        },
+        sink: fallbackSpendByDateCountry,
+      },
+      {
+        dimensions: [fallbackDateField],
+        keyBuilder: (row) => {
+          const date = normalizeDate(readRowValue(row, fallbackDateField));
+          if (!date) return null;
+          return date;
+        },
+        sink: fallbackSpendByDate,
+      },
+      {
+        dimensions: [fallbackBuyerField],
+        keyBuilder: (row) => {
+          const buyer = resolveSyncBuyer(row, map);
+          return buyer ? buyer : null;
+        },
+        sink: fallbackSpendByBuyer,
+      },
+      {
+        dimensions: ["campaign_id"],
+        keyBuilder: (row) => {
+          const campaignId = String(readRowValue(row, "campaign_id") || "").trim();
+          return campaignId || null;
+        },
+        sink: fallbackSpendByCampaignId,
+      },
+    ];
+
+    for (const level of fallbackLevels) {
+      const fallbackPayload = normalizeKeitaroPayload({
+        ...preparedPayload,
+        dimensions: level.dimensions,
+        grouping: level.dimensions,
+        measures: fallbackMeasures,
+        metrics: fallbackMeasures,
       });
-    } catch (error) {
-      console.warn("Keitaro spend fallback sync failed:", error?.message || error);
+
+      try {
+        await iterateReportPages(fallbackPayload, async ({ rows: fallbackRows }) => {
+          fallbackRows.forEach((row) => {
+            const normalizedRow = normalizeFallbackRow(row, level.dimensions);
+            const key = level.keyBuilder(normalizedRow);
+            if (!key) return;
+            const stats = extractFallbackStats(normalizedRow);
+            if (!stats) return;
+            level.sink.set(key, stats);
+          });
+        });
+      } catch (error) {
+        console.warn("Keitaro spend fallback sync failed:", error?.message || error);
+      }
     }
   }
 
-  const detailedClicksByKey = new Map();
+  const detailedClicksByDateBuyerCountry = new Map();
+  const detailedClicksByDateBuyer = new Map();
+  const detailedClicksByDateCountry = new Map();
+  const detailedClicksByDate = new Map();
+  const detailedClicksByBuyer = new Map();
+  const detailedClicksByCampaignId = new Map();
   if (syncTarget === "overall") {
-    normalizedRows.forEach((row) => {
-      const date = normalizeDate(readRowValue(row, map.dateField));
-      if (!date) return;
-      const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
-      const country = String(readRowValue(row, map.countryField) || "");
-      const key = `${date}|${buyer}|${country}`;
-      const clicks = readFirstNumericValue(row, [map.clicksField || defaultKeitaroMapping.clicksField, "clicks"]) ?? 0;
-      detailedClicksByKey.set(key, (detailedClicksByKey.get(key) || 0) + Math.max(0, Number(clicks) || 0));
+    await iterateReportPages(preparedPayload, async ({ rows: pageRows, data: pageData }) => {
+      resolveColumnNames(pageRows, pageData);
+      pageRows.forEach((rawRow) => {
+        const row = normalizeReportRow(rawRow);
+        const date = normalizeDate(readRowValue(row, map.dateField));
+        if (!date) return;
+        const buyer = resolveSyncBuyer(row, map);
+        const country = String(readRowValue(row, map.countryField) || "");
+        const campaignId = String(readRowValue(row, "campaign_id") || "").trim();
+        const keyDateBuyerCountry = `${date}|${buyer}|${country}`;
+        const keyDateBuyer = `${date}|${buyer}`;
+        const keyDateCountry = `${date}|${country}`;
+        const clicks = readFirstNumericValue(row, [map.clicksField || defaultKeitaroMapping.clicksField, "clicks"]) ?? 0;
+        const safeClicks = Math.max(0, Number(clicks) || 0);
+        detailedClicksByDateBuyerCountry.set(
+          keyDateBuyerCountry,
+          (detailedClicksByDateBuyerCountry.get(keyDateBuyerCountry) || 0) + safeClicks
+        );
+        detailedClicksByDateBuyer.set(
+          keyDateBuyer,
+          (detailedClicksByDateBuyer.get(keyDateBuyer) || 0) + safeClicks
+        );
+        detailedClicksByDateCountry.set(
+          keyDateCountry,
+          (detailedClicksByDateCountry.get(keyDateCountry) || 0) + safeClicks
+        );
+        detailedClicksByDate.set(
+          date,
+          (detailedClicksByDate.get(date) || 0) + safeClicks
+        );
+        detailedClicksByBuyer.set(
+          buyer,
+          (detailedClicksByBuyer.get(buyer) || 0) + safeClicks
+        );
+        if (campaignId) {
+          detailedClicksByCampaignId.set(
+            campaignId,
+            (detailedClicksByCampaignId.get(campaignId) || 0) + safeClicks
+          );
+        }
+      });
     });
   }
 
-  const fallbackSpendAssignedForZeroClickGroups = new Set();
+  const fallbackSpendAssignedForZeroClickGroups = {
+    dateBuyerCountry: new Set(),
+    campaignId: new Set(),
+    dateBuyer: new Set(),
+    dateCountry: new Set(),
+    date: new Set(),
+    buyer: new Set(),
+  };
 
   let inserted = 0;
   let skipped = 0;
   let placementsExtracted = 0;
   const placementSamples = new Set();
   const clearedOverallKeys = new Set();
+  let totalRows = 0;
 
-  for (const row of normalizedRows) {
-    const date = normalizeDate(readRowValue(row, map.dateField));
-    if (!date) {
-      skipped += 1;
-      continue;
-    }
+  await iterateReportPages(preparedPayload, async ({ rows: pageRows, data: pageData }) => {
+    resolveColumnNames(pageRows, pageData);
+    for (const rawRow of pageRows) {
+      totalRows += 1;
+      const row = normalizeReportRow(rawRow);
+      const date = normalizeDate(readRowValue(row, map.dateField));
+      if (!date) {
+        skipped += 1;
+        continue;
+      }
 
-    const buyer = String(readRowValue(row, map.buyerField) || "Keitaro");
-    const country = String(readRowValue(row, map.countryField) || "");
-    const baseRowKey = `${date}|${buyer}|${country}`;
+      const buyer = resolveSyncBuyer(row, map);
+      const country = String(readRowValue(row, map.countryField) || "");
+      const campaignId = String(readRowValue(row, "campaign_id") || "").trim();
+      const baseRowKey = `${date}|${buyer}|${country}`;
 
-    if (syncTarget === "overall" && replaceExisting && !clearedOverallKeys.has(baseRowKey)) {
-      await query(`DELETE FROM media_stats WHERE date = $1 AND buyer = $2 AND country = $3`, [
-        date,
-        buyer,
-        country,
-      ]);
-      clearedOverallKeys.add(baseRowKey);
-    }
+      // Keep sync idempotent via upsert.
+      // Deleting date+buyer+country before insert can leave partial data when a long sync is interrupted.
+      if (syncTarget === "overall" && replaceExisting && !clearedOverallKeys.has(baseRowKey)) {
+        clearedOverallKeys.add(baseRowKey);
+      }
 
     const city = resolveCityValue(row, map.cityField);
     const region = resolveRegionValue(row, map.regionField || defaultKeitaroMapping.regionField);
@@ -3315,23 +3722,72 @@ const runKeitaroSync = async ({
         placementSamples.add(placement);
       }
     }
-    const clicks = numberFromValue(readRowValue(row, map.clicksField)) ?? 0;
+    const clicks = readFirstNumericValue(row, [
+      map.clicksField,
+      "clicks",
+      "campaign_unique_clicks",
+      "uc_campaign",
+    ]) ?? 0;
     let spend = readFirstNumericValue(row, [
       map.spendField,
       "cost",
       "spend",
       "expenses",
-      "profitability",
     ]);
     if (syncTarget === "overall" && (spend === null || spend === 0)) {
-      const fallback = fallbackSpendByKey.get(baseRowKey);
-      if (fallback && Number.isFinite(fallback.spend)) {
-        const groupClicks = detailedClicksByKey.get(baseRowKey) || 0;
+      const keyDateBuyer = `${date}|${buyer}`;
+      const keyDateCountry = `${date}|${country}`;
+      const fallbackResolution = [
+        {
+          key: baseRowKey,
+          spendMap: fallbackSpendByDateBuyerCountry,
+          clicksMap: detailedClicksByDateBuyerCountry,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.dateBuyerCountry,
+        },
+        {
+          key: campaignId,
+          spendMap: fallbackSpendByCampaignId,
+          clicksMap: detailedClicksByCampaignId,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.campaignId,
+        },
+        {
+          key: keyDateBuyer,
+          spendMap: fallbackSpendByDateBuyer,
+          clicksMap: detailedClicksByDateBuyer,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.dateBuyer,
+        },
+        {
+          key: keyDateCountry,
+          spendMap: fallbackSpendByDateCountry,
+          clicksMap: detailedClicksByDateCountry,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.dateCountry,
+        },
+        {
+          key: date,
+          spendMap: fallbackSpendByDate,
+          clicksMap: detailedClicksByDate,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.date,
+        },
+        {
+          key: buyer,
+          spendMap: fallbackSpendByBuyer,
+          clicksMap: detailedClicksByBuyer,
+          assignedSet: fallbackSpendAssignedForZeroClickGroups.buyer,
+        },
+      ];
+
+      for (const level of fallbackResolution) {
+        const fallback = level.spendMap.get(level.key);
+        if (!fallback || !Number.isFinite(fallback.spend)) continue;
+        const groupClicks = level.clicksMap.get(level.key) || 0;
         if (groupClicks > 0 && clicks > 0) {
           spend = fallback.spend * (clicks / groupClicks);
-        } else if (groupClicks <= 0 && !fallbackSpendAssignedForZeroClickGroups.has(baseRowKey)) {
+          break;
+        }
+        if (groupClicks <= 0 && !level.assignedSet.has(level.key)) {
           spend = fallback.spend;
-          fallbackSpendAssignedForZeroClickGroups.add(baseRowKey);
+          level.assignedSet.add(level.key);
+          break;
         }
       }
     }
@@ -3439,11 +3895,12 @@ const runKeitaroSync = async ({
       });
     }
 
-    inserted += 1;
-  }
+      inserted += 1;
+    }
+  });
 
   return {
-    total: rows.length,
+    total: totalRows,
     inserted,
     skipped,
     placementsExtracted,
@@ -3544,18 +4001,50 @@ app.all("/api/keitaro/cron", async (req, res) => {
   }
 
   const runSync = async () => {
-    return runKeitaroSync({
-      baseUrl,
-      apiKey,
-      reportPath,
-      payload,
-      mapping,
-      replaceExisting,
-      target,
-    });
+    if (keitaroSyncState[target]) {
+      const alreadyRunningError = new Error(`Sync already running for target: ${target}`);
+      alreadyRunningError.status = 409;
+      throw alreadyRunningError;
+    }
+    keitaroSyncState[target] = true;
+    try {
+      const result = await runKeitaroSync({
+        baseUrl,
+        apiKey,
+        reportPath,
+        payload,
+        mapping,
+        replaceExisting,
+        target,
+      });
+
+      // Keep user behavior fresh even when cron target is overall.
+      if (target === "overall" && process.env.KEITARO_USER_REPORT_PAYLOAD) {
+        const userPayload = applyKeitaroRange(parseJsonEnv(process.env.KEITARO_USER_REPORT_PAYLOAD));
+        if (userPayload) {
+          const userMapping = parseJsonEnv(process.env.KEITARO_USER_MAPPING, defaultKeitaroMapping);
+          const userReplace = parseBooleanEnv(process.env.KEITARO_USER_REPLACE, true);
+          await runKeitaroSync({
+            baseUrl,
+            apiKey,
+            reportPath: process.env.KEITARO_USER_REPORT_PATH || "/admin_api/v1/report/build",
+            payload: userPayload,
+            mapping: userMapping,
+            replaceExisting: userReplace,
+            target: "user_behavior",
+          });
+        }
+      }
+      return result;
+    } finally {
+      keitaroSyncState[target] = false;
+    }
   };
 
   if (asyncMode) {
+    if (keitaroSyncState[target]) {
+      return res.status(202).json({ ok: true, queued: false, running: true, target });
+    }
     res.status(202).json({ ok: true, queued: true, target });
     runSync().catch((error) => {
       console.error("Keitaro async sync failed:", error);
@@ -3576,16 +4065,22 @@ app.post("/api/keitaro/sync", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   const { baseUrl, apiKey, reportPath, payload, mapping, replaceExisting, target } = req.body ?? {};
-  const asyncMode =
-    String(req.query.async || req.query.background || req.body?.async || "")
-      .toLowerCase()
-      .trim() === "1" ||
-    String(req.query.async || req.query.background || req.body?.async || "")
-      .toLowerCase()
-      .trim() === "true";
+  const asyncRaw = String(req.query.async || req.query.background || req.body?.async || "")
+    .toLowerCase()
+    .trim();
+  const asyncMode = asyncRaw === "" ? true : asyncRaw === "1" || asyncRaw === "true";
 
+  const syncTarget = target === "device" ? "device" : target === "user_behavior" ? "user_behavior" : "overall";
+
+  if (keitaroSyncState[syncTarget]) {
+    return res.status(409).json({ error: `Sync already running for target: ${syncTarget}` });
+  }
+
+  let shouldReleaseOnFinally = true;
   try {
     if (asyncMode) {
+      keitaroSyncState[syncTarget] = true;
+      shouldReleaseOnFinally = false;
       setTimeout(async () => {
         try {
           await runKeitaroSync({
@@ -3599,11 +4094,14 @@ app.post("/api/keitaro/sync", async (req, res) => {
           });
         } catch (error) {
           console.error("Async Keitaro sync failed:", error);
+        } finally {
+          keitaroSyncState[syncTarget] = false;
         }
       }, 0);
       return res.json({ ok: true, async: true, message: "Sync started." });
     }
 
+    keitaroSyncState[syncTarget] = true;
     const result = await runKeitaroSync({
       baseUrl,
       apiKey,
@@ -3617,6 +4115,10 @@ app.post("/api/keitaro/sync", async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || "Sync failed." });
+  } finally {
+    if (shouldReleaseOnFinally) {
+      keitaroSyncState[syncTarget] = false;
+    }
   }
 });
 

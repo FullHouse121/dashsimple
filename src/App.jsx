@@ -1457,7 +1457,7 @@ function HomeDashboard({
   const loadHomeStats = React.useCallback(async () => {
     try {
       setHomeState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=20000");
+      const response = await apiFetch("/api/media-stats?limit=100000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -2394,7 +2394,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const loadGeos = React.useCallback(async () => {
     try {
       setGeoState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=20000");
+      const response = await apiFetch("/api/media-stats?limit=100000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -4355,7 +4355,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const fetchStats = React.useCallback(async () => {
     try {
       setStatsState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=20000");
+      const response = await apiFetch("/api/media-stats?limit=100000");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -4950,7 +4950,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   const fetchPlacements = React.useCallback(async () => {
     try {
       setPlacementState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=20000");
+      const response = await apiFetch("/api/media-stats?limit=100000");
       if (!response.ok) {
         throw new Error("Failed to load placement stats.");
       }
@@ -5492,7 +5492,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     try {
       setCampaignState({ loading: true, error: null });
       const [statsResponse, domainsResponse, mappingsResponse] = await Promise.all([
-        apiFetch("/api/media-stats?limit=20000"),
+        apiFetch("/api/media-stats?limit=100000"),
         apiFetch("/api/domains?limit=500"),
         apiFetch("/api/campaigns?limit=500"),
       ]);
@@ -6243,7 +6243,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       )
         ? Number(row.redeposit_revenue ?? row.redepositRevenue)
         : 0;
-      const revenueValue = ftdRevenueValue + redepositRevenueValue;
+      const rowRevenueValue = Number.isFinite(Number(row.revenue)) ? Number(row.revenue) : 0;
+      const revenueValue = rowRevenueValue > 0 ? rowRevenueValue : ftdRevenueValue + redepositRevenueValue;
 
       const campaign = String(row.campaign || "").trim();
       if (campaign) {
@@ -9671,6 +9672,29 @@ function KeitaroApiView() {
     return { ...payload, dimensions: [normalizedField] };
   }, []);
 
+  const ensurePayloadMeasure = React.useCallback((payload, measure) => {
+    if (!payload || typeof payload !== "object" || !measure) return payload;
+    const normalizedMeasure = String(measure).trim();
+    if (!normalizedMeasure) return payload;
+    const lower = normalizedMeasure.toLowerCase();
+    const appendMeasure = (items) => {
+      const nextItems = Array.isArray(items) ? [...items] : [];
+      const exists = nextItems.some(
+        (item) => String(item || "").trim().toLowerCase() === lower
+      );
+      if (!exists) {
+        nextItems.push(normalizedMeasure);
+      }
+      return nextItems;
+    };
+
+    const nextPayload = { ...payload, measures: appendMeasure(payload.measures) };
+    if (Array.isArray(payload.metrics)) {
+      nextPayload.metrics = appendMeasure(payload.metrics);
+    }
+    return nextPayload;
+  }, []);
+
   const fetchCampaigns = React.useCallback(async () => {
     try {
       setCampaignState({ loading: true, error: null });
@@ -9799,6 +9823,17 @@ function KeitaroApiView() {
       ].forEach((field) => {
         parsedPayload = ensurePayloadField(parsedPayload, field);
       });
+      [
+        mapping.spendField || defaultKeitaroMapping.spendField,
+        mapping.clicksField || defaultKeitaroMapping.clicksField,
+        mapping.registersField || defaultKeitaroMapping.registersField,
+        mapping.ftdsField || defaultKeitaroMapping.ftdsField,
+        mapping.redepositsField || defaultKeitaroMapping.redepositsField,
+        mapping.ftdRevenueField || defaultKeitaroMapping.ftdRevenueField,
+        mapping.redepositRevenueField || defaultKeitaroMapping.redepositRevenueField,
+      ].forEach((measure) => {
+        parsedPayload = ensurePayloadMeasure(parsedPayload, measure);
+      });
     } else if (syncTarget === "user_behavior") {
       [
         mapping.dateField || defaultKeitaroMapping.dateField,
@@ -9812,6 +9847,16 @@ function KeitaroApiView() {
       ].forEach((field) => {
         parsedPayload = ensurePayloadField(parsedPayload, field);
       });
+      [
+        mapping.clicksField || defaultKeitaroMapping.clicksField,
+        mapping.registersField || defaultKeitaroMapping.registersField,
+        mapping.ftdsField || defaultKeitaroMapping.ftdsField,
+        mapping.redepositsField || defaultKeitaroMapping.redepositsField,
+        mapping.ftdRevenueField || defaultKeitaroMapping.ftdRevenueField,
+        mapping.redepositRevenueField || defaultKeitaroMapping.redepositRevenueField,
+      ].forEach((measure) => {
+        parsedPayload = ensurePayloadMeasure(parsedPayload, measure);
+      });
     } else {
       [
         mapping.dateField || defaultKeitaroMapping.dateField,
@@ -9823,6 +9868,16 @@ function KeitaroApiView() {
         mapping.deviceModelField || defaultKeitaroMapping.deviceModelField,
       ].forEach((field) => {
         parsedPayload = ensurePayloadField(parsedPayload, field);
+      });
+      [
+        mapping.spendField || defaultKeitaroMapping.spendField,
+        mapping.revenueField || defaultKeitaroMapping.revenueField,
+        mapping.clicksField || defaultKeitaroMapping.clicksField,
+        mapping.registersField || defaultKeitaroMapping.registersField,
+        mapping.ftdsField || defaultKeitaroMapping.ftdsField,
+        mapping.redepositsField || defaultKeitaroMapping.redepositsField,
+      ].forEach((measure) => {
+        parsedPayload = ensurePayloadMeasure(parsedPayload, measure);
       });
     }
 
