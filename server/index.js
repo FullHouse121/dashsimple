@@ -460,6 +460,16 @@ const selectMediaStats = async (limit) =>
     [limit]
   );
 
+const deleteMediaStatsByBaseKey = async (date, buyer, country) => {
+  await query(
+    `DELETE FROM media_stats
+     WHERE date = $1
+       AND buyer = $2
+       AND COALESCE(country, '') = COALESCE($3, '')`,
+    [date, buyer, country || null]
+  );
+};
+
 const insertUserBehavior = async (payload) => {
   await query(
     `INSERT INTO user_behavior (
@@ -3413,14 +3423,14 @@ const runKeitaroSync = async ({
     if (columnNamesResolved) return;
     const firstArrayRow = pageRows.find((row) => Array.isArray(row));
     const firstArrayRowLength = Array.isArray(firstArrayRow) ? firstArrayRow.length : 0;
-    if (firstArrayRowLength > 0 && payloadColumnNames.length >= firstArrayRowLength) {
-      columnNames = payloadColumnNames.slice(0, firstArrayRowLength);
-      columnNamesResolved = true;
-      return;
-    }
     const strictMetaNames = extractColumnNames(responseData, firstArrayRowLength);
     if (strictMetaNames.length > 0) {
       columnNames = strictMetaNames.slice(0, firstArrayRowLength || strictMetaNames.length);
+      columnNamesResolved = true;
+      return;
+    }
+    if (firstArrayRowLength > 0 && payloadColumnNames.length >= firstArrayRowLength) {
+      columnNames = payloadColumnNames.slice(0, firstArrayRowLength);
       columnNamesResolved = true;
       return;
     }
@@ -3672,6 +3682,7 @@ const runKeitaroSync = async ({
       // Keep sync idempotent via upsert.
       // Deleting date+buyer+country before insert can leave partial data when a long sync is interrupted.
       if (syncTarget === "overall" && replaceExisting && !clearedOverallKeys.has(baseRowKey)) {
+        await deleteMediaStatsByBaseKey(date, buyer, country);
         clearedOverallKeys.add(baseRowKey);
       }
 
@@ -3734,7 +3745,7 @@ const runKeitaroSync = async ({
       "spend",
       "expenses",
     ]);
-    if (syncTarget === "overall" && (spend === null || spend === 0)) {
+    if (syncTarget === "overall") {
       const keyDateBuyer = `${date}|${buyer}`;
       const keyDateCountry = `${date}|${country}`;
       const fallbackResolution = [
@@ -3776,19 +3787,23 @@ const runKeitaroSync = async ({
         },
       ];
 
+      let fallbackSpend = null;
       for (const level of fallbackResolution) {
         const fallback = level.spendMap.get(level.key);
         if (!fallback || !Number.isFinite(fallback.spend)) continue;
         const groupClicks = level.clicksMap.get(level.key) || 0;
         if (groupClicks > 0 && clicks > 0) {
-          spend = fallback.spend * (clicks / groupClicks);
+          fallbackSpend = fallback.spend * (clicks / groupClicks);
           break;
         }
         if (groupClicks <= 0 && !level.assignedSet.has(level.key)) {
-          spend = fallback.spend;
+          fallbackSpend = fallback.spend;
           level.assignedSet.add(level.key);
           break;
         }
+      }
+      if (fallbackSpend !== null && Number.isFinite(fallbackSpend)) {
+        spend = fallbackSpend;
       }
     }
     const ftdRevenue = numberFromValue(readRowValue(row, map.ftdRevenueField));
