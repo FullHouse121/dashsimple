@@ -3005,7 +3005,7 @@ const runKeitaroSync = async ({
     reportPath || "/admin_api/v1/report/build"
   )}`;
 
-  const fetchReport = async (reportPayload) => {
+  const fetchReportPage = async (reportPayload) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -3037,7 +3037,44 @@ const runKeitaroSync = async ({
     return { data, rows };
   };
 
-  const { data, rows } = await fetchReport(preparedPayload);
+  const fetchAllReportRows = async (reportPayload) => {
+    const pageLimitRaw = Number.parseInt(String(reportPayload?.limit ?? ""), 10);
+    const pageLimit = Number.isFinite(pageLimitRaw) && pageLimitRaw > 0 ? pageLimitRaw : 0;
+    const startOffsetRaw = Number.parseInt(String(reportPayload?.offset ?? ""), 10);
+    const startOffset = Number.isFinite(startOffsetRaw) && startOffsetRaw >= 0 ? startOffsetRaw : 0;
+
+    if (pageLimit <= 0) {
+      return fetchReportPage(reportPayload);
+    }
+
+    const maxPagesRaw = Number.parseInt(String(process.env.KEITARO_MAX_PAGES || ""), 10);
+    const maxPages = Number.isFinite(maxPagesRaw) && maxPagesRaw > 0 ? maxPagesRaw : 200;
+    let firstData = null;
+    const allRows = [];
+
+    for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+      const offset = startOffset + pageIndex * pageLimit;
+      const pagePayload = { ...reportPayload, offset };
+      const { data, rows } = await fetchReportPage(pagePayload);
+      if (pageIndex === 0) {
+        firstData = data;
+      }
+      allRows.push(...rows);
+
+      const totalRaw = data?.total ?? data?.data?.total ?? data?.result?.total;
+      const total = Number.parseInt(String(totalRaw ?? ""), 10);
+      if (Number.isFinite(total) && total >= 0 && allRows.length >= total) {
+        break;
+      }
+      if (rows.length < pageLimit) {
+        break;
+      }
+    }
+
+    return { data: firstData, rows: allRows };
+  };
+
+  const { data, rows } = await fetchAllReportRows(preparedPayload);
 
   const payloadDimensions = Array.isArray(preparedPayload?.dimensions)
     ? preparedPayload.dimensions
@@ -3159,7 +3196,7 @@ const runKeitaroSync = async ({
     });
 
     try {
-      const { rows: fallbackRows } = await fetchReport(fallbackPayload);
+      const { rows: fallbackRows } = await fetchAllReportRows(fallbackPayload);
       const fallbackColumns = [...fallbackDimensions, ...fallbackMeasures];
       fallbackRows.forEach((row) => {
         const normalizedRow = Array.isArray(row)
