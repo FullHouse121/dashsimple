@@ -1418,6 +1418,11 @@ function ChartTooltip({ active, payload, label, visibleKeys }) {
   const filtered = visibleKeys
     ? payload.filter((item) => visibleKeys.includes(item.dataKey))
     : payload;
+  const formatValue = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "—";
+    return numeric.toFixed(2);
+  };
 
   return (
     <div className="chart-tooltip" style={tooltipStyle}>
@@ -1426,7 +1431,7 @@ function ChartTooltip({ active, payload, label, visibleKeys }) {
         <div className="tooltip-row" key={item.dataKey}>
           <span className="tooltip-dot" style={{ background: item.stroke }} />
           <span>{item.name}</span>
-          <span className="tooltip-value">{item.value}</span>
+          <span className="tooltip-value">{formatValue(item.value)}</span>
         </div>
       ))}
     </div>
@@ -11173,8 +11178,12 @@ export default function App() {
         <div className="sidebar-section">
           <p className="section-title">{t("Logged as {role}", { role: t(profileRole) })}</p>
           <button className="team-pill" type="button">
-            <Trophy size={16} />
-            {profileName}
+            <span className="team-pill-icon" aria-hidden="true">
+              <Trophy size={14} />
+            </span>
+            <span className="team-pill-content">
+              <span className="team-pill-name">{profileName}</span>
+            </span>
           </button>
         </div>
 
