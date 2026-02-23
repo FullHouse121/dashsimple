@@ -99,6 +99,10 @@ const initDb = async () => {
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS registers INTEGER;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS ftds INTEGER;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS redeposits INTEGER;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS device TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS os TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS os_version TEXT;`,
+    `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS device_model TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS revenue REAL;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS ftd_revenue REAL;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS redeposit_revenue REAL;`,
@@ -481,6 +485,10 @@ const insertUserBehavior = async (payload) => {
       region,
       city,
       placement,
+      device,
+      os,
+      os_version,
+      device_model,
       clicks,
       registers,
       ftds,
@@ -489,11 +497,15 @@ const insertUserBehavior = async (payload) => {
       ftd_revenue,
       redeposit_revenue
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      ON CONFLICT (date, external_id, buyer, campaign, country, placement)
      DO UPDATE SET
        region = EXCLUDED.region,
        city = EXCLUDED.city,
+       device = EXCLUDED.device,
+       os = EXCLUDED.os,
+       os_version = EXCLUDED.os_version,
+       device_model = EXCLUDED.device_model,
        clicks = EXCLUDED.clicks,
        registers = EXCLUDED.registers,
        ftds = EXCLUDED.ftds,
@@ -510,6 +522,10 @@ const insertUserBehavior = async (payload) => {
       payload.region,
       payload.city,
       payload.placement,
+      payload.device,
+      payload.os,
+      payload.os_version,
+      payload.device_model,
       payload.clicks,
       payload.registers,
       payload.ftds,
@@ -524,6 +540,7 @@ const insertUserBehavior = async (payload) => {
 const selectUserBehavior = async (limit) =>
   getRows(
     `SELECT id, date, external_id, buyer, campaign, country, region, city, placement,
+            device, os, os_version, device_model,
             clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue,
             created_at
      FROM user_behavior
@@ -859,6 +876,48 @@ const selectInstallTotalsByDevice = async () =>
     `SELECT date, device, COUNT(*) as installs
      FROM install_events
      GROUP BY date, device`
+  );
+
+const selectInstallTotalsByAttributedDevice = async () =>
+  getRows(
+    `SELECT
+      ie.date,
+      COALESCE(NULLIF(TRIM(ub.device), ''), NULLIF(TRIM(ub.os), ''), NULLIF(TRIM(ie.device), ''), 'Unknown') AS device,
+      NULLIF(TRIM(ub.os), '') AS os,
+      NULLIF(TRIM(ub.os_version), '') AS os_version,
+      NULLIF(TRIM(ub.device_model), '') AS device_model,
+      COALESCE(NULLIF(TRIM(ie.buyer), ''), NULLIF(TRIM(ub.buyer), ''), '') AS buyer,
+      COALESCE(NULLIF(TRIM(ie.country), ''), NULLIF(TRIM(ub.country), ''), '') AS country,
+      COUNT(*) AS installs
+     FROM install_events ie
+     LEFT JOIN LATERAL (
+       SELECT
+         ub.device,
+         ub.os,
+         ub.os_version,
+         ub.device_model,
+         ub.buyer,
+         ub.country
+       FROM user_behavior ub
+       WHERE ub.external_id = ie.external_id
+         AND (NULLIF(TRIM(ie.buyer), '') IS NULL
+              OR NULLIF(TRIM(ub.buyer), '') IS NULL
+              OR LOWER(ub.buyer) LIKE LOWER(ie.buyer) || '%'
+              OR LOWER(ie.buyer) LIKE LOWER(ub.buyer) || '%')
+       ORDER BY
+         CASE WHEN ub.date = ie.date THEN 0 ELSE 1 END,
+         ub.date DESC,
+         ub.id DESC
+       LIMIT 1
+     ) ub ON TRUE
+     GROUP BY
+       ie.date,
+       COALESCE(NULLIF(TRIM(ub.device), ''), NULLIF(TRIM(ub.os), ''), NULLIF(TRIM(ie.device), ''), 'Unknown'),
+       NULLIF(TRIM(ub.os), ''),
+       NULLIF(TRIM(ub.os_version), ''),
+       NULLIF(TRIM(ub.device_model), ''),
+       COALESCE(NULLIF(TRIM(ie.buyer), ''), NULLIF(TRIM(ub.buyer), ''), ''),
+       COALESCE(NULLIF(TRIM(ie.country), ''), NULLIF(TRIM(ub.country), ''), '')`
   );
 
 const insertDeviceStat = async (payload) => {
@@ -2340,8 +2399,10 @@ app.get("/api/device-stats", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectDeviceStats(limit);
+  let attributedInstalls = await selectInstallTotalsByAttributedDevice();
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    attributedInstalls = attributedInstalls.filter((row) => buyerMatches(row.buyer, viewerBuyer));
   }
 
   const aggregated = new Map();
@@ -2351,7 +2412,9 @@ app.get("/api/device-stats", async (req, res) => {
     const osVersion = String(row.os_version || "");
     const osIcon = String(row.os_icon || "");
     const deviceModel = String(row.device_model || "");
-    const key = `${row.date}|${device}|${os}|${osVersion}|${deviceModel}`;
+    const buyer = String(row.buyer || "");
+    const country = String(row.country || "");
+    const key = `${row.date}|${device}|${os}|${osVersion}|${deviceModel}|${buyer}|${country}`;
     if (!aggregated.has(key)) {
       aggregated.set(key, {
         id: row.id,
@@ -2361,15 +2424,15 @@ app.get("/api/device-stats", async (req, res) => {
         os_version: osVersion,
         os_icon: osIcon,
         device_model: deviceModel,
-        buyer: row.buyer || "",
-        country: row.country || "",
+        buyer,
+        country,
         spend: 0,
         revenue: 0,
         clicks: 0,
         registers: 0,
         ftds: 0,
         redeposits: 0,
-        installs: row.installs ? Number(row.installs) : 0,
+        installs: 0,
       });
     }
     const current = aggregated.get(key);
@@ -2379,9 +2442,38 @@ app.get("/api/device-stats", async (req, res) => {
     current.registers += Number(row.registers || 0);
     current.ftds += Number(row.ftds || 0);
     current.redeposits += Number(row.redeposits || 0);
-    if (row.installs) {
-      current.installs += Number(row.installs || 0);
+  });
+
+  attributedInstalls.forEach((installRow) => {
+    const device = normalizeDevice(installRow.device);
+    const os = String(installRow.os || "");
+    const osVersion = String(installRow.os_version || "");
+    const deviceModel = String(installRow.device_model || "");
+    const buyer = String(installRow.buyer || "");
+    const country = String(installRow.country || "");
+    const key = `${installRow.date}|${device}|${os}|${osVersion}|${deviceModel}|${buyer}|${country}`;
+    if (!aggregated.has(key)) {
+      aggregated.set(key, {
+        id: null,
+        date: installRow.date,
+        device,
+        os,
+        os_version: osVersion,
+        os_icon: "",
+        device_model: deviceModel,
+        buyer,
+        country,
+        spend: 0,
+        revenue: 0,
+        clicks: 0,
+        registers: 0,
+        ftds: 0,
+        redeposits: 0,
+        installs: 0,
+      });
     }
+    const current = aggregated.get(key);
+    current.installs += Number(installRow.installs || 0);
   });
 
   const merged = Array.from(aggregated.values()).sort((a, b) => {
@@ -3969,6 +4061,14 @@ const runKeitaroSync = async ({
       const campaign = String(
         readRowValue(row, map.campaignField || map.buyerField || defaultKeitaroMapping.campaignField) || ""
       ).trim();
+      const device = normalizeDevice(readRowValue(row, map.deviceField || defaultKeitaroMapping.deviceField));
+      const os = String(readRowValue(row, map.osField || defaultKeitaroMapping.osField) || "").trim();
+      const osVersion = String(
+        readRowValue(row, map.osVersionField || defaultKeitaroMapping.osVersionField) || ""
+      ).trim();
+      const deviceModel = String(
+        readRowValue(row, map.deviceModelField || defaultKeitaroMapping.deviceModelField) || ""
+      ).trim();
 
       await insertUserBehavior({
         date,
@@ -3979,6 +4079,10 @@ const runKeitaroSync = async ({
         region: region || null,
         city: city || null,
         placement: placement || null,
+        device: device || null,
+        os: os || null,
+        os_version: osVersion || null,
+        device_model: deviceModel || null,
         clicks: Number(clicks) || 0,
         registers: Number(registers) || 0,
         ftds: Number(ftds) || 0,
