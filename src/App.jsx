@@ -1153,25 +1153,27 @@ const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase()
 const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
 const normalizeBuyerKey = (value) =>
   String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const matchesBuyerFilter = (buyer, selectedBuyer, viewerBuyer, isLeadership) => {
+const escapeRegExp = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const matchesBuyerName = (buyer, selectedBuyer) => {
   const normalizedBuyer = normalizeBuyerKey(buyer);
-  if (!normalizedBuyer) return false;
+  const normalizedSelected = normalizeBuyerKey(selectedBuyer);
+  if (!normalizedBuyer || !normalizedSelected) return false;
+  if (normalizedBuyer === normalizedSelected || normalizedBuyer.startsWith(normalizedSelected)) {
+    return true;
+  }
+  const rawBuyer = normalizeFilterValue(buyer);
+  const rawSelected = normalizeFilterValue(selectedBuyer);
+  if (!rawBuyer || !rawSelected) return false;
+  const boundary = new RegExp(`(^|[^a-z0-9])${escapeRegExp(rawSelected)}([^a-z0-9]|$)`);
+  return boundary.test(rawBuyer);
+};
+const matchesBuyerFilter = (buyer, selectedBuyer, viewerBuyer, isLeadership) => {
   if (!isLeadership) {
     if (!viewerBuyer) return true;
-    const normalizedViewer = normalizeBuyerKey(viewerBuyer);
-    if (!normalizedViewer) return true;
-    return (
-      normalizedBuyer.includes(normalizedViewer) ||
-      normalizedViewer.includes(normalizedBuyer)
-    );
+    return matchesBuyerName(buyer, viewerBuyer);
   }
   if (isAllSelection(selectedBuyer)) return true;
-  const normalizedSelected = normalizeBuyerKey(selectedBuyer);
-  if (!normalizedSelected) return false;
-  return (
-    normalizedBuyer.includes(normalizedSelected) ||
-    normalizedSelected.includes(normalizedBuyer)
-  );
+  return matchesBuyerName(buyer, selectedBuyer);
 };
 const matchesCountryFilter = (country, selectedCountry) => {
   if (isAllSelection(selectedCountry)) return true;
@@ -10802,11 +10804,15 @@ export default function App() {
   const effectiveViewerBuyer = viewerBuyer || authUser?.username || "";
 
   React.useEffect(() => {
-    if (!authUser || isLeadership || !effectiveViewerBuyer) return;
-    setFilters((prev) => ({
-      ...prev,
-      buyer: effectiveViewerBuyer,
-    }));
+    if (!authUser) return;
+    if (isLeadership) {
+      setFilters((prev) => (prev.buyer === "All" ? prev : { ...prev, buyer: "All" }));
+      return;
+    }
+    if (!effectiveViewerBuyer) return;
+    setFilters((prev) =>
+      prev.buyer === effectiveViewerBuyer ? prev : { ...prev, buyer: effectiveViewerBuyer }
+    );
   }, [authUser, effectiveViewerBuyer, isLeadership]);
 
   const viewPermissionMap = React.useMemo(
@@ -11463,18 +11469,6 @@ export default function App() {
 
                 {usesPerformanceFilters ? (
                   <>
-                <div className="field">
-                  <label>Media Buyer</label>
-                  {isLeadership ? (
-                    <select value={filters.buyer} onChange={updateFilter("buyer")}>
-                      {buyerOptions.map((buyer) => (
-                        <option key={buyer}>{buyer}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input value={effectiveViewerBuyer} disabled />
-                  )}
-                </div>
                     {isGeos ? (
                       <div className="field">
                         <label>Region / State</label>

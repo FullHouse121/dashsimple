@@ -2219,12 +2219,15 @@ app.get("/api/media-stats", async (req, res) => {
   });
 
   const existingKeys = new Set();
+  const existingBaseKeys = new Set();
   const merged = rows.map((row) => {
+    const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
     const key = `${row.date}|${row.buyer || ""}|${row.country || ""}|${row.city || ""}|${
       row.placement || ""
     }`;
+    existingBaseKeys.add(baseKey);
     existingKeys.add(key);
-    const mapKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const mapKey = baseKey;
     const shouldMergeExternal = !row.city && !row.placement;
     const installs =
       shouldMergeExternal && installMap.has(mapKey) ? installMap.get(mapKey) : row.installs ?? 0;
@@ -2258,6 +2261,7 @@ app.get("/api/media-stats", async (req, res) => {
 
   installTotals.forEach((row) => {
     const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    const hasDetailedRows = existingBaseKeys.has(baseKey);
     const key = `${baseKey}||`;
     if (mergedKeys.has(key)) return;
     const conversions = conversionMap.get(baseKey);
@@ -2279,14 +2283,17 @@ app.get("/api/media-stats", async (req, res) => {
       redepositRevenue: null,
       clicks: 0,
       installs: Number(row.installs) || 0,
-      registers: conversions?.registers || 0,
-      ftds: conversions?.ftds || 0,
-      redeposits: conversions?.redeposits || 0,
+      // Avoid double counting conversion metrics when Keitaro already returned
+      // detailed rows for the same date+buyer+country.
+      registers: hasDetailedRows ? 0 : conversions?.registers || 0,
+      ftds: hasDetailedRows ? 0 : conversions?.ftds || 0,
+      redeposits: hasDetailedRows ? 0 : conversions?.redeposits || 0,
     });
   });
 
   conversionTotals.forEach((row) => {
     const baseKey = `${row.date}|${row.buyer || ""}|${row.country || ""}`;
+    if (existingBaseKeys.has(baseKey)) return;
     const key = `${baseKey}||`;
     if (mergedKeys.has(key)) return;
     mergedKeys.add(key);
@@ -3991,20 +3998,24 @@ const runKeitaroSync = async ({
       defaultKeitaroMapping.revenueField,
       "revenue",
     ]);
-    const registers = readFirstNumericValue(row, [
+    const registers = readFirstNumericValueExact(row, [
       map.registersField,
       defaultKeitaroMapping.registersField,
       "regs",
       "registers",
     ]) ?? 0;
-    const ftds = readFirstNumericValue(row, [
+    const ftds = readFirstNumericValueExact(row, [
       map.ftdsField,
       defaultKeitaroMapping.ftdsField,
+      "custom_conversion_8",
+      "ftd",
       "ftds",
     ]) ?? 0;
-    const redeposits = readFirstNumericValue(row, [
+    const redeposits = readFirstNumericValueExact(row, [
       map.redepositsField,
       defaultKeitaroMapping.redepositsField,
+      "custom_conversion_7",
+      "redeposit",
       "redeposits",
     ]) ?? 0;
 
