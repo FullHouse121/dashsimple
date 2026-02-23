@@ -4084,6 +4084,12 @@ function FinancesDashboard({
 }
 
 function UtmBuilder() {
+  const subFieldAliases = React.useMemo(
+    () => ({
+      6: "adset_id",
+    }),
+    []
+  );
   const [utm, setUtm] = React.useState({
     domain: "",
     fbp: "",
@@ -4235,10 +4241,13 @@ function UtmBuilder() {
             </div>
             {utm.subs.map((value, index) => (
               <div className="field" key={`sub-${index}`}>
-                <label>{`sub${index + 1}`}</label>
+                <label>
+                  {`sub${index + 1}`}
+                  {subFieldAliases[index + 1] ? ` (${subFieldAliases[index + 1]})` : ""}
+                </label>
                 <input
                   type="text"
-                  placeholder={`sub${index + 1}`}
+                  placeholder={subFieldAliases[index + 1] || `sub${index + 1}`}
                   value={value}
                   onChange={updateSub(index)}
                 />
