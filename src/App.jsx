@@ -1179,6 +1179,34 @@ const matchesCountryFilter = (country, selectedCountry) => {
   if (isAllSelection(selectedCountry)) return true;
   return normalizeFilterValue(country) === normalizeFilterValue(selectedCountry);
 };
+const toggleSortConfig = (prev, key, defaultDir = "desc") =>
+  prev.key === key
+    ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+    : { key, dir: defaultDir };
+const compareSortValues = (aVal, bVal, dir = "desc", type = "number") => {
+  const direction = dir === "asc" ? 1 : -1;
+  const isNullish = (value) =>
+    value === null ||
+    value === undefined ||
+    (type !== "text" && type !== "date" && Number.isNaN(value));
+
+  const aNull = isNullish(aVal);
+  const bNull = isNullish(bVal);
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+
+  if (type === "text" || type === "date") {
+    return direction * String(aVal || "").localeCompare(String(bVal || ""));
+  }
+
+  if (aVal === bVal) return 0;
+  return direction * (aVal > bVal ? 1 : -1);
+};
+const getSortIndicator = (sortConfig, key) => {
+  if (sortConfig.key !== key) return "↕";
+  return sortConfig.dir === "asc" ? "▲" : "▼";
+};
 const formatShortDate = (value) => {
   if (!value) return "";
   const parts = value.split("-");
@@ -4550,20 +4578,62 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const volumeDomainMax = volumeMax > 0 ? Math.ceil(volumeMax * 1.15) : 10;
   const rateDomainMax = Math.min(100, Math.max(10, Math.ceil((rateMax || 0) / 5) * 5));
   const costDomainMax = costMax > 0 ? Math.ceil(costMax * 1.2) : 10;
-  const rankedEntries = React.useMemo(() => {
-    return [...filteredEntries].sort((a, b) => {
-      const ftdDiff = sum(b.ftds) - sum(a.ftds);
-      if (ftdDiff !== 0) return ftdDiff;
-      const regDiff = sum(b.registers) - sum(a.registers);
-      if (regDiff !== 0) return regDiff;
-      const clickDiff = sum(b.clicks) - sum(a.clicks);
-      if (clickDiff !== 0) return clickDiff;
-      const spendDiff = sum(b.spend) - sum(a.spend);
-      if (spendDiff !== 0) return spendDiff;
-      return String(b.date || "").localeCompare(String(a.date || ""));
-    });
-  }, [filteredEntries]);
-  const visibleEntries = showAllStatsRows ? rankedEntries : rankedEntries.slice(0, 10);
+  const [statsTableSort, setStatsTableSort] = React.useState({ key: "ftds", dir: "desc" });
+  const toggleStatsSort = (key) => {
+    setStatsTableSort((prev) => toggleSortConfig(prev, key, "desc"));
+  };
+  const getStatsSortValue = (row, key) => {
+    switch (key) {
+      case "date":
+        return String(row.date || "");
+      case "buyer":
+        return String(row.buyer || "");
+      case "country":
+        return String(row.country || "");
+      case "spend":
+        return sum(row.spend);
+      case "clicks":
+        return sum(row.clicks);
+      case "installs":
+        return sum(row.installs);
+      case "registers":
+        return sum(row.registers);
+      case "ftds":
+        return sum(row.ftds);
+      case "c2i":
+        return toPercent(sum(row.installs), sum(row.clicks));
+      case "c2r":
+        return toPercent(sum(row.registers), sum(row.clicks));
+      case "c2ftd":
+        return toPercent(sum(row.ftds), sum(row.clicks));
+      case "r2d":
+        return toPercent(sum(row.ftds), sum(row.registers));
+      case "cpc":
+        return toCost(sum(row.spend), sum(row.clicks));
+      case "cpi":
+        return toCost(sum(row.spend), sum(row.installs));
+      case "cpr":
+        return toCost(sum(row.spend), sum(row.registers));
+      case "cpp":
+        return toCost(sum(row.spend), sum(row.ftds));
+      default:
+        return null;
+    }
+  };
+  const statsSortType = (key) =>
+    key === "date" ? "date" : key === "buyer" || key === "country" ? "text" : "number";
+  const sortedEntries = React.useMemo(() => {
+    const rows = [...filteredEntries];
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getStatsSortValue(a, statsTableSort.key),
+        getStatsSortValue(b, statsTableSort.key),
+        statsTableSort.dir,
+        statsSortType(statsTableSort.key)
+      )
+    );
+  }, [filteredEntries, statsTableSort]);
+  const visibleEntries = showAllStatsRows ? sortedEntries : sortedEntries.slice(0, 10);
 
   return (
     <>
@@ -4627,22 +4697,40 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                 <table className="entries-table stats-table">
                   <thead>
                     <tr>
-                      <th>Date</th>
-                      <th>Buyer</th>
-                      <th>Country</th>
-                      <th>Spend</th>
-                      <th>Clicks</th>
-                      <th>Installs</th>
-                      <th>Registers</th>
-                      <th>FTDs</th>
-                      <th>C2I</th>
-                      <th>C2R</th>
-                      <th>C2FTD</th>
-                      <th>R2D</th>
-                      <th>CPC</th>
-                      <th>CPI</th>
-                      <th>CPR</th>
-                      <th>CPP</th>
+                      {[
+                        { key: "date", label: "Date" },
+                        { key: "buyer", label: "Buyer" },
+                        { key: "country", label: "Country" },
+                        { key: "spend", label: "Spend" },
+                        { key: "clicks", label: "Clicks" },
+                        { key: "installs", label: "Installs" },
+                        { key: "registers", label: "Registers" },
+                        { key: "ftds", label: "FTDs" },
+                        { key: "c2i", label: "C2I" },
+                        { key: "c2r", label: "C2R" },
+                        { key: "c2ftd", label: "C2FTD" },
+                        { key: "r2d", label: "R2D" },
+                        { key: "cpc", label: "CPC" },
+                        { key: "cpi", label: "CPI" },
+                        { key: "cpr", label: "CPR" },
+                        { key: "cpp", label: "CPP" },
+                      ].map((col) => {
+                        const isActive = statsTableSort.key === col.key;
+                        return (
+                          <th key={col.key}>
+                            <button
+                              type="button"
+                              className={`sortable-header ${isActive ? "active" : ""}`}
+                              onClick={() => toggleStatsSort(col.key)}
+                            >
+                              {col.label}
+                              <span className="sort-indicator">
+                                {getSortIndicator(statsTableSort, col.key)}
+                              </span>
+                            </button>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -4685,7 +4773,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                   </tbody>
                 </table>
               </div>
-              {rankedEntries.length > 10 ? (
+              {sortedEntries.length > 10 ? (
                 <div className="api-actions" style={{ marginTop: 10 }}>
                   <button
                     className="ghost"
@@ -5090,6 +5178,51 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     if (placementFilter === "All placements") return placementData;
     return placementData.filter((row) => row.placement === placementFilter);
   }, [placementData, placementFilter]);
+  const [placementTableSort, setPlacementTableSort] = React.useState({
+    key: "clicks",
+    dir: "desc",
+  });
+  const togglePlacementTableSort = (key) => {
+    setPlacementTableSort((prev) => toggleSortConfig(prev, key, "desc"));
+  };
+  const getPlacementSortValue = (row, key) => {
+    switch (key) {
+      case "placement":
+        return row.placement;
+      case "clicks":
+        return row.clicks;
+      case "registers":
+        return row.registers;
+      case "ftds":
+        return row.ftds;
+      case "redeposits":
+        return row.redeposits;
+      case "revenue":
+        return row.revenue;
+      case "clickToReg":
+        return row.clickToReg;
+      case "regToFtd":
+        return row.regToFtd;
+      case "ftdToRedeposit":
+        return row.ftdToRedeposit;
+      case "epc":
+        return row.epc;
+      default:
+        return null;
+    }
+  };
+  const placementSortType = (key) => (key === "placement" ? "text" : "number");
+  const sortedPlacementRows = React.useMemo(() => {
+    const rows = [...activePlacementData];
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getPlacementSortValue(a, placementTableSort.key),
+        getPlacementSortValue(b, placementTableSort.key),
+        placementTableSort.dir,
+        placementSortType(placementTableSort.key)
+      )
+    );
+  }, [activePlacementData, placementTableSort]);
 
   const totals = activePlacementData.reduce(
     (acc, row) => ({
@@ -5372,20 +5505,38 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
               <table className="entries-table">
                 <thead>
                   <tr>
-                    <th>{t("Placement")}</th>
-                    <th>{t("Clicks")}</th>
-                    <th>{t("Registers")}</th>
-                    <th>{t("FTDs")}</th>
-                    <th>{t("Redeposits")}</th>
-                    <th>{t("Revenue")}</th>
-                    <th>{t("Click2Reg")}</th>
-                    <th>{t("Reg2FTD")}</th>
-                    <th>{t("FTD2Redeposit")}</th>
-                    <th>{t("EPC")}</th>
+                    {[
+                      { key: "placement", label: t("Placement") },
+                      { key: "clicks", label: t("Clicks") },
+                      { key: "registers", label: t("Registers") },
+                      { key: "ftds", label: t("FTDs") },
+                      { key: "redeposits", label: t("Redeposits") },
+                      { key: "revenue", label: t("Revenue") },
+                      { key: "clickToReg", label: t("Click2Reg") },
+                      { key: "regToFtd", label: t("Reg2FTD") },
+                      { key: "ftdToRedeposit", label: t("FTD2Redeposit") },
+                      { key: "epc", label: t("EPC") },
+                    ].map((col) => {
+                      const isActive = placementTableSort.key === col.key;
+                      return (
+                        <th key={col.key}>
+                          <button
+                            type="button"
+                            className={`sortable-header ${isActive ? "active" : ""}`}
+                            onClick={() => togglePlacementTableSort(col.key)}
+                          >
+                            {col.label}
+                            <span className="sort-indicator">
+                              {getSortIndicator(placementTableSort, col.key)}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {activePlacementData.map((row) => (
+                  {sortedPlacementRows.map((row) => (
                     <tr key={row.placement}>
                       <td>{row.placement}</td>
                       <td>{row.clicks.toLocaleString()}</td>
@@ -5870,7 +6021,54 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     ...row,
     shortName: row.adName.length > 18 ? `${row.adName.slice(0, 18)}...` : row.adName,
   }));
-  const campaignTableRows = campaignAgg.slice(0, 30);
+  const [campaignTableSort, setCampaignTableSort] = React.useState({
+    key: "conversions",
+    dir: "desc",
+  });
+  const toggleCampaignTableSort = (key) => {
+    setCampaignTableSort((prev) => toggleSortConfig(prev, key, "desc"));
+  };
+  const getCampaignTableSortValue = (row, key) => {
+    switch (key) {
+      case "buyer":
+        return row.buyer;
+      case "domain":
+        return row.domain;
+      case "campaign":
+        return row.campaignName;
+      case "adset":
+        return row.adsetName;
+      case "ad":
+        return row.adName;
+      case "clicks":
+        return row.clicks;
+      case "conversions":
+        return row.conversions;
+      case "cpc":
+        return row.cpc;
+      case "cpa":
+        return row.cpa;
+      case "revenue":
+        return row.revenue;
+      default:
+        return null;
+    }
+  };
+  const campaignSortType = (key) =>
+    ["buyer", "domain", "campaign", "adset", "ad"].includes(key) ? "text" : "number";
+  const campaignTableRows = React.useMemo(() => {
+    const rows = [...campaignAgg];
+    return rows
+      .sort((a, b) =>
+        compareSortValues(
+          getCampaignTableSortValue(a, campaignTableSort.key),
+          getCampaignTableSortValue(b, campaignTableSort.key),
+          campaignTableSort.dir,
+          campaignSortType(campaignTableSort.key)
+        )
+      )
+      .slice(0, 30);
+  }, [campaignAgg, campaignTableSort]);
 
   return (
     <>
@@ -6116,16 +6314,34 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               <table className="entries-table">
                 <thead>
                   <tr>
-                    <th>{t("Media Buyer")}</th>
-                    <th>{t("Domain")}</th>
-                    <th>{t("Campaign")}</th>
-                    <th>{t("Adset")}</th>
-                    <th>{t("Ad")}</th>
-                    <th>{t("Clicks")}</th>
-                    <th>{t("Conversions")}</th>
-                    <th>CPC</th>
-                    <th>CPA</th>
-                    <th>{t("Revenue")}</th>
+                    {[
+                      { key: "buyer", label: t("Media Buyer") },
+                      { key: "domain", label: t("Domain") },
+                      { key: "campaign", label: t("Campaign") },
+                      { key: "adset", label: t("Adset") },
+                      { key: "ad", label: t("Ad") },
+                      { key: "clicks", label: t("Clicks") },
+                      { key: "conversions", label: t("Conversions") },
+                      { key: "cpc", label: "CPC" },
+                      { key: "cpa", label: "CPA" },
+                      { key: "revenue", label: t("Revenue") },
+                    ].map((col) => {
+                      const isActive = campaignTableSort.key === col.key;
+                      return (
+                        <th key={col.key}>
+                          <button
+                            type="button"
+                            className={`sortable-header ${isActive ? "active" : ""}`}
+                            onClick={() => toggleCampaignTableSort(col.key)}
+                          >
+                            {col.label}
+                            <span className="sort-indicator">
+                              {getSortIndicator(campaignTableSort, col.key)}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -6301,6 +6517,43 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       return idMatch || campaignMatch;
     });
   }, [userData, normalizedSearch]);
+  const [userTableSort, setUserTableSort] = React.useState({ key: "revenue", dir: "desc" });
+  const toggleUserTableSort = (key) => {
+    setUserTableSort((prev) => toggleSortConfig(prev, key, "desc"));
+  };
+  const getUserSortValue = (row, key) => {
+    switch (key) {
+      case "externalId":
+        return row.externalId;
+      case "campaign":
+        return row.campaign;
+      case "clicks":
+        return row.clicks;
+      case "registers":
+        return row.registers;
+      case "ftds":
+        return row.ftds;
+      case "redeposits":
+        return row.redeposits;
+      case "revenue":
+        return row.revenue;
+      default:
+        return null;
+    }
+  };
+  const userSortType = (key) =>
+    key === "externalId" || key === "campaign" ? "text" : "number";
+  const sortedUserTableRows = React.useMemo(() => {
+    const rows = [...filteredUsers];
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getUserSortValue(a, userTableSort.key),
+        getUserSortValue(b, userTableSort.key),
+        userTableSort.dir,
+        userSortType(userTableSort.key)
+      )
+    );
+  }, [filteredUsers, userTableSort]);
 
   const behaviorFilterOptions = [
     "Tracked Users",
@@ -6516,17 +6769,35 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
               <table className="entries-table">
                 <thead>
                   <tr>
-                    <th>{t("External ID")}</th>
-                    <th>{t("Campaign")}</th>
-                    <th>{t("Clicks")}</th>
-                    <th>{t("Registers")}</th>
-                    <th>{t("FTDs")}</th>
-                    <th>{t("Redeposits")}</th>
-                    <th>{t("Revenue")}</th>
+                    {[
+                      { key: "externalId", label: t("External ID") },
+                      { key: "campaign", label: t("Campaign") },
+                      { key: "clicks", label: t("Clicks") },
+                      { key: "registers", label: t("Registers") },
+                      { key: "ftds", label: t("FTDs") },
+                      { key: "redeposits", label: t("Redeposits") },
+                      { key: "revenue", label: t("Revenue") },
+                    ].map((col) => {
+                      const isActive = userTableSort.key === col.key;
+                      return (
+                        <th key={col.key}>
+                          <button
+                            type="button"
+                            className={`sortable-header ${isActive ? "active" : ""}`}
+                            onClick={() => toggleUserTableSort(col.key)}
+                          >
+                            {col.label}
+                            <span className="sort-indicator">
+                              {getSortIndicator(userTableSort, col.key)}
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((row) => (
+                  {sortedUserTableRows.map((row) => (
                     <tr key={row.externalId}>
                       <td>{row.externalId}</td>
                       <td>{row.campaign || "—"}</td>
