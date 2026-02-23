@@ -4135,7 +4135,8 @@ function UtmBuilder() {
     }
     utm.subs.forEach((value, index) => {
       if (value) {
-        params.push(`sub${index + 1}=${encodeParamValue(value)}`);
+        const paramKey = subFieldAliases[index + 1] || `sub${index + 1}`;
+        params.push(`${encodeURIComponent(paramKey)}=${encodeParamValue(value)}`);
       }
     });
     return params.join("&");
@@ -4241,10 +4242,7 @@ function UtmBuilder() {
             </div>
             {utm.subs.map((value, index) => (
               <div className="field" key={`sub-${index}`}>
-                <label>
-                  {`sub${index + 1}`}
-                  {subFieldAliases[index + 1] ? ` (${subFieldAliases[index + 1]})` : ""}
-                </label>
+                <label>{subFieldAliases[index + 1] || `sub${index + 1}`}</label>
                 <input
                   type="text"
                   placeholder={subFieldAliases[index + 1] || `sub${index + 1}`}
