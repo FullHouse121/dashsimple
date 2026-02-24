@@ -2456,6 +2456,12 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
   const regionFilter = filters?.city || "All";
+  const cityFilter = filters?.geoCity || "All";
+  const domainFilter = filters?.geoDomain || "All";
+  const placementFilter = filters?.geoPlacement || "All";
+  const deviceFilter = filters?.geoDevice || "All";
+  const minClicksFilter = Number(filters?.geoMinClicks || 0);
+  const minFtdsFilter = Number(filters?.geoMinFtds || 0);
   const dateFrom = filters?.dateFrom;
   const dateTo = filters?.dateTo;
   const normalizeBuyerKey = (value) =>
@@ -2506,6 +2512,10 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const filteredRows = React.useMemo(() => {
     const normalizedCountry = normalizeFilterValue(countryFilter);
     const normalizedRegion = normalizeFilterValue(regionFilter);
+    const normalizedCity = normalizeFilterValue(cityFilter);
+    const normalizedDomain = normalizeFilterValue(domainFilter);
+    const normalizedPlacement = normalizeFilterValue(placementFilter);
+    const normalizedDevice = normalizeFilterValue(deviceFilter);
     const dateRange = normalizeDateRange(dateFrom, dateTo);
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
@@ -2513,6 +2523,24 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
       if (!isAllSelection(countryFilter) && rowCountry !== normalizedCountry) return false;
       const rowRegion = normalizeFilterValue(row.region || row.city);
       if (!isAllSelection(regionFilter) && !rowRegion.includes(normalizedRegion)) return false;
+      const rowCity = normalizeFilterValue(row.city);
+      if (!isAllSelection(cityFilter) && !rowCity.includes(normalizedCity)) return false;
+      const rowDomain = normalizeFilterValue(
+        row.domain || row.source || row.site || row.flow || row.flows
+      );
+      if (!isAllSelection(domainFilter) && !rowDomain.includes(normalizedDomain)) return false;
+      const rowPlacement = normalizeFilterValue(row.placement || row.sub_id_1 || row.sub1);
+      if (!isAllSelection(placementFilter) && !rowPlacement.includes(normalizedPlacement)) return false;
+      const rowDevice = normalizeFilterValue(
+        row.device || row.device_type || row.os || row.os_icon || row.os_version
+      );
+      if (!isAllSelection(deviceFilter) && !rowDevice.includes(normalizedDevice)) return false;
+      if (Number.isFinite(minClicksFilter) && minClicksFilter > 0 && sum(row.clicks) < minClicksFilter) {
+        return false;
+      }
+      if (Number.isFinite(minFtdsFilter) && minFtdsFilter > 0 && sum(row.ftds) < minFtdsFilter) {
+        return false;
+      }
       if (!isDateInRange(row.date, dateRange)) return false;
       return true;
     });
@@ -2521,6 +2549,12 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
     buyerFilter,
     countryFilter,
     regionFilter,
+    cityFilter,
+    domainFilter,
+    placementFilter,
+    deviceFilter,
+    minClicksFilter,
+    minFtdsFilter,
     dateFrom,
     dateTo,
     isLeadership,
@@ -4351,6 +4385,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalUserDomainFilter = filters?.userDomain || "All";
+  const globalUserCampaignFilter = filters?.userCampaign || "All";
+  const globalUserExternalIdFilter = filters?.userExternalId || "";
+  const globalUserMinRevenue = Number(filters?.userMinRevenue || 0);
+  const globalUserMinFtds = Number(filters?.userMinFtds || 0);
+  const globalUserMinRedeposits = Number(filters?.userMinRedeposits || 0);
+  const globalUserRevenueOnly = Boolean(filters?.userRevenueOnly);
   const globalDateRange = React.useMemo(
     () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
     [filters?.dateFrom, filters?.dateTo]
@@ -5088,6 +5129,12 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalPlacementFilter = filters?.placementName || "All";
+  const globalPlacementDomainFilter = filters?.placementDomain || "All";
+  const placementMinClicksFilter = Number(filters?.placementMinClicks || 0);
+  const placementMinRegistersFilter = Number(filters?.placementMinRegisters || 0);
+  const placementMinFtdsFilter = Number(filters?.placementMinFtds || 0);
+  const placementRevenueOnlyFilter = Boolean(filters?.placementRevenueOnly);
   const sum = (value) => Number(value || 0);
   const normalizePlacementLabel = React.useCallback((value) => {
     const rawPlacement = String(value || "").trim();
@@ -5105,6 +5152,44 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         return false;
       }
       if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+      const placementLabel = normalizePlacementLabel(row.placement);
+      if (
+        !isAllSelection(globalPlacementFilter) &&
+        !normalizeFilterValue(placementLabel).includes(normalizeFilterValue(globalPlacementFilter))
+      ) {
+        return false;
+      }
+      const domainLabel = String(row.domain || row.source || row.site || row.flow || row.flows || "");
+      if (
+        !isAllSelection(globalPlacementDomainFilter) &&
+        !normalizeFilterValue(domainLabel).includes(normalizeFilterValue(globalPlacementDomainFilter))
+      ) {
+        return false;
+      }
+      if (
+        Number.isFinite(placementMinClicksFilter) &&
+        placementMinClicksFilter > 0 &&
+        sum(row.clicks) < placementMinClicksFilter
+      ) {
+        return false;
+      }
+      if (
+        Number.isFinite(placementMinRegistersFilter) &&
+        placementMinRegistersFilter > 0 &&
+        sum(row.registers) < placementMinRegistersFilter
+      ) {
+        return false;
+      }
+      if (
+        Number.isFinite(placementMinFtdsFilter) &&
+        placementMinFtdsFilter > 0 &&
+        sum(row.ftds) < placementMinFtdsFilter
+      ) {
+        return false;
+      }
+      if (placementRevenueOnlyFilter && sum(row.revenue) <= 0) {
+        return false;
+      }
       return true;
     });
   }, [
@@ -5113,8 +5198,15 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     effectiveDateRange.to,
     globalBuyerFilter,
     globalCountryFilter,
+    globalPlacementFilter,
+    globalPlacementDomainFilter,
+    placementMinClicksFilter,
+    placementMinRegistersFilter,
+    placementMinFtdsFilter,
+    placementRevenueOnlyFilter,
     effectiveBuyer,
     isLeadership,
+    normalizePlacementLabel,
   ]);
 
   const placementOptions = React.useMemo(() => {
@@ -6431,6 +6523,20 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           return false;
         }
         if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        const rowDomain = normalizeFilterValue(row.domain || row.source || row.site || row.flow || row.flows);
+        if (
+          !isAllSelection(globalUserDomainFilter) &&
+          !rowDomain.includes(normalizeFilterValue(globalUserDomainFilter))
+        ) {
+          return false;
+        }
+        const rowCampaign = normalizeFilterValue(row.campaign || row.buyer);
+        if (
+          !isAllSelection(globalUserCampaignFilter) &&
+          !rowCampaign.includes(normalizeFilterValue(globalUserCampaignFilter))
+        ) {
+          return false;
+        }
         return true;
       }),
     [
@@ -6439,6 +6545,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       effectiveDateRange.to,
       globalBuyerFilter,
       globalCountryFilter,
+      globalUserDomainFilter,
+      globalUserCampaignFilter,
       effectiveBuyer,
       isLeadership,
     ]
@@ -6510,13 +6618,43 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   }, [behaviorRows]);
 
   const filteredUsers = React.useMemo(() => {
-    if (!normalizedSearch) return userData;
+    const normalizedExternalFilter = normalizeFilterValue(globalUserExternalIdFilter);
     return userData.filter((row) => {
-      const idMatch = row.externalId.toLowerCase().includes(normalizedSearch);
-      const campaignMatch = String(row.campaign || "").toLowerCase().includes(normalizedSearch);
-      return idMatch || campaignMatch;
+      if (normalizedSearch) {
+        const idMatch = row.externalId.toLowerCase().includes(normalizedSearch);
+        const campaignMatch = String(row.campaign || "").toLowerCase().includes(normalizedSearch);
+        if (!idMatch && !campaignMatch) return false;
+      }
+      if (normalizedExternalFilter && !row.externalId.toLowerCase().includes(normalizedExternalFilter)) {
+        return false;
+      }
+      if (Number.isFinite(globalUserMinRevenue) && globalUserMinRevenue > 0 && row.revenue < globalUserMinRevenue) {
+        return false;
+      }
+      if (Number.isFinite(globalUserMinFtds) && globalUserMinFtds > 0 && row.ftds < globalUserMinFtds) {
+        return false;
+      }
+      if (
+        Number.isFinite(globalUserMinRedeposits) &&
+        globalUserMinRedeposits > 0 &&
+        row.redeposits < globalUserMinRedeposits
+      ) {
+        return false;
+      }
+      if (globalUserRevenueOnly && row.revenue <= 0) {
+        return false;
+      }
+      return true;
     });
-  }, [userData, normalizedSearch]);
+  }, [
+    userData,
+    normalizedSearch,
+    globalUserExternalIdFilter,
+    globalUserMinRevenue,
+    globalUserMinFtds,
+    globalUserMinRedeposits,
+    globalUserRevenueOnly,
+  ]);
   const [userTableSort, setUserTableSort] = React.useState({ key: "revenue", dir: "desc" });
   const toggleUserTableSort = (key) => {
     setUserTableSort((prev) => toggleSortConfig(prev, key, "desc"));
@@ -10990,6 +11128,25 @@ export default function App() {
       dateTo: range.to,
       country: "All",
       city: "All",
+      geoCity: "All",
+      geoDomain: "All",
+      geoPlacement: "All",
+      geoDevice: "All",
+      geoMinClicks: "",
+      geoMinFtds: "",
+      placementName: "All",
+      placementDomain: "All",
+      placementMinClicks: "",
+      placementMinRegisters: "",
+      placementMinFtds: "",
+      placementRevenueOnly: false,
+      userDomain: "All",
+      userCampaign: "All",
+      userExternalId: "",
+      userMinRevenue: "",
+      userMinFtds: "",
+      userMinRedeposits: "",
+      userRevenueOnly: false,
       approach: "All",
       buyer: "All",
       category: "All",
@@ -11314,7 +11471,7 @@ export default function App() {
   }, [profileMenuOpen]);
 
   const updateFilter = (key) => (event) => {
-    const value = event.target.value;
+    const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
     setFilters((prev) => {
       if (key === "dateFrom" || key === "dateTo") {
         const next = { ...prev, [key]: value };
@@ -11747,16 +11904,221 @@ export default function App() {
 
                 {usesPerformanceFilters ? (
                   <>
-                    {isGeos ? (
+                    {(isHome || isGeos || isPlacements || isUserBehavior) && isLeadership ? (
                       <div className="field">
-                        <label>Region / State</label>
-                        <input
-                          type="text"
-                          placeholder="All"
-                          value={filters.city}
-                          onChange={updateFilter("city")}
-                        />
+                        <label>Buyer</label>
+                        <select value={filters.buyer} onChange={updateFilter("buyer")}>
+                          <option>All</option>
+                          {buyerOptions
+                            .filter((buyer) => !isAllSelection(buyer))
+                            .map((buyer) => (
+                              <option key={buyer}>{buyer}</option>
+                            ))}
+                        </select>
                       </div>
+                    ) : null}
+                    {isGeos ? (
+                      <>
+                        <div className="field">
+                          <label>Region / State</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.city}
+                            onChange={updateFilter("city")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>City</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.geoCity}
+                            onChange={updateFilter("geoCity")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Domain / Source</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.geoDomain}
+                            onChange={updateFilter("geoDomain")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Placement</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.geoPlacement}
+                            onChange={updateFilter("geoPlacement")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Device</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.geoDevice}
+                            onChange={updateFilter("geoDevice")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min Clicks</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.geoMinClicks}
+                            onChange={updateFilter("geoMinClicks")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min FTDs</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.geoMinFtds}
+                            onChange={updateFilter("geoMinFtds")}
+                          />
+                        </div>
+                      </>
+                    ) : null}
+                    {isPlacements ? (
+                      <>
+                        <div className="field">
+                          <label>Placement</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.placementName}
+                            onChange={updateFilter("placementName")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Domain / Source</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.placementDomain}
+                            onChange={updateFilter("placementDomain")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min Clicks</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.placementMinClicks}
+                            onChange={updateFilter("placementMinClicks")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min Registers</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.placementMinRegisters}
+                            onChange={updateFilter("placementMinRegisters")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min FTDs</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.placementMinFtds}
+                            onChange={updateFilter("placementMinFtds")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="login-remember">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(filters.placementRevenueOnly)}
+                              onChange={updateFilter("placementRevenueOnly")}
+                            />
+                            Only revenue {'>'} 0
+                          </label>
+                        </div>
+                      </>
+                    ) : null}
+                    {isUserBehavior ? (
+                      <>
+                        <div className="field">
+                          <label>Domain / Source</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.userDomain}
+                            onChange={updateFilter("userDomain")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Campaign</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.userCampaign}
+                            onChange={updateFilter("userCampaign")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>External ID</label>
+                          <input
+                            type="text"
+                            placeholder="All"
+                            value={filters.userExternalId}
+                            onChange={updateFilter("userExternalId")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min Revenue</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={filters.userMinRevenue}
+                            onChange={updateFilter("userMinRevenue")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min FTDs</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.userMinFtds}
+                            onChange={updateFilter("userMinFtds")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Min Redeposits</label>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={filters.userMinRedeposits}
+                            onChange={updateFilter("userMinRedeposits")}
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="login-remember">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(filters.userRevenueOnly)}
+                              onChange={updateFilter("userRevenueOnly")}
+                            />
+                            Only users with revenue {'>'} 0
+                          </label>
+                        </div>
+                      </>
                     ) : null}
                   </>
                 ) : (
@@ -11805,6 +12167,25 @@ export default function App() {
                       dateTo: defaultRange.to,
                       country: "All",
                       city: "All",
+                      geoCity: "All",
+                      geoDomain: "All",
+                      geoPlacement: "All",
+                      geoDevice: "All",
+                      geoMinClicks: "",
+                      geoMinFtds: "",
+                      placementName: "All",
+                      placementDomain: "All",
+                      placementMinClicks: "",
+                      placementMinRegisters: "",
+                      placementMinFtds: "",
+                      placementRevenueOnly: false,
+                      userDomain: "All",
+                      userCampaign: "All",
+                      userExternalId: "",
+                      userMinRevenue: "",
+                      userMinFtds: "",
+                      userMinRedeposits: "",
+                      userRevenueOnly: false,
                       approach: "All",
                       buyer: isLeadership ? "All" : effectiveViewerBuyer,
                       category: "All",
