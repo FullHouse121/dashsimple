@@ -1739,6 +1739,7 @@ function HomeDashboard({
           label: bucket.label,
           sortKey: bucket.sortKey,
           clicks: 0,
+          installs: 0,
           registrations: 0,
           ftds: 0,
           redeposits: 0,
@@ -4967,6 +4968,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       }
       const current = map.get(bucket.key);
       current.clicks += sum(row.clicks);
+      current.installs += sum(row.installs);
       current.registrations += sum(row.registers);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
@@ -4978,6 +4980,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       .sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)))
       .map((item) => ({
         ...item,
+        c2i: toPercent(item.installs, item.clicks),
+        c2reg: toPercent(item.registrations, item.clicks),
+        c2dep: toPercent(item.ftds, item.clicks),
+        epc: safeDivide(item.revenue, item.clicks),
+        i2reg: toPercent(item.registrations, item.installs),
+        i2dep: toPercent(item.ftds, item.installs),
+        reg2dep: toPercent(item.ftds, item.registrations),
+        dep2red: toPercent(item.redeposits, item.ftds),
         roi: item.spend > 0 ? ((item.revenue - item.spend) / item.spend) * 100 : null,
       }));
   }, [filteredRawEntries, getStatsBucket]);
@@ -4990,6 +5000,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       { key: "redeposits", label: "Redeposits", color: "var(--teal)", type: "count" },
       { key: "roi", label: "ROI", color: "var(--orange)", type: "percent" },
       { key: "revenue", label: "Revenue", color: "#f7d06b", type: "currency" },
+      { key: "c2i", label: "Click2Install", color: "#58b1ff", type: "percent" },
+      { key: "c2reg", label: "Click2Reg", color: "#8e5bff", type: "percent" },
+      { key: "c2dep", label: "Click2Dep", color: "#3ddc97", type: "percent" },
+      { key: "epc", label: "EPC", color: "#ffd86b", type: "currency" },
+      { key: "i2reg", label: "Install2Reg", color: "#24c5d4", type: "percent" },
+      { key: "i2dep", label: "Install2Dep", color: "#00d18c", type: "percent" },
+      { key: "reg2dep", label: "Reg2Dep", color: "#ff9d57", type: "percent" },
+      { key: "dep2red", label: "Dep2Red", color: "#ff6f91", type: "percent" },
     ],
     []
   );
