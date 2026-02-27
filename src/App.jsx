@@ -1488,6 +1488,7 @@ function HomeDashboard({
   const [geoMetric, setGeoMetric] = React.useState("combined");
   const [homeRows, setHomeRows] = React.useState([]);
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
+  const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
 
   const loadHomeStats = React.useCallback(async () => {
     try {
@@ -1674,24 +1675,102 @@ function HomeDashboard({
     },
   ];
 
-  const ftdVolumeData = React.useMemo(() => {
+  const isSingleDayRange = Boolean(
+    effectiveRange.from && effectiveRange.to && String(effectiveRange.from) === String(effectiveRange.to)
+  );
+
+  const getDateBucket = React.useCallback(
+    (row) => {
+      const dateValue = String(row?.date || "");
+      const createdAtValue = String(row?.created_at || row?.createdAt || "");
+      if (!isSingleDayRange) {
+        const base = dateValue.split(" ")[0];
+        return { key: base, label: formatShortDate(base), sortKey: base };
+      }
+      const parseTimestamp = (value) => {
+        if (!value) return null;
+        const normalized = value.includes("T") ? value : value.replace(" ", "T");
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      };
+      const stamp = parseTimestamp(dateValue) || parseTimestamp(createdAtValue);
+      if (!stamp) return { key: "00:00", label: "00:00", sortKey: "00:00" };
+      const hour = String(stamp.getHours()).padStart(2, "0");
+      return { key: `${hour}:00`, label: `${hour}:00`, sortKey: `${hour}:00` };
+    },
+    [isSingleDayRange]
+  );
+
+  const overviewData = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
-      const key = row.date;
-      if (!key) return;
-      if (!map.has(key)) map.set(key, { date: key, day: formatShortDate(key), ftds: 0 });
-      map.get(key).ftds += sum(row.ftds);
+      const bucket = getDateBucket(row);
+      if (!bucket?.key) return;
+      if (!map.has(bucket.key)) {
+        map.set(bucket.key, {
+          bucket: bucket.key,
+          label: bucket.label,
+          sortKey: bucket.sortKey,
+          clicks: 0,
+          registrations: 0,
+          ftds: 0,
+          redeposits: 0,
+          spend: 0,
+          revenue: 0,
+          roi: null,
+        });
+      }
+      const current = map.get(bucket.key);
+      current.clicks += sum(row.clicks);
+      current.registrations += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.spend += sum(row.spend);
+      current.revenue += readTotalRevenue(row);
     });
-    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [filteredRows]);
 
-  const ftdVolumePeak = React.useMemo(
-    () => ftdVolumeData.reduce((max, item) => Math.max(max, item.ftds || 0), 0),
-    [ftdVolumeData]
+    return Array.from(map.values())
+      .sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)))
+      .map((item) => ({
+        ...item,
+        roi: item.spend > 0 ? ((item.revenue - item.spend) / item.spend) * 100 : null,
+      }));
+  }, [filteredRows, getDateBucket]);
+
+  const overviewMetricOptions = React.useMemo(
+    () => [
+      { key: "clicks", label: "Clicks", color: "var(--blue)", type: "count" },
+      { key: "registrations", label: "Registration", color: "var(--purple)", type: "count" },
+      { key: "ftds", label: "FTDs", color: "var(--green)", type: "count" },
+      { key: "redeposits", label: "Redeposits", color: "var(--teal)", type: "count" },
+      { key: "roi", label: "ROI", color: "var(--orange)", type: "percent" },
+      { key: "revenue", label: "Revenue", color: "#f7d06b", type: "currency" },
+    ],
+    []
   );
-  const ftdVolumeAvg =
-    ftdVolumeData.length > 0
-      ? ftdVolumeData.reduce((acc, item) => acc + (item.ftds || 0), 0) / ftdVolumeData.length
+
+  const activeOverviewMetrics = overviewMetricOptions.filter((metric) =>
+    overviewFilters.includes(metric.key)
+  );
+  const formatOverviewMetricValue = (value, type) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return "—";
+    if (type === "currency") return formatCurrency(value);
+    if (type === "percent") return fmtPercent(value);
+    return fmtCount(value);
+  };
+  const toggleOverviewMetric = (key) => {
+    setOverviewFilters((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
+
+  const overviewPeak = React.useMemo(
+    () => overviewData.reduce((max, item) => Math.max(max, item.ftds || 0), 0),
+    [overviewData]
+  );
+  const overviewAvg =
+    overviewData.length > 0
+      ? overviewData.reduce((acc, item) => acc + (item.ftds || 0), 0) / overviewData.length
       : 0;
 
   const chartData = React.useMemo(() => {
@@ -1989,72 +2068,137 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("FTD Volume")}</h3>
-              <p className="panel-subtitle">{t("Daily FTD volume by date")}</p>
+              <h3 className="panel-title">{t("Overview")}</h3>
+              <p className="panel-subtitle">
+                {isSingleDayRange ? t("Performance by hour") : t("Performance by date")}
+              </p>
             </div>
             <div className="summary-inline">
-              <span>{`${t("Peak")}: ${fmtCount(ftdVolumePeak)}`}</span>
-              <span>{`${t("Avg/day")}: ${fmtCount(ftdVolumeAvg)}`}</span>
+              <span>{`${t("Peak")}: ${fmtCount(overviewPeak)}`}</span>
+              <span>{`${isSingleDayRange ? t("Avg/hour") : t("Avg/day")}: ${fmtCount(overviewAvg)}`}</span>
             </div>
           </div>
           <div className="chart">
             <div className="chart-surface">
-              {ftdVolumeData.length ? (
+              {overviewData.length ? (
+                activeOverviewMetrics.length ? (
                 <ResponsiveContainer width="100%" height={240}>
-                  <AreaChart data={ftdVolumeData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <AreaChart data={overviewData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="ftd-volume-gradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--teal)" stopOpacity={0.38} />
-                        <stop offset="100%" stopColor="var(--teal)" stopOpacity={0.03} />
-                      </linearGradient>
+                      {activeOverviewMetrics.map((metric) => (
+                        <linearGradient
+                          key={metric.key}
+                          id={`overview-gradient-${metric.key}`}
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="0%" stopColor={metric.color} stopOpacity={0.34} />
+                          <stop offset="100%" stopColor={metric.color} stopOpacity={0.02} />
+                        </linearGradient>
+                      ))}
                     </defs>
                     <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                     <XAxis
-                      dataKey="day"
+                      dataKey="label"
                       stroke="#7f848f"
                       tickLine={false}
                       axisLine={false}
                       tick={{ fill: "#8b909a", fontSize: 11 }}
                     />
                     <YAxis
+                      yAxisId="left"
                       stroke="#7f848f"
                       tickLine={false}
                       axisLine={false}
-                      allowDecimals={false}
                       tick={{ fill: "#8b909a", fontSize: 11 }}
                       width={40}
+                      tickFormatter={formatVolumeAxis}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#7f848f"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "#8b909a", fontSize: 11 }}
+                      width={44}
+                      tickFormatter={(value) => `${Math.round(value)}%`}
                     />
                     <Tooltip
-                      cursor={{ stroke: "rgba(69, 226, 205, 0.45)", strokeWidth: 1 }}
+                      cursor={{ stroke: "rgba(69, 226, 205, 0.28)", strokeWidth: 1 }}
                       content={({ active, payload, label }) => {
                         if (!active || !payload?.length) return null;
                         return (
                           <div className="chart-tooltip ftd-volume-tooltip" style={tooltipStyle}>
                             <p className="tooltip-label">{label}</p>
-                            <div className="tooltip-row">
-                              <span className="tooltip-dot" style={{ background: "var(--teal)" }} />
-                              <span>{t("FTD volume")}</span>
-                              <span className="tooltip-value">{fmtCount(payload[0]?.value)}</span>
-                            </div>
+                            {payload.map((item) => {
+                              const metric = overviewMetricOptions.find((entry) => entry.key === item.dataKey);
+                              if (!metric) return null;
+                              return (
+                                <div className="tooltip-row" key={item.dataKey}>
+                                  <span className="tooltip-dot" style={{ background: metric.color }} />
+                                  <span>{t(metric.label)}</span>
+                                  <span className="tooltip-value">
+                                    {formatOverviewMetricValue(item.value, metric.type)}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         );
                       }}
                     />
-                    <Area
-                      type="natural"
-                      dataKey="ftds"
-                      name={t("FTD volume")}
-                      stroke="var(--teal)"
-                      strokeWidth={2.2}
-                      fill="url(#ftd-volume-gradient)"
-                      dot={{ r: 2.4, fill: "var(--teal)", stroke: "#0f1216", strokeWidth: 1.4 }}
-                      activeDot={{ r: 4, fill: "#0f1216", stroke: "var(--teal)", strokeWidth: 2 }}
-                    />
+                    {activeOverviewMetrics.map((metric) => (
+                      <Area
+                        key={metric.key}
+                        type="natural"
+                        dataKey={metric.key}
+                        name={t(metric.label)}
+                        yAxisId={metric.type === "percent" ? "right" : "left"}
+                        stroke={metric.color}
+                        strokeWidth={2.1}
+                        fill={`url(#overview-gradient-${metric.key})`}
+                        dot={{ r: 2.4, fill: metric.color, stroke: "#0f1216", strokeWidth: 1.2 }}
+                        activeDot={{ r: 4, fill: "#0f1216", stroke: metric.color, strokeWidth: 1.8 }}
+                        isAnimationActive
+                        animationDuration={700}
+                      />
+                    ))}
                   </AreaChart>
                 </ResponsiveContainer>
+                ) : (
+                  <div className="empty-state">{t("Select at least one metric filter.")}</div>
+                )
               ) : (
-                <div className="empty-state">{t("No FTD volume data available.")}</div>
+                <div className="empty-state">{t("No overview data available.")}</div>
               )}
+            </div>
+            <div className="overview-filters">
+              {overviewMetricOptions.map((metric) => {
+                const active = overviewFilters.includes(metric.key);
+                return (
+                  <button
+                    type="button"
+                    key={metric.key}
+                    className={`overview-filter${active ? " is-active" : ""}`}
+                    onClick={() => toggleOverviewMetric(metric.key)}
+                    style={
+                      active
+                        ? {
+                            borderColor: metric.color,
+                            color: metric.color,
+                            boxShadow: `inset 0 0 0 1px ${metric.color}33`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <span className="overview-filter-dot" style={{ background: metric.color }} />
+                    {t(metric.label)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </motion.div>

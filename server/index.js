@@ -457,7 +457,7 @@ const insertMediaStat = async (payload) => {
 const selectMediaStats = async (limit) =>
   getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
-            spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits
+            spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
      FROM media_stats
      ORDER BY date DESC, id DESC
      LIMIT $1`,
