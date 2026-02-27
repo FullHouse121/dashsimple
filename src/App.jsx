@@ -4713,6 +4713,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const [statsState, setStatsState] = React.useState({ loading: true, error: null });
   const [buyerFilter, setBuyerFilter] = React.useState(isLeadership ? "All" : effectiveBuyer);
   const [showAllStatsRows, setShowAllStatsRows] = React.useState(false);
+  const [statsOverviewFilters, setStatsOverviewFilters] = React.useState(["ftds"]);
 
   const updateStatsForm = (key) => (event) => {
     setStatsForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -4889,6 +4890,132 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
   );
 
+  const isStatsSingleDayRange = Boolean(
+    globalDateRange.from &&
+      globalDateRange.to &&
+      String(globalDateRange.from) === String(globalDateRange.to)
+  );
+  const getStatsBucket = React.useCallback(
+    (row) => {
+      const dateValue = String(row?.date || "");
+      const createdAtValue = String(row?.created_at || row?.createdAt || "");
+      if (!isStatsSingleDayRange) {
+        const base = dateValue.split(" ")[0];
+        return { key: base, label: formatShortDate(base), sortKey: base };
+      }
+      const parseTimestamp = (value) => {
+        if (!value) return null;
+        const normalized = value.includes("T") ? value : value.replace(" ", "T");
+        const parsed = new Date(normalized);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      };
+      const stamp = parseTimestamp(createdAtValue) || parseTimestamp(dateValue);
+      if (!stamp) return { key: "00:00", label: "00:00", sortKey: "00:00" };
+      const hour = String(stamp.getHours()).padStart(2, "0");
+      return { key: `${hour}:00`, label: `${hour}:00`, sortKey: `${hour}:00` };
+    },
+    [isStatsSingleDayRange]
+  );
+
+  const filteredRawEntries = React.useMemo(
+    () =>
+      statsEntries.filter((row) => {
+        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
+          return false;
+        }
+        if (
+          isLeadership &&
+          !isAllSelection(buyerFilter) &&
+          !String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
+        ) {
+          return false;
+        }
+        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        if (!isDateInRange(row.date, globalDateRange)) return false;
+        return true;
+      }),
+    [
+      statsEntries,
+      globalBuyerFilter,
+      effectiveBuyer,
+      isLeadership,
+      buyerFilter,
+      globalCountryFilter,
+      globalDateRange.from,
+      globalDateRange.to,
+    ]
+  );
+
+  const statsOverviewData = React.useMemo(() => {
+    const map = new Map();
+    filteredRawEntries.forEach((row) => {
+      const bucket = getStatsBucket(row);
+      if (!bucket?.key) return;
+      if (!map.has(bucket.key)) {
+        map.set(bucket.key, {
+          bucket: bucket.key,
+          label: bucket.label,
+          sortKey: bucket.sortKey,
+          clicks: 0,
+          registrations: 0,
+          ftds: 0,
+          redeposits: 0,
+          spend: 0,
+          revenue: 0,
+          roi: null,
+        });
+      }
+      const current = map.get(bucket.key);
+      current.clicks += sum(row.clicks);
+      current.registrations += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.spend += sum(row.spend);
+      current.revenue += readRevenue(row);
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)))
+      .map((item) => ({
+        ...item,
+        roi: item.spend > 0 ? ((item.revenue - item.spend) / item.spend) * 100 : null,
+      }));
+  }, [filteredRawEntries, getStatsBucket]);
+
+  const statsOverviewOptions = React.useMemo(
+    () => [
+      { key: "clicks", label: "Clicks", color: "var(--blue)", type: "count" },
+      { key: "registrations", label: "Registration", color: "var(--purple)", type: "count" },
+      { key: "ftds", label: "FTDs", color: "var(--green)", type: "count" },
+      { key: "redeposits", label: "Redeposits", color: "var(--teal)", type: "count" },
+      { key: "roi", label: "ROI", color: "var(--orange)", type: "percent" },
+      { key: "revenue", label: "Revenue", color: "#f7d06b", type: "currency" },
+    ],
+    []
+  );
+  const activeStatsOverviewMetrics = statsOverviewOptions.filter((metric) =>
+    statsOverviewFilters.includes(metric.key)
+  );
+  const toggleStatsOverviewMetric = (key) => {
+    setStatsOverviewFilters((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]
+    );
+  };
+  const formatStatsOverviewValue = (value, type) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return "—";
+    if (type === "currency") return formatCurrency(value);
+    if (type === "percent") return fmtPercent(value);
+    return Number(value).toLocaleString();
+  };
+  const statsOverviewPeak = React.useMemo(
+    () => statsOverviewData.reduce((max, item) => Math.max(max, item.ftds || 0), 0),
+    [statsOverviewData]
+  );
+  const statsOverviewAvg =
+    statsOverviewData.length > 0
+      ? statsOverviewData.reduce((acc, item) => acc + (item.ftds || 0), 0) / statsOverviewData.length
+      : 0;
+
   const statsKpis = [
     { label: "Click2Install", value: fmtPercent(toPercent(totals.installs, totals.clicks)), meta: "Rate" },
     { label: "Click2Reg", value: fmtPercent(toPercent(totals.registers, totals.clicks)), meta: "Rate" },
@@ -5044,6 +5171,153 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
             <div className="card-meta">{stat.meta}</div>
           </motion.div>
         ))}
+      </section>
+
+      <section className="panels panels-single">
+        <motion.div
+          className="panel ftd-volume-panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Overview</h3>
+              <p className="panel-subtitle">
+                {isStatsSingleDayRange ? "Performance by hour" : "Performance by date"}
+              </p>
+            </div>
+            <div className="summary-inline">
+              <span>{`Peak: ${Math.round(statsOverviewPeak).toLocaleString()}`}</span>
+              <span>{`${isStatsSingleDayRange ? "Avg/hour" : "Avg/day"}: ${statsOverviewAvg.toFixed(2)}`}</span>
+            </div>
+          </div>
+          <div className="chart">
+            <div className="chart-surface">
+              {statsOverviewData.length ? (
+                activeStatsOverviewMetrics.length ? (
+                  <ResponsiveContainer width="100%" height={240}>
+                    <AreaChart data={statsOverviewData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        {activeStatsOverviewMetrics.map((metric) => (
+                          <linearGradient
+                            key={metric.key}
+                            id={`stats-overview-gradient-${metric.key}`}
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop offset="0%" stopColor={metric.color} stopOpacity={0.34} />
+                            <stop offset="100%" stopColor={metric.color} stopOpacity={0.02} />
+                          </linearGradient>
+                        ))}
+                      </defs>
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        stroke="#7f848f"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fill: "#8b909a", fontSize: 11 }}
+                      />
+                      <YAxis
+                        yAxisId="left"
+                        stroke="#7f848f"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fill: "#8b909a", fontSize: 11 }}
+                        width={40}
+                        tickFormatter={formatVolumeAxis}
+                      />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#7f848f"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fill: "#8b909a", fontSize: 11 }}
+                        width={44}
+                        tickFormatter={(value) => `${Math.round(value)}%`}
+                      />
+                      <Tooltip
+                        cursor={{ stroke: "rgba(69, 226, 205, 0.28)", strokeWidth: 1 }}
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          return (
+                            <div className="chart-tooltip ftd-volume-tooltip" style={tooltipStyle}>
+                              <p className="tooltip-label">{label}</p>
+                              {payload.map((item) => {
+                                const metric = statsOverviewOptions.find(
+                                  (entry) => entry.key === item.dataKey
+                                );
+                                if (!metric) return null;
+                                return (
+                                  <div className="tooltip-row" key={item.dataKey}>
+                                    <span className="tooltip-dot" style={{ background: metric.color }} />
+                                    <span>{metric.label}</span>
+                                    <span className="tooltip-value">
+                                      {formatStatsOverviewValue(item.value, metric.type)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        }}
+                      />
+                      {activeStatsOverviewMetrics.map((metric) => (
+                        <Area
+                          key={metric.key}
+                          type="natural"
+                          dataKey={metric.key}
+                          name={metric.label}
+                          yAxisId={metric.type === "percent" ? "right" : "left"}
+                          stroke={metric.color}
+                          strokeWidth={2.1}
+                          fill={`url(#stats-overview-gradient-${metric.key})`}
+                          dot={{ r: 2.4, fill: metric.color, stroke: "#0f1216", strokeWidth: 1.2 }}
+                          activeDot={{ r: 4, fill: "#0f1216", stroke: metric.color, strokeWidth: 1.8 }}
+                          isAnimationActive
+                          animationDuration={700}
+                        />
+                      ))}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="empty-state">Select at least one metric filter.</div>
+                )
+              ) : (
+                <div className="empty-state">No overview data available.</div>
+              )}
+            </div>
+            <div className="overview-filters">
+              {statsOverviewOptions.map((metric) => {
+                const active = statsOverviewFilters.includes(metric.key);
+                return (
+                  <button
+                    type="button"
+                    key={metric.key}
+                    className={`overview-filter${active ? " is-active" : ""}`}
+                    onClick={() => toggleStatsOverviewMetric(metric.key)}
+                    style={
+                      active
+                        ? {
+                            borderColor: metric.color,
+                            color: metric.color,
+                            boxShadow: `inset 0 0 0 1px ${metric.color}33`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <span className="overview-filter-dot" style={{ background: metric.color }} />
+                    {metric.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </motion.div>
       </section>
 
       <section className="entries-section">
