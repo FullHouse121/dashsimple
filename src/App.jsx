@@ -78,7 +78,7 @@ const apiFetch = async (url, options = {}) => {
 };
 
 const navItems = [
-  { key: "home", label: "Home", icon: Home },
+  { key: "home", label: "Dashboard", icon: Home },
   { key: "geos", label: "GEOS", icon: MapIcon },
   { key: "streams", label: "Goals", icon: Target },
   { key: "finances", label: "Finances", icon: Wallet },
@@ -1623,10 +1623,14 @@ function HomeDashboard({
     [filteredRows]
   );
 
-  const c2i = toPercent(totals.installs, totals.clicks);
-  const c2r = toPercent(totals.registers, totals.clicks);
-  const i2r = toPercent(totals.registers, totals.installs);
-  const r2d = toPercent(totals.ftds, totals.registers);
+  const cpc = safeDivide(totals.spend, totals.clicks);
+  const costPerRegister = safeDivide(totals.spend, totals.registers);
+  const costPerFtd = safeDivide(totals.spend, totals.ftds);
+  const totalRevenue = React.useMemo(
+    () => filteredRows.reduce((acc, row) => acc + readFtdRevenue(row) + readRedepositRevenue(row), 0),
+    [filteredRows]
+  );
+  const roi = totals.spend > 0 ? ((totalRevenue - totals.spend) / totals.spend) * 100 : null;
   const periodLabel =
     period === "Custom range" && periodRange.from && periodRange.to
       ? `${periodRange.from} → ${periodRange.to}`
@@ -1634,16 +1638,36 @@ function HomeDashboard({
 
   const homePrimaryStats = [
     { label: "Clicks", value: fmtCount(totals.clicks), icon: MousePointerClick, meta: periodLabel },
-    { label: "Install", value: fmtCount(totals.installs), icon: Download, meta: periodLabel },
+    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click" },
     { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel },
-    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel },
+    {
+      label: "Cost per Register",
+      value: costPerRegister === null ? "—" : formatCurrency(costPerRegister),
+      icon: Wallet,
+      meta: "Cost per register",
+    },
   ];
 
   const homeSecondaryStats = [
-    { label: "Click2Install", value: fmtPercent(c2i), icon: MousePointerClick, meta: "Conversion rate" },
-    { label: "Click2Register", value: fmtPercent(c2r), icon: UserPlus, meta: "Conversion rate" },
-    { label: "Install2Reg", value: fmtPercent(i2r), icon: Download, meta: "Conversion rate" },
-    { label: "Reg2Dep", value: fmtPercent(r2d), icon: CreditCard, meta: "Conversion rate" },
+    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel },
+    {
+      label: "Cost per FTD",
+      value: costPerFtd === null ? "—" : formatCurrency(costPerFtd),
+      icon: Wallet,
+      meta: "Cost per FTD",
+    },
+    {
+      label: "Total Revenue",
+      value: formatCurrency(totalRevenue),
+      icon: Wallet,
+      meta: "FTD + Redeposit",
+    },
+    {
+      label: "ROI",
+      value: fmtPercent(roi),
+      icon: BarChart3,
+      meta: "Revenue vs Spend",
+    },
   ];
 
   const chartData = React.useMemo(() => {
