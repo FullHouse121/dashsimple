@@ -1623,6 +1623,10 @@ function HomeDashboard({
     [filteredRows]
   );
 
+  const c2i = toPercent(totals.installs, totals.clicks);
+  const c2r = toPercent(totals.registers, totals.clicks);
+  const i2r = toPercent(totals.registers, totals.installs);
+  const r2d = toPercent(totals.ftds, totals.registers);
   const cpc = safeDivide(totals.spend, totals.clicks);
   const costPerRegister = safeDivide(totals.spend, totals.registers);
   const costPerFtd = safeDivide(totals.spend, totals.ftds);
