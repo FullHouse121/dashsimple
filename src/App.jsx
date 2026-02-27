@@ -4609,6 +4609,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   };
 
   const sum = (value) => Number(value || 0);
+  const readNumeric = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+  const readRevenue = (row) => {
+    const direct = readNumeric(row?.revenue);
+    const ftd = readNumeric(row?.ftdRevenue ?? row?.ftd_revenue);
+    const redeposit = readNumeric(row?.redepositRevenue ?? row?.redeposit_revenue);
+    if (direct === 0 && (ftd > 0 || redeposit > 0)) return ftd + redeposit;
+    return direct || ftd + redeposit;
+  };
 
   const normalizedEntries = React.useMemo(() => {
     const map = new Map();
@@ -4628,6 +4639,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           installs: 0,
           registers: 0,
           ftds: 0,
+          redeposits: 0,
+          revenue: 0,
         });
       }
       const current = map.get(key);
@@ -4636,6 +4649,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       current.installs += sum(row.installs);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.revenue += readRevenue(row);
       if (!current.id && row.id) current.id = row.id;
     });
 
@@ -4693,9 +4708,22 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       installs: acc.installs + sum(row.installs),
       registers: acc.registers + sum(row.registers),
       ftds: acc.ftds + sum(row.ftds),
+      redeposits: acc.redeposits + sum(row.redeposits),
+      revenue: acc.revenue + sum(row.revenue),
     }),
-    { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0 }
+    { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
   );
+
+  const statsKpis = [
+    { label: "Click2Install", value: fmtPercent(toPercent(totals.installs, totals.clicks)), meta: "Rate" },
+    { label: "Click2Reg", value: fmtPercent(toPercent(totals.registers, totals.clicks)), meta: "Rate" },
+    { label: "Click2Dep", value: fmtPercent(toPercent(totals.ftds, totals.clicks)), meta: "Rate" },
+    { label: "EPC", value: fmtCost(safeDivide(totals.revenue, totals.clicks)), meta: "Revenue per click" },
+    { label: "Install2Reg", value: fmtPercent(toPercent(totals.registers, totals.installs)), meta: "Rate" },
+    { label: "Install2Dep", value: fmtPercent(toPercent(totals.ftds, totals.installs)), meta: "Rate" },
+    { label: "Reg2Dep", value: fmtPercent(toPercent(totals.ftds, totals.registers)), meta: "Rate" },
+    { label: "Dep2Red", value: fmtPercent(toPercent(totals.redeposits, totals.ftds)), meta: "Rate" },
+  ];
 
   const chartMap = new Map();
   filteredEntries.forEach((row) => {
@@ -4819,6 +4847,22 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: idx * 0.08, duration: 0.5 }}
+          >
+            <div className="card-head">{stat.label}</div>
+            <div className="card-value">{stat.value}</div>
+            <div className="card-meta">{stat.meta}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="cards stats-secondary">
+        {statsKpis.map((stat, idx) => (
+          <motion.div
+            key={stat.label}
+            className="card stats-kpi-card"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 + idx * 0.05, duration: 0.45 }}
           >
             <div className="card-head">{stat.label}</div>
             <div className="card-value">{stat.value}</div>
