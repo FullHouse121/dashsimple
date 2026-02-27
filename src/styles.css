@@ -1252,6 +1252,10 @@ select {
   grid-template-columns: 1fr;
 }
 
+.panels.panels-single {
+  grid-template-columns: 1fr;
+}
+
 .panels.extra {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -1408,6 +1412,10 @@ select {
   gap: 18px;
   position: relative;
   overflow: hidden;
+}
+
+.ftd-volume-panel {
+  min-height: 340px;
 }
 
 .form-panel {

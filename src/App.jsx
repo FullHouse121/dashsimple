@@ -1674,6 +1674,26 @@ function HomeDashboard({
     },
   ];
 
+  const ftdVolumeData = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const key = row.date;
+      if (!key) return;
+      if (!map.has(key)) map.set(key, { date: key, day: formatShortDate(key), ftds: 0 });
+      map.get(key).ftds += sum(row.ftds);
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredRows]);
+
+  const ftdVolumePeak = React.useMemo(
+    () => ftdVolumeData.reduce((max, item) => Math.max(max, item.ftds || 0), 0),
+    [ftdVolumeData]
+  );
+  const ftdVolumeAvg =
+    ftdVolumeData.length > 0
+      ? ftdVolumeData.reduce((acc, item) => acc + (item.ftds || 0), 0) / ftdVolumeData.length
+      : 0;
+
   const chartData = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
@@ -1958,6 +1978,74 @@ function HomeDashboard({
             </motion.div>
           );
         })}
+      </section>
+
+      <section className="panels panels-single">
+        <motion.div
+          className="panel ftd-volume-panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3, duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("FTD Volume")}</h3>
+              <p className="panel-subtitle">{t("Daily FTD volume by date")}</p>
+            </div>
+            <div className="summary-inline">
+              <span>{`${t("Peak")}: ${fmtCount(ftdVolumePeak)}`}</span>
+              <span>{`${t("Avg/day")}: ${fmtCount(ftdVolumeAvg)}`}</span>
+            </div>
+          </div>
+          <div className="chart">
+            <div className="chart-surface">
+              {ftdVolumeData.length ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={ftdVolumeData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="ftd-volume-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--teal)" stopOpacity={0.38} />
+                        <stop offset="100%" stopColor="var(--teal)" stopOpacity={0.03} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      stroke="#7f848f"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: "#8b909a", fontSize: 11 }}
+                    />
+                    <YAxis
+                      stroke="#7f848f"
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                      tick={{ fill: "#8b909a", fontSize: 11 }}
+                      width={40}
+                    />
+                    <Tooltip
+                      formatter={(value) => [fmtCount(value), t("FTD volume")]}
+                      labelFormatter={(label) => label}
+                    />
+                    <Area
+                      type="natural"
+                      dataKey="ftds"
+                      name={t("FTD volume")}
+                      stroke="var(--teal)"
+                      strokeWidth={2.2}
+                      fill="url(#ftd-volume-gradient)"
+                      dot={{ r: 2.4, fill: "var(--teal)", stroke: "#0f1216", strokeWidth: 1.4 }}
+                      activeDot={{ r: 4, fill: "#0f1216", stroke: "var(--teal)", strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="empty-state">{t("No FTD volume data available.")}</div>
+              )}
+            </div>
+          </div>
+        </motion.div>
       </section>
 
       <section className="panels">
