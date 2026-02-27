@@ -3356,6 +3356,21 @@ select {
   min-width: 140px;
 }
 
+.ftd-volume-tooltip {
+  min-width: 170px;
+  border-color: rgba(69, 226, 205, 0.4) !important;
+  background: linear-gradient(155deg, rgba(16, 20, 24, 0.96), rgba(10, 13, 18, 0.96)) !important;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(69, 226, 205, 0.12) !important;
+}
+
+.ftd-volume-tooltip .tooltip-label {
+  font-weight: 600;
+}
+
+.ftd-volume-tooltip .tooltip-row {
+  font-size: 12px;
+}
+
 .rate-tooltip {
   min-width: 160px;
 }

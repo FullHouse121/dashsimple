@@ -2025,8 +2025,20 @@ function HomeDashboard({
                       width={40}
                     />
                     <Tooltip
-                      formatter={(value) => [fmtCount(value), t("FTD volume")]}
-                      labelFormatter={(label) => label}
+                      cursor={{ stroke: "rgba(69, 226, 205, 0.45)", strokeWidth: 1 }}
+                      content={({ active, payload, label }) => {
+                        if (!active || !payload?.length) return null;
+                        return (
+                          <div className="chart-tooltip ftd-volume-tooltip" style={tooltipStyle}>
+                            <p className="tooltip-label">{label}</p>
+                            <div className="tooltip-row">
+                              <span className="tooltip-dot" style={{ background: "var(--teal)" }} />
+                              <span>{t("FTD volume")}</span>
+                              <span className="tooltip-value">{fmtCount(payload[0]?.value)}</span>
+                            </div>
+                          </div>
+                        );
+                      }}
                     />
                     <Area
                       type="natural"
