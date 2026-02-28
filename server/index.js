@@ -157,6 +157,22 @@ const initDb = async () => {
       owner_id INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS meta_token_integrations (
+      id SERIAL PRIMARY KEY,
+      account_number TEXT NOT NULL,
+      meta_token TEXT NOT NULL,
+      keitaro_token TEXT,
+      adset_macro TEXT NOT NULL DEFAULT '{{adset.id}}',
+      pixel_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'Pending',
+      comment TEXT,
+      owner_role TEXT,
+      owner_id INTEGER,
+      meta_binding TEXT NOT NULL DEFAULT 'raspy-star-473e',
+      is_wired INTEGER NOT NULL DEFAULT 0,
+      last_checked_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -258,6 +274,30 @@ const initDb = async () => {
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE pixels ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
     `UPDATE pixels SET status = 'Active' WHERE status IS NULL;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS account_number TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS meta_token TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_token TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS adset_macro TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS status TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS comment TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS meta_binding TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS is_wired INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP;`,
+    `UPDATE meta_token_integrations
+     SET adset_macro = '{{adset.id}}'
+     WHERE adset_macro IS NULL OR TRIM(adset_macro) = '';`,
+    `UPDATE meta_token_integrations
+     SET meta_binding = 'raspy-star-473e'
+     WHERE meta_binding IS NULL OR TRIM(meta_binding) = '';`,
+    `UPDATE meta_token_integrations
+     SET status = 'Pending'
+     WHERE status IS NULL OR TRIM(status) = '';`,
+    `UPDATE meta_token_integrations
+     SET is_wired = 0
+     WHERE is_wired IS NULL;`,
   ];
 
   for (const statement of statements) {
@@ -278,6 +318,7 @@ const allPermissions = [
   "devices",
   "domains",
   "pixels",
+  "meta_token",
   "api",
   "media_buyers",
   "roles",
@@ -664,6 +705,123 @@ const selectPixelById = async (id) =>
   getRow(`SELECT id, owner_id FROM pixels WHERE id = $1`, [id]);
 
 const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]);
+
+const selectMetaTokenIntegrations = async (limit) =>
+  getRows(
+    `SELECT m.id,
+            m.account_number,
+            m.meta_token,
+            m.keitaro_token,
+            m.adset_macro,
+            m.pixel_id,
+            m.status,
+            m.comment,
+            m.owner_role,
+            m.owner_id,
+            m.meta_binding,
+            m.is_wired,
+            m.last_checked_at,
+            m.created_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value
+     FROM meta_token_integrations m
+     LEFT JOIN users u ON u.id = m.owner_id
+     LEFT JOIN pixels p ON p.id = m.pixel_id
+     ORDER BY m.created_at DESC, m.id DESC
+     LIMIT $1`,
+    [limit]
+  );
+
+const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
+  getRows(
+    `SELECT m.id,
+            m.account_number,
+            m.meta_token,
+            m.keitaro_token,
+            m.adset_macro,
+            m.pixel_id,
+            m.status,
+            m.comment,
+            m.owner_role,
+            m.owner_id,
+            m.meta_binding,
+            m.is_wired,
+            m.last_checked_at,
+            m.created_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value
+     FROM meta_token_integrations m
+     LEFT JOIN users u ON u.id = m.owner_id
+     LEFT JOIN pixels p ON p.id = m.pixel_id
+     WHERE m.owner_id = $1
+     ORDER BY m.created_at DESC, m.id DESC
+     LIMIT $2`,
+    [ownerId, limit]
+  );
+
+const selectMetaTokenIntegrationById = async (id) =>
+  getRow(
+    `SELECT m.id,
+            m.account_number,
+            m.meta_token,
+            m.keitaro_token,
+            m.adset_macro,
+            m.pixel_id,
+            m.status,
+            m.comment,
+            m.owner_role,
+            m.owner_id,
+            m.meta_binding,
+            m.is_wired,
+            m.last_checked_at,
+            m.created_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value
+     FROM meta_token_integrations m
+     LEFT JOIN users u ON u.id = m.owner_id
+     LEFT JOIN pixels p ON p.id = m.pixel_id
+     WHERE m.id = $1`,
+    [id]
+  );
+
+const insertMetaTokenIntegration = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO meta_token_integrations (
+      account_number,
+      meta_token,
+      keitaro_token,
+      adset_macro,
+      pixel_id,
+      status,
+      comment,
+      owner_role,
+      owner_id,
+      meta_binding,
+      is_wired,
+      last_checked_at
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING id`,
+    [
+      payload.account_number,
+      payload.meta_token,
+      payload.keitaro_token,
+      payload.adset_macro,
+      payload.pixel_id,
+      payload.status,
+      payload.comment,
+      payload.owner_role,
+      payload.owner_id,
+      payload.meta_binding,
+      payload.is_wired ? 1 : 0,
+      payload.last_checked_at || null,
+    ]
+  );
+  return rows[0];
+};
+
+const deleteMetaTokenIntegration = async (id) =>
+  query(`DELETE FROM meta_token_integrations WHERE id = $1`, [id]);
 
 const insertDomain = async (payload) => {
   const { rows } = await query(
@@ -2008,6 +2166,23 @@ const buyerMatches = (rowBuyer, viewerBuyer) => {
   return rowValue.includes(viewerValue) || viewerValue.includes(rowValue);
 };
 
+const normalizeAdsetMacro = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "{{adset.id}}";
+  return raw;
+};
+
+const isMetaIntegrationWired = (payload) => {
+  const accountReady = Boolean(String(payload?.account_number || "").trim());
+  const tokenReady = Boolean(String(payload?.meta_token || "").trim());
+  const keitaroReady = Boolean(String(payload?.keitaro_token || "").trim());
+  const pixelReady = Number.isFinite(Number(payload?.pixel_id)) && Number(payload.pixel_id) > 0;
+  const adsetReady = String(payload?.adset_macro || "")
+    .toLowerCase()
+    .includes("adset.id");
+  return accountReady && tokenReady && keitaroReady && pixelReady && adsetReady;
+};
+
 const resolveViewerBuyer = async (user) => {
   if (!user || isLeadership(user)) return null;
   if (user.buyerId) {
@@ -2986,6 +3161,224 @@ app.delete("/api/pixels/:id", async (req, res) => {
   }
   await deletePixel(id);
   res.json({ ok: true });
+});
+
+app.get("/api/meta-tokens", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  if (isLeadership(req.user)) {
+    const rows = await selectMetaTokenIntegrations(limit);
+    return res.json(rows);
+  }
+  const rows = await selectMetaTokenIntegrationsByOwner(req.user.id, limit);
+  return res.json(rows);
+});
+
+app.post("/api/meta-tokens", async (req, res) => {
+  const {
+    accountNumber,
+    token,
+    keitaroToken = "",
+    adsetMacro = "{{adset.id}}",
+    pixelId,
+    status = "Pending",
+    comment = "",
+    metaBinding = "raspy-star-473e",
+  } = req.body ?? {};
+
+  if (!accountNumber || !token || !pixelId) {
+    return res.status(400).json({ error: "Account number, token, and pixel are required." });
+  }
+
+  const parsedPixelId = Number.parseInt(pixelId, 10);
+  if (!Number.isFinite(parsedPixelId)) {
+    return res.status(400).json({ error: "Invalid pixel id." });
+  }
+
+  const pixel = await selectPixelById(parsedPixelId);
+  if (!pixel) {
+    return res.status(400).json({ error: "Pixel not found." });
+  }
+  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+
+  const resolvedOwnerId = Number.isFinite(Number(pixel.owner_id)) ? Number(pixel.owner_id) : req.user.id;
+  const ownerRecord = await selectUserById(resolvedOwnerId);
+
+  const payload = {
+    account_number: String(accountNumber).trim(),
+    meta_token: String(token).trim(),
+    keitaro_token: String(keitaroToken || "").trim() || null,
+    adset_macro: normalizeAdsetMacro(adsetMacro),
+    pixel_id: parsedPixelId,
+    status: String(status || "Pending").trim() || "Pending",
+    comment: String(comment || "").trim() || null,
+    owner_role: ownerRecord?.role || req.user?.role || "",
+    owner_id: resolvedOwnerId,
+    meta_binding: String(metaBinding || "").trim() || "raspy-star-473e",
+  };
+  payload.is_wired = isMetaIntegrationWired(payload);
+
+  const info = await insertMetaTokenIntegration(payload);
+  const row = await selectMetaTokenIntegrationById(info.id);
+  return res.status(201).json(row || { id: info.id });
+});
+
+app.patch("/api/meta-tokens/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid integration id." });
+  }
+  const current = await selectMetaTokenIntegrationById(id);
+  if (!current) {
+    return res.status(404).json({ error: "Integration not found." });
+  }
+  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+
+  const body = req.body ?? {};
+  const nextPixelIdRaw = body.pixelId ?? current.pixel_id;
+  const nextPixelId = Number.parseInt(nextPixelIdRaw, 10);
+  if (!Number.isFinite(nextPixelId)) {
+    return res.status(400).json({ error: "Invalid pixel id." });
+  }
+  const pixel = await selectPixelById(nextPixelId);
+  if (!pixel) {
+    return res.status(400).json({ error: "Pixel not found." });
+  }
+  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+
+  const resolvedOwnerId = Number.isFinite(Number(pixel.owner_id)) ? Number(pixel.owner_id) : req.user.id;
+  const ownerRecord = await selectUserById(resolvedOwnerId);
+
+  const next = {
+    account_number:
+      body.accountNumber !== undefined
+        ? String(body.accountNumber || "").trim()
+        : String(current.account_number || "").trim(),
+    meta_token:
+      body.token !== undefined ? String(body.token || "").trim() : String(current.meta_token || "").trim(),
+    keitaro_token:
+      body.keitaroToken !== undefined
+        ? String(body.keitaroToken || "").trim() || null
+        : String(current.keitaro_token || "").trim() || null,
+    adset_macro:
+      body.adsetMacro !== undefined
+        ? normalizeAdsetMacro(body.adsetMacro)
+        : normalizeAdsetMacro(current.adset_macro),
+    pixel_id: nextPixelId,
+    status:
+      body.status !== undefined
+        ? String(body.status || "").trim() || "Pending"
+        : String(current.status || "Pending").trim(),
+    comment:
+      body.comment !== undefined
+        ? String(body.comment || "").trim() || null
+        : String(current.comment || "").trim() || null,
+    owner_role: ownerRecord?.role || current.owner_role || req.user?.role || "",
+    owner_id: resolvedOwnerId,
+    meta_binding:
+      body.metaBinding !== undefined
+        ? String(body.metaBinding || "").trim() || "raspy-star-473e"
+        : String(current.meta_binding || "raspy-star-473e").trim(),
+  };
+
+  if (!next.account_number || !next.meta_token || !next.pixel_id) {
+    return res.status(400).json({ error: "Account number, token, and pixel are required." });
+  }
+
+  const runCheck = Boolean(body.runCheck);
+  const wired = isMetaIntegrationWired(next);
+
+  await query(
+    `UPDATE meta_token_integrations
+     SET account_number = $1,
+         meta_token = $2,
+         keitaro_token = $3,
+         adset_macro = $4,
+         pixel_id = $5,
+         status = $6,
+         comment = $7,
+         owner_role = $8,
+         owner_id = $9,
+         meta_binding = $10,
+         is_wired = $11,
+         last_checked_at = CASE WHEN $12::int = 1 THEN NOW() ELSE last_checked_at END
+     WHERE id = $13`,
+    [
+      next.account_number,
+      next.meta_token,
+      next.keitaro_token,
+      next.adset_macro,
+      next.pixel_id,
+      next.status,
+      next.comment,
+      next.owner_role,
+      next.owner_id,
+      next.meta_binding,
+      wired ? 1 : 0,
+      runCheck ? 1 : 0,
+      id,
+    ]
+  );
+
+  const row = await selectMetaTokenIntegrationById(id);
+  return res.json(row || { ok: true });
+});
+
+app.post("/api/meta-tokens/:id/test", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid integration id." });
+  }
+  const integration = await selectMetaTokenIntegrationById(id);
+  if (!integration) {
+    return res.status(404).json({ error: "Integration not found." });
+  }
+  if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+
+  const issues = [];
+  if (!String(integration.account_number || "").trim()) issues.push("Missing account number");
+  if (!String(integration.meta_token || "").trim()) issues.push("Missing Meta token");
+  if (!String(integration.keitaro_token || "").trim()) issues.push("Missing Keitaro token");
+  if (!Number.isFinite(Number(integration.pixel_id)) || Number(integration.pixel_id) <= 0) {
+    issues.push("Missing pixel binding");
+  }
+  if (!String(integration.adset_macro || "").toLowerCase().includes("adset.id")) {
+    issues.push("adset macro must include {{adset.id}}");
+  }
+  const wired = issues.length === 0;
+  const status = wired ? "Active" : "Blocked";
+  await query(
+    `UPDATE meta_token_integrations
+     SET is_wired = $1, status = $2, last_checked_at = NOW()
+     WHERE id = $3`,
+    [wired ? 1 : 0, status, id]
+  );
+  const row = await selectMetaTokenIntegrationById(id);
+  return res.json({ ok: wired, status, issues, row });
+});
+
+app.delete("/api/meta-tokens/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid integration id." });
+  }
+  const integration = await selectMetaTokenIntegrationById(id);
+  if (!integration) {
+    return res.status(404).json({ error: "Integration not found." });
+  }
+  if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  await deleteMetaTokenIntegration(id);
+  return res.json({ ok: true });
 });
 
 app.get("/api/campaigns", async (req, res) => {

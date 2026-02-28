@@ -92,6 +92,7 @@ const navItems = [
   { key: "pixels", label: "Pixels", icon: Zap },
   { key: "roles", label: "Roles", icon: ShieldCheck },
   { key: "profile", label: "Profile", icon: User },
+  { key: "meta_token", label: "Meta Token $", icon: CreditCard },
   { key: "api", label: "API", icon: Plug },
   {
     key: "segmentation",
@@ -113,7 +114,7 @@ const navSections = [
   { title: "Operations", items: ["finances", "utm", "domains", "pixels"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
-  { title: "Integrations", items: ["api"] },
+  { title: "Integrations", items: ["meta_token", "api"] },
   { title: "Tools", items: ["segmentation", "calculator"] },
 ];
 
@@ -197,6 +198,7 @@ const permissionOptions = [
   { key: "devices", label: "Devices" },
   { key: "domains", label: "Domains" },
   { key: "pixels", label: "Pixels" },
+  { key: "meta_token", label: "Meta Token $" },
   { key: "api", label: "API" },
   { key: "media_buyers", label: "Media Buyers" },
   { key: "roles", label: "Roles & Permissions" },
@@ -4994,12 +4996,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
 
   const statsOverviewOptions = React.useMemo(
     () => [
-      { key: "clicks", label: "Clicks", color: "var(--blue)", type: "count" },
-      { key: "registrations", label: "Registration", color: "var(--purple)", type: "count" },
       { key: "ftds", label: "FTDs", color: "var(--green)", type: "count" },
-      { key: "redeposits", label: "Redeposits", color: "var(--teal)", type: "count" },
-      { key: "roi", label: "ROI", color: "var(--orange)", type: "percent" },
-      { key: "revenue", label: "Revenue", color: "#f7d06b", type: "currency" },
       { key: "c2i", label: "Click2Install", color: "#58b1ff", type: "percent" },
       { key: "c2reg", label: "Click2Reg", color: "#8e5bff", type: "percent" },
       { key: "c2dep", label: "Click2Dep", color: "#3ddc97", type: "percent" },
@@ -9535,6 +9532,488 @@ function PixelsDashboard({ authUser }) {
   );
 }
 
+function MetaTokenDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const canManage = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const [integrations, setIntegrations] = React.useState([]);
+  const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
+  const [pixels, setPixels] = React.useState([]);
+  const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
+  const [users, setUsers] = React.useState([]);
+  const [selectedBindingId, setSelectedBindingId] = React.useState(null);
+  const [copyFeedback, setCopyFeedback] = React.useState("");
+  const [form, setForm] = React.useState({
+    accountNumber: "",
+    token: "",
+    keitaroToken: "",
+    adsetMacro: "{{adset.id}}",
+    pixelId: "",
+    status: "Pending",
+    comment: "",
+    metaBinding: "raspy-star-473e",
+  });
+
+  const updateForm = (key) => (event) => {
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  };
+
+  const resetForm = () => {
+    setForm({
+      accountNumber: "",
+      token: "",
+      keitaroToken: "",
+      adsetMacro: "{{adset.id}}",
+      pixelId: "",
+      status: "Pending",
+      comment: "",
+      metaBinding: "raspy-star-473e",
+    });
+  };
+
+  const fetchIntegrations = React.useCallback(async () => {
+    try {
+      setIntegrationState({ loading: true, error: null });
+      const response = await apiFetch("/api/meta-tokens?limit=300");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load Meta integrations.");
+      }
+      const data = await response.json();
+      setIntegrations(Array.isArray(data) ? data : []);
+      setIntegrationState({ loading: false, error: null });
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Failed to load Meta integrations." });
+    }
+  }, []);
+
+  const fetchPixels = React.useCallback(async () => {
+    try {
+      setPixelState({ loading: true, error: null });
+      const response = await apiFetch("/api/pixels?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load pixels.");
+      }
+      const data = await response.json();
+      setPixels(Array.isArray(data) ? data : []);
+      setPixelState({ loading: false, error: null });
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to load pixels." });
+    }
+  }, []);
+
+  const fetchUsers = React.useCallback(async () => {
+    if (!canManage) return;
+    try {
+      const response = await apiFetch("/api/users?limit=300");
+      if (!response.ok) return;
+      const data = await response.json();
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setUsers([]);
+    }
+  }, [canManage]);
+
+  React.useEffect(() => {
+    fetchIntegrations();
+    fetchPixels();
+    fetchUsers();
+  }, [fetchIntegrations, fetchPixels, fetchUsers]);
+
+  React.useEffect(() => {
+    if (!integrations.length) {
+      setSelectedBindingId(null);
+      return;
+    }
+    if (!selectedBindingId || !integrations.some((item) => item.id === selectedBindingId)) {
+      setSelectedBindingId(integrations[0].id);
+    }
+  }, [integrations, selectedBindingId]);
+
+  React.useEffect(() => {
+    if (!copyFeedback) return;
+    const timer = setTimeout(() => setCopyFeedback(""), 1400);
+    return () => clearTimeout(timer);
+  }, [copyFeedback]);
+
+  const userLookup = React.useMemo(
+    () =>
+      users.reduce((acc, user) => {
+        acc[user.id] = user.username;
+        return acc;
+      }, {}),
+    [users]
+  );
+
+  const pixelLookup = React.useMemo(
+    () =>
+      pixels.reduce((acc, pixel) => {
+        acc[pixel.id] = pixel;
+        return acc;
+      }, {}),
+    [pixels]
+  );
+
+  const resolveOwnerName = (row) =>
+    row?.owner_name || userLookup[row?.owner_id] || row?.owner_role || authUser?.username || "—";
+
+  const resolvePixelLabel = (row) => {
+    if (row?.pixel_value) return row.pixel_value;
+    const pixel = pixelLookup[row?.pixel_id];
+    return pixel?.pixel_id || "—";
+  };
+
+  const maskToken = (value) => {
+    const token = String(value || "");
+    if (token.length <= 14) return token || "—";
+    return `${token.slice(0, 6)}••••${token.slice(-4)}`;
+  };
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await apiFetch("/api/meta-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountNumber: form.accountNumber,
+          token: form.token,
+          keitaroToken: form.keitaroToken,
+          adsetMacro: form.adsetMacro,
+          pixelId: form.pixelId,
+          status: form.status,
+          comment: form.comment,
+          metaBinding: form.metaBinding,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to save integration.");
+      }
+      await fetchIntegrations();
+      resetForm();
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });
+    }
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      const response = await apiFetch(`/api/meta-tokens/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error("Failed to update status.");
+      await fetchIntegrations();
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Failed to update status." });
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const confirmed = window.confirm("Delete this Meta integration?");
+    if (!confirmed) return;
+    try {
+      const response = await apiFetch(`/api/meta-tokens/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete integration.");
+      await fetchIntegrations();
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Failed to delete integration." });
+    }
+  };
+
+  const handleRunCheck = async (id) => {
+    try {
+      const response = await apiFetch(`/api/meta-tokens/${id}/test`, { method: "POST" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Binding check failed.");
+      }
+      await fetchIntegrations();
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Binding check failed." });
+    }
+  };
+
+  const handleCopyToken = async (token) => {
+    if (!token) return;
+    try {
+      await navigator.clipboard?.writeText(String(token));
+      setCopyFeedback("Token copied");
+    } catch (error) {
+      setCopyFeedback("Copy failed");
+    }
+  };
+
+  const visibleIntegrations = React.useMemo(() => {
+    if (canManage) return integrations;
+    return integrations.filter((row) => row.owner_id === authUser?.id);
+  }, [canManage, integrations, authUser?.id]);
+
+  const selectedBinding =
+    visibleIntegrations.find((item) => item.id === selectedBindingId) || visibleIntegrations[0] || null;
+
+  const bindingChecks = React.useMemo(() => {
+    if (!selectedBinding) return null;
+    const checks = [
+      {
+        key: "meta",
+        label: "Meta app",
+        value: selectedBinding.meta_binding || "raspy-star-473e",
+        ok: Boolean(String(selectedBinding.meta_binding || "").trim()),
+      },
+      {
+        key: "account",
+        label: "ACC Number",
+        value: selectedBinding.account_number || "—",
+        ok: Boolean(String(selectedBinding.account_number || "").trim()),
+      },
+      {
+        key: "token",
+        label: "KV namespace",
+        value: "META_TOKEN",
+        ok: Boolean(String(selectedBinding.meta_token || "").trim()),
+      },
+      {
+        key: "keitaro",
+        label: "Keitaro token",
+        value: "KEITARO_TOKEN",
+        ok: Boolean(String(selectedBinding.keitaro_token || "").trim()),
+      },
+      {
+        key: "adset",
+        label: "adset key",
+        value: selectedBinding.adset_macro || "{{adset.id}}",
+        ok: String(selectedBinding.adset_macro || "").toLowerCase().includes("adset.id"),
+      },
+      {
+        key: "pixel",
+        label: "Pixel",
+        value: resolvePixelLabel(selectedBinding),
+        ok: Boolean(selectedBinding.pixel_id),
+      },
+    ];
+    const wired = checks.every((item) => item.ok) || Number(selectedBinding.is_wired) === 1;
+    return { checks, wired };
+  }, [selectedBinding, resolvePixelLabel]);
+
+  const bindingIssues = React.useMemo(() => {
+    if (!bindingChecks) return [];
+    return bindingChecks.checks.filter((item) => !item.ok).map((item) => `${item.label} missing`);
+  }, [bindingChecks]);
+
+  return (
+    <section className="form-section">
+      <motion.div
+        className="panel"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+      >
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">Bindings</h3>
+            <p className="panel-subtitle">Meta cost integration wiring to Keitaro with adset key mapping.</p>
+          </div>
+          {selectedBinding ? (
+            <button
+              type="button"
+              className={`binding-status-btn ${bindingChecks?.wired ? "ok" : "error"}`}
+              onClick={() => handleRunCheck(selectedBinding.id)}
+            >
+              {bindingChecks?.wired ? "Wired" : "Issue detected"}
+            </button>
+          ) : null}
+        </div>
+        {!selectedBinding ? (
+          <div className="empty-state">No integration created yet.</div>
+        ) : (
+          <div className={`binding-board ${bindingChecks?.wired ? "is-wired" : "is-broken"}`}>
+            <div className="binding-grid-bg" />
+            <div className="binding-chain">
+              {bindingChecks?.checks.map((item, index) => (
+                <React.Fragment key={item.key}>
+                  <span className={`binding-chip ${item.ok ? "ok" : "error"}`}>
+                    <strong>{item.label}</strong>
+                    <small>{item.value}</small>
+                  </span>
+                  {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="binding-footer">
+              <span className={`binding-pill ${bindingChecks?.wired ? "ok" : "error"}`}>
+                {bindingChecks?.wired ? "Integration online" : "Integration requires fixes"}
+              </span>
+              {selectedBinding.last_checked_at ? (
+                <span className="binding-meta">
+                  Last check: {new Date(selectedBinding.last_checked_at).toLocaleString()}
+                </span>
+              ) : null}
+            </div>
+            {bindingIssues.length ? (
+              <ul className="binding-issues">
+                {bindingIssues.map((issue) => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div
+        className="panel"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.06 }}
+      >
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">Meta Token $</h3>
+            <p className="panel-subtitle">Add account number + Meta token and bind each record to a pixel.</p>
+          </div>
+          {copyFeedback ? <span className="api-status success">{copyFeedback}</span> : null}
+        </div>
+
+        <form className="form-grid api-grid" onSubmit={handleCreate}>
+          <div className="field">
+            <label>ACC Number</label>
+            <input value={form.accountNumber} onChange={updateForm("accountNumber")} required />
+          </div>
+          <div className="field">
+            <label>Token</label>
+            <input value={form.token} onChange={updateForm("token")} placeholder="Meta for developers token" required />
+          </div>
+          <div className="field">
+            <label>Pixel</label>
+            <select value={form.pixelId} onChange={updateForm("pixelId")} required>
+              <option value="">Select pixel</option>
+              {pixels.map((pixel) => (
+                <option key={pixel.id} value={pixel.id}>
+                  {pixel.pixel_id} · {pixel.owner_id && userLookup[pixel.owner_id] ? userLookup[pixel.owner_id] : pixel.owner_role || "Owner"}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Keitaro Token</label>
+            <input value={form.keitaroToken} onChange={updateForm("keitaroToken")} placeholder="Token used by Keitaro cost integration" />
+          </div>
+          <div className="field">
+            <label>adset.id macro</label>
+            <input value={form.adsetMacro} onChange={updateForm("adsetMacro")} />
+          </div>
+          <div className="field">
+            <label>Binding name</label>
+            <input value={form.metaBinding} onChange={updateForm("metaBinding")} />
+          </div>
+          <div className="field">
+            <label>Status</label>
+            <select value={form.status} onChange={updateForm("status")}>
+              {["Pending", "Active", "Paused", "Blocked", "Expired"].map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field field-span-2">
+            <label>Comment</label>
+            <input value={form.comment} onChange={updateForm("comment")} placeholder="Optional note for this integration" />
+          </div>
+          <div className="form-actions">
+            <button className="ghost" type="button" onClick={resetForm}>
+              Reset
+            </button>
+            <button className="action-pill" type="submit">
+              Save
+            </button>
+          </div>
+        </form>
+
+        {integrationState.error ? <div className="empty-state error">{integrationState.error}</div> : null}
+        {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
+        {integrationState.loading ? (
+          <div className="empty-state">Loading integrations…</div>
+        ) : visibleIntegrations.length === 0 ? (
+          <div className="empty-state">No integrations added yet.</div>
+        ) : (
+          <div className="table-wrap meta-token-table">
+            <table className="entries-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>ACC Number</th>
+                  <th>Token</th>
+                  <th>Pixel</th>
+                  <th>Status</th>
+                  <th>Comment</th>
+                  <th>Owner</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleIntegrations.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.id}</td>
+                    <td>{row.account_number}</td>
+                    <td className="copy-cell">
+                      <div className="copy-inline">
+                        <span className="copy-text">{maskToken(row.meta_token)}</span>
+                        <button
+                          className="icon-btn copy-btn"
+                          type="button"
+                          onClick={() => handleCopyToken(row.meta_token)}
+                          title={t("Copy")}
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </div>
+                    </td>
+                    <td>{resolvePixelLabel(row)}</td>
+                    <td>
+                      <select
+                        className={`inline-select status-select status-${(row.status || "pending").toLowerCase()}`}
+                        value={row.status || "Pending"}
+                        onChange={(event) => handleStatusChange(row.id, event.target.value)}
+                      >
+                        {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>{row.comment || "—"}</td>
+                    <td>{resolveOwnerName(row)}</td>
+                    <td>
+                      <div className="inline-actions">
+                        <button className="icon-btn" type="button" onClick={() => setSelectedBindingId(row.id)} title="Show binding">
+                          <Plug size={14} />
+                        </button>
+                        <button className="icon-btn" type="button" onClick={() => handleRunCheck(row.id)} title="Run check">
+                          <CheckCircle size={14} />
+                        </button>
+                        {canManage ? (
+                          <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)} title="Delete">
+                            <Trash2 size={14} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </motion.div>
+    </section>
+  );
+}
+
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
   const [roles, setRoles] = React.useState([]);
@@ -11828,6 +12307,7 @@ export default function App() {
   const isPlacements = activeView === "placements";
   const isUserBehavior = activeView === "user_behavior";
   const isApi = activeView === "api";
+  const isMetaToken = activeView === "meta_token";
   const isGoals = activeView === "streams";
   const isDomains = activeView === "domains";
   const isPixels = activeView === "pixels";
@@ -11910,6 +12390,7 @@ export default function App() {
       devices: "devices",
       domains: "domains",
       pixels: "pixels",
+      meta_token: "meta_token",
       roles: "roles",
       api: "api",
     }),
@@ -11977,6 +12458,9 @@ export default function App() {
     }
     if (list.includes("statistics") && !list.includes("user_behavior")) {
       list.push("user_behavior");
+    }
+    if (list.includes("api") && !list.includes("meta_token")) {
+      list.push("meta_token");
     }
     return Array.from(new Set(list));
   }, [rolePermissions]);
@@ -12422,6 +12906,8 @@ export default function App() {
             authUser={authUser}
             viewerBuyer={effectiveViewerBuyer}
           />
+        ) : isMetaToken ? (
+          <MetaTokenDashboard authUser={authUser} />
         ) : isApi ? (
           <KeitaroApiView />
         ) : isStats ? (
