@@ -7148,6 +7148,13 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalUserDomainFilter = filters?.userDomain || "All";
+  const globalUserCampaignFilter = filters?.userCampaign || "All";
+  const globalUserExternalIdFilter = filters?.userExternalId || "";
+  const globalUserMinRevenue = Number(filters?.userMinRevenue || 0);
+  const globalUserMinFtds = Number(filters?.userMinFtds || 0);
+  const globalUserMinRedeposits = Number(filters?.userMinRedeposits || 0);
+  const globalUserRevenueOnly = Boolean(filters?.userRevenueOnly);
 
   const normalizedSearch = search.trim().toLowerCase();
   const sum = (value) => Number(value || 0);
