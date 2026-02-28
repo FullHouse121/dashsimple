@@ -2642,6 +2642,11 @@ select {
   color: #7ce2a7;
 }
 
+.status-success {
+  background: rgba(54, 208, 124, 0.2);
+  color: #36d07c;
+}
+
 .status-onboarding {
   background: rgba(90, 147, 255, 0.16);
   color: #9dc2ff;

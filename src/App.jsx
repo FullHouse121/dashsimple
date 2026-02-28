@@ -9575,16 +9575,16 @@ function MetaTokenDashboard({ authUser }) {
   const [pixels, setPixels] = React.useState([]);
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
+  const [buyers, setBuyers] = React.useState([]);
+  const [buyerState, setBuyerState] = React.useState({ loading: true, error: null });
   const [selectedBindingId, setSelectedBindingId] = React.useState(null);
   const [copyFeedback, setCopyFeedback] = React.useState("");
   const [form, setForm] = React.useState({
     accountNumber: "",
     token: "",
-    adsetMacro: "{{adset.id}}",
+    buyerName: "",
     pixelId: "",
-    status: "Pending",
     comment: "",
-    metaBinding: "raspy-star-473e",
   });
 
   const updateForm = (key) => (event) => {
@@ -9595,11 +9595,9 @@ function MetaTokenDashboard({ authUser }) {
     setForm({
       accountNumber: "",
       token: "",
-      adsetMacro: "{{adset.id}}",
+      buyerName: "",
       pixelId: "",
-      status: "Pending",
       comment: "",
-      metaBinding: "raspy-star-473e",
     });
   };
 
@@ -9647,11 +9645,29 @@ function MetaTokenDashboard({ authUser }) {
     }
   }, [canManage]);
 
+  const fetchBuyers = React.useCallback(async () => {
+    try {
+      setBuyerState({ loading: true, error: null });
+      const response = await apiFetch("/api/media-buyers?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load buyers.");
+      }
+      const data = await response.json();
+      setBuyers(Array.isArray(data) ? data : []);
+      setBuyerState({ loading: false, error: null });
+    } catch (error) {
+      setBuyers([]);
+      setBuyerState({ loading: false, error: error.message || "Failed to load buyers." });
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchIntegrations();
     fetchPixels();
     fetchUsers();
-  }, [fetchIntegrations, fetchPixels, fetchUsers]);
+    fetchBuyers();
+  }, [fetchIntegrations, fetchPixels, fetchUsers, fetchBuyers]);
 
   React.useEffect(() => {
     if (!integrations.length) {
@@ -9687,6 +9703,19 @@ function MetaTokenDashboard({ authUser }) {
     [pixels]
   );
 
+  const buyerOptions = React.useMemo(() => {
+    const map = new Map();
+    buyers.forEach((buyer) => {
+      const name = String(buyer?.name || "").trim();
+      if (name) map.set(name.toLowerCase(), name);
+    });
+    users.forEach((user) => {
+      const username = String(user?.username || "").trim();
+      if (username) map.set(username.toLowerCase(), username);
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [buyers, users]);
+
   const resolveOwnerName = (row) =>
     row?.owner_name || userLookup[row?.owner_id] || row?.owner_role || authUser?.username || "—";
 
@@ -9711,11 +9740,9 @@ function MetaTokenDashboard({ authUser }) {
         body: JSON.stringify({
           accountNumber: form.accountNumber,
           token: form.token,
-          adsetMacro: form.adsetMacro,
-          pixelId: form.pixelId,
-          status: form.status,
+          buyerName: form.buyerName,
+          pixelId: form.pixelId || null,
           comment: form.comment,
-          metaBinding: form.metaBinding,
         }),
       });
       if (!response.ok) {
@@ -9726,20 +9753,6 @@ function MetaTokenDashboard({ authUser }) {
       resetForm();
     } catch (error) {
       setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });
-    }
-  };
-
-  const handleStatusChange = async (id, status) => {
-    try {
-      const response = await apiFetch(`/api/meta-tokens/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!response.ok) throw new Error("Failed to update status.");
-      await fetchIntegrations();
-    } catch (error) {
-      setIntegrationState({ loading: false, error: error.message || "Failed to update status." });
     }
   };
 
@@ -9788,6 +9801,7 @@ function MetaTokenDashboard({ authUser }) {
 
   const bindingChecks = React.useMemo(() => {
     if (!selectedBinding) return null;
+    const receivedSpend = Number(selectedBinding.received_spend || 0);
     const checks = [
       {
         key: "meta",
@@ -9808,27 +9822,21 @@ function MetaTokenDashboard({ authUser }) {
         ok: Boolean(String(selectedBinding.meta_token || "").trim()),
       },
       {
-        key: "keitaro",
-        label: "Keitaro sync",
-        value: "via API tab",
-        ok: true,
+        key: "buyer",
+        label: "Buyer",
+        value: selectedBinding.buyer_name || "—",
+        ok: Boolean(String(selectedBinding.buyer_name || "").trim()),
       },
       {
-        key: "adset",
-        label: "adset key",
-        value: selectedBinding.adset_macro || "{{adset.id}}",
-        ok: String(selectedBinding.adset_macro || "").toLowerCase().includes("adset.id"),
-      },
-      {
-        key: "pixel",
-        label: "Pixel",
-        value: resolvePixelLabel(selectedBinding),
-        ok: Boolean(selectedBinding.pixel_id),
+        key: "cost",
+        label: "Keitaro cost",
+        value: receivedSpend > 0 ? formatCurrency(receivedSpend) : "$0.00",
+        ok: receivedSpend > 0,
       },
     ];
     const wired = checks.every((item) => item.ok) || Number(selectedBinding.is_wired) === 1;
     return { checks, wired };
-  }, [selectedBinding, resolvePixelLabel]);
+  }, [selectedBinding]);
 
   const bindingIssues = React.useMemo(() => {
     if (!bindingChecks) return [];
@@ -9846,7 +9854,7 @@ function MetaTokenDashboard({ authUser }) {
         <div className="panel-head">
           <div>
             <h3 className="panel-title">Bindings</h3>
-            <p className="panel-subtitle">Meta cost integration wiring to Keitaro with adset key mapping.</p>
+            <p className="panel-subtitle">Integration turns green when Keitaro cost is being received for the assigned buyer.</p>
           </div>
           {selectedBinding ? (
             <button
@@ -9904,7 +9912,7 @@ function MetaTokenDashboard({ authUser }) {
         <div className="panel-head">
           <div>
             <h3 className="panel-title">Meta Token $</h3>
-            <p className="panel-subtitle">Add account number + Meta token and bind each record to a pixel. Keitaro updates are handled in API sync.</p>
+            <p className="panel-subtitle">Save Meta token per account and assign each integration to one buyer.</p>
           </div>
           {copyFeedback ? <span className="api-status success">{copyFeedback}</span> : null}
         </div>
@@ -9919,30 +9927,27 @@ function MetaTokenDashboard({ authUser }) {
             <input value={form.token} onChange={updateForm("token")} placeholder="Meta for developers token" required />
           </div>
           <div className="field">
-            <label>Pixel</label>
-            <select value={form.pixelId} onChange={updateForm("pixelId")} required>
+            <label>Buyer</label>
+            <input
+              list="meta-buyer-list"
+              value={form.buyerName}
+              onChange={updateForm("buyerName")}
+              placeholder="e.g. Leticia"
+              required
+            />
+            <datalist id="meta-buyer-list">
+              {buyerOptions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </div>
+          <div className="field">
+            <label>Pixel (optional)</label>
+            <select value={form.pixelId} onChange={updateForm("pixelId")}>
               <option value="">Select pixel</option>
               {pixels.map((pixel) => (
                 <option key={pixel.id} value={pixel.id}>
                   {pixel.pixel_id} · {pixel.owner_id && userLookup[pixel.owner_id] ? userLookup[pixel.owner_id] : pixel.owner_role || "Owner"}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>adset.id macro</label>
-            <input value={form.adsetMacro} onChange={updateForm("adsetMacro")} />
-          </div>
-          <div className="field">
-            <label>Binding name</label>
-            <input value={form.metaBinding} onChange={updateForm("metaBinding")} />
-          </div>
-          <div className="field">
-            <label>Status</label>
-            <select value={form.status} onChange={updateForm("status")}>
-              {["Pending", "Active", "Paused", "Blocked", "Expired"].map((status) => (
-                <option key={status} value={status}>
-                  {status}
                 </option>
               ))}
             </select>
@@ -9963,6 +9968,7 @@ function MetaTokenDashboard({ authUser }) {
 
         {integrationState.error ? <div className="empty-state error">{integrationState.error}</div> : null}
         {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
+        {buyerState.error ? <div className="empty-state error">{buyerState.error}</div> : null}
         {integrationState.loading ? (
           <div className="empty-state">Loading integrations…</div>
         ) : visibleIntegrations.length === 0 ? (
@@ -9975,8 +9981,10 @@ function MetaTokenDashboard({ authUser }) {
                   <th>ID</th>
                   <th>ACC Number</th>
                   <th>Token</th>
+                  <th>Buyer</th>
                   <th>Pixel</th>
                   <th>Status</th>
+                  <th>Cost Received</th>
                   <th>Comment</th>
                   <th>Owner</th>
                   <th>Actions</th>
@@ -10000,20 +10008,20 @@ function MetaTokenDashboard({ authUser }) {
                         </button>
                       </div>
                     </td>
+                    <td>{row.buyer_name || "—"}</td>
                     <td>{resolvePixelLabel(row)}</td>
                     <td>
-                      <select
-                        className={`inline-select status-select status-${(row.status || "pending").toLowerCase()}`}
-                        value={row.status || "Pending"}
-                        onChange={(event) => handleStatusChange(row.id, event.target.value)}
+                      <span
+                        className={`status-pill ${
+                          Number(row.received_spend || 0) > 0
+                            ? "status-success"
+                            : `status-${String(row.status || "pending").toLowerCase()}`
+                        }`}
                       >
-                        {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
+                        {Number(row.received_spend || 0) > 0 ? "Success" : row.status || "Pending"}
+                      </span>
                     </td>
+                    <td>{formatCurrency(Number(row.received_spend || 0))}</td>
                     <td>{row.comment || "—"}</td>
                     <td>{resolveOwnerName(row)}</td>
                     <td>

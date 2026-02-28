@@ -162,6 +162,8 @@ const initDb = async () => {
       account_number TEXT NOT NULL,
       meta_token TEXT NOT NULL,
       keitaro_token TEXT,
+      buyer_name TEXT,
+      buyer_id INTEGER,
       adset_macro TEXT NOT NULL DEFAULT '{{adset.id}}',
       pixel_id INTEGER,
       status TEXT NOT NULL DEFAULT 'Pending',
@@ -277,6 +279,8 @@ const initDb = async () => {
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS account_number TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS meta_token TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_token TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS buyer_name TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS buyer_id INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS adset_macro TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS status TEXT;`,
@@ -712,6 +716,8 @@ const selectMetaTokenIntegrations = async (limit) =>
             m.account_number,
             m.meta_token,
             m.keitaro_token,
+            m.buyer_name,
+            m.buyer_id,
             m.adset_macro,
             m.pixel_id,
             m.status,
@@ -722,6 +728,13 @@ const selectMetaTokenIntegrations = async (limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value
      FROM meta_token_integrations m
@@ -738,6 +751,8 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
             m.account_number,
             m.meta_token,
             m.keitaro_token,
+            m.buyer_name,
+            m.buyer_id,
             m.adset_macro,
             m.pixel_id,
             m.status,
@@ -748,6 +763,13 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value
      FROM meta_token_integrations m
@@ -765,6 +787,8 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.account_number,
             m.meta_token,
             m.keitaro_token,
+            m.buyer_name,
+            m.buyer_id,
             m.adset_macro,
             m.pixel_id,
             m.status,
@@ -775,6 +799,13 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value
      FROM meta_token_integrations m
@@ -790,6 +821,8 @@ const insertMetaTokenIntegration = async (payload) => {
       account_number,
       meta_token,
       keitaro_token,
+      buyer_name,
+      buyer_id,
       adset_macro,
       pixel_id,
       status,
@@ -800,12 +833,14 @@ const insertMetaTokenIntegration = async (payload) => {
       is_wired,
       last_checked_at
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING id`,
     [
       payload.account_number,
       payload.meta_token,
       payload.keitaro_token,
+      payload.buyer_name,
+      payload.buyer_id,
       payload.adset_macro,
       payload.pixel_id,
       payload.status,
@@ -2172,14 +2207,24 @@ const normalizeAdsetMacro = (value) => {
   return raw;
 };
 
+const selectReceivedSpendForBuyer = async (buyerName) => {
+  const normalized = normalizeBuyerName(buyerName);
+  if (!normalized) return 0;
+  const row = await getRow(
+    `SELECT COALESCE(SUM(spend), 0) AS spend
+     FROM media_stats
+     WHERE REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g')
+           LIKE '%' || $1 || '%'`,
+    [normalized]
+  );
+  return Number(row?.spend || 0);
+};
+
 const isMetaIntegrationWired = (payload) => {
   const accountReady = Boolean(String(payload?.account_number || "").trim());
   const tokenReady = Boolean(String(payload?.meta_token || "").trim());
-  const pixelReady = Number.isFinite(Number(payload?.pixel_id)) && Number(payload.pixel_id) > 0;
-  const adsetReady = String(payload?.adset_macro || "")
-    .toLowerCase()
-    .includes("adset.id");
-  return accountReady && tokenReady && pixelReady && adsetReady;
+  const buyerReady = Boolean(String(payload?.buyer_name || "").trim());
+  return accountReady && tokenReady && buyerReady;
 };
 
 const resolveViewerBuyer = async (user) => {
@@ -3177,47 +3222,75 @@ app.post("/api/meta-tokens", async (req, res) => {
   const {
     accountNumber,
     token,
+    buyerName,
+    buyerId = null,
     keitaroToken = "",
     adsetMacro = "{{adset.id}}",
-    pixelId,
-    status = "Pending",
+    pixelId = null,
+    status,
     comment = "",
     metaBinding = "raspy-star-473e",
   } = req.body ?? {};
 
-  if (!accountNumber || !token || !pixelId) {
-    return res.status(400).json({ error: "Account number, token, and pixel are required." });
+  if (!accountNumber || !token || !buyerName) {
+    return res.status(400).json({ error: "Account number, token, and buyer are required." });
   }
 
-  const parsedPixelId = Number.parseInt(pixelId, 10);
-  if (!Number.isFinite(parsedPixelId)) {
-    return res.status(400).json({ error: "Invalid pixel id." });
-  }
-
-  const pixel = await selectPixelById(parsedPixelId);
-  if (!pixel) {
-    return res.status(400).json({ error: "Pixel not found." });
-  }
-  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+  const buyerInput = String(buyerName || "").trim();
+  const buyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
+  const parsedBuyerId = Number.parseInt(buyerId, 10);
+  let resolvedBuyerId = Number.isFinite(parsedBuyerId) ? parsedBuyerId : buyerMatch?.id || null;
+  if (!isLeadership(req.user) && resolvedBuyerId && resolvedBuyerId !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
+  if (!resolvedBuyerId && !isLeadership(req.user)) {
+    resolvedBuyerId = req.user.id;
+  }
 
-  const resolvedOwnerId = Number.isFinite(Number(pixel.owner_id)) ? Number(pixel.owner_id) : req.user.id;
+  let parsedPixelId = null;
+  let pixel = null;
+  if (pixelId !== null && pixelId !== undefined && String(pixelId).trim() !== "") {
+    parsedPixelId = Number.parseInt(pixelId, 10);
+    if (!Number.isFinite(parsedPixelId)) {
+      return res.status(400).json({ error: "Invalid pixel id." });
+    }
+    pixel = await selectPixelById(parsedPixelId);
+    if (!pixel) {
+      return res.status(400).json({ error: "Pixel not found." });
+    }
+    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+
+  const resolvedOwnerId =
+    Number.isFinite(Number(pixel?.owner_id))
+      ? Number(pixel.owner_id)
+      : Number.isFinite(Number(resolvedBuyerId))
+        ? Number(resolvedBuyerId)
+        : req.user.id;
   const ownerRecord = await selectUserById(resolvedOwnerId);
+  const resolvedBuyerName = buyerMatch?.username || buyerInput;
+  const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
+  const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
+  const resolvedStatus = String(status || "").trim() || autoStatus;
 
   const payload = {
     account_number: String(accountNumber).trim(),
     meta_token: String(token).trim(),
     keitaro_token: String(keitaroToken || "").trim() || null,
+    buyer_name: resolvedBuyerName,
+    buyer_id: Number.isFinite(Number(resolvedBuyerId)) ? Number(resolvedBuyerId) : null,
     adset_macro: normalizeAdsetMacro(adsetMacro),
     pixel_id: parsedPixelId,
-    status: String(status || "Pending").trim() || "Pending",
+    status: resolvedStatus,
     comment: String(comment || "").trim() || null,
     owner_role: ownerRecord?.role || req.user?.role || "",
     owner_id: resolvedOwnerId,
     meta_binding: String(metaBinding || "").trim() || "raspy-star-473e",
   };
-  payload.is_wired = isMetaIntegrationWired(payload);
+  payload.is_wired = isMetaIntegrationWired(payload) && receivedSpend > 0;
+  payload.last_checked_at = new Date();
 
   const info = await insertMetaTokenIntegration(payload);
   const row = await selectMetaTokenIntegrationById(info.id);
@@ -3238,21 +3311,45 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
   }
 
   const body = req.body ?? {};
+  let nextPixelId = null;
+  let pixel = null;
   const nextPixelIdRaw = body.pixelId ?? current.pixel_id;
-  const nextPixelId = Number.parseInt(nextPixelIdRaw, 10);
-  if (!Number.isFinite(nextPixelId)) {
-    return res.status(400).json({ error: "Invalid pixel id." });
-  }
-  const pixel = await selectPixelById(nextPixelId);
-  if (!pixel) {
-    return res.status(400).json({ error: "Pixel not found." });
-  }
-  if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
-    return res.status(403).json({ error: "Forbidden." });
+  if (nextPixelIdRaw !== null && nextPixelIdRaw !== undefined && String(nextPixelIdRaw).trim() !== "") {
+    nextPixelId = Number.parseInt(nextPixelIdRaw, 10);
+    if (!Number.isFinite(nextPixelId)) {
+      return res.status(400).json({ error: "Invalid pixel id." });
+    }
+    pixel = await selectPixelById(nextPixelId);
+    if (!pixel) {
+      return res.status(400).json({ error: "Pixel not found." });
+    }
+    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
   }
 
-  const resolvedOwnerId = Number.isFinite(Number(pixel.owner_id)) ? Number(pixel.owner_id) : req.user.id;
+  const nextBuyerNameRaw = body.buyerName ?? current.buyer_name ?? "";
+  const nextBuyerNameInput = String(nextBuyerNameRaw || "").trim();
+  const buyerMatch = nextBuyerNameInput ? await selectUserByUsernameLoose(nextBuyerNameInput) : null;
+  const parsedBuyerId = Number.parseInt(body.buyerId ?? current.buyer_id, 10);
+  let resolvedBuyerId = Number.isFinite(parsedBuyerId) ? parsedBuyerId : buyerMatch?.id || null;
+  if (!isLeadership(req.user) && resolvedBuyerId && resolvedBuyerId !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  if (!resolvedBuyerId && !isLeadership(req.user)) {
+    resolvedBuyerId = req.user.id;
+  }
+
+  const resolvedOwnerId =
+    Number.isFinite(Number(pixel?.owner_id))
+      ? Number(pixel.owner_id)
+      : Number.isFinite(Number(resolvedBuyerId))
+        ? Number(resolvedBuyerId)
+        : req.user.id;
   const ownerRecord = await selectUserById(resolvedOwnerId);
+  const resolvedBuyerName = buyerMatch?.username || nextBuyerNameInput;
+  const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
+  const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
 
   const next = {
     account_number:
@@ -3265,6 +3362,8 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
       body.keitaroToken !== undefined
         ? String(body.keitaroToken || "").trim() || null
         : String(current.keitaro_token || "").trim() || null,
+    buyer_name: resolvedBuyerName,
+    buyer_id: Number.isFinite(Number(resolvedBuyerId)) ? Number(resolvedBuyerId) : null,
     adset_macro:
       body.adsetMacro !== undefined
         ? normalizeAdsetMacro(body.adsetMacro)
@@ -3273,7 +3372,7 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
     status:
       body.status !== undefined
         ? String(body.status || "").trim() || "Pending"
-        : String(current.status || "Pending").trim(),
+        : autoStatus,
     comment:
       body.comment !== undefined
         ? String(body.comment || "").trim() || null
@@ -3286,32 +3385,36 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
         : String(current.meta_binding || "raspy-star-473e").trim(),
   };
 
-  if (!next.account_number || !next.meta_token || !next.pixel_id) {
-    return res.status(400).json({ error: "Account number, token, and pixel are required." });
+  if (!next.account_number || !next.meta_token || !next.buyer_name) {
+    return res.status(400).json({ error: "Account number, token, and buyer are required." });
   }
 
   const runCheck = Boolean(body.runCheck);
-  const wired = isMetaIntegrationWired(next);
+  const wired = isMetaIntegrationWired(next) && receivedSpend > 0;
 
   await query(
     `UPDATE meta_token_integrations
      SET account_number = $1,
          meta_token = $2,
          keitaro_token = $3,
-         adset_macro = $4,
-         pixel_id = $5,
-         status = $6,
-         comment = $7,
-         owner_role = $8,
-         owner_id = $9,
-         meta_binding = $10,
-         is_wired = $11,
-         last_checked_at = CASE WHEN $12::int = 1 THEN NOW() ELSE last_checked_at END
-     WHERE id = $13`,
+         buyer_name = $4,
+         buyer_id = $5,
+         adset_macro = $6,
+         pixel_id = $7,
+         status = $8,
+         comment = $9,
+         owner_role = $10,
+         owner_id = $11,
+         meta_binding = $12,
+         is_wired = $13,
+         last_checked_at = CASE WHEN $14::int = 1 THEN NOW() ELSE last_checked_at END
+     WHERE id = $15`,
     [
       next.account_number,
       next.meta_token,
       next.keitaro_token,
+      next.buyer_name,
+      next.buyer_id,
       next.adset_macro,
       next.pixel_id,
       next.status,
@@ -3345,14 +3448,12 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
   const issues = [];
   if (!String(integration.account_number || "").trim()) issues.push("Missing account number");
   if (!String(integration.meta_token || "").trim()) issues.push("Missing Meta token");
-  if (!Number.isFinite(Number(integration.pixel_id)) || Number(integration.pixel_id) <= 0) {
-    issues.push("Missing pixel binding");
-  }
-  if (!String(integration.adset_macro || "").toLowerCase().includes("adset.id")) {
-    issues.push("adset macro must include {{adset.id}}");
-  }
+  if (!String(integration.buyer_name || "").trim()) issues.push("Missing buyer assignment");
+  const receivedSpend = await selectReceivedSpendForBuyer(integration.buyer_name);
+  if (!(receivedSpend > 0)) issues.push("No cost received for this buyer yet");
+
   const wired = issues.length === 0;
-  const status = wired ? "Active" : "Blocked";
+  const status = wired ? "Success" : "Pending";
   await query(
     `UPDATE meta_token_integrations
      SET is_wired = $1, status = $2, last_checked_at = NOW()
@@ -3360,7 +3461,7 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     [wired ? 1 : 0, status, id]
   );
   const row = await selectMetaTokenIntegrationById(id);
-  return res.json({ ok: wired, status, issues, row });
+  return res.json({ ok: wired, status, issues, receivedSpend, row });
 });
 
 app.delete("/api/meta-tokens/:id", async (req, res) => {
