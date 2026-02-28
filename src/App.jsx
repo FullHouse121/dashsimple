@@ -58,6 +58,24 @@ import {
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
+const FALLBACK_API_ORIGIN =
+  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_FALLBACK_API_ORIGIN) ||
+  "https://dashsimple.onrender.com";
+
+const isRelativeApiPath = (url) => typeof url === "string" && url.startsWith("/api/");
+
+const buildFallbackApiUrl = (url) => {
+  if (!isRelativeApiPath(url)) return null;
+  return `${FALLBACK_API_ORIGIN}${url}`;
+};
+
+const shouldTryFallbackApi = () => {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname || "";
+  if (host === "localhost" || host === "127.0.0.1") return false;
+  return true;
+};
+
 const apiFetch = async (url, options = {}) => {
   const headers = { ...(options.headers || {}) };
   if (typeof window !== "undefined") {
@@ -70,7 +88,24 @@ const apiFetch = async (url, options = {}) => {
       // ignore storage issues
     }
   }
-  const response = await fetch(url, { ...options, headers });
+  const requestOptions = { ...options, headers };
+  let response;
+  try {
+    response = await fetch(url, requestOptions);
+  } catch (error) {
+    const fallbackUrl = shouldTryFallbackApi() ? buildFallbackApiUrl(url) : null;
+    if (fallbackUrl) {
+      response = await fetch(fallbackUrl, requestOptions);
+    } else {
+      throw error;
+    }
+  }
+  if (response.status === 404) {
+    const fallbackUrl = shouldTryFallbackApi() ? buildFallbackApiUrl(url) : null;
+    if (fallbackUrl) {
+      response = await fetch(fallbackUrl, requestOptions);
+    }
+  }
   if (response.status === 401 && typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("auth:invalid"));
   }
