@@ -2123,8 +2123,11 @@ select {
   position: relative;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.09);
-  background: radial-gradient(circle at 12% 12%, rgba(28, 34, 48, 0.52), rgba(7, 10, 15, 0.95) 58%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 20px 42px rgba(0, 0, 0, 0.28);
+  background: radial-gradient(circle at 8% 12%, rgba(17, 132, 93, 0.11), transparent 36%),
+    radial-gradient(circle at 92% 18%, rgba(38, 99, 172, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(13, 17, 25, 0.97), rgba(7, 10, 16, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 0 80px rgba(20, 130, 90, 0.08),
+    0 20px 42px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   padding: 22px 18px 16px;
   perspective: 1200px;
@@ -2133,12 +2136,62 @@ select {
 .binding-grid-bg {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(122, 146, 184, 0.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 14px 14px, 70px 70px, 70px 70px;
-  opacity: 0.26;
+  background-image: radial-gradient(rgba(96, 114, 146, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 16px 16px, 64px 64px, 64px 64px;
+  opacity: 0.34;
   pointer-events: none;
+}
+
+.binding-track {
+  position: relative;
+  z-index: 1;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  margin-bottom: 10px;
+}
+
+.binding-start-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(17, 24, 39, 0.95);
+  box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.03), 0 0 14px rgba(0, 0, 0, 0.45);
+  flex: 0 0 auto;
+}
+
+.binding-start-dot.ok {
+  border-color: #36d07c;
+  background: #2de68f;
+  box-shadow: 0 0 0 6px rgba(54, 208, 124, 0.12), 0 0 18px rgba(54, 208, 124, 0.35);
+}
+
+.binding-start-dot.error {
+  border-color: #ef4444;
+  background: #ef4444;
+  box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.12), 0 0 18px rgba(239, 68, 68, 0.32);
+}
+
+.binding-track-line {
+  height: 2px;
+  width: 100%;
+  margin-left: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(71, 94, 133, 0.28), rgba(71, 94, 133, 0.12));
+}
+
+.binding-track-line.ok {
+  background: linear-gradient(90deg, rgba(45, 230, 143, 0.7), rgba(45, 230, 143, 0.22));
+  box-shadow: 0 0 16px rgba(45, 230, 143, 0.26);
+}
+
+.binding-track-line.error {
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.62), rgba(239, 68, 68, 0.2));
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.22);
 }
 
 .binding-chain {
@@ -2146,85 +2199,124 @@ select {
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  min-height: 96px;
-  padding: 16px 10px;
+  gap: 10px;
+  min-height: 110px;
+  padding: 12px 10px 8px;
   transform-style: preserve-3d;
-  transform: rotateX(7deg);
+  transform: rotateX(7deg) translateZ(8px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
-.binding-chain::before {
-  content: "";
-  position: absolute;
-  left: 64px;
-  right: 64px;
-  top: 50%;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    rgba(68, 87, 120, 0.2) 0%,
-    rgba(86, 128, 208, 0.46) 34%,
-    rgba(69, 210, 147, 0.42) 66%,
-    rgba(68, 87, 120, 0.2) 100%
-  );
-  box-shadow: 0 0 12px rgba(73, 156, 255, 0.16), 0 0 16px rgba(40, 215, 145, 0.12);
+.binding-chain::-webkit-scrollbar {
+  height: 8px;
+}
+
+.binding-chain::-webkit-scrollbar-thumb {
+  background: rgba(101, 120, 153, 0.3);
   border-radius: 999px;
-  pointer-events: none;
+}
+
+.binding-node-wrap {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
 }
 
 .binding-link {
   display: inline-block;
-  width: 30px;
+  width: 24px;
   height: 2px;
-  background: linear-gradient(90deg, rgba(81, 113, 173, 0.3), rgba(57, 208, 140, 0.35));
+  background: linear-gradient(90deg, rgba(94, 120, 163, 0.34), rgba(72, 215, 154, 0.42));
   border-radius: 999px;
-  box-shadow: 0 0 10px rgba(52, 199, 139, 0.2);
-  position: relative;
-  z-index: 2;
+  box-shadow: 0 0 9px rgba(52, 199, 139, 0.22);
+  margin: 0 2px;
 }
 
 .binding-chip {
   display: inline-flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 10px 14px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: linear-gradient(165deg, rgba(19, 24, 34, 0.96), rgba(9, 13, 19, 0.95));
-  min-width: 148px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 16px rgba(0, 0, 0, 0.36),
-    0 0 0 1px rgba(255, 255, 255, 0.02);
-  transform: translateZ(18px);
-  position: relative;
-  z-index: 3;
+  gap: 4px;
+  padding: 10px 14px 9px;
+  border-radius: 13px;
+  border: 1px solid rgba(89, 103, 131, 0.54);
+  background: linear-gradient(175deg, rgba(20, 26, 38, 0.95), rgba(12, 16, 24, 0.96));
+  min-width: 164px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 -8px 18px rgba(0, 0, 0, 0.24),
+    0 12px 20px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.02);
+  transform: translateZ(18px) translateY(-2px);
 }
 
 .binding-chip strong {
   font-size: 11px;
-  color: #93a0b6;
-  letter-spacing: 0.4px;
+  color: #95a6c4;
+  letter-spacing: 0.45px;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
 .binding-chip small {
   font-size: 13px;
   color: var(--text);
   line-height: 1.18;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .binding-chip.ok {
-  border-color: rgba(54, 208, 124, 0.62);
-  box-shadow: inset 0 1px 0 rgba(154, 255, 208, 0.08), 0 0 0 1px rgba(54, 208, 124, 0.18),
-    0 0 22px rgba(54, 208, 124, 0.16), 0 12px 22px rgba(0, 0, 0, 0.38);
+  border-color: rgba(54, 208, 124, 0.75);
+  box-shadow: inset 0 1px 0 rgba(154, 255, 208, 0.08), inset 0 -8px 16px rgba(6, 48, 28, 0.34),
+    0 0 0 1px rgba(54, 208, 124, 0.2), 0 0 24px rgba(54, 208, 124, 0.2), 0 13px 22px rgba(0, 0, 0, 0.38);
 }
 
 .binding-chip.error {
-  border-color: rgba(235, 76, 76, 0.6);
+  border-color: rgba(239, 68, 68, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 181, 181, 0.06), 0 0 0 1px rgba(235, 76, 76, 0.18),
     0 0 18px rgba(235, 76, 76, 0.16), 0 12px 20px rgba(0, 0, 0, 0.38);
+}
+
+.binding-final-shape {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 142px;
+  height: 62px;
+  padding: 8px 14px;
+  clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
+  border: 1px solid rgba(90, 104, 131, 0.52);
+  background: linear-gradient(180deg, rgba(20, 26, 38, 0.96), rgba(10, 14, 22, 0.98));
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 20px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.02);
+  flex: 0 0 auto;
+  transform: translateY(-2px) translateZ(20px);
+}
+
+.binding-final-shape strong {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #95a6c4;
+}
+
+.binding-final-shape small {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.binding-final-shape.ok {
+  border-color: rgba(54, 208, 124, 0.82);
+  box-shadow: inset 0 1px 0 rgba(154, 255, 208, 0.08), inset 0 -8px 16px rgba(6, 48, 28, 0.34),
+    0 0 0 1px rgba(54, 208, 124, 0.24), 0 0 26px rgba(54, 208, 124, 0.24), 0 12px 22px rgba(0, 0, 0, 0.42);
+}
+
+.binding-final-shape.error {
+  border-color: rgba(239, 68, 68, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 181, 181, 0.06), inset 0 -8px 16px rgba(63, 11, 11, 0.34),
+    0 0 0 1px rgba(239, 68, 68, 0.22), 0 0 22px rgba(239, 68, 68, 0.2), 0 12px 20px rgba(0, 0, 0, 0.42);
 }
 
 .binding-board.is-wired {
@@ -2286,14 +2378,14 @@ select {
 }
 
 @media (max-width: 920px) {
+  .binding-track {
+    padding: 0 8px;
+  }
+
   .binding-chain {
     justify-content: flex-start;
     transform: none;
-    padding-top: 10px;
-  }
-
-  .binding-chain::before {
-    display: none;
+    padding: 10px 2px 4px;
   }
 
   .binding-link {
@@ -2302,6 +2394,11 @@ select {
 
   .binding-chip {
     min-width: 132px;
+    transform: none;
+  }
+
+  .binding-final-shape {
+    min-width: 126px;
     transform: none;
   }
 }

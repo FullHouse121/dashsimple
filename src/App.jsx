@@ -9802,36 +9802,35 @@ function MetaTokenDashboard({ authUser }) {
   const bindingChecks = React.useMemo(() => {
     if (!selectedBinding) return null;
     const receivedSpend = Number(selectedBinding.received_spend || 0);
+    const metaTokenReady = Boolean(String(selectedBinding.meta_token || "").trim());
+    const accountReady = Boolean(String(selectedBinding.account_number || "").trim());
+    const buyerReady = Boolean(String(selectedBinding.buyer_name || "").trim());
+    const costReady = receivedSpend > 0;
+    const metaWorking = metaTokenReady && costReady;
     const checks = [
       {
         key: "meta",
-        label: "Meta app",
-        value: selectedBinding.meta_binding || "raspy-star-473e",
-        ok: Boolean(String(selectedBinding.meta_binding || "").trim()),
+        label: "Meta Token",
+        value: metaWorking ? "Working" : "Not working",
+        ok: metaWorking,
       },
       {
         key: "account",
         label: "ACC Number",
         value: selectedBinding.account_number || "—",
-        ok: Boolean(String(selectedBinding.account_number || "").trim()),
-      },
-      {
-        key: "token",
-        label: "KV namespace",
-        value: "META_TOKEN",
-        ok: Boolean(String(selectedBinding.meta_token || "").trim()),
+        ok: accountReady,
       },
       {
         key: "buyer",
         label: "Buyer",
         value: selectedBinding.buyer_name || "—",
-        ok: Boolean(String(selectedBinding.buyer_name || "").trim()),
+        ok: buyerReady,
       },
       {
         key: "cost",
-        label: "Keitaro cost",
+        label: "Receive Cost",
         value: receivedSpend > 0 ? formatCurrency(receivedSpend) : "$0.00",
-        ok: receivedSpend > 0,
+        ok: costReady,
       },
     ];
     const wired = checks.every((item) => item.ok) || Number(selectedBinding.is_wired) === 1;
@@ -9871,16 +9870,24 @@ function MetaTokenDashboard({ authUser }) {
         ) : (
           <div className={`binding-board ${bindingChecks?.wired ? "is-wired" : "is-broken"}`}>
             <div className="binding-grid-bg" />
+            <div className="binding-track">
+              <span className={`binding-start-dot ${bindingChecks?.wired ? "ok" : "error"}`} />
+              <span className={`binding-track-line ${bindingChecks?.wired ? "ok" : "error"}`} />
+            </div>
             <div className="binding-chain">
               {bindingChecks?.checks.map((item, index) => (
-                <React.Fragment key={item.key}>
+                <div key={item.key} className="binding-node-wrap">
                   <span className={`binding-chip ${item.ok ? "ok" : "error"}`}>
                     <strong>{item.label}</strong>
                     <small>{item.value}</small>
                   </span>
                   {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
-                </React.Fragment>
+                </div>
               ))}
+              <span className={`binding-final-shape ${bindingChecks?.wired ? "ok" : "error"}`}>
+                <strong>Integration</strong>
+                <small>{bindingChecks?.wired ? "Success" : "Issue"}</small>
+              </span>
             </div>
             <div className="binding-footer">
               <span className={`binding-pill ${bindingChecks?.wired ? "ok" : "error"}`}>
