@@ -2075,33 +2075,37 @@ select {
 }
 
 .binding-status-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(15, 18, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(160deg, rgba(18, 23, 33, 0.92), rgba(10, 13, 19, 0.96));
   color: var(--text);
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 9px 16px;
   font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 6px 16px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, filter 0.2s ease;
 }
 
 .binding-status-btn:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.01);
+  filter: brightness(1.03);
 }
 
 .binding-status-btn.ok {
   color: #7ef0b0;
   border-color: rgba(54, 208, 124, 0.6);
-  box-shadow: 0 0 0 1px rgba(54, 208, 124, 0.2), 0 0 24px rgba(54, 208, 124, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(54, 208, 124, 0.2),
+    0 0 24px rgba(54, 208, 124, 0.25), 0 10px 20px rgba(15, 64, 39, 0.34);
   animation: bindingPulse 2.2s ease-in-out infinite;
 }
 
 .binding-status-btn.error {
   color: #ff9f9f;
   border-color: rgba(235, 76, 76, 0.8);
-  box-shadow: 0 0 0 1px rgba(235, 76, 76, 0.2), 0 0 22px rgba(235, 76, 76, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px rgba(235, 76, 76, 0.2),
+    0 0 22px rgba(235, 76, 76, 0.2), 0 10px 20px rgba(74, 20, 20, 0.3);
 }
 
 @keyframes bindingPulse {
@@ -2117,19 +2121,23 @@ select {
 .binding-board {
   margin-top: 12px;
   position: relative;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: radial-gradient(circle at 15% 15%, rgba(36, 41, 50, 0.5), rgba(10, 12, 16, 0.9) 62%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: radial-gradient(circle at 12% 12%, rgba(28, 34, 48, 0.52), rgba(7, 10, 15, 0.95) 58%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 20px 42px rgba(0, 0, 0, 0.28);
   overflow: hidden;
-  padding: 18px 16px 14px;
+  padding: 22px 18px 16px;
+  perspective: 1200px;
 }
 
 .binding-grid-bg {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 14px 14px;
-  opacity: 0.25;
+  background-image: radial-gradient(rgba(122, 146, 184, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 14px 14px, 70px 70px, 70px 70px;
+  opacity: 0.26;
   pointer-events: none;
 }
 
@@ -2138,32 +2146,64 @@ select {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 12px;
   flex-wrap: wrap;
+  min-height: 96px;
+  padding: 16px 10px;
+  transform-style: preserve-3d;
+  transform: rotateX(7deg);
+}
+
+.binding-chain::before {
+  content: "";
+  position: absolute;
+  left: 64px;
+  right: 64px;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(68, 87, 120, 0.2) 0%,
+    rgba(86, 128, 208, 0.46) 34%,
+    rgba(69, 210, 147, 0.42) 66%,
+    rgba(68, 87, 120, 0.2) 100%
+  );
+  box-shadow: 0 0 12px rgba(73, 156, 255, 0.16), 0 0 16px rgba(40, 215, 145, 0.12);
+  border-radius: 999px;
+  pointer-events: none;
 }
 
 .binding-link {
   display: inline-block;
-  width: 26px;
+  width: 30px;
   height: 2px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.08));
+  background: linear-gradient(90deg, rgba(81, 113, 173, 0.3), rgba(57, 208, 140, 0.35));
   border-radius: 999px;
+  box-shadow: 0 0 10px rgba(52, 199, 139, 0.2);
+  position: relative;
+  z-index: 2;
 }
 
 .binding-chip {
   display: inline-flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 9px 12px;
+  gap: 3px;
+  padding: 10px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(16, 18, 24, 0.86);
-  min-width: 130px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(165deg, rgba(19, 24, 34, 0.96), rgba(9, 13, 19, 0.95));
+  min-width: 148px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 10px 16px rgba(0, 0, 0, 0.36),
+    0 0 0 1px rgba(255, 255, 255, 0.02);
+  transform: translateZ(18px);
+  position: relative;
+  z-index: 3;
 }
 
 .binding-chip strong {
   font-size: 11px;
-  color: var(--muted);
+  color: #93a0b6;
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
@@ -2171,25 +2211,28 @@ select {
 .binding-chip small {
   font-size: 13px;
   color: var(--text);
-  line-height: 1.2;
+  line-height: 1.18;
+  font-weight: 600;
 }
 
 .binding-chip.ok {
-  border-color: rgba(54, 208, 124, 0.55);
-  box-shadow: 0 0 0 1px rgba(54, 208, 124, 0.18);
+  border-color: rgba(54, 208, 124, 0.62);
+  box-shadow: inset 0 1px 0 rgba(154, 255, 208, 0.08), 0 0 0 1px rgba(54, 208, 124, 0.18),
+    0 0 22px rgba(54, 208, 124, 0.16), 0 12px 22px rgba(0, 0, 0, 0.38);
 }
 
 .binding-chip.error {
   border-color: rgba(235, 76, 76, 0.6);
-  box-shadow: 0 0 0 1px rgba(235, 76, 76, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 181, 181, 0.06), 0 0 0 1px rgba(235, 76, 76, 0.18),
+    0 0 18px rgba(235, 76, 76, 0.16), 0 12px 20px rgba(0, 0, 0, 0.38);
 }
 
 .binding-board.is-wired {
-  box-shadow: inset 0 0 32px rgba(54, 208, 124, 0.08);
+  box-shadow: inset 0 0 34px rgba(54, 208, 124, 0.1), 0 20px 42px rgba(0, 0, 0, 0.3);
 }
 
 .binding-board.is-broken {
-  box-shadow: inset 0 0 28px rgba(235, 76, 76, 0.08);
+  box-shadow: inset 0 0 30px rgba(235, 76, 76, 0.08), 0 20px 42px rgba(0, 0, 0, 0.3);
 }
 
 .binding-footer {
@@ -2206,11 +2249,12 @@ select {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 5px 10px;
+  padding: 6px 12px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .binding-pill.ok {
@@ -2239,6 +2283,27 @@ select {
   font-size: 12px;
   display: grid;
   gap: 4px;
+}
+
+@media (max-width: 920px) {
+  .binding-chain {
+    justify-content: flex-start;
+    transform: none;
+    padding-top: 10px;
+  }
+
+  .binding-chain::before {
+    display: none;
+  }
+
+  .binding-link {
+    width: 20px;
+  }
+
+  .binding-chip {
+    min-width: 132px;
+    transform: none;
+  }
 }
 
 .pixel-table {
