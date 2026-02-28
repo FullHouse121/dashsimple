@@ -9545,7 +9545,6 @@ function MetaTokenDashboard({ authUser }) {
   const [form, setForm] = React.useState({
     accountNumber: "",
     token: "",
-    keitaroToken: "",
     adsetMacro: "{{adset.id}}",
     pixelId: "",
     status: "Pending",
@@ -9561,7 +9560,6 @@ function MetaTokenDashboard({ authUser }) {
     setForm({
       accountNumber: "",
       token: "",
-      keitaroToken: "",
       adsetMacro: "{{adset.id}}",
       pixelId: "",
       status: "Pending",
@@ -9678,7 +9676,6 @@ function MetaTokenDashboard({ authUser }) {
         body: JSON.stringify({
           accountNumber: form.accountNumber,
           token: form.token,
-          keitaroToken: form.keitaroToken,
           adsetMacro: form.adsetMacro,
           pixelId: form.pixelId,
           status: form.status,
@@ -9777,9 +9774,9 @@ function MetaTokenDashboard({ authUser }) {
       },
       {
         key: "keitaro",
-        label: "Keitaro token",
-        value: "KEITARO_TOKEN",
-        ok: Boolean(String(selectedBinding.keitaro_token || "").trim()),
+        label: "Keitaro sync",
+        value: "via API tab",
+        ok: true,
       },
       {
         key: "adset",
@@ -9872,7 +9869,7 @@ function MetaTokenDashboard({ authUser }) {
         <div className="panel-head">
           <div>
             <h3 className="panel-title">Meta Token $</h3>
-            <p className="panel-subtitle">Add account number + Meta token and bind each record to a pixel.</p>
+            <p className="panel-subtitle">Add account number + Meta token and bind each record to a pixel. Keitaro updates are handled in API sync.</p>
           </div>
           {copyFeedback ? <span className="api-status success">{copyFeedback}</span> : null}
         </div>
@@ -9896,10 +9893,6 @@ function MetaTokenDashboard({ authUser }) {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="field">
-            <label>Keitaro Token</label>
-            <input value={form.keitaroToken} onChange={updateForm("keitaroToken")} placeholder="Token used by Keitaro cost integration" />
           </div>
           <div className="field">
             <label>adset.id macro</label>

@@ -2175,12 +2175,11 @@ const normalizeAdsetMacro = (value) => {
 const isMetaIntegrationWired = (payload) => {
   const accountReady = Boolean(String(payload?.account_number || "").trim());
   const tokenReady = Boolean(String(payload?.meta_token || "").trim());
-  const keitaroReady = Boolean(String(payload?.keitaro_token || "").trim());
   const pixelReady = Number.isFinite(Number(payload?.pixel_id)) && Number(payload.pixel_id) > 0;
   const adsetReady = String(payload?.adset_macro || "")
     .toLowerCase()
     .includes("adset.id");
-  return accountReady && tokenReady && keitaroReady && pixelReady && adsetReady;
+  return accountReady && tokenReady && pixelReady && adsetReady;
 };
 
 const resolveViewerBuyer = async (user) => {
@@ -3346,7 +3345,6 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
   const issues = [];
   if (!String(integration.account_number || "").trim()) issues.push("Missing account number");
   if (!String(integration.meta_token || "").trim()) issues.push("Missing Meta token");
-  if (!String(integration.keitaro_token || "").trim()) issues.push("Missing Keitaro token");
   if (!Number.isFinite(Number(integration.pixel_id)) || Number(integration.pixel_id) <= 0) {
     issues.push("Missing pixel binding");
   }
