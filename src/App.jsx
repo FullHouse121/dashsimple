@@ -9870,6 +9870,12 @@ function MetaTokenDashboard({ authUser }) {
         ) : (
           <div className={`binding-board ${bindingChecks?.wired ? "is-wired" : "is-broken"}`}>
             <div className="binding-grid-bg" />
+            <div className="binding-board-head">
+              <span className="binding-board-title">Tracking Integrations</span>
+              <span className={`binding-board-health ${bindingChecks?.wired ? "ok" : "error"}`}>
+                {bindingChecks?.wired ? "Live Sync" : "Action Needed"}
+              </span>
+            </div>
             <div className="binding-track">
               <span className={`binding-start-dot ${bindingChecks?.wired ? "ok" : "error"}`} />
               <span className={`binding-track-line ${bindingChecks?.wired ? "ok" : "error"}`} />
@@ -9878,8 +9884,12 @@ function MetaTokenDashboard({ authUser }) {
               {bindingChecks?.checks.map((item, index) => (
                 <div key={item.key} className="binding-node-wrap">
                   <span className={`binding-chip ${item.ok ? "ok" : "error"}`}>
-                    <strong>{item.label}</strong>
+                    <span className="binding-chip-top">
+                      <em className={`binding-chip-index ${item.ok ? "ok" : "error"}`}>{String(index + 1).padStart(2, "0")}</em>
+                      <strong>{item.label}</strong>
+                    </span>
                     <small>{item.value}</small>
+                    <span className={`binding-chip-state ${item.ok ? "ok" : "error"}`} />
                   </span>
                   {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
                 </div>
