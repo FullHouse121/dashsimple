@@ -9579,6 +9579,8 @@ function MetaTokenDashboard({ authUser }) {
   const [buyerState, setBuyerState] = React.useState({ loading: true, error: null });
   const [selectedBindingId, setSelectedBindingId] = React.useState(null);
   const [copyFeedback, setCopyFeedback] = React.useState("");
+  const previousCostRef = React.useRef(null);
+  const [costBurst, setCostBurst] = React.useState(false);
   const [form, setForm] = React.useState({
     accountNumber: "",
     token: "",
@@ -9842,6 +9844,49 @@ function MetaTokenDashboard({ authUser }) {
     return bindingChecks.checks.filter((item) => !item.ok).map((item) => `${item.label} missing`);
   }, [bindingChecks]);
 
+  const flowMode = React.useMemo(() => {
+    if (!selectedBinding || !bindingChecks) return "offline";
+    const hasCore = Boolean(
+      String(selectedBinding.account_number || "").trim() &&
+        String(selectedBinding.meta_token || "").trim() &&
+        String(selectedBinding.buyer_name || "").trim()
+    );
+    const lastChecked = selectedBinding.last_checked_at
+      ? new Date(selectedBinding.last_checked_at).getTime()
+      : null;
+    const now = Date.now();
+    const stale = lastChecked ? now - lastChecked > 45 * 60 * 1000 : true;
+
+    if (bindingChecks.wired && !stale) return "online";
+    if (hasCore) return "delayed";
+    return "offline";
+  }, [selectedBinding, bindingChecks]);
+
+  const dataFlowRate = React.useMemo(() => {
+    if (!selectedBinding) return 0;
+    const spend = Number(selectedBinding.received_spend || 0);
+    if (flowMode === "offline") return 0;
+    const base = flowMode === "online" ? 82 : 56;
+    const variable = Math.min(36, Math.round(Math.log10(spend + 1) * 22));
+    return base + variable;
+  }, [selectedBinding, flowMode]);
+
+  React.useEffect(() => {
+    if (!selectedBinding) {
+      previousCostRef.current = null;
+      return;
+    }
+    const current = Number(selectedBinding.received_spend || 0);
+    if (previousCostRef.current !== null && current !== previousCostRef.current) {
+      setCostBurst(true);
+      const timer = setTimeout(() => setCostBurst(false), 900);
+      previousCostRef.current = current;
+      return () => clearTimeout(timer);
+    }
+    previousCostRef.current = current;
+    return undefined;
+  }, [selectedBinding]);
+
   return (
     <section className="form-section">
       <motion.div
@@ -9858,27 +9903,54 @@ function MetaTokenDashboard({ authUser }) {
           {selectedBinding ? (
             <button
               type="button"
-              className={`binding-status-btn ${bindingChecks?.wired ? "ok" : "error"}`}
+              className={`binding-status-btn ${
+                flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
+              }`}
               onClick={() => handleRunCheck(selectedBinding.id)}
             >
-              {bindingChecks?.wired ? "Wired" : "Issue detected"}
+              {flowMode === "online" ? "Online" : flowMode === "delayed" ? "Delayed" : "Offline"}
             </button>
           ) : null}
         </div>
         {!selectedBinding ? (
           <div className="empty-state">No integration created yet.</div>
         ) : (
-          <div className={`binding-board ${bindingChecks?.wired ? "is-wired" : "is-broken"}`}>
+          <div
+            className={`binding-board ${
+              flowMode === "online"
+                ? "is-wired mode-online"
+                : flowMode === "delayed"
+                  ? "mode-delayed"
+                  : "is-broken mode-offline"
+            } ${costBurst ? "pulse-burst" : ""}`}
+          >
             <div className="binding-grid-bg" />
             <div className="binding-board-head">
               <span className="binding-board-title">Tracking Integrations</span>
-              <span className={`binding-board-health ${bindingChecks?.wired ? "ok" : "error"}`}>
-                {bindingChecks?.wired ? "Live Sync" : "Action Needed"}
+              <span
+                className={`binding-board-health ${
+                  flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
+                }`}
+              >
+                {flowMode === "online" ? "Live Sync" : flowMode === "delayed" ? "Sync Delay" : "Action Needed"}
               </span>
             </div>
-            <div className="binding-track">
-              <span className={`binding-start-dot ${bindingChecks?.wired ? "ok" : "error"}`} />
-              <span className={`binding-track-line ${bindingChecks?.wired ? "ok" : "error"}`} />
+            <div className={`binding-ecg ${flowMode}`}>
+              <svg viewBox="0 0 1200 80" preserveAspectRatio="none" className="binding-ecg-svg">
+                <path
+                  className="ecg-base"
+                  d="M0,42 L80,42 L98,42 L112,42 L124,24 L136,54 L148,36 L166,42 L320,42 L334,42 L348,42 L360,28 L374,54 L386,40 L404,42 L558,42 L572,42 L586,42 L600,26 L612,54 L624,40 L640,42 L794,42 L806,42 L820,42 L834,30 L848,54 L862,40 L880,42 L1200,42"
+                />
+                <path
+                  className="ecg-glow"
+                  d="M0,42 L80,42 L98,42 L112,42 L124,24 L136,54 L148,36 L166,42 L320,42 L334,42 L348,42 L360,28 L374,54 L386,40 L404,42 L558,42 L572,42 L586,42 L600,26 L612,54 L624,40 L640,42 L794,42 L806,42 L820,42 L834,30 L848,54 L862,40 L880,42 L1200,42"
+                />
+              </svg>
+              <span className={`binding-start-dot ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`} />
+              <span className="ecg-pulse-dot" />
+              <span className="binding-flow-rate">
+                Data Flow Rate: <strong>{dataFlowRate} bpm</strong>
+              </span>
             </div>
             <div className="binding-chain">
               {bindingChecks?.checks.map((item, index) => (
@@ -9894,14 +9966,18 @@ function MetaTokenDashboard({ authUser }) {
                   {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
                 </div>
               ))}
-              <span className={`binding-final-shape ${bindingChecks?.wired ? "ok" : "error"}`}>
+              <span className={`binding-final-shape ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`}>
                 <strong>Integration</strong>
-                <small>{bindingChecks?.wired ? "Success" : "Issue"}</small>
+                <small>{flowMode === "online" ? "Success" : flowMode === "delayed" ? "Delayed" : "Offline"}</small>
               </span>
             </div>
             <div className="binding-footer">
-              <span className={`binding-pill ${bindingChecks?.wired ? "ok" : "error"}`}>
-                {bindingChecks?.wired ? "Integration online" : "Integration requires fixes"}
+              <span className={`binding-pill ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`}>
+                {flowMode === "online"
+                  ? "Integration online"
+                  : flowMode === "delayed"
+                    ? "Integration delayed"
+                    : "Integration requires fixes"}
               </span>
               {selectedBinding.last_checked_at ? (
                 <span className="binding-meta">
