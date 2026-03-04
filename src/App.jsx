@@ -125,6 +125,7 @@ const navItems = [
   { key: "devices", label: "Devices", icon: Smartphone },
   { key: "domains", label: "Domains", icon: Globe },
   { key: "pixels", label: "Pixels", icon: Zap },
+  { key: "accounts", label: "Accounts", icon: UserPlus },
   { key: "roles", label: "Roles", icon: ShieldCheck },
   { key: "profile", label: "Profile", icon: User },
   { key: "meta_token", label: "Meta Token $", icon: CreditCard },
@@ -146,7 +147,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["finances", "utm", "domains", "pixels"] },
+  { title: "Operations", items: ["finances", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -233,6 +234,7 @@ const permissionOptions = [
   { key: "devices", label: "Devices" },
   { key: "domains", label: "Domains" },
   { key: "pixels", label: "Pixels" },
+  { key: "accounts", label: "Accounts" },
   { key: "meta_token", label: "Meta Token $" },
   { key: "api", label: "API" },
   { key: "media_buyers", label: "Media Buyers" },
@@ -9564,6 +9566,507 @@ function PixelsDashboard({ authUser }) {
   );
 }
 
+function AccountsDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const canManageAccounts = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const [accounts, setAccounts] = React.useState([]);
+  const [accountState, setAccountState] = React.useState({ loading: true, error: null });
+  const [pixels, setPixels] = React.useState([]);
+  const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
+  const [domains, setDomains] = React.useState([]);
+  const [domainState, setDomainState] = React.useState({ loading: true, error: null });
+  const [integrations, setIntegrations] = React.useState([]);
+  const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
+  const [users, setUsers] = React.useState([]);
+  const [userState, setUserState] = React.useState({ loading: true, error: null });
+  const [showForm, setShowForm] = React.useState(true);
+  const [form, setForm] = React.useState({
+    accountNumber: "",
+    status: "Active",
+    pixelId: "",
+    metaIntegrationId: "",
+    domainIds: [],
+    notes: "",
+    ownerId: authUser?.id ? String(authUser.id) : "",
+  });
+
+  const accountStatusOptions = ["Active", "Pending", "Paused", "Expired", "Blocked"];
+
+  const normalizeDomainIds = React.useCallback((value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => Number.parseInt(String(item), 10))
+        .filter((item) => Number.isFinite(item) && item > 0);
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        return normalizeDomainIds(JSON.parse(trimmed));
+      } catch (error) {
+        return trimmed
+          .split(",")
+          .map((item) => Number.parseInt(item, 10))
+          .filter((item) => Number.isFinite(item) && item > 0);
+      }
+    }
+    return [];
+  }, []);
+
+  const updateForm = (key) => (event) => {
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  };
+
+  const handleDomainSelection = (event) => {
+    const selectedValues = Array.from(event.target.selectedOptions || [])
+      .map((option) => Number.parseInt(option.value, 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    setForm((prev) => ({ ...prev, domainIds: selectedValues }));
+  };
+
+  const resetForm = React.useCallback(() => {
+    setForm({
+      accountNumber: "",
+      status: "Active",
+      pixelId: "",
+      metaIntegrationId: "",
+      domainIds: [],
+      notes: "",
+      ownerId: authUser?.id ? String(authUser.id) : "",
+    });
+  }, [authUser?.id]);
+
+  React.useEffect(() => {
+    setForm((prev) => ({ ...prev, ownerId: authUser?.id ? String(authUser.id) : prev.ownerId }));
+  }, [authUser?.id]);
+
+  const fetchAccounts = React.useCallback(async () => {
+    try {
+      setAccountState({ loading: true, error: null });
+      const response = await apiFetch("/api/accounts?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load accounts.");
+      }
+      const data = await response.json();
+      const normalized = Array.isArray(data)
+        ? data.map((row) => ({
+            ...row,
+            domain_ids: normalizeDomainIds(row?.domain_ids),
+          }))
+        : [];
+      setAccounts(normalized);
+      setAccountState({ loading: false, error: null });
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to load accounts." });
+    }
+  }, [normalizeDomainIds]);
+
+  const fetchPixels = React.useCallback(async () => {
+    try {
+      setPixelState({ loading: true, error: null });
+      const response = await apiFetch("/api/pixels?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load pixels.");
+      }
+      const data = await response.json();
+      setPixels(Array.isArray(data) ? data : []);
+      setPixelState({ loading: false, error: null });
+    } catch (error) {
+      setPixelState({ loading: false, error: error.message || "Failed to load pixels." });
+    }
+  }, []);
+
+  const fetchDomains = React.useCallback(async () => {
+    try {
+      setDomainState({ loading: true, error: null });
+      const response = await apiFetch("/api/domains?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load domains.");
+      }
+      const data = await response.json();
+      setDomains(Array.isArray(data) ? data : []);
+      setDomainState({ loading: false, error: null });
+    } catch (error) {
+      setDomainState({ loading: false, error: error.message || "Failed to load domains." });
+    }
+  }, []);
+
+  const fetchIntegrations = React.useCallback(async () => {
+    try {
+      setIntegrationState({ loading: true, error: null });
+      const response = await apiFetch("/api/meta-tokens?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load integrations.");
+      }
+      const data = await response.json();
+      setIntegrations(Array.isArray(data) ? data : []);
+      setIntegrationState({ loading: false, error: null });
+    } catch (error) {
+      setIntegrationState({ loading: false, error: error.message || "Failed to load integrations." });
+    }
+  }, []);
+
+  const fetchUsers = React.useCallback(async () => {
+    if (!canManageAccounts) {
+      setUsers([]);
+      setUserState({ loading: false, error: null });
+      return;
+    }
+    try {
+      setUserState({ loading: true, error: null });
+      const response = await apiFetch("/api/users?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load users.");
+      }
+      const data = await response.json();
+      setUsers(Array.isArray(data) ? data : []);
+      setUserState({ loading: false, error: null });
+    } catch (error) {
+      setUserState({ loading: false, error: error.message || "Failed to load users." });
+    }
+  }, [canManageAccounts]);
+
+  React.useEffect(() => {
+    fetchAccounts();
+    fetchPixels();
+    fetchDomains();
+    fetchIntegrations();
+    fetchUsers();
+  }, [fetchAccounts, fetchPixels, fetchDomains, fetchIntegrations, fetchUsers]);
+
+  const ownerLookup = React.useMemo(() => {
+    if (!users.length) return {};
+    return users.reduce((acc, user) => {
+      acc[user.id] = user.username;
+      return acc;
+    }, {});
+  }, [users]);
+
+  const pixelLookup = React.useMemo(() => {
+    if (!pixels.length) return {};
+    return pixels.reduce((acc, pixel) => {
+      acc[pixel.id] = pixel;
+      return acc;
+    }, {});
+  }, [pixels]);
+
+  const domainLookup = React.useMemo(() => {
+    if (!domains.length) return {};
+    return domains.reduce((acc, domain) => {
+      acc[domain.id] = domain;
+      return acc;
+    }, {});
+  }, [domains]);
+
+  const integrationLookup = React.useMemo(() => {
+    if (!integrations.length) return {};
+    return integrations.reduce((acc, integration) => {
+      acc[integration.id] = integration;
+      return acc;
+    }, {});
+  }, [integrations]);
+
+  const visibleAccounts = React.useMemo(() => {
+    if (canManageAccounts) return accounts;
+    return accounts.filter((account) => account.owner_id === authUser?.id);
+  }, [canManageAccounts, accounts, authUser?.id]);
+
+  const resolveOwnerLabel = (row) => {
+    if (row?.owner_name) return row.owner_name;
+    if (row?.owner_id && ownerLookup[row.owner_id]) return ownerLookup[row.owner_id];
+    if (row?.owner_id === authUser?.id) return authUser?.username || "You";
+    return row?.owner_role ? t(row.owner_role) : "—";
+  };
+
+  const resolvePixelLabel = (row) => {
+    if (row?.pixel_value) return row.pixel_value;
+    const pixel = pixelLookup[row?.pixel_id];
+    return pixel?.pixel_id || "—";
+  };
+
+  const resolveDomainLabel = (row) => {
+    const ids = normalizeDomainIds(row?.domain_ids);
+    if (!ids.length) return "—";
+    return ids.map((id) => domainLookup[id]?.domain || `#${id}`).join(", ");
+  };
+
+  const resolveIntegrationLabel = (row) => {
+    const linked = integrationLookup[row?.meta_integration_id];
+    const accountNumber = row?.integration_account_number || linked?.account_number || "";
+    const buyer = row?.integration_buyer_name || linked?.buyer_name || "";
+    if (!accountNumber && !buyer) return "—";
+    if (!buyer) return accountNumber;
+    return `${accountNumber} · ${buyer}`;
+  };
+
+  const resolveIntegrationCost = (row) => {
+    const linked = integrationLookup[row?.meta_integration_id];
+    const explicit = Number(row?.integration_received_spend);
+    if (Number.isFinite(explicit)) return explicit;
+    const fallback = Number(linked?.received_spend);
+    return Number.isFinite(fallback) ? fallback : 0;
+  };
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await apiFetch("/api/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountNumber: form.accountNumber,
+          status: form.status,
+          pixelId: form.pixelId || null,
+          metaIntegrationId: form.metaIntegrationId || null,
+          domainIds: form.domainIds,
+          notes: form.notes,
+          ownerId: canManageAccounts && form.ownerId ? Number(form.ownerId) : undefined,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to save account.");
+      }
+      await fetchAccounts();
+      resetForm();
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to save account." });
+    }
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      const response = await apiFetch(`/api/accounts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update status.");
+      }
+      await fetchAccounts();
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to update status." });
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const confirmed = window.confirm("Remove this account? This cannot be undone.");
+    if (!confirmed) return;
+    try {
+      const response = await apiFetch(`/api/accounts/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to delete account.");
+      }
+      await fetchAccounts();
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to delete account." });
+    }
+  };
+
+  return (
+    <section className="form-section">
+      <motion.div
+        className="panel meta-token-panel"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">{t("Accounts Registry")}</h3>
+            <p className="panel-subtitle">
+              {t("Register account numbers, manage status, and bind pixel + Meta integration cost in one view.")}
+            </p>
+          </div>
+          <button className="action-pill" type="button" onClick={() => setShowForm((value) => !value)}>
+            {showForm ? t("Hide Form") : t("Create")}
+          </button>
+        </div>
+
+        {showForm ? (
+          <form className="form-grid accounts-form" onSubmit={handleCreate}>
+            <div className="field">
+              <label>{t("Account Number")}</label>
+              <input
+                value={form.accountNumber}
+                onChange={updateForm("accountNumber")}
+                placeholder="804123612647228"
+                required
+              />
+            </div>
+            <div className="field">
+              <label>{t("Status")}</label>
+              <select value={form.status} onChange={updateForm("status")} required>
+                {accountStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {t(status)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t("Pixel")}</label>
+              <select value={form.pixelId} onChange={updateForm("pixelId")}>
+                <option value="">
+                  {pixelState.loading ? t("Loading...") : pixels.length ? t("Select") : t("No pixels")}
+                </option>
+                {pixels.map((pixel) => (
+                  <option key={pixel.id} value={pixel.id}>
+                    {pixel.pixel_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t("Meta Integration")}</label>
+              <select value={form.metaIntegrationId} onChange={updateForm("metaIntegrationId")}>
+                <option value="">
+                  {integrationState.loading
+                    ? t("Loading...")
+                    : integrations.length
+                      ? t("Select")
+                      : t("No integrations")}
+                </option>
+                {integrations.map((integration) => (
+                  <option key={integration.id} value={integration.id}>
+                    {integration.account_number || `#${integration.id}`} ·{" "}
+                    {integration.buyer_name || "—"} · {formatCurrency(Number(integration.received_spend || 0))}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field field-span-2">
+              <label>{t("Domains under account")}</label>
+              <select
+                className="accounts-domain-select"
+                value={form.domainIds.map((id) => String(id))}
+                onChange={handleDomainSelection}
+                multiple
+                size={5}
+              >
+                {domains.map((domain) => (
+                  <option key={domain.id} value={domain.id}>
+                    {domain.domain} · {domain.country || "—"}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">{t("Use Cmd/Ctrl + click to select more than one domain.")}</span>
+            </div>
+            {canManageAccounts ? (
+              <div className="field">
+                <label>{t("Owner")}</label>
+                <select value={form.ownerId} onChange={updateForm("ownerId")}>
+                  <option value="">
+                    {userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
+                  </option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.username} · {t(user.role)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            <div className="field field-span-2">
+              <label>{t("Notes")}</label>
+              <input value={form.notes} onChange={updateForm("notes")} placeholder={t("Optional notes")} />
+            </div>
+            <div className="form-actions">
+              <button className="ghost" type="button" onClick={resetForm}>
+                {t("Reset")}
+              </button>
+              <button className="action-pill" type="submit">
+                {t("Save")}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {accountState.error ? <div className="empty-state error">{accountState.error}</div> : null}
+        {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
+        {domainState.error ? <div className="empty-state error">{domainState.error}</div> : null}
+        {integrationState.error ? <div className="empty-state error">{integrationState.error}</div> : null}
+        {userState.error ? <div className="empty-state error">{userState.error}</div> : null}
+
+        {accountState.loading ? (
+          <div className="empty-state">{t("Loading accounts…")}</div>
+        ) : visibleAccounts.length === 0 ? (
+          <div className="empty-state">{t("No accounts added yet.")}</div>
+        ) : (
+          <div className="table-wrap">
+            <table className="entries-table accounts-table">
+              <thead>
+                <tr>
+                  <th>{t("ID")}</th>
+                  <th>{t("Account")}</th>
+                  <th>{t("Status")}</th>
+                  <th>{t("Pixel")}</th>
+                  <th>{t("Meta Binding")}</th>
+                  <th>{t("Integration Cost")}</th>
+                  <th>{t("Domains")}</th>
+                  <th>{t("Notes")}</th>
+                  <th>{t("Owner")}</th>
+                  <th>{t("Updated")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {visibleAccounts.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.id}</td>
+                    <td>{row.account_number}</td>
+                    <td>
+                      {canManageAccounts || row.owner_id === authUser?.id ? (
+                        <select
+                          className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
+                          value={row.status || "Active"}
+                          onChange={(event) => handleStatusChange(row.id, event.target.value)}
+                        >
+                          {accountStatusOptions.map((status) => (
+                            <option key={status} value={status}>
+                              {t(status)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`status-pill status-${row.status?.toLowerCase() || "inactive"}`}>
+                          {t(row.status || "Active")}
+                        </span>
+                      )}
+                    </td>
+                    <td>{resolvePixelLabel(row)}</td>
+                    <td>{resolveIntegrationLabel(row)}</td>
+                    <td>{formatCurrency(resolveIntegrationCost(row))}</td>
+                    <td className="accounts-domain-cell">{resolveDomainLabel(row)}</td>
+                    <td>{row.notes || "—"}</td>
+                    <td>{resolveOwnerLabel(row)}</td>
+                    <td>{row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}</td>
+                    <td>
+                      {canManageAccounts || row.owner_id === authUser?.id ? (
+                        <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </motion.div>
+    </section>
+  );
+}
+
 function MetaTokenDashboard({ authUser }) {
   const { t } = useLanguage();
   const canManage = authUser?.role === "Boss" || authUser?.role === "Team Leader";
@@ -12457,6 +12960,7 @@ export default function App() {
   const isGoals = activeView === "streams";
   const isDomains = activeView === "domains";
   const isPixels = activeView === "pixels";
+  const isAccounts = activeView === "accounts";
   const isRoles = activeView === "roles";
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
@@ -12536,6 +13040,7 @@ export default function App() {
       devices: "devices",
       domains: "domains",
       pixels: "pixels",
+      accounts: "accounts",
       meta_token: "meta_token",
       roles: "roles",
       api: "api",
@@ -13042,6 +13547,8 @@ export default function App() {
           <DomainsDashboard authUser={authUser} />
         ) : isPixels ? (
           <PixelsDashboard authUser={authUser} />
+        ) : isAccounts ? (
+          <AccountsDashboard authUser={authUser} />
         ) : isProfile ? (
           <ProfileDashboard authUser={authUser} />
         ) : isRoles ? (

@@ -1590,6 +1590,24 @@ select {
   grid-column: span 2;
 }
 
+.accounts-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.accounts-form .field:first-child,
+.accounts-form .field:nth-child(4) {
+  grid-column: auto;
+}
+
+.accounts-form .field-span-2 {
+  grid-column: span 2;
+}
+
+.accounts-domain-select {
+  min-height: 136px;
+  border-radius: 12px;
+}
+
 .role-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2066,6 +2084,10 @@ select {
 
 .meta-token-table {
   min-width: 940px;
+}
+
+.accounts-table {
+  min-width: 1380px;
 }
 
 .meta-token-sections {
@@ -2842,6 +2864,11 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.accounts-domain-cell {
+  max-width: 260px;
+  white-space: normal;
 }
 
 .copy-btn {

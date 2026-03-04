@@ -175,6 +175,19 @@ const initDb = async () => {
       last_checked_at TIMESTAMP,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS accounts_registry (
+      id SERIAL PRIMARY KEY,
+      account_number TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Active',
+      pixel_id INTEGER,
+      meta_integration_id INTEGER,
+      domain_ids TEXT NOT NULL DEFAULT '[]',
+      notes TEXT,
+      owner_role TEXT,
+      owner_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -290,6 +303,23 @@ const initDb = async () => {
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS meta_binding TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS is_wired INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS status TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS meta_integration_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS domain_ids TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS notes TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;`,
+    `UPDATE accounts_registry
+     SET status = 'Active'
+     WHERE status IS NULL OR TRIM(status) = '';`,
+    `UPDATE accounts_registry
+     SET domain_ids = '[]'
+     WHERE domain_ids IS NULL OR TRIM(domain_ids) = '';`,
+    `UPDATE accounts_registry
+     SET updated_at = COALESCE(updated_at, created_at, NOW())
+     WHERE updated_at IS NULL;`,
     `UPDATE meta_token_integrations
      SET adset_macro = '{{adset.id}}'
      WHERE adset_macro IS NULL OR TRIM(adset_macro) = '';`,
@@ -322,6 +352,7 @@ const allPermissions = [
   "devices",
   "domains",
   "pixels",
+  "accounts",
   "meta_token",
   "api",
   "media_buyers",
@@ -350,6 +381,7 @@ const roleSeed = [
       "goals",
       "domains",
       "pixels",
+      "accounts",
     ],
   },
   {
@@ -364,6 +396,7 @@ const roleSeed = [
       "geos",
       "domains",
       "pixels",
+      "accounts",
     ],
   },
   {
@@ -377,6 +410,7 @@ const roleSeed = [
       "geos",
       "domains",
       "pixels",
+      "accounts",
     ],
   },
 ];
@@ -914,6 +948,185 @@ const selectDomainByNameWithOwner = async (domain) =>
   );
 
 const deleteDomain = async (id) => query(`DELETE FROM domains WHERE id = $1`, [id]);
+
+const normalizeNumericIds = (value) => {
+  if (value === null || value === undefined || value === "") return [];
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (!trimmed) return [];
+    try {
+      source = JSON.parse(trimmed);
+    } catch (error) {
+      source = trimmed.split(",");
+    }
+  }
+  const list = Array.isArray(source) ? source : [source];
+  const normalized = list
+    .map((item) => Number.parseInt(String(item), 10))
+    .filter((item) => Number.isFinite(item) && item > 0);
+  return Array.from(new Set(normalized));
+};
+
+const serializeNumericIds = (value) => JSON.stringify(normalizeNumericIds(value));
+
+const mapAccountRegistryRow = (row) => {
+  if (!row) return null;
+  return {
+    ...row,
+    domain_ids: normalizeNumericIds(row.domain_ids),
+    integration_received_spend: Number(row.integration_received_spend || 0),
+  };
+};
+
+const selectAccountRegistry = async (limit) => {
+  const rows = await getRows(
+    `SELECT a.id,
+            a.account_number,
+            a.status,
+            a.pixel_id,
+            a.meta_integration_id,
+            a.domain_ids,
+            a.notes,
+            a.owner_role,
+            a.owner_id,
+            a.created_at,
+            a.updated_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value,
+            m.account_number AS integration_account_number,
+            m.meta_token AS integration_meta_token,
+            m.buyer_name AS integration_buyer_name,
+            m.status AS integration_status,
+            m.comment AS integration_comment,
+            m.last_checked_at AS integration_last_checked_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS integration_received_spend
+     FROM accounts_registry a
+     LEFT JOIN users u ON u.id = a.owner_id
+     LEFT JOIN pixels p ON p.id = a.pixel_id
+     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows.map(mapAccountRegistryRow);
+};
+
+const selectAccountRegistryByOwner = async (ownerId, limit) => {
+  const rows = await getRows(
+    `SELECT a.id,
+            a.account_number,
+            a.status,
+            a.pixel_id,
+            a.meta_integration_id,
+            a.domain_ids,
+            a.notes,
+            a.owner_role,
+            a.owner_id,
+            a.created_at,
+            a.updated_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value,
+            m.account_number AS integration_account_number,
+            m.meta_token AS integration_meta_token,
+            m.buyer_name AS integration_buyer_name,
+            m.status AS integration_status,
+            m.comment AS integration_comment,
+            m.last_checked_at AS integration_last_checked_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS integration_received_spend
+     FROM accounts_registry a
+     LEFT JOIN users u ON u.id = a.owner_id
+     LEFT JOIN pixels p ON p.id = a.pixel_id
+     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     WHERE a.owner_id = $1
+     ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+     LIMIT $2`,
+    [ownerId, limit]
+  );
+  return rows.map(mapAccountRegistryRow);
+};
+
+const selectAccountRegistryById = async (id) => {
+  const row = await getRow(
+    `SELECT a.id,
+            a.account_number,
+            a.status,
+            a.pixel_id,
+            a.meta_integration_id,
+            a.domain_ids,
+            a.notes,
+            a.owner_role,
+            a.owner_id,
+            a.created_at,
+            a.updated_at,
+            u.username AS owner_name,
+            p.pixel_id AS pixel_value,
+            m.account_number AS integration_account_number,
+            m.meta_token AS integration_meta_token,
+            m.buyer_name AS integration_buyer_name,
+            m.status AS integration_status,
+            m.comment AS integration_comment,
+            m.last_checked_at AS integration_last_checked_at,
+            COALESCE((
+              SELECT SUM(ms.spend)
+              FROM media_stats ms
+              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+            ), 0) AS integration_received_spend
+     FROM accounts_registry a
+     LEFT JOIN users u ON u.id = a.owner_id
+     LEFT JOIN pixels p ON p.id = a.pixel_id
+     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     WHERE a.id = $1`,
+    [id]
+  );
+  return mapAccountRegistryRow(row);
+};
+
+const insertAccountRegistry = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO accounts_registry (
+      account_number,
+      status,
+      pixel_id,
+      meta_integration_id,
+      domain_ids,
+      notes,
+      owner_role,
+      owner_id,
+      updated_at
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+     RETURNING id`,
+    [
+      payload.account_number,
+      payload.status,
+      payload.pixel_id,
+      payload.meta_integration_id,
+      payload.domain_ids,
+      payload.notes,
+      payload.owner_role,
+      payload.owner_id,
+    ]
+  );
+  return rows[0];
+};
+
+const deleteAccountRegistry = async (id) =>
+  query(`DELETE FROM accounts_registry WHERE id = $1`, [id]);
 
 const insertCampaign = async (payload) => {
   const { rows } = await query(
@@ -3048,6 +3261,240 @@ app.delete("/api/domains/:id", async (req, res) => {
   }
   await deleteDomain(id);
   res.json({ ok: true });
+});
+
+app.get("/api/accounts", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  if (isLeadership(req.user)) {
+    const rows = await selectAccountRegistry(limit);
+    return res.json(rows);
+  }
+  const rows = await selectAccountRegistryByOwner(req.user.id, limit);
+  return res.json(rows);
+});
+
+app.post("/api/accounts", async (req, res) => {
+  const {
+    accountNumber,
+    status = "Active",
+    pixelId = null,
+    metaIntegrationId = null,
+    domainIds = [],
+    notes = "",
+    ownerId,
+  } = req.body ?? {};
+
+  const normalizedAccountNumber = String(accountNumber || "").trim();
+  if (!normalizedAccountNumber) {
+    return res.status(400).json({ error: "Account number is required." });
+  }
+
+  let resolvedOwnerId = req.user.id;
+  if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
+    const parsedOwnerId = Number.parseInt(ownerId, 10);
+    if (!Number.isFinite(parsedOwnerId)) {
+      return res.status(400).json({ error: "Invalid owner id." });
+    }
+    resolvedOwnerId = parsedOwnerId;
+  }
+  const ownerRecord = await selectUserById(resolvedOwnerId);
+  if (!ownerRecord) {
+    return res.status(400).json({ error: "Owner not found." });
+  }
+
+  let resolvedPixelId = null;
+  if (pixelId !== undefined && pixelId !== null && String(pixelId).trim() !== "") {
+    const parsedPixelId = Number.parseInt(pixelId, 10);
+    if (!Number.isFinite(parsedPixelId)) {
+      return res.status(400).json({ error: "Invalid pixel id." });
+    }
+    const pixel = await selectPixelById(parsedPixelId);
+    if (!pixel) {
+      return res.status(400).json({ error: "Pixel not found." });
+    }
+    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+    resolvedPixelId = parsedPixelId;
+  }
+
+  let resolvedMetaIntegrationId = null;
+  if (
+    metaIntegrationId !== undefined &&
+    metaIntegrationId !== null &&
+    String(metaIntegrationId).trim() !== ""
+  ) {
+    const parsedIntegrationId = Number.parseInt(metaIntegrationId, 10);
+    if (!Number.isFinite(parsedIntegrationId)) {
+      return res.status(400).json({ error: "Invalid Meta integration id." });
+    }
+    const integration = await selectMetaTokenIntegrationById(parsedIntegrationId);
+    if (!integration) {
+      return res.status(400).json({ error: "Meta integration not found." });
+    }
+    if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+    resolvedMetaIntegrationId = parsedIntegrationId;
+  }
+
+  const normalizedDomainIds = normalizeNumericIds(domainIds);
+  for (const domainId of normalizedDomainIds) {
+    const domain = await selectDomainById(domainId);
+    if (!domain) {
+      return res.status(400).json({ error: `Domain ${domainId} not found.` });
+    }
+    if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+
+  const payload = {
+    account_number: normalizedAccountNumber,
+    status: String(status || "Active").trim() || "Active",
+    pixel_id: resolvedPixelId,
+    meta_integration_id: resolvedMetaIntegrationId,
+    domain_ids: serializeNumericIds(normalizedDomainIds),
+    notes: String(notes || "").trim() || null,
+    owner_role: ownerRecord.role || req.user?.role || "",
+    owner_id: ownerRecord.id,
+  };
+  const info = await insertAccountRegistry(payload);
+  const row = await selectAccountRegistryById(info.id);
+  return res.status(201).json(row || { id: info.id });
+});
+
+app.patch("/api/accounts/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid account id." });
+  }
+  const current = await selectAccountRegistryById(id);
+  if (!current) {
+    return res.status(404).json({ error: "Account not found." });
+  }
+  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+
+  const body = req.body ?? {};
+  let resolvedOwnerId = current.owner_id;
+  if (isLeadership(req.user) && body.ownerId !== undefined && body.ownerId !== null && body.ownerId !== "") {
+    const parsedOwnerId = Number.parseInt(body.ownerId, 10);
+    if (!Number.isFinite(parsedOwnerId)) {
+      return res.status(400).json({ error: "Invalid owner id." });
+    }
+    resolvedOwnerId = parsedOwnerId;
+  }
+  const ownerRecord = await selectUserById(resolvedOwnerId);
+  if (!ownerRecord) {
+    return res.status(400).json({ error: "Owner not found." });
+  }
+
+  const nextAccountNumberRaw =
+    body.accountNumber !== undefined ? body.accountNumber : current.account_number;
+  const nextAccountNumber = String(nextAccountNumberRaw || "").trim();
+  if (!nextAccountNumber) {
+    return res.status(400).json({ error: "Account number is required." });
+  }
+  const nextStatus = String(body.status ?? current.status ?? "Active").trim() || "Active";
+
+  const nextPixelValueRaw = body.pixelId !== undefined ? body.pixelId : current.pixel_id;
+  let nextPixelId = null;
+  if (nextPixelValueRaw !== null && nextPixelValueRaw !== undefined && String(nextPixelValueRaw).trim() !== "") {
+    nextPixelId = Number.parseInt(nextPixelValueRaw, 10);
+    if (!Number.isFinite(nextPixelId)) {
+      return res.status(400).json({ error: "Invalid pixel id." });
+    }
+    const pixel = await selectPixelById(nextPixelId);
+    if (!pixel) {
+      return res.status(400).json({ error: "Pixel not found." });
+    }
+    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+
+  const nextIntegrationValueRaw =
+    body.metaIntegrationId !== undefined ? body.metaIntegrationId : current.meta_integration_id;
+  let nextMetaIntegrationId = null;
+  if (
+    nextIntegrationValueRaw !== null &&
+    nextIntegrationValueRaw !== undefined &&
+    String(nextIntegrationValueRaw).trim() !== ""
+  ) {
+    nextMetaIntegrationId = Number.parseInt(nextIntegrationValueRaw, 10);
+    if (!Number.isFinite(nextMetaIntegrationId)) {
+      return res.status(400).json({ error: "Invalid Meta integration id." });
+    }
+    const integration = await selectMetaTokenIntegrationById(nextMetaIntegrationId);
+    if (!integration) {
+      return res.status(400).json({ error: "Meta integration not found." });
+    }
+    if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+
+  const nextDomainIds =
+    body.domainIds !== undefined ? normalizeNumericIds(body.domainIds) : normalizeNumericIds(current.domain_ids);
+  for (const domainId of nextDomainIds) {
+    const domain = await selectDomainById(domainId);
+    if (!domain) {
+      return res.status(400).json({ error: `Domain ${domainId} not found.` });
+    }
+    if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+
+  const nextNotes =
+    body.notes !== undefined ? String(body.notes || "").trim() || null : String(current.notes || "").trim() || null;
+
+  await query(
+    `UPDATE accounts_registry
+     SET account_number = $1,
+         status = $2,
+         pixel_id = $3,
+         meta_integration_id = $4,
+         domain_ids = $5,
+         notes = $6,
+         owner_role = $7,
+         owner_id = $8,
+         updated_at = NOW()
+     WHERE id = $9`,
+    [
+      nextAccountNumber,
+      nextStatus,
+      nextPixelId,
+      nextMetaIntegrationId,
+      serializeNumericIds(nextDomainIds),
+      nextNotes,
+      ownerRecord.role || current.owner_role || req.user?.role || "",
+      ownerRecord.id,
+      id,
+    ]
+  );
+
+  const row = await selectAccountRegistryById(id);
+  return res.json(row || { ok: true });
+});
+
+app.delete("/api/accounts/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid account id." });
+  }
+  const current = await selectAccountRegistryById(id);
+  if (!current) {
+    return res.status(404).json({ error: "Account not found." });
+  }
+  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  await deleteAccountRegistry(id);
+  return res.json({ ok: true });
 });
 
 app.get("/api/pixels", async (req, res) => {
