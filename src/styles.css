@@ -2090,6 +2090,23 @@ select {
   min-width: 1380px;
 }
 
+.accounts-registry-panel {
+  border-color: rgba(63, 119, 188, 0.34);
+  background:
+    radial-gradient(140% 120% at 0% 0%, rgba(33, 65, 104, 0.18) 0%, rgba(11, 18, 31, 0) 58%),
+    linear-gradient(168deg, rgba(16, 23, 36, 0.97), rgba(10, 16, 28, 0.98));
+}
+
+.accounts-registry-panel .table-wrap {
+  border-color: rgba(70, 114, 182, 0.34);
+  background: rgba(7, 12, 23, 0.62);
+}
+
+.accounts-registry-panel .entries-table th {
+  background: rgba(10, 16, 29, 0.82);
+  color: #abc3e8;
+}
+
 .meta-token-sections {
   display: grid;
   gap: 16px;
@@ -2871,6 +2888,36 @@ select {
   white-space: normal;
 }
 
+.accounts-pixel-select {
+  min-width: 170px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 8px 34px 8px 14px;
+  border: 2px solid rgba(85, 150, 235, 0.44);
+  background:
+    linear-gradient(160deg, rgba(13, 23, 39, 0.95), rgba(9, 16, 29, 0.96)),
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 100% 100%, 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  color: #a4cfff;
+}
+
+.accounts-pixel-hint {
+  display: block;
+  margin-top: 6px;
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .copy-btn {
   border: 1px solid rgba(255, 255, 255, 0.12);
   width: 26px;
@@ -3131,6 +3178,55 @@ select {
 .domain-table .status-select.status-blocked {
   border-color: rgba(255, 45, 45, 0.95);
   color: #ff2d2d;
+}
+
+.accounts-table .status-select {
+  min-width: 168px;
+  padding: 9px 36px 9px 28px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.15px;
+  text-transform: none;
+  background:
+    linear-gradient(160deg, rgba(15, 22, 33, 0.96), rgba(10, 17, 29, 0.97)),
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    0 0,
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 100% 100%, 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  border: 3px solid rgba(74, 208, 150, 0.85);
+  color: #35e7a1;
+  box-shadow: none;
+  appearance: none;
+}
+
+.accounts-table .status-select.status-active {
+  border-color: rgba(53, 231, 161, 0.9);
+  color: #35e7a1;
+}
+
+.accounts-table .status-select.status-pending {
+  border-color: rgba(246, 183, 86, 0.92);
+  color: #f6d684;
+}
+
+.accounts-table .status-select.status-paused {
+  border-color: rgba(146, 154, 168, 0.92);
+  color: #b7bfcd;
+}
+
+.accounts-table .status-select.status-expired {
+  border-color: rgba(247, 133, 133, 0.94);
+  color: #ffc2c2;
+}
+
+.accounts-table .status-select.status-blocked {
+  border-color: rgba(255, 62, 62, 0.95);
+  color: #ff4f4f;
 }
 
 .status-requested {

@@ -9568,7 +9568,7 @@ function PixelsDashboard({ authUser }) {
 
 function AccountsDashboard({ authUser }) {
   const { t } = useLanguage();
-  const canManageAccounts = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const canAssignOwner = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [accounts, setAccounts] = React.useState([]);
   const [accountState, setAccountState] = React.useState({ loading: true, error: null });
   const [pixels, setPixels] = React.useState([]);
@@ -9711,7 +9711,7 @@ function AccountsDashboard({ authUser }) {
   }, []);
 
   const fetchUsers = React.useCallback(async () => {
-    if (!canManageAccounts) {
+    if (!canAssignOwner) {
       setUsers([]);
       setUserState({ loading: false, error: null });
       return;
@@ -9729,7 +9729,7 @@ function AccountsDashboard({ authUser }) {
     } catch (error) {
       setUserState({ loading: false, error: error.message || "Failed to load users." });
     }
-  }, [canManageAccounts]);
+  }, [canAssignOwner]);
 
   React.useEffect(() => {
     fetchAccounts();
@@ -9771,10 +9771,7 @@ function AccountsDashboard({ authUser }) {
     }, {});
   }, [integrations]);
 
-  const visibleAccounts = React.useMemo(() => {
-    if (canManageAccounts) return accounts;
-    return accounts.filter((account) => account.owner_id === authUser?.id);
-  }, [canManageAccounts, accounts, authUser?.id]);
+  const visibleAccounts = React.useMemo(() => accounts, [accounts]);
 
   const resolveOwnerLabel = (row) => {
     if (row?.owner_name) return row.owner_name;
@@ -9825,7 +9822,7 @@ function AccountsDashboard({ authUser }) {
           metaIntegrationId: form.metaIntegrationId || null,
           domainIds: form.domainIds,
           notes: form.notes,
-          ownerId: canManageAccounts && form.ownerId ? Number(form.ownerId) : undefined,
+          ownerId: canAssignOwner && form.ownerId ? Number(form.ownerId) : undefined,
         }),
       });
       if (!response.ok) {
@@ -9856,6 +9853,23 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
+  const handlePixelChange = async (id, pixelId) => {
+    try {
+      const response = await apiFetch(`/api/accounts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pixelId: pixelId ? Number(pixelId) : null }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update account pixel.");
+      }
+      await fetchAccounts();
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to update account pixel." });
+    }
+  };
+
   const handleDelete = async (id) => {
     const confirmed = window.confirm("Remove this account? This cannot be undone.");
     if (!confirmed) return;
@@ -9874,7 +9888,7 @@ function AccountsDashboard({ authUser }) {
   return (
     <section className="form-section">
       <motion.div
-        className="panel meta-token-panel"
+        className="panel meta-token-panel accounts-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -9960,7 +9974,7 @@ function AccountsDashboard({ authUser }) {
               </select>
               <span className="field-hint">{t("Use Cmd/Ctrl + click to select more than one domain.")}</span>
             </div>
-            {canManageAccounts ? (
+            {canAssignOwner ? (
               <div className="field">
                 <label>{t("Owner")}</label>
                 <select value={form.ownerId} onChange={updateForm("ownerId")}>
@@ -10024,25 +10038,33 @@ function AccountsDashboard({ authUser }) {
                     <td>{row.id}</td>
                     <td>{row.account_number}</td>
                     <td>
-                      {canManageAccounts || row.owner_id === authUser?.id ? (
-                        <select
-                          className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
-                          value={row.status || "Active"}
-                          onChange={(event) => handleStatusChange(row.id, event.target.value)}
-                        >
-                          {accountStatusOptions.map((status) => (
-                            <option key={status} value={status}>
-                              {t(status)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className={`status-pill status-${row.status?.toLowerCase() || "inactive"}`}>
-                          {t(row.status || "Active")}
-                        </span>
-                      )}
+                      <select
+                        className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
+                        value={row.status || "Active"}
+                        onChange={(event) => handleStatusChange(row.id, event.target.value)}
+                      >
+                        {accountStatusOptions.map((status) => (
+                          <option key={status} value={status}>
+                            {t(status)}
+                          </option>
+                        ))}
+                      </select>
                     </td>
-                    <td>{resolvePixelLabel(row)}</td>
+                    <td>
+                      <select
+                        className="inline-select accounts-pixel-select"
+                        value={row?.pixel_id ? String(row.pixel_id) : ""}
+                        onChange={(event) => handlePixelChange(row.id, event.target.value)}
+                      >
+                        <option value="">{t("Unassigned")}</option>
+                        {pixels.map((pixel) => (
+                          <option key={pixel.id} value={pixel.id}>
+                            {pixel.pixel_id}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="field-hint accounts-pixel-hint">{resolvePixelLabel(row)}</span>
+                    </td>
                     <td>{resolveIntegrationLabel(row)}</td>
                     <td>{formatCurrency(resolveIntegrationCost(row))}</td>
                     <td className="accounts-domain-cell">{resolveDomainLabel(row)}</td>
@@ -10050,11 +10072,9 @@ function AccountsDashboard({ authUser }) {
                     <td>{resolveOwnerLabel(row)}</td>
                     <td>{row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}</td>
                     <td>
-                      {canManageAccounts || row.owner_id === authUser?.id ? (
-                        <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      ) : null}
+                      <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)}>
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}

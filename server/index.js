@@ -3266,11 +3266,7 @@ app.delete("/api/domains/:id", async (req, res) => {
 app.get("/api/accounts", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  if (isLeadership(req.user)) {
-    const rows = await selectAccountRegistry(limit);
-    return res.json(rows);
-  }
-  const rows = await selectAccountRegistryByOwner(req.user.id, limit);
+  const rows = await selectAccountRegistry(limit);
   return res.json(rows);
 });
 
@@ -3313,9 +3309,6 @@ app.post("/api/accounts", async (req, res) => {
     if (!pixel) {
       return res.status(400).json({ error: "Pixel not found." });
     }
-    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
     resolvedPixelId = parsedPixelId;
   }
 
@@ -3333,9 +3326,6 @@ app.post("/api/accounts", async (req, res) => {
     if (!integration) {
       return res.status(400).json({ error: "Meta integration not found." });
     }
-    if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
     resolvedMetaIntegrationId = parsedIntegrationId;
   }
 
@@ -3344,9 +3334,6 @@ app.post("/api/accounts", async (req, res) => {
     const domain = await selectDomainById(domainId);
     if (!domain) {
       return res.status(400).json({ error: `Domain ${domainId} not found.` });
-    }
-    if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
     }
   }
 
@@ -3373,9 +3360,6 @@ app.patch("/api/accounts/:id", async (req, res) => {
   const current = await selectAccountRegistryById(id);
   if (!current) {
     return res.status(404).json({ error: "Account not found." });
-  }
-  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
-    return res.status(403).json({ error: "Forbidden." });
   }
 
   const body = req.body ?? {};
@@ -3411,9 +3395,6 @@ app.patch("/api/accounts/:id", async (req, res) => {
     if (!pixel) {
       return res.status(400).json({ error: "Pixel not found." });
     }
-    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
   }
 
   const nextIntegrationValueRaw =
@@ -3432,9 +3413,6 @@ app.patch("/api/accounts/:id", async (req, res) => {
     if (!integration) {
       return res.status(400).json({ error: "Meta integration not found." });
     }
-    if (!isLeadership(req.user) && integration.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
   }
 
   const nextDomainIds =
@@ -3443,9 +3421,6 @@ app.patch("/api/accounts/:id", async (req, res) => {
     const domain = await selectDomainById(domainId);
     if (!domain) {
       return res.status(400).json({ error: `Domain ${domainId} not found.` });
-    }
-    if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
     }
   }
 
@@ -3489,9 +3464,6 @@ app.delete("/api/accounts/:id", async (req, res) => {
   const current = await selectAccountRegistryById(id);
   if (!current) {
     return res.status(404).json({ error: "Account not found." });
-  }
-  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
-    return res.status(403).json({ error: "Forbidden." });
   }
   await deleteAccountRegistry(id);
   return res.json({ ok: true });
