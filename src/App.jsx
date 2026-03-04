@@ -200,41 +200,42 @@ const countryOptions = [
 ];
 
 const accountRegistryCountryOptions = [
-  "Australia",
-  "France",
-  "Germany",
-  "New Zealand",
-  "Egypt",
-  "Estonia",
-  "Japan",
-  "India",
-  "Vietnam",
-  "Chile",
+  "Albania",
+  "Algeria",
   "Argentina",
-  "Peru",
-  "Venezuela",
+  "Australia",
+  "Azerbaijan",
+  "Bolivia",
+  "Brazil",
+  "Canada",
+  "Chile",
   "Colombia",
   "Costa Rica",
-  "Bolivia",
-  "Russia",
-  "Nigeria",
-  "Ukraine",
-  "Poland",
   "Ecuador",
-  "Paraguay",
-  "Romania",
-  "Albania",
-  "Norway",
-  "Morocco",
-  "Algeria",
-  "Tunisia",
-  "South Korea",
-  "Switzerland",
-  "Sweden",
-  "Canada",
+  "Egypt",
+  "Estonia",
+  "France",
+  "Germany",
+  "India",
   "Iran",
   "Iraq",
-  "Azerbaijan",
+  "Japan",
+  "Morocco",
+  "New Zealand",
+  "Nigeria",
+  "Norway",
+  "Paraguay",
+  "Peru",
+  "Poland",
+  "Romania",
+  "Russia",
+  "South Korea",
+  "Sweden",
+  "Switzerland",
+  "Tunisia",
+  "Ukraine",
+  "Venezuela",
+  "Vietnam",
 ];
 
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
@@ -9617,6 +9618,8 @@ function AccountsDashboard({ authUser }) {
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
+  const [formCountryQuery, setFormCountryQuery] = React.useState("");
+  const [editCountryQuery, setEditCountryQuery] = React.useState("");
   const [form, setForm] = React.useState({
     accountNumber: "",
     status: "Active",
@@ -9743,6 +9746,7 @@ function AccountsDashboard({ authUser }) {
       notes: "",
       ownerId: authUser?.id ? String(authUser.id) : "",
     });
+    setFormCountryQuery("");
   }, [authUser?.id]);
 
   React.useEffect(() => {
@@ -10036,6 +10040,7 @@ function AccountsDashboard({ authUser }) {
   };
 
   const openEditModal = (row) => {
+    setEditCountryQuery("");
     setEditModal({
       open: true,
       row,
@@ -10053,6 +10058,7 @@ function AccountsDashboard({ authUser }) {
   };
 
   const closeEditModal = React.useCallback(() => {
+    setEditCountryQuery("");
     setEditModal({
       open: false,
       row: null,
@@ -10276,10 +10282,27 @@ function AccountsDashboard({ authUser }) {
     return `${availableFormDomains.length} domain${availableFormDomains.length === 1 ? "" : "s"} available for ${formOwnerName}.`;
   }, [formOwnerName, availableFormDomains.length, t]);
 
-  const renderCountryPicker = ({ selectedCountries, onToggle, emptyLabel }) => {
+  const renderCountryPicker = ({
+    selectedCountries,
+    onToggle,
+    emptyLabel,
+    countryQuery,
+    onCountryQueryChange,
+  }) => {
     const selected = accountRegistryCountryOptions.filter((country) => selectedCountries.includes(country));
+    const normalizedQuery = String(countryQuery || "").trim().toLowerCase();
+    const filteredCountries = accountRegistryCountryOptions.filter((country) =>
+      country.toLowerCase().includes(normalizedQuery)
+    );
     return (
-      <details className="accounts-country-picker">
+      <details
+        className="accounts-country-picker"
+        onToggle={(event) => {
+          if (!event.currentTarget.open && countryQuery) {
+            onCountryQueryChange("");
+          }
+        }}
+      >
         <summary className="accounts-country-trigger">
           <div className="accounts-country-selected">
             {selected.length ? (
@@ -10292,24 +10315,57 @@ function AccountsDashboard({ authUser }) {
               <span className="accounts-country-placeholder">{emptyLabel}</span>
             )}
           </div>
-          <span className="accounts-country-arrow" aria-hidden="true">
-            ▾
-          </span>
+          <div className="accounts-country-meta">
+            {selected.length ? <span className="accounts-country-count">{selected.length}</span> : null}
+            <span className="accounts-country-arrow" aria-hidden="true">
+              ▾
+            </span>
+          </div>
         </summary>
         <div className="accounts-country-menu">
-          {accountRegistryCountryOptions.map((country) => {
-            const checked = selectedCountries.includes(country);
-            return (
-              <label
-                key={`country-option-${country}`}
-                className={`accounts-country-option${checked ? " is-checked" : ""}`}
+          <div className="accounts-country-search-wrap">
+            <input
+              className="accounts-country-search"
+              type="text"
+              value={countryQuery}
+              onChange={(event) => onCountryQueryChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                }
+              }}
+              placeholder={t("Type to find countries")}
+            />
+            {countryQuery ? (
+              <button
+                type="button"
+                className="accounts-country-search-clear"
+                onClick={() => onCountryQueryChange("")}
+                aria-label={t("Clear")}
               >
-                <input type="checkbox" checked={checked} onChange={() => onToggle(country)} />
-                <span className="accounts-country-check">{checked ? "✓" : ""}</span>
-                <span className="accounts-country-name">{country}</span>
-              </label>
-            );
-          })}
+                ×
+              </button>
+            ) : null}
+          </div>
+          <div className="accounts-country-options">
+            {filteredCountries.length ? (
+              filteredCountries.map((country) => {
+                const checked = selectedCountries.includes(country);
+                return (
+                  <label
+                    key={`country-option-${country}`}
+                    className={`accounts-country-option${checked ? " is-checked" : ""}`}
+                  >
+                    <input type="checkbox" checked={checked} onChange={() => onToggle(country)} />
+                    <span className="accounts-country-check">{checked ? "✓" : ""}</span>
+                    <span className="accounts-country-name">{country}</span>
+                  </label>
+                );
+              })
+            ) : (
+              <div className="accounts-country-empty-results">{t("No countries found.")}</div>
+            )}
+          </div>
         </div>
       </details>
     );
@@ -10396,6 +10452,8 @@ function AccountsDashboard({ authUser }) {
                     selectedCountries: editModal.form.countries,
                     onToggle: toggleEditCountry,
                     emptyLabel: t("No countries selected"),
+                    countryQuery: editCountryQuery,
+                    onCountryQueryChange: setEditCountryQuery,
                   })}
                 </div>
                 <div className="field field-span-3">
@@ -10515,6 +10573,8 @@ function AccountsDashboard({ authUser }) {
                 selectedCountries: form.countries,
                 onToggle: toggleFormCountry,
                 emptyLabel: t("No countries selected"),
+                countryQuery: formCountryQuery,
+                onCountryQueryChange: setFormCountryQuery,
               })}
             </div>
             <div className="field field-span-2 accounts-domains-field">
