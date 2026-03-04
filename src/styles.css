@@ -3277,6 +3277,10 @@ select {
   position: relative;
 }
 
+.accounts-domain-picker[open] {
+  z-index: 10;
+}
+
 .accounts-domain-picker > summary {
   list-style: none;
 }
@@ -3299,8 +3303,8 @@ select {
 }
 
 .accounts-domain-picker[open] .accounts-domain-trigger {
-  border-color: rgba(54, 208, 124, 0.46);
-  box-shadow: 0 0 0 2px rgba(54, 208, 124, 0.1);
+  border-color: rgba(127, 141, 160, 0.4);
+  box-shadow: 0 0 0 2px rgba(102, 115, 136, 0.14);
 }
 
 .accounts-domain-selected {
@@ -3374,11 +3378,16 @@ select {
 }
 
 .accounts-domain-menu {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(160deg, rgba(24, 27, 33, 0.97), rgba(18, 20, 25, 0.98));
   padding: 8px;
+  box-shadow: 0 16px 34px rgba(5, 10, 20, 0.56);
 }
 
 .accounts-domain-list {
@@ -3458,6 +3467,10 @@ select {
   position: relative;
 }
 
+.accounts-country-picker[open] {
+  z-index: 10;
+}
+
 .accounts-country-picker > summary {
   list-style: none;
 }
@@ -3480,8 +3493,8 @@ select {
 }
 
 .accounts-country-picker[open] .accounts-country-trigger {
-  border-color: rgba(54, 208, 124, 0.46);
-  box-shadow: 0 0 0 2px rgba(54, 208, 124, 0.1);
+  border-color: rgba(127, 141, 160, 0.4);
+  box-shadow: 0 0 0 2px rgba(102, 115, 136, 0.14);
 }
 
 .accounts-country-selected {
@@ -3533,7 +3546,11 @@ select {
 }
 
 .accounts-country-menu {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(160deg, rgba(24, 27, 33, 0.97), rgba(18, 20, 25, 0.98));
@@ -3541,6 +3558,7 @@ select {
   display: grid;
   gap: 8px;
   overflow: hidden;
+  box-shadow: 0 16px 34px rgba(5, 10, 20, 0.56);
 }
 
 .accounts-country-options {
