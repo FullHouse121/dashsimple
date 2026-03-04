@@ -9859,15 +9859,6 @@ function MetaTokenDashboard({ authUser }) {
     return "offline";
   }, [selectedBinding, bindingChecks]);
 
-  const dataFlowRate = React.useMemo(() => {
-    if (!selectedBinding) return 0;
-    const spend = Number(selectedBinding.received_spend || 0);
-    if (flowMode === "offline") return 0;
-    const base = flowMode === "online" ? 82 : 56;
-    const variable = Math.min(36, Math.round(Math.log10(spend + 1) * 22));
-    return base + variable;
-  }, [selectedBinding, flowMode]);
-
   const lastCheckedLabel = React.useMemo(() => {
     if (!selectedBinding?.last_checked_at) return "Not checked yet";
     const parsed = new Date(selectedBinding.last_checked_at);
@@ -9884,6 +9875,26 @@ function MetaTokenDashboard({ authUser }) {
     const seconds = elapsedSeconds % 60;
     return `${minutes}m ${seconds}s`;
   }, [selectedBinding?.last_checked_at]);
+
+  const lastCheckedAgoLabel = React.useMemo(() => {
+    if (!selectedBinding?.last_checked_at) return "just now";
+    const lastCheckedMs = new Date(selectedBinding.last_checked_at).getTime();
+    if (!Number.isFinite(lastCheckedMs)) return "just now";
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastCheckedMs) / 1000));
+    if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+    if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)}m ago`;
+    if (elapsedSeconds < 86400) return `${Math.floor(elapsedSeconds / 3600)}h ago`;
+    return `${Math.floor(elapsedSeconds / 86400)}d ago`;
+  }, [selectedBinding?.last_checked_at]);
+
+  const getBindingTone = (item) => {
+    if (!item) return "danger";
+    if (item.key === "account") return item.ok ? "info" : "danger";
+    if (item.key === "buyer") return item.ok ? "success" : "danger";
+    if (item.key === "cost") return item.ok ? "success" : "warning";
+    if (item.key === "meta") return item.ok ? "success" : "danger";
+    return item.ok ? "success" : "danger";
+  };
 
   React.useEffect(() => {
     if (!selectedBinding) {
@@ -9911,20 +9922,9 @@ function MetaTokenDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">Biddings</h3>
+            <h3 className="panel-title">Bindings</h3>
             <p className="panel-subtitle">Integration turns green when Keitaro cost is being received for the assigned buyer.</p>
           </div>
-          {selectedBinding ? (
-            <button
-              type="button"
-              className={`binding-status-btn ${
-                flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
-              }`}
-              onClick={() => handleRunCheck(selectedBinding.id)}
-            >
-              {flowMode === "online" ? "Online" : flowMode === "delayed" ? "Delayed" : "Offline"}
-            </button>
-          ) : null}
         </div>
         {!selectedBinding ? (
           <div className="empty-state">No integration created yet.</div>
@@ -9954,40 +9954,12 @@ function MetaTokenDashboard({ authUser }) {
                 <span className="binding-delay-ring" aria-hidden="true" />
               </div>
             </div>
-            <div className="binding-board-head">
-              <span className="binding-board-title">Tracking Integrations</span>
-              <span
-                className={`binding-board-health ${
-                  flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
-                }`}
-              >
-                {flowMode === "online" ? "Live Sync" : flowMode === "delayed" ? "Sync Delay" : "Action Needed"}
-              </span>
-            </div>
-            <div className={`binding-ecg ${flowMode}`}>
-              <svg viewBox="0 0 1200 80" preserveAspectRatio="none" className="binding-ecg-svg">
-                <path
-                  className="ecg-base"
-                  d="M0,42 L80,42 L98,42 L112,42 L124,24 L136,54 L148,36 L166,42 L320,42 L334,42 L348,42 L360,28 L374,54 L386,40 L404,42 L558,42 L572,42 L586,42 L600,26 L612,54 L624,40 L640,42 L794,42 L806,42 L820,42 L834,30 L848,54 L862,40 L880,42 L1200,42"
-                />
-                <path
-                  className="ecg-glow"
-                  d="M0,42 L80,42 L98,42 L112,42 L124,24 L136,54 L148,36 L166,42 L320,42 L334,42 L348,42 L360,28 L374,54 L386,40 L404,42 L558,42 L572,42 L586,42 L600,26 L612,54 L624,40 L640,42 L794,42 L806,42 L820,42 L834,30 L848,54 L862,40 L880,42 L1200,42"
-                />
-              </svg>
-              <span className={`binding-start-dot ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`} />
-              <span className="ecg-pulse-dot" />
-              <span className="binding-flow-rate">
-                Data Flow Rate: <strong>{dataFlowRate} bpm</strong>
-              </span>
-            </div>
             <div className="binding-signal-rail">
+              <span className="binding-signal-line" />
               {bindingChecks?.checks.map((item) => (
                 <span
                   key={`signal-${item.key}`}
-                  className={`binding-signal-node-wrap ${
-                    item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
-                  }`}
+                  className={`binding-signal-node-wrap ${getBindingTone(item)}`}
                 >
                   <span className="binding-signal-node">{item.ok ? "✓" : "!"}</span>
                   <span className="binding-signal-drop" />
@@ -9997,44 +9969,31 @@ function MetaTokenDashboard({ authUser }) {
             <div className="binding-chain">
               {bindingChecks?.checks.map((item, index) => (
                 <div key={item.key} className="binding-node-wrap">
-                  <span
-                    className={`binding-chip chip-${item.key} ${
-                      item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
-                    }`}
-                  >
+                  <span className={`binding-chip chip-${item.key} ${getBindingTone(item)}`}>
                     <span className="binding-chip-top">
-                      <em
-                        className={`binding-chip-index ${
-                          item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
-                        }`}
-                      >
+                      <em className={`binding-chip-index ${getBindingTone(item)}`}>
                         {String(index + 1).padStart(2, "0")}
                       </em>
                       <strong>{item.label}</strong>
                     </span>
                     <small>{item.value}</small>
-                    <span
-                      className={`binding-chip-state ${
-                        item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
-                      }`}
-                    />
+                    {item.key === "meta" && !item.ok ? (
+                      <span className="binding-chip-note">Last checked {lastCheckedAgoLabel}</span>
+                    ) : null}
+                    <span className={`binding-chip-state ${getBindingTone(item)}`} />
                   </span>
                   {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
                 </div>
               ))}
-              <span className={`binding-final-shape ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`}>
-                <strong>Integration</strong>
-                <small>{flowMode === "online" ? "Success" : flowMode === "delayed" ? "Delayed" : "Offline"}</small>
-              </span>
             </div>
             <div className="binding-footer">
-              <span className={`binding-pill ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`}>
-                {flowMode === "online"
-                  ? "Integration online"
-                  : flowMode === "delayed"
-                    ? "Integration delayed"
-                    : "Integration requires fixes"}
-              </span>
+              <button
+                type="button"
+                className={`binding-pill ${flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"}`}
+                onClick={() => handleRunCheck(selectedBinding.id)}
+              >
+                {flowMode === "online" ? "Integration Online" : flowMode === "delayed" ? "Integration Delayed" : "Action Needed"}
+              </button>
               <span className="binding-meta">Last check: {lastCheckedLabel}</span>
             </div>
             {bindingIssues.length ? (
