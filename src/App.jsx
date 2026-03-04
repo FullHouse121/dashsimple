@@ -9868,6 +9868,23 @@ function MetaTokenDashboard({ authUser }) {
     return base + variable;
   }, [selectedBinding, flowMode]);
 
+  const lastCheckedLabel = React.useMemo(() => {
+    if (!selectedBinding?.last_checked_at) return "Not checked yet";
+    const parsed = new Date(selectedBinding.last_checked_at);
+    if (Number.isNaN(parsed.getTime())) return "Not checked yet";
+    return parsed.toLocaleString();
+  }, [selectedBinding?.last_checked_at]);
+
+  const systemDelayLabel = React.useMemo(() => {
+    if (!selectedBinding?.last_checked_at) return "N/A";
+    const lastCheckedMs = new Date(selectedBinding.last_checked_at).getTime();
+    if (!Number.isFinite(lastCheckedMs)) return "N/A";
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastCheckedMs) / 1000));
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+    return `${minutes}m ${seconds}s`;
+  }, [selectedBinding?.last_checked_at]);
+
   React.useEffect(() => {
     if (!selectedBinding) {
       previousCostRef.current = null;
@@ -9894,7 +9911,7 @@ function MetaTokenDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">Bindings</h3>
+            <h3 className="panel-title">Biddings</h3>
             <p className="panel-subtitle">Integration turns green when Keitaro cost is being received for the assigned buyer.</p>
           </div>
           {selectedBinding ? (
@@ -9922,6 +9939,21 @@ function MetaTokenDashboard({ authUser }) {
             } ${costBurst ? "pulse-burst" : ""}`}
           >
             <div className="binding-grid-bg" />
+            <div className="binding-topbar">
+              <div className="binding-topbar-copy">
+                <h4 className="binding-main-title">Integration Status</h4>
+                <p className="binding-main-sub">Media Buyer Tracking</p>
+              </div>
+              <div
+                className={`binding-delay-widget ${
+                  flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
+                }`}
+              >
+                <span className="binding-delay-label">System Delay</span>
+                <strong>{systemDelayLabel}</strong>
+                <span className="binding-delay-ring" aria-hidden="true" />
+              </div>
+            </div>
             <div className="binding-board-head">
               <span className="binding-board-title">Tracking Integrations</span>
               <span
@@ -9949,16 +9981,43 @@ function MetaTokenDashboard({ authUser }) {
                 Data Flow Rate: <strong>{dataFlowRate} bpm</strong>
               </span>
             </div>
+            <div className="binding-signal-rail">
+              {bindingChecks?.checks.map((item) => (
+                <span
+                  key={`signal-${item.key}`}
+                  className={`binding-signal-node-wrap ${
+                    item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
+                  }`}
+                >
+                  <span className="binding-signal-node">{item.ok ? "✓" : "!"}</span>
+                  <span className="binding-signal-drop" />
+                </span>
+              ))}
+            </div>
             <div className="binding-chain">
               {bindingChecks?.checks.map((item, index) => (
                 <div key={item.key} className="binding-node-wrap">
-                  <span className={`binding-chip ${item.ok ? "ok" : "error"}`}>
+                  <span
+                    className={`binding-chip chip-${item.key} ${
+                      item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
+                    }`}
+                  >
                     <span className="binding-chip-top">
-                      <em className={`binding-chip-index ${item.ok ? "ok" : "error"}`}>{String(index + 1).padStart(2, "0")}</em>
+                      <em
+                        className={`binding-chip-index ${
+                          item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
+                        }`}
+                      >
+                        {String(index + 1).padStart(2, "0")}
+                      </em>
                       <strong>{item.label}</strong>
                     </span>
                     <small>{item.value}</small>
-                    <span className={`binding-chip-state ${item.ok ? "ok" : "error"}`} />
+                    <span
+                      className={`binding-chip-state ${
+                        item.ok ? "ok" : item.key === "cost" ? "warn" : "error"
+                      }`}
+                    />
                   </span>
                   {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
                 </div>
@@ -9976,18 +10035,20 @@ function MetaTokenDashboard({ authUser }) {
                     ? "Integration delayed"
                     : "Integration requires fixes"}
               </span>
-              {selectedBinding.last_checked_at ? (
-                <span className="binding-meta">
-                  Last check: {new Date(selectedBinding.last_checked_at).toLocaleString()}
-                </span>
-              ) : null}
+              <span className="binding-meta">Last check: {lastCheckedLabel}</span>
             </div>
             {bindingIssues.length ? (
-              <ul className="binding-issues">
-                {bindingIssues.map((issue) => (
-                  <li key={issue}>{issue}</li>
-                ))}
-              </ul>
+              <div className="binding-alert">
+                <div className="binding-alert-head">
+                  <strong>Integration Delayed</strong>
+                  <span>Last update: {lastCheckedLabel}</span>
+                </div>
+                <ul className="binding-issues">
+                  {bindingIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
         )}
