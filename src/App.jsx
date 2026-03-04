@@ -10180,6 +10180,19 @@ function AccountsDashboard({ authUser }) {
 
   const renderDomainPicker = ({ domainPool, selectedDomainIds, onToggle, emptyLabel }) => {
     const selected = domainPool.filter((domain) => selectedDomainIds.includes(domain.id));
+    const hasDomainPool = domainPool.length > 0;
+
+    if (!hasDomainPool) {
+      return (
+        <div className="accounts-domain-picker is-empty">
+          <div className="accounts-domain-empty-panel">
+            <span className="accounts-domain-empty-title">{emptyLabel}</span>
+            <span className="accounts-domain-empty-copy">{t("No domains available for this owner.")}</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="accounts-domain-picker">
         <div className="accounts-domain-chips">
@@ -10207,9 +10220,6 @@ function AccountsDashboard({ authUser }) {
               </label>
             );
           })}
-          {!domainPool.length ? (
-            <div className="accounts-domain-list-empty">{t("No domains available for this owner.")}</div>
-          ) : null}
         </div>
       </div>
     );
@@ -10455,7 +10465,7 @@ function AccountsDashboard({ authUser }) {
                 emptyLabel: t("No countries selected"),
               })}
             </div>
-            <div className="field field-span-2">
+            <div className="field field-span-2 accounts-domains-field">
               <label>{t("Domains under account")}</label>
               {renderDomainPicker({
                 domainPool: availableFormDomains,
@@ -10466,7 +10476,7 @@ function AccountsDashboard({ authUser }) {
               <span className="field-hint">{t("Select all domains responsible for this account.")}</span>
             </div>
             {isLeadership ? (
-              <div className="field">
+              <div className="field accounts-owner-field">
                 <label>{t("Owner")}</label>
                 <select value={form.ownerId} onChange={updateForm("ownerId")}>
                   <option value="">
@@ -10480,7 +10490,7 @@ function AccountsDashboard({ authUser }) {
                 </select>
               </div>
             ) : null}
-            <div className="field field-span-2">
+            <div className="field field-span-3 accounts-comment-field">
               <label>{t("Comment")}</label>
               <textarea rows={3} value={form.notes} onChange={updateForm("notes")} placeholder={t("Add a comment")} />
             </div>
