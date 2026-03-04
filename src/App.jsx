@@ -8811,7 +8811,7 @@ function DomainsDashboard({ authUser }) {
   return (
     <section className="form-section">
       <motion.div
-        className="panel meta-bindings-panel"
+        className="panel registry-dashboard-panel domain-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -10328,7 +10328,7 @@ function AccountsDashboard({ authUser }) {
       </AnimatePresence>
 
       <motion.div
-        className="panel meta-token-panel accounts-registry-panel"
+        className="panel registry-dashboard-panel accounts-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}

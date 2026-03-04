@@ -1592,13 +1592,6 @@ select {
 
 .accounts-form {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(98, 142, 206, 0.28);
-  background:
-    linear-gradient(180deg, rgba(10, 16, 30, 0.68), rgba(8, 13, 23, 0.82)),
-    radial-gradient(120% 120% at 100% 0%, rgba(32, 69, 130, 0.2), rgba(9, 15, 24, 0));
 }
 
 .accounts-form .field:first-child {
@@ -1613,26 +1606,40 @@ select {
   grid-column: span 2;
 }
 
-.accounts-form .field label {
+.registry-dashboard-panel .domain-form,
+.registry-dashboard-panel .accounts-form {
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(160deg, rgba(27, 30, 36, 0.94), rgba(18, 21, 26, 0.95));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.accounts-form .field label,
+.domain-form .field label {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 11px;
-  color: #9eb4d6;
+  color: #98a0ad;
 }
 
 .accounts-form .field input,
 .accounts-form .field select,
-.accounts-form .field textarea {
-  border: 1px solid rgba(126, 162, 214, 0.22);
-  background:
-    linear-gradient(165deg, rgba(18, 25, 38, 0.93), rgba(12, 18, 29, 0.95)),
-    radial-gradient(120% 120% at 0% 0%, rgba(45, 95, 170, 0.14), rgba(12, 20, 30, 0));
-  color: #edf3ff;
+.accounts-form .field textarea,
+.domain-form .field input,
+.domain-form .field select,
+.domain-form .field textarea {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(160deg, rgba(25, 27, 32, 0.95), rgba(20, 22, 27, 0.95));
+  color: #f0f2f7;
 }
 
 .accounts-form .field input::placeholder,
-.accounts-form .field textarea::placeholder {
-  color: rgba(177, 196, 226, 0.62);
+.accounts-form .field textarea::placeholder,
+.domain-form .field input::placeholder,
+.domain-form .field textarea::placeholder {
+  color: rgba(151, 157, 168, 0.78);
 }
 
 .accounts-form textarea {
@@ -2121,47 +2128,70 @@ select {
   min-width: 1380px;
 }
 
-.accounts-registry-panel {
+.registry-dashboard-panel {
+  min-height: 0;
   position: relative;
   overflow: hidden;
-  border-color: rgba(63, 119, 188, 0.34);
+  border-color: rgba(255, 255, 255, 0.08);
   background:
-    radial-gradient(140% 120% at 0% 0%, rgba(33, 65, 104, 0.18) 0%, rgba(11, 18, 31, 0) 58%),
-    radial-gradient(160% 120% at 100% 0%, rgba(29, 70, 143, 0.16) 0%, rgba(11, 18, 31, 0) 60%),
-    linear-gradient(168deg, rgba(16, 23, 36, 0.97), rgba(10, 16, 28, 0.98));
-  box-shadow: inset 0 0 0 1px rgba(180, 216, 255, 0.05), 0 24px 42px rgba(0, 0, 0, 0.46);
+    radial-gradient(120% 120% at 50% -10%, rgba(54, 208, 124, 0.1) 0%, rgba(16, 20, 28, 0) 54%),
+    linear-gradient(160deg, rgba(30, 32, 37, 0.96), rgba(20, 22, 26, 0.95));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 20px 40px rgba(0, 0, 0, 0.35);
 }
 
-.accounts-registry-panel::before {
+.domain-registry-panel,
+.accounts-registry-panel {
+  padding-bottom: 24px;
+}
+
+.registry-dashboard-panel::after {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   background:
-    radial-gradient(rgba(108, 142, 194, 0.16) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(7, 13, 23, 0.08), rgba(7, 13, 23, 0));
+    radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
   background-size: 22px 22px, 100% 100%;
-  opacity: 0.24;
+  opacity: 0.12;
   pointer-events: none;
 }
 
+.domain-registry-panel .panel-head,
 .accounts-registry-panel .panel-head,
 .accounts-registry-panel .accounts-summary-strip,
+.domain-registry-panel .domain-form,
 .accounts-registry-panel .accounts-form,
+.domain-registry-panel .table-wrap,
 .accounts-registry-panel .table-wrap,
+.domain-registry-panel .empty-state,
 .accounts-registry-panel .empty-state {
   position: relative;
   z-index: 2;
 }
 
-.accounts-registry-panel .table-wrap {
+.registry-dashboard-panel .table-wrap {
   margin-top: 16px;
-  border-color: rgba(70, 114, 182, 0.34);
-  background: rgba(7, 12, 23, 0.68);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(13, 16, 21, 0.64);
+  border-radius: 14px;
 }
 
-.accounts-registry-panel .entries-table th {
-  background: rgba(10, 16, 29, 0.82);
-  color: #abc3e8;
+.registry-dashboard-panel .entries-table th {
+  background: rgba(20, 23, 30, 0.84);
+  color: #98a0ad;
+}
+
+.registry-dashboard-panel .entries-table td {
+  background: rgba(12, 14, 18, 0.48);
+}
+
+.registry-dashboard-panel .entries-table tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.accounts-registry-panel .table-wrap {
+  margin-top: 14px;
 }
 
 .accounts-summary-strip {
@@ -2174,8 +2204,9 @@ select {
 .accounts-summary-item {
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(118, 153, 203, 0.3);
-  background: linear-gradient(160deg, rgba(12, 20, 33, 0.88), rgba(9, 15, 25, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(155deg, rgba(22, 25, 30, 0.96), rgba(14, 17, 22, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 24px rgba(0, 0, 0, 0.28);
   display: grid;
   gap: 4px;
 }
@@ -2184,17 +2215,17 @@ select {
   font-size: 10px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #9db4d9;
+  color: #9199a7;
 }
 
 .accounts-summary-item strong {
   font-size: 18px;
-  color: #eef3ff;
+  color: #f2f2f4;
   line-height: 1.15;
 }
 
 .accounts-summary-item.is-active {
-  border-color: rgba(53, 231, 161, 0.46);
+  border-color: rgba(53, 231, 161, 0.4);
   box-shadow: inset 0 0 0 1px rgba(53, 231, 161, 0.1);
 }
 
@@ -2203,11 +2234,11 @@ select {
 }
 
 .accounts-summary-item.is-attention {
-  border-color: rgba(246, 214, 132, 0.45);
+  border-color: rgba(247, 198, 37, 0.4);
 }
 
 .accounts-summary-item.is-attention strong {
-  color: #f6d684;
+  color: #f9d774;
 }
 
 .accounts-summary-item.is-blocked {
@@ -2220,18 +2251,18 @@ select {
 
 .accounts-summary-item.accounts-summary-scope strong {
   font-size: 13px;
-  color: #bdd2f3;
+  color: #c8cfdb;
 }
 
-.accounts-registry-panel .form-actions {
-  border-top: 1px solid rgba(118, 153, 203, 0.2);
+.registry-dashboard-panel .form-actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 12px;
   margin-top: 4px;
 }
 
-.accounts-registry-panel .empty-state {
-  border: 1px solid rgba(96, 131, 186, 0.26);
-  background: linear-gradient(160deg, rgba(12, 20, 33, 0.75), rgba(8, 14, 24, 0.8));
+.registry-dashboard-panel .empty-state {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, rgba(25, 28, 34, 0.8), rgba(18, 21, 26, 0.82));
 }
 
 .accounts-modal {
@@ -3034,13 +3065,13 @@ select {
   max-width: 260px;
   white-space: normal;
   line-height: 1.45;
-  color: #d4e4fb;
+  color: #d7dbe3;
 }
 
 .accounts-comment-cell {
   max-width: 240px;
   white-space: normal;
-  color: #c4d6ef;
+  color: #bcc3cf;
   line-height: 1.45;
 }
 
@@ -3051,15 +3082,13 @@ select {
 }
 
 .accounts-domain-picker {
-  border: 1px solid rgba(88, 126, 189, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   padding: 10px;
-  background:
-    radial-gradient(130% 120% at 0% 0%, rgba(37, 73, 120, 0.2) 0%, rgba(13, 21, 34, 0) 55%),
-    linear-gradient(162deg, rgba(14, 20, 31, 0.92), rgba(10, 15, 24, 0.95));
+  background: linear-gradient(160deg, rgba(24, 27, 33, 0.93), rgba(18, 20, 25, 0.95));
   display: grid;
   gap: 10px;
-  box-shadow: inset 0 0 0 1px rgba(180, 213, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .accounts-domain-chips {
@@ -3073,9 +3102,9 @@ select {
 .accounts-domain-chip {
   padding: 4px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(53, 231, 161, 0.45);
-  background: rgba(9, 31, 23, 0.85);
-  color: #8ef6c6;
+  border: 1px solid rgba(54, 208, 124, 0.45);
+  background: rgba(54, 208, 124, 0.12);
+  color: #7ce2a7;
   font-size: 11px;
   font-weight: 600;
 }
@@ -3090,7 +3119,7 @@ select {
   overflow-y: auto;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 15, 24, 0.72);
+  background: rgba(18, 20, 24, 0.7);
   padding: 6px;
   display: grid;
   gap: 6px;
@@ -3101,7 +3130,7 @@ select {
 }
 
 .accounts-domain-list::-webkit-scrollbar-thumb {
-  background: rgba(129, 165, 220, 0.45);
+  background: rgba(140, 146, 158, 0.42);
   border-radius: 999px;
 }
 
@@ -3118,13 +3147,13 @@ select {
 }
 
 .accounts-domain-option:hover {
-  border-color: rgba(119, 176, 255, 0.28);
-  background: rgba(44, 103, 190, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .accounts-domain-option.is-checked {
-  border-color: rgba(53, 231, 161, 0.44);
-  background: rgba(13, 47, 34, 0.75);
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.1);
 }
 
 .accounts-domain-option input {
@@ -3135,12 +3164,12 @@ select {
 
 .accounts-domain-option-name {
   font-size: 13px;
-  color: #d5e5fb;
+  color: #e8ebf1;
 }
 
 .accounts-domain-option-meta {
   font-size: 11px;
-  color: #91a8cc;
+  color: #9098a6;
 }
 
 .accounts-domain-list-empty {
@@ -3156,9 +3185,9 @@ select {
   font-size: 12px;
   border-radius: 999px;
   padding: 8px 34px 8px 14px;
-  border: 2px solid rgba(85, 150, 235, 0.44);
+  border: 2px solid rgba(54, 208, 124, 0.55);
   background:
-    linear-gradient(160deg, rgba(13, 23, 39, 0.95), rgba(9, 16, 29, 0.96)),
+    linear-gradient(160deg, rgba(20, 22, 27, 0.95), rgba(14, 16, 20, 0.96)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position:
@@ -3167,7 +3196,7 @@ select {
     calc(100% - 12px) calc(50% - 3px);
   background-size: 100% 100%, 6px 6px, 6px 6px;
   background-repeat: no-repeat;
-  color: #a4cfff;
+  color: #7ce2a7;
   border-width: 2px;
 }
 
@@ -3182,18 +3211,18 @@ select {
 
 .accounts-account-number {
   font-family: "JetBrains Mono", "Fira Code", monospace;
-  color: #d6e7ff;
+  color: #e6e9ef;
 }
 
 .accounts-binding-cell {
   max-width: 240px;
   white-space: normal;
   line-height: 1.45;
-  color: #b4c9ea;
+  color: #aab2bf;
 }
 
 .accounts-updated-cell {
-  color: #95adcf;
+  color: #8e96a3;
   white-space: nowrap;
 }
 
@@ -3413,16 +3442,16 @@ select {
 }
 
 .domain-table .status-select {
-  min-width: 120px;
-  padding: 8px 34px 8px 16px;
+  min-width: 146px;
+  padding: 8px 34px 8px 18px;
   border-radius: 999px;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: 0.2px;
   text-transform: none;
-  background: rgba(20, 22, 26, 0.9);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  color: var(--text);
+  background: linear-gradient(160deg, rgba(22, 24, 29, 0.95), rgba(16, 18, 23, 0.96));
+  border: 2px solid rgba(54, 208, 124, 0.64);
+  color: #7ce2a7;
   box-shadow: none;
   appearance: none;
   background-image:
@@ -3435,40 +3464,40 @@ select {
 }
 
 .domain-table .status-select.status-active {
-  border-color: rgba(54, 208, 124, 0.9);
-  color: #36d07c;
+  border-color: rgba(54, 208, 124, 0.86);
+  color: #7ce2a7;
 }
 
 .domain-table .status-select.status-pending {
-  border-color: rgba(226, 197, 52, 0.9);
-  color: #e2c534;
+  border-color: rgba(247, 198, 37, 0.86);
+  color: #f9d774;
 }
 
 .domain-table .status-select.status-paused {
-  border-color: rgba(160, 160, 160, 0.9);
-  color: #a3a3a3;
+  border-color: rgba(162, 169, 181, 0.86);
+  color: #c4c9d2;
 }
 
 .domain-table .status-select.status-expired {
-  border-color: rgba(235, 76, 76, 0.95);
-  color: #eb4c4c;
+  border-color: rgba(246, 140, 140, 0.9);
+  color: #ffb5b5;
 }
 
 .domain-table .status-select.status-blocked {
-  border-color: rgba(255, 45, 45, 0.95);
-  color: #ff2d2d;
+  border-color: rgba(239, 68, 68, 0.92);
+  color: #ff8a8a;
 }
 
 .accounts-table .status-select {
   min-width: 168px;
-  padding: 9px 38px 9px 26px;
+  padding: 8px 36px 8px 18px;
   border-radius: 999px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   letter-spacing: 0.15px;
   text-transform: none;
   background:
-    linear-gradient(160deg, rgba(15, 22, 33, 0.96), rgba(10, 17, 29, 0.97)),
+    linear-gradient(160deg, rgba(22, 24, 29, 0.95), rgba(16, 18, 23, 0.96)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position:
@@ -3477,8 +3506,8 @@ select {
     calc(100% - 12px) calc(50% - 3px);
   background-size: 100% 100%, 6px 6px, 6px 6px;
   background-repeat: no-repeat;
-  border: 3px solid rgba(74, 208, 150, 0.85);
-  color: #35e7a1;
+  border: 2px solid rgba(54, 208, 124, 0.65);
+  color: #7ce2a7;
   box-shadow: none;
   appearance: none;
 }
@@ -3489,50 +3518,50 @@ select {
 }
 
 .accounts-table .status-select.status-active {
-  border-color: rgba(53, 231, 161, 0.9);
-  color: #35e7a1;
+  border-color: rgba(54, 208, 124, 0.86);
+  color: #7ce2a7;
 }
 
 .accounts-table .status-select.status-pending {
-  border-color: rgba(246, 183, 86, 0.92);
-  color: #f6d684;
+  border-color: rgba(247, 198, 37, 0.86);
+  color: #f9d774;
 }
 
 .accounts-table .status-select.status-paused {
-  border-color: rgba(146, 154, 168, 0.92);
-  color: #b7bfcd;
+  border-color: rgba(162, 169, 181, 0.86);
+  color: #c4c9d2;
 }
 
 .accounts-table .status-select.status-expired {
-  border-color: rgba(247, 133, 133, 0.94);
-  color: #ffc2c2;
+  border-color: rgba(246, 140, 140, 0.9);
+  color: #ffb5b5;
 }
 
 .accounts-table .status-select.status-blocked {
-  border-color: rgba(255, 62, 62, 0.95);
-  color: #ff4f4f;
+  border-color: rgba(239, 68, 68, 0.92);
+  color: #ff8a8a;
 }
 
 .accounts-table td {
-  background: rgba(8, 14, 24, 0.46);
+  background: rgba(16, 18, 23, 0.52);
 }
 
 .accounts-table .accounts-row:nth-child(even) td {
-  background: rgba(8, 14, 24, 0.58);
+  background: rgba(18, 20, 25, 0.58);
 }
 
 .accounts-table .accounts-row.status-blocked td {
   background:
-    linear-gradient(90deg, rgba(69, 15, 23, 0.2), rgba(8, 14, 24, 0)),
-    rgba(8, 14, 24, 0.56);
+    linear-gradient(90deg, rgba(63, 18, 24, 0.2), rgba(16, 18, 23, 0)),
+    rgba(18, 20, 25, 0.58);
 }
 
 .accounts-table .accounts-row.status-pending td,
 .accounts-table .accounts-row.status-paused td,
 .accounts-table .accounts-row.status-expired td {
   background:
-    linear-gradient(90deg, rgba(79, 56, 17, 0.18), rgba(8, 14, 24, 0)),
-    rgba(8, 14, 24, 0.56);
+    linear-gradient(90deg, rgba(79, 56, 17, 0.16), rgba(16, 18, 23, 0)),
+    rgba(18, 20, 25, 0.58);
 }
 
 .status-requested {
