@@ -3266,7 +3266,11 @@ app.delete("/api/domains/:id", async (req, res) => {
 app.get("/api/accounts", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = await selectAccountRegistry(limit);
+  if (isLeadership(req.user)) {
+    const rows = await selectAccountRegistry(limit);
+    return res.json(rows);
+  }
+  const rows = await selectAccountRegistryByOwner(req.user.id, limit);
   return res.json(rows);
 });
 
@@ -3294,6 +3298,9 @@ app.post("/api/accounts", async (req, res) => {
     }
     resolvedOwnerId = parsedOwnerId;
   }
+  if (!isLeadership(req.user) && resolvedOwnerId !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
   const ownerRecord = await selectUserById(resolvedOwnerId);
   if (!ownerRecord) {
     return res.status(400).json({ error: "Owner not found." });
@@ -3308,6 +3315,13 @@ app.post("/api/accounts", async (req, res) => {
     const pixel = await selectPixelById(parsedPixelId);
     if (!pixel) {
       return res.status(400).json({ error: "Pixel not found." });
+    }
+    const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
+    if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
+      return res.status(400).json({ error: "Pixel must belong to selected owner." });
+    }
+    if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
     }
     resolvedPixelId = parsedPixelId;
   }
@@ -3326,6 +3340,13 @@ app.post("/api/accounts", async (req, res) => {
     if (!integration) {
       return res.status(400).json({ error: "Meta integration not found." });
     }
+    const integrationOwnerId = Number.parseInt(integration.owner_id, 10);
+    if (!Number.isFinite(integrationOwnerId) || integrationOwnerId !== resolvedOwnerId) {
+      return res.status(400).json({ error: "Meta integration must belong to selected owner." });
+    }
+    if (!isLeadership(req.user) && integrationOwnerId !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
     resolvedMetaIntegrationId = parsedIntegrationId;
   }
 
@@ -3334,6 +3355,13 @@ app.post("/api/accounts", async (req, res) => {
     const domain = await selectDomainById(domainId);
     if (!domain) {
       return res.status(400).json({ error: `Domain ${domainId} not found.` });
+    }
+    const domainOwnerId = Number.parseInt(domain.owner_id, 10);
+    if (!Number.isFinite(domainOwnerId) || domainOwnerId !== resolvedOwnerId) {
+      return res.status(400).json({ error: `Domain ${domainId} must belong to selected owner.` });
+    }
+    if (!isLeadership(req.user) && domainOwnerId !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
     }
   }
 
@@ -3361,6 +3389,9 @@ app.patch("/api/accounts/:id", async (req, res) => {
   if (!current) {
     return res.status(404).json({ error: "Account not found." });
   }
+  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
 
   const body = req.body ?? {};
   let resolvedOwnerId = current.owner_id;
@@ -3383,22 +3414,35 @@ app.patch("/api/accounts/:id", async (req, res) => {
     return res.status(400).json({ error: "Account number is required." });
   }
   const nextStatus = String(body.status ?? current.status ?? "Active").trim() || "Active";
+  const ownerChanged = Number.parseInt(current.owner_id, 10) !== Number.parseInt(resolvedOwnerId, 10);
+  const pixelTouched = Object.prototype.hasOwnProperty.call(body, "pixelId");
+  const integrationTouched = Object.prototype.hasOwnProperty.call(body, "metaIntegrationId");
+  const domainsTouched = Object.prototype.hasOwnProperty.call(body, "domainIds");
 
-  const nextPixelValueRaw = body.pixelId !== undefined ? body.pixelId : current.pixel_id;
+  const nextPixelValueRaw = pixelTouched ? body.pixelId : current.pixel_id;
   let nextPixelId = null;
   if (nextPixelValueRaw !== null && nextPixelValueRaw !== undefined && String(nextPixelValueRaw).trim() !== "") {
     nextPixelId = Number.parseInt(nextPixelValueRaw, 10);
     if (!Number.isFinite(nextPixelId)) {
       return res.status(400).json({ error: "Invalid pixel id." });
     }
-    const pixel = await selectPixelById(nextPixelId);
-    if (!pixel) {
-      return res.status(400).json({ error: "Pixel not found." });
+    if (pixelTouched || ownerChanged) {
+      const pixel = await selectPixelById(nextPixelId);
+      if (!pixel) {
+        return res.status(400).json({ error: "Pixel not found." });
+      }
+      const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
+      if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: "Pixel must belong to selected owner." });
+      }
+      if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
     }
   }
 
   const nextIntegrationValueRaw =
-    body.metaIntegrationId !== undefined ? body.metaIntegrationId : current.meta_integration_id;
+    integrationTouched ? body.metaIntegrationId : current.meta_integration_id;
   let nextMetaIntegrationId = null;
   if (
     nextIntegrationValueRaw !== null &&
@@ -3409,18 +3453,36 @@ app.patch("/api/accounts/:id", async (req, res) => {
     if (!Number.isFinite(nextMetaIntegrationId)) {
       return res.status(400).json({ error: "Invalid Meta integration id." });
     }
-    const integration = await selectMetaTokenIntegrationById(nextMetaIntegrationId);
-    if (!integration) {
-      return res.status(400).json({ error: "Meta integration not found." });
+    if (integrationTouched || ownerChanged) {
+      const integration = await selectMetaTokenIntegrationById(nextMetaIntegrationId);
+      if (!integration) {
+        return res.status(400).json({ error: "Meta integration not found." });
+      }
+      const integrationOwnerId = Number.parseInt(integration.owner_id, 10);
+      if (!Number.isFinite(integrationOwnerId) || integrationOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: "Meta integration must belong to selected owner." });
+      }
+      if (!isLeadership(req.user) && integrationOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
     }
   }
 
   const nextDomainIds =
-    body.domainIds !== undefined ? normalizeNumericIds(body.domainIds) : normalizeNumericIds(current.domain_ids);
-  for (const domainId of nextDomainIds) {
-    const domain = await selectDomainById(domainId);
-    if (!domain) {
-      return res.status(400).json({ error: `Domain ${domainId} not found.` });
+    domainsTouched ? normalizeNumericIds(body.domainIds) : normalizeNumericIds(current.domain_ids);
+  if (domainsTouched || ownerChanged) {
+    for (const domainId of nextDomainIds) {
+      const domain = await selectDomainById(domainId);
+      if (!domain) {
+        return res.status(400).json({ error: `Domain ${domainId} not found.` });
+      }
+      const domainOwnerId = Number.parseInt(domain.owner_id, 10);
+      if (!Number.isFinite(domainOwnerId) || domainOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: `Domain ${domainId} must belong to selected owner.` });
+      }
+      if (!isLeadership(req.user) && domainOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
     }
   }
 
@@ -3464,6 +3526,9 @@ app.delete("/api/accounts/:id", async (req, res) => {
   const current = await selectAccountRegistryById(id);
   if (!current) {
     return res.status(404).json({ error: "Account not found." });
+  }
+  if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
   }
   await deleteAccountRegistry(id);
   return res.json({ ok: true });

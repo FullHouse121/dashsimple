@@ -53,6 +53,7 @@ import {
   User,
   Users,
   Lock,
+  Pencil,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -9568,7 +9569,7 @@ function PixelsDashboard({ authUser }) {
 
 function AccountsDashboard({ authUser }) {
   const { t } = useLanguage();
-  const canAssignOwner = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [accounts, setAccounts] = React.useState([]);
   const [accountState, setAccountState] = React.useState({ loading: true, error: null });
   const [pixels, setPixels] = React.useState([]);
@@ -9589,8 +9590,27 @@ function AccountsDashboard({ authUser }) {
     notes: "",
     ownerId: authUser?.id ? String(authUser.id) : "",
   });
+  const [editModal, setEditModal] = React.useState({
+    open: false,
+    row: null,
+    saving: false,
+    form: {
+      accountNumber: "",
+      status: "Active",
+      pixelId: "",
+      metaIntegrationId: "",
+      domainIds: [],
+      notes: "",
+      ownerId: authUser?.id ? String(authUser.id) : "",
+    },
+  });
 
   const accountStatusOptions = ["Active", "Pending", "Paused", "Expired", "Blocked"];
+
+  const toId = React.useCallback((value) => {
+    const parsed = Number.parseInt(String(value ?? ""), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }, []);
 
   const normalizeDomainIds = React.useCallback((value) => {
     if (Array.isArray(value)) {
@@ -9613,15 +9633,35 @@ function AccountsDashboard({ authUser }) {
     return [];
   }, []);
 
+  const areSameIds = React.useCallback(
+    (first, second) => first.length === second.length && first.every((value, index) => value === second[index]),
+    []
+  );
+
+  const canManageRow = React.useCallback(
+    (row) => {
+      if (isLeadership) return true;
+      return toId(row?.owner_id) === toId(authUser?.id);
+    },
+    [isLeadership, authUser?.id, toId]
+  );
+
   const updateForm = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
 
-  const handleDomainSelection = (event) => {
-    const selectedValues = Array.from(event.target.selectedOptions || [])
-      .map((option) => Number.parseInt(option.value, 10))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    setForm((prev) => ({ ...prev, domainIds: selectedValues }));
+  const toggleFormDomain = (domainId) => {
+    const parsed = toId(domainId);
+    if (!parsed) return;
+    setForm((prev) => {
+      const hasDomain = prev.domainIds.includes(parsed);
+      return {
+        ...prev,
+        domainIds: hasDomain
+          ? prev.domainIds.filter((id) => id !== parsed)
+          : [...prev.domainIds, parsed],
+      };
+    });
   };
 
   const resetForm = React.useCallback(() => {
@@ -9650,10 +9690,7 @@ function AccountsDashboard({ authUser }) {
       }
       const data = await response.json();
       const normalized = Array.isArray(data)
-        ? data.map((row) => ({
-            ...row,
-            domain_ids: normalizeDomainIds(row?.domain_ids),
-          }))
+        ? data.map((row) => ({ ...row, domain_ids: normalizeDomainIds(row?.domain_ids) }))
         : [];
       setAccounts(normalized);
       setAccountState({ loading: false, error: null });
@@ -9711,7 +9748,7 @@ function AccountsDashboard({ authUser }) {
   }, []);
 
   const fetchUsers = React.useCallback(async () => {
-    if (!canAssignOwner) {
+    if (!isLeadership) {
       setUsers([]);
       setUserState({ loading: false, error: null });
       return;
@@ -9729,7 +9766,7 @@ function AccountsDashboard({ authUser }) {
     } catch (error) {
       setUserState({ loading: false, error: error.message || "Failed to load users." });
     }
-  }, [canAssignOwner]);
+  }, [isLeadership]);
 
   React.useEffect(() => {
     fetchAccounts();
@@ -9739,39 +9776,138 @@ function AccountsDashboard({ authUser }) {
     fetchUsers();
   }, [fetchAccounts, fetchPixels, fetchDomains, fetchIntegrations, fetchUsers]);
 
-  const ownerLookup = React.useMemo(() => {
-    if (!users.length) return {};
-    return users.reduce((acc, user) => {
-      acc[user.id] = user.username;
-      return acc;
-    }, {});
-  }, [users]);
+  const ownerLookup = React.useMemo(
+    () =>
+      users.reduce((acc, user) => {
+        acc[user.id] = user.username;
+        return acc;
+      }, {}),
+    [users]
+  );
 
-  const pixelLookup = React.useMemo(() => {
-    if (!pixels.length) return {};
-    return pixels.reduce((acc, pixel) => {
-      acc[pixel.id] = pixel;
-      return acc;
-    }, {});
-  }, [pixels]);
+  const pixelLookup = React.useMemo(
+    () =>
+      pixels.reduce((acc, pixel) => {
+        acc[pixel.id] = pixel;
+        return acc;
+      }, {}),
+    [pixels]
+  );
 
-  const domainLookup = React.useMemo(() => {
-    if (!domains.length) return {};
-    return domains.reduce((acc, domain) => {
-      acc[domain.id] = domain;
-      return acc;
-    }, {});
-  }, [domains]);
+  const domainLookup = React.useMemo(
+    () =>
+      domains.reduce((acc, domain) => {
+        acc[domain.id] = domain;
+        return acc;
+      }, {}),
+    [domains]
+  );
 
-  const integrationLookup = React.useMemo(() => {
-    if (!integrations.length) return {};
-    return integrations.reduce((acc, integration) => {
-      acc[integration.id] = integration;
-      return acc;
-    }, {});
-  }, [integrations]);
+  const integrationLookup = React.useMemo(
+    () =>
+      integrations.reduce((acc, integration) => {
+        acc[integration.id] = integration;
+        return acc;
+      }, {}),
+    [integrations]
+  );
 
-  const visibleAccounts = React.useMemo(() => accounts, [accounts]);
+  const getScopedPixels = React.useCallback(
+    (ownerId) => {
+      if (!isLeadership) return pixels;
+      const parsed = toId(ownerId);
+      if (!parsed) return [];
+      return pixels.filter((pixel) => toId(pixel.owner_id) === parsed);
+    },
+    [isLeadership, pixels, toId]
+  );
+
+  const getScopedDomains = React.useCallback(
+    (ownerId) => {
+      if (!isLeadership) return domains;
+      const parsed = toId(ownerId);
+      if (!parsed) return [];
+      return domains.filter((domain) => toId(domain.owner_id) === parsed);
+    },
+    [isLeadership, domains, toId]
+  );
+
+  const getScopedIntegrations = React.useCallback(
+    (ownerId) => {
+      if (!isLeadership) return integrations;
+      const parsed = toId(ownerId);
+      if (!parsed) return [];
+      return integrations.filter((integration) => toId(integration.owner_id) === parsed);
+    },
+    [isLeadership, integrations, toId]
+  );
+
+  const formOwnerId = React.useMemo(
+    () => (isLeadership ? toId(form.ownerId) : toId(authUser?.id)),
+    [isLeadership, form.ownerId, authUser?.id, toId]
+  );
+
+  const availableFormPixels = React.useMemo(
+    () => getScopedPixels(formOwnerId),
+    [getScopedPixels, formOwnerId]
+  );
+  const availableFormDomains = React.useMemo(
+    () => getScopedDomains(formOwnerId),
+    [getScopedDomains, formOwnerId]
+  );
+  const availableFormIntegrations = React.useMemo(
+    () => getScopedIntegrations(formOwnerId),
+    [getScopedIntegrations, formOwnerId]
+  );
+
+  React.useEffect(() => {
+    const allowedPixelIds = new Set(availableFormPixels.map((pixel) => String(pixel.id)));
+    const allowedDomainIds = new Set(availableFormDomains.map((domain) => domain.id));
+    const allowedIntegrationIds = new Set(
+      availableFormIntegrations.map((integration) => String(integration.id))
+    );
+    setForm((prev) => {
+      const nextPixelId = prev.pixelId && allowedPixelIds.has(String(prev.pixelId)) ? prev.pixelId : "";
+      const nextMetaIntegrationId =
+        prev.metaIntegrationId && allowedIntegrationIds.has(String(prev.metaIntegrationId))
+          ? prev.metaIntegrationId
+          : "";
+      const nextDomainIds = prev.domainIds.filter((id) => allowedDomainIds.has(id));
+      if (
+        nextPixelId === prev.pixelId &&
+        nextMetaIntegrationId === prev.metaIntegrationId &&
+        areSameIds(nextDomainIds, prev.domainIds)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        pixelId: nextPixelId,
+        metaIntegrationId: nextMetaIntegrationId,
+        domainIds: nextDomainIds,
+      };
+    });
+  }, [availableFormPixels, availableFormDomains, availableFormIntegrations, areSameIds]);
+
+  const visibleAccounts = React.useMemo(() => {
+    if (isLeadership) return accounts;
+    const ownerId = toId(authUser?.id);
+    return accounts.filter((account) => toId(account.owner_id) === ownerId);
+  }, [isLeadership, accounts, authUser?.id, toId]);
+
+  const accountSummary = React.useMemo(() => {
+    const totals = { total: 0, active: 0, attention: 0, blocked: 0 };
+    for (const row of visibleAccounts) {
+      const normalizedStatus = String(row?.status || "").trim().toLowerCase();
+      totals.total += 1;
+      if (normalizedStatus === "active") totals.active += 1;
+      if (normalizedStatus === "blocked") totals.blocked += 1;
+      if (normalizedStatus === "pending" || normalizedStatus === "paused" || normalizedStatus === "expired") {
+        totals.attention += 1;
+      }
+    }
+    return totals;
+  }, [visibleAccounts]);
 
   const resolveOwnerLabel = (row) => {
     if (row?.owner_name) return row.owner_name;
@@ -9822,7 +9958,7 @@ function AccountsDashboard({ authUser }) {
           metaIntegrationId: form.metaIntegrationId || null,
           domainIds: form.domainIds,
           notes: form.notes,
-          ownerId: canAssignOwner && form.ownerId ? Number(form.ownerId) : undefined,
+          ownerId: isLeadership && formOwnerId ? formOwnerId : undefined,
         }),
       });
       if (!response.ok) {
@@ -9836,9 +9972,10 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
-  const handleStatusChange = async (id, status) => {
+  const handleStatusChange = async (row, status) => {
+    if (!canManageRow(row)) return;
     try {
-      const response = await apiFetch(`/api/accounts/${id}`, {
+      const response = await apiFetch(`/api/accounts/${row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -9853,9 +9990,10 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
-  const handlePixelChange = async (id, pixelId) => {
+  const handlePixelChange = async (row, pixelId) => {
+    if (!canManageRow(row)) return;
     try {
-      const response = await apiFetch(`/api/accounts/${id}`, {
+      const response = await apiFetch(`/api/accounts/${row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pixelId: pixelId ? Number(pixelId) : null }),
@@ -9870,11 +10008,154 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
-  const handleDelete = async (id) => {
+  const openEditModal = (row) => {
+    setEditModal({
+      open: true,
+      row,
+      saving: false,
+      form: {
+        accountNumber: String(row?.account_number || ""),
+        status: String(row?.status || "Active"),
+        pixelId: row?.pixel_id ? String(row.pixel_id) : "",
+        metaIntegrationId: row?.meta_integration_id ? String(row.meta_integration_id) : "",
+        domainIds: normalizeDomainIds(row?.domain_ids),
+        notes: String(row?.notes || ""),
+        ownerId: row?.owner_id ? String(row.owner_id) : authUser?.id ? String(authUser.id) : "",
+      },
+    });
+  };
+
+  const closeEditModal = React.useCallback(() => {
+    setEditModal({
+      open: false,
+      row: null,
+      saving: false,
+      form: {
+        accountNumber: "",
+        status: "Active",
+        pixelId: "",
+        metaIntegrationId: "",
+        domainIds: [],
+        notes: "",
+        ownerId: authUser?.id ? String(authUser.id) : "",
+      },
+    });
+  }, [authUser?.id]);
+
+  const updateEditForm = (key) => (event) => {
+    setEditModal((prev) => {
+      if (!prev.open) return prev;
+      return { ...prev, form: { ...prev.form, [key]: event.target.value } };
+    });
+  };
+
+  const toggleEditDomain = (domainId) => {
+    const parsed = toId(domainId);
+    if (!parsed) return;
+    setEditModal((prev) => {
+      if (!prev.open) return prev;
+      const hasDomain = prev.form.domainIds.includes(parsed);
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          domainIds: hasDomain
+            ? prev.form.domainIds.filter((id) => id !== parsed)
+            : [...prev.form.domainIds, parsed],
+        },
+      };
+    });
+  };
+
+  const editOwnerId = React.useMemo(() => {
+    if (!editModal.open) return null;
+    if (isLeadership) return toId(editModal.form.ownerId);
+    return toId(editModal.row?.owner_id) || toId(authUser?.id);
+  }, [editModal, isLeadership, authUser?.id, toId]);
+
+  const availableEditPixels = React.useMemo(
+    () => getScopedPixels(editOwnerId),
+    [getScopedPixels, editOwnerId]
+  );
+  const availableEditDomains = React.useMemo(
+    () => getScopedDomains(editOwnerId),
+    [getScopedDomains, editOwnerId]
+  );
+  const availableEditIntegrations = React.useMemo(
+    () => getScopedIntegrations(editOwnerId),
+    [getScopedIntegrations, editOwnerId]
+  );
+
+  React.useEffect(() => {
+    if (!editModal.open) return;
+    const allowedPixelIds = new Set(availableEditPixels.map((pixel) => String(pixel.id)));
+    const allowedDomainIds = new Set(availableEditDomains.map((domain) => domain.id));
+    const allowedIntegrationIds = new Set(
+      availableEditIntegrations.map((integration) => String(integration.id))
+    );
+    setEditModal((prev) => {
+      if (!prev.open) return prev;
+      const nextPixelId =
+        prev.form.pixelId && allowedPixelIds.has(String(prev.form.pixelId)) ? prev.form.pixelId : "";
+      const nextMetaIntegrationId =
+        prev.form.metaIntegrationId && allowedIntegrationIds.has(String(prev.form.metaIntegrationId))
+          ? prev.form.metaIntegrationId
+          : "";
+      const nextDomainIds = prev.form.domainIds.filter((id) => allowedDomainIds.has(id));
+      if (
+        nextPixelId === prev.form.pixelId &&
+        nextMetaIntegrationId === prev.form.metaIntegrationId &&
+        areSameIds(nextDomainIds, prev.form.domainIds)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          pixelId: nextPixelId,
+          metaIntegrationId: nextMetaIntegrationId,
+          domainIds: nextDomainIds,
+        },
+      };
+    });
+  }, [editModal.open, availableEditPixels, availableEditDomains, availableEditIntegrations, areSameIds]);
+
+  const handleEditSave = async () => {
+    if (!editModal.open || !editModal.row?.id || !canManageRow(editModal.row)) return;
+    setEditModal((prev) => ({ ...prev, saving: true }));
+    try {
+      const response = await apiFetch(`/api/accounts/${editModal.row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountNumber: editModal.form.accountNumber,
+          status: editModal.form.status,
+          pixelId: editModal.form.pixelId || null,
+          metaIntegrationId: editModal.form.metaIntegrationId || null,
+          domainIds: editModal.form.domainIds,
+          notes: editModal.form.notes,
+          ownerId: isLeadership && editOwnerId ? editOwnerId : undefined,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update account.");
+      }
+      await fetchAccounts();
+      closeEditModal();
+    } catch (error) {
+      setAccountState({ loading: false, error: error.message || "Failed to update account." });
+      setEditModal((prev) => ({ ...prev, saving: false }));
+    }
+  };
+
+  const handleDelete = async (row) => {
+    if (!canManageRow(row)) return;
     const confirmed = window.confirm("Remove this account? This cannot be undone.");
     if (!confirmed) return;
     try {
-      const response = await apiFetch(`/api/accounts/${id}`, { method: "DELETE" });
+      const response = await apiFetch(`/api/accounts/${row.id}`, { method: "DELETE" });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to delete account.");
@@ -9885,8 +10166,167 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
+  const renderDomainPicker = ({ domainPool, selectedDomainIds, onToggle, emptyLabel }) => {
+    const selected = domainPool.filter((domain) => selectedDomainIds.includes(domain.id));
+    return (
+      <div className="accounts-domain-picker">
+        <div className="accounts-domain-chips">
+          {selected.length ? (
+            selected.map((domain) => (
+              <span key={`chip-${domain.id}`} className="accounts-domain-chip">
+                {domain.domain}
+              </span>
+            ))
+          ) : (
+            <span className="accounts-domain-empty">{emptyLabel}</span>
+          )}
+        </div>
+        <div className="accounts-domain-list">
+          {domainPool.map((domain) => {
+            const checked = selectedDomainIds.includes(domain.id);
+            return (
+              <label
+                key={`domain-${domain.id}`}
+                className={`accounts-domain-option${checked ? " is-checked" : ""}`}
+              >
+                <input type="checkbox" checked={checked} onChange={() => onToggle(domain.id)} />
+                <span className="accounts-domain-option-name">{domain.domain}</span>
+                <span className="accounts-domain-option-meta">{domain.country || "No country"}</span>
+              </label>
+            );
+          })}
+          {!domainPool.length ? (
+            <div className="accounts-domain-list-empty">{t("No domains available for this owner.")}</div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <section className="form-section">
+      <AnimatePresence>
+        {editModal.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeEditModal}
+          >
+            <motion.div
+              className="modal accounts-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Accounts Registry")}</p>
+                  <h2>{t("Edit account")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closeEditModal}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body accounts-modal-body">
+                <div className="field">
+                  <label>{t("Account Number")}</label>
+                  <input value={editModal.form.accountNumber} onChange={updateEditForm("accountNumber")} required />
+                </div>
+                <div className="field">
+                  <label>{t("Status")}</label>
+                  <select value={editModal.form.status} onChange={updateEditForm("status")}>
+                    {accountStatusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {t(status)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {isLeadership ? (
+                  <div className="field">
+                    <label>{t("Owner")}</label>
+                    <select value={editModal.form.ownerId} onChange={updateEditForm("ownerId")}>
+                      <option value="">
+                        {userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
+                      </option>
+                      {users.map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.username} · {t(user.role)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+                <div className="field">
+                  <label>{t("Pixel")}</label>
+                  <select value={editModal.form.pixelId} onChange={updateEditForm("pixelId")}>
+                    <option value="">
+                      {pixelState.loading
+                        ? t("Loading...")
+                        : availableEditPixels.length
+                          ? t("Select")
+                          : t("No pixels")}
+                    </option>
+                    {availableEditPixels.map((pixel) => (
+                      <option key={pixel.id} value={pixel.id}>
+                        {pixel.pixel_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>{t("Meta Integration")}</label>
+                  <select value={editModal.form.metaIntegrationId} onChange={updateEditForm("metaIntegrationId")}>
+                    <option value="">
+                      {integrationState.loading
+                        ? t("Loading...")
+                        : availableEditIntegrations.length
+                          ? t("Select")
+                          : t("No integrations")}
+                    </option>
+                    {availableEditIntegrations.map((integration) => (
+                      <option key={integration.id} value={integration.id}>
+                        {integration.account_number || `#${integration.id}`} · {integration.buyer_name || "—"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field field-span-3">
+                  <label>{t("Domains under account")}</label>
+                  {renderDomainPicker({
+                    domainPool: availableEditDomains,
+                    selectedDomainIds: editModal.form.domainIds,
+                    onToggle: toggleEditDomain,
+                    emptyLabel: t("No domains selected"),
+                  })}
+                </div>
+                <div className="field field-span-3">
+                  <label>{t("Comment")}</label>
+                  <textarea
+                    rows={4}
+                    value={editModal.form.notes}
+                    onChange={updateEditForm("notes")}
+                    placeholder={t("Add a comment")}
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={closeEditModal}>
+                  {t("Cancel")}
+                </button>
+                <button className="action-pill" type="button" onClick={handleEditSave} disabled={editModal.saving}>
+                  {editModal.saving ? t("Saving...") : t("Save")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div
         className="panel meta-token-panel accounts-registry-panel"
         initial={{ opacity: 0, y: 20 }}
@@ -9905,16 +10345,38 @@ function AccountsDashboard({ authUser }) {
           </button>
         </div>
 
+        <div className="accounts-summary-strip">
+          <div className="accounts-summary-item">
+            <span>{t("Registered Accounts")}</span>
+            <strong>{accountSummary.total}</strong>
+          </div>
+          <div className="accounts-summary-item is-active">
+            <span>{t("Active")}</span>
+            <strong>{accountSummary.active}</strong>
+          </div>
+          <div className="accounts-summary-item is-attention">
+            <span>{t("Need Attention")}</span>
+            <strong>{accountSummary.attention}</strong>
+          </div>
+          <div className="accounts-summary-item is-blocked">
+            <span>{t("Blocked")}</span>
+            <strong>{accountSummary.blocked}</strong>
+          </div>
+          <div className="accounts-summary-item accounts-summary-scope">
+            <span>{isLeadership ? t("Leadership scope") : t("Your scope")}</span>
+            <strong>
+              {isLeadership
+                ? t("Can manage all accounts")
+                : t("Only pixels/domains owned by you")}
+            </strong>
+          </div>
+        </div>
+
         {showForm ? (
           <form className="form-grid accounts-form" onSubmit={handleCreate}>
             <div className="field">
               <label>{t("Account Number")}</label>
-              <input
-                value={form.accountNumber}
-                onChange={updateForm("accountNumber")}
-                placeholder="804123612647228"
-                required
-              />
+              <input value={form.accountNumber} onChange={updateForm("accountNumber")} placeholder="804123612647228" required />
             </div>
             <div className="field">
               <label>{t("Status")}</label>
@@ -9930,9 +10392,13 @@ function AccountsDashboard({ authUser }) {
               <label>{t("Pixel")}</label>
               <select value={form.pixelId} onChange={updateForm("pixelId")}>
                 <option value="">
-                  {pixelState.loading ? t("Loading...") : pixels.length ? t("Select") : t("No pixels")}
+                  {pixelState.loading
+                    ? t("Loading...")
+                    : availableFormPixels.length
+                      ? t("Select")
+                      : t("No pixels")}
                 </option>
-                {pixels.map((pixel) => (
+                {availableFormPixels.map((pixel) => (
                   <option key={pixel.id} value={pixel.id}>
                     {pixel.pixel_id}
                   </option>
@@ -9945,36 +10411,29 @@ function AccountsDashboard({ authUser }) {
                 <option value="">
                   {integrationState.loading
                     ? t("Loading...")
-                    : integrations.length
+                    : availableFormIntegrations.length
                       ? t("Select")
                       : t("No integrations")}
                 </option>
-                {integrations.map((integration) => (
+                {availableFormIntegrations.map((integration) => (
                   <option key={integration.id} value={integration.id}>
-                    {integration.account_number || `#${integration.id}`} ·{" "}
-                    {integration.buyer_name || "—"} · {formatCurrency(Number(integration.received_spend || 0))}
+                    {integration.account_number || `#${integration.id}`} · {integration.buyer_name || "—"} ·{" "}
+                    {formatCurrency(Number(integration.received_spend || 0))}
                   </option>
                 ))}
               </select>
             </div>
             <div className="field field-span-2">
               <label>{t("Domains under account")}</label>
-              <select
-                className="accounts-domain-select"
-                value={form.domainIds.map((id) => String(id))}
-                onChange={handleDomainSelection}
-                multiple
-                size={5}
-              >
-                {domains.map((domain) => (
-                  <option key={domain.id} value={domain.id}>
-                    {domain.domain} · {domain.country || "—"}
-                  </option>
-                ))}
-              </select>
-              <span className="field-hint">{t("Use Cmd/Ctrl + click to select more than one domain.")}</span>
+              {renderDomainPicker({
+                domainPool: availableFormDomains,
+                selectedDomainIds: form.domainIds,
+                onToggle: toggleFormDomain,
+                emptyLabel: t("No domains selected"),
+              })}
+              <span className="field-hint">{t("Select all domains responsible for this account.")}</span>
             </div>
-            {canAssignOwner ? (
+            {isLeadership ? (
               <div className="field">
                 <label>{t("Owner")}</label>
                 <select value={form.ownerId} onChange={updateForm("ownerId")}>
@@ -9990,8 +10449,8 @@ function AccountsDashboard({ authUser }) {
               </div>
             ) : null}
             <div className="field field-span-2">
-              <label>{t("Notes")}</label>
-              <input value={form.notes} onChange={updateForm("notes")} placeholder={t("Optional notes")} />
+              <label>{t("Comment")}</label>
+              <textarea rows={3} value={form.notes} onChange={updateForm("notes")} placeholder={t("Add a comment")} />
             </div>
             <div className="form-actions">
               <button className="ghost" type="button" onClick={resetForm}>
@@ -10026,58 +10485,76 @@ function AccountsDashboard({ authUser }) {
                   <th>{t("Meta Binding")}</th>
                   <th>{t("Integration Cost")}</th>
                   <th>{t("Domains")}</th>
-                  <th>{t("Notes")}</th>
+                  <th>{t("Comment")}</th>
                   <th>{t("Owner")}</th>
                   <th>{t("Updated")}</th>
-                  <th />
+                  <th>{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleAccounts.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.id}</td>
-                    <td>{row.account_number}</td>
-                    <td>
-                      <select
-                        className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
-                        value={row.status || "Active"}
-                        onChange={(event) => handleStatusChange(row.id, event.target.value)}
-                      >
-                        {accountStatusOptions.map((status) => (
-                          <option key={status} value={status}>
-                            {t(status)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select
-                        className="inline-select accounts-pixel-select"
-                        value={row?.pixel_id ? String(row.pixel_id) : ""}
-                        onChange={(event) => handlePixelChange(row.id, event.target.value)}
-                      >
-                        <option value="">{t("Unassigned")}</option>
-                        {pixels.map((pixel) => (
-                          <option key={pixel.id} value={pixel.id}>
-                            {pixel.pixel_id}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="field-hint accounts-pixel-hint">{resolvePixelLabel(row)}</span>
-                    </td>
-                    <td>{resolveIntegrationLabel(row)}</td>
-                    <td>{formatCurrency(resolveIntegrationCost(row))}</td>
-                    <td className="accounts-domain-cell">{resolveDomainLabel(row)}</td>
-                    <td>{row.notes || "—"}</td>
-                    <td>{resolveOwnerLabel(row)}</td>
-                    <td>{row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}</td>
-                    <td>
-                      <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)}>
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {visibleAccounts.map((row) => {
+                  const scopedPixels = getScopedPixels(row.owner_id);
+                  const scopedPixelSet = new Set(scopedPixels.map((pixel) => pixel.id));
+                  const currentPixelId = toId(row.pixel_id);
+                  const pixelOptions = [...scopedPixels];
+                  if (currentPixelId && !scopedPixelSet.has(currentPixelId) && pixelLookup[currentPixelId]) {
+                    pixelOptions.push(pixelLookup[currentPixelId]);
+                  }
+                  return (
+                    <tr key={row.id} className={`accounts-row status-${String(row.status || "").toLowerCase()}`}>
+                      <td>{row.id}</td>
+                      <td className="accounts-account-number">{row.account_number}</td>
+                      <td>
+                        <select
+                          className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
+                          value={row.status || "Active"}
+                          onChange={(event) => handleStatusChange(row, event.target.value)}
+                          disabled={!canManageRow(row)}
+                        >
+                          {accountStatusOptions.map((status) => (
+                            <option key={status} value={status}>
+                              {t(status)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          className="inline-select accounts-pixel-select"
+                          value={row?.pixel_id ? String(row.pixel_id) : ""}
+                          onChange={(event) => handlePixelChange(row, event.target.value)}
+                          disabled={!canManageRow(row)}
+                        >
+                          <option value="">{t("Unassigned")}</option>
+                          {pixelOptions.map((pixel) => (
+                            <option key={pixel.id} value={pixel.id}>
+                              {pixel.pixel_id}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="field-hint accounts-pixel-hint">{resolvePixelLabel(row)}</span>
+                      </td>
+                      <td className="accounts-binding-cell">{resolveIntegrationLabel(row)}</td>
+                      <td>{formatCurrency(resolveIntegrationCost(row))}</td>
+                      <td className="accounts-domain-cell">{resolveDomainLabel(row)}</td>
+                      <td className="accounts-comment-cell">{row.notes || "—"}</td>
+                      <td>{resolveOwnerLabel(row)}</td>
+                      <td className="accounts-updated-cell">{row.updated_at ? new Date(row.updated_at).toLocaleString() : "—"}</td>
+                      <td>
+                        <div className="inline-actions accounts-inline-actions">
+                          <button className="icon-btn" type="button" onClick={() => openEditModal(row)} title={t("Edit")}>
+                            <Pencil size={14} />
+                          </button>
+                          {canManageRow(row) ? (
+                            <button className="icon-btn danger" type="button" onClick={() => handleDelete(row)} title={t("Delete")}>
+                              <Trash2 size={14} />
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -13121,6 +13598,8 @@ export default function App() {
       ? rolePermissions
       : permissionOptions.map((perm) => perm.key);
     const list = Array.isArray(basePermissions) ? [...basePermissions] : [];
+    const normalizedRole = String(authUser?.role || "").toLowerCase();
+    const isBuyerRole = normalizedRole.includes("buyer");
     if (list.includes("statistics") && !list.includes("placements")) {
       list.push("placements");
     }
@@ -13143,6 +13622,9 @@ export default function App() {
       (list.includes("domains") || list.includes("pixels") || list.includes("meta_token")) &&
       !list.includes("accounts")
     ) {
+      list.push("accounts");
+    }
+    if (isBuyerRole && !list.includes("accounts")) {
       list.push("accounts");
     }
     return Array.from(new Set(list));
