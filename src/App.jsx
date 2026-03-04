@@ -11353,26 +11353,24 @@ function MetaTokenDashboard({ authUser }) {
             </div>
             <div className="binding-cloud-canvas">
               <div className="binding-cloud-grid">
-                <div className="binding-cloud-node source">
-                  <span className="binding-cloud-kicker">Worker</span>
-                  <strong>{selectedBinding?.meta_binding || "raspy-star-473e"}</strong>
-                </div>
-                <span className="binding-cloud-wire" aria-hidden="true" />
-                <div className="binding-cloud-node namespace">
-                  <span className="binding-cloud-kicker">KV namespace</span>
-                  <strong>{selectedBinding?.account_number || "No account"}</strong>
-                </div>
-                <span className="binding-cloud-wire" aria-hidden="true" />
-                <div className="binding-cloud-node target">
+                <div className="binding-cloud-node buyer">
                   <span className="binding-cloud-kicker">Buyer</span>
                   <strong>{selectedBinding?.buyer_name || "Not assigned"}</strong>
                 </div>
-                <div className="binding-cloud-branch">
-                  <span className="binding-cloud-branch-wire" aria-hidden="true" />
-                  <button type="button" className="binding-cloud-action" onClick={() => handleRunCheck(selectedBinding.id)}>
-                    + Check Integration
-                  </button>
+                <span className="binding-cloud-wire" aria-hidden="true" />
+                <div className="binding-cloud-node account">
+                  <span className="binding-cloud-kicker">Account</span>
+                  <strong>{selectedBinding?.account_number || "No account"}</strong>
                 </div>
+                <span className="binding-cloud-wire" aria-hidden="true" />
+                <div className="binding-cloud-node keitaro">
+                  <span className="binding-cloud-kicker">Keitaro</span>
+                  <strong>{selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "raspy-star-473e"}</strong>
+                </div>
+                <span className="binding-cloud-wire" aria-hidden="true" />
+                <button type="button" className="binding-cloud-node action" onClick={() => handleRunCheck(selectedBinding.id)}>
+                  + Check Integration
+                </button>
               </div>
             </div>
             <div className="binding-metric-grid">

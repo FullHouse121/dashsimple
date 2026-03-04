@@ -2481,54 +2481,87 @@ select {
   position: relative;
   z-index: 2;
   margin-top: 12px;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 1px solid rgba(72, 82, 100, 0.52);
-  background: linear-gradient(180deg, rgba(8, 10, 14, 0.86), rgba(7, 9, 13, 0.9));
-  padding: 18px 16px 14px;
+  background:
+    radial-gradient(rgba(220, 229, 242, 0.16) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(8, 10, 14, 0.88), rgba(6, 8, 12, 0.92));
+  background-size: 24px 24px, 100% 100%;
+  background-position: 0 0, 0 0;
+  padding: 14px 12px;
+  overflow: hidden;
 }
 
 .binding-cloud-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1.45fr) 34px minmax(220px, 1.35fr) 34px minmax(180px, 1fr);
+  grid-template-columns:
+    minmax(160px, 1fr)
+    22px
+    minmax(180px, 1fr)
+    22px
+    minmax(170px, 1fr)
+    22px
+    minmax(170px, 0.95fr);
   align-items: center;
-  row-gap: 14px;
+  column-gap: 0;
+  row-gap: 10px;
 }
 
 .binding-cloud-node {
-  min-height: 72px;
+  min-height: 58px;
   border-radius: 999px;
-  border: 1px solid rgba(102, 114, 135, 0.6);
+  border: 1px solid rgba(102, 114, 135, 0.54);
   background: linear-gradient(175deg, rgba(28, 33, 44, 0.84), rgba(18, 22, 30, 0.88));
-  padding: 10px 20px;
+  padding: 8px 14px;
   display: grid;
   align-content: center;
-  gap: 4px;
+  gap: 2px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.binding-cloud-node.source {
+.binding-cloud-node.buyer {
   border-color: rgba(92, 102, 120, 0.72);
 }
 
-.binding-cloud-node.namespace {
-  border-color: rgba(60, 132, 255, 0.9);
-  background: linear-gradient(175deg, rgba(33, 73, 151, 0.88), rgba(28, 57, 116, 0.9));
+.binding-cloud-node.account {
+  border-color: rgba(60, 132, 255, 0.84);
+  background: linear-gradient(175deg, rgba(29, 66, 136, 0.9), rgba(22, 49, 102, 0.92));
 }
 
-.binding-cloud-node.target {
+.binding-cloud-node.keitaro {
   border-color: rgba(92, 102, 120, 0.72);
+}
+
+.binding-cloud-node.action {
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-color: rgba(62, 142, 255, 0.84);
+  background: linear-gradient(175deg, rgba(38, 90, 188, 0.9), rgba(29, 69, 143, 0.92));
+  color: #dce9ff;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.binding-cloud-node.action:hover {
+  border-color: rgba(111, 174, 255, 0.96);
+  background: linear-gradient(175deg, rgba(47, 113, 233, 0.92), rgba(36, 87, 183, 0.94));
 }
 
 .binding-cloud-kicker {
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: 9px;
+  letter-spacing: 0.095em;
   text-transform: uppercase;
   color: #90a0ba;
 }
 
 .binding-cloud-node strong {
-  font-size: 17px;
-  line-height: 1.2;
+  font-size: 14px;
+  line-height: 1.18;
   letter-spacing: -0.005em;
   color: #eef2f8;
   white-space: nowrap;
@@ -2537,43 +2570,9 @@ select {
 }
 
 .binding-cloud-wire {
-  height: 2px;
+  height: 1px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(88, 101, 122, 0.22), rgba(88, 101, 122, 0.76), rgba(88, 101, 122, 0.22));
-}
-
-.binding-cloud-branch {
-  grid-column: 3;
-  display: grid;
-  justify-items: start;
-  gap: 8px;
-  margin-top: -2px;
-  padding-left: 16px;
-}
-
-.binding-cloud-branch-wire {
-  width: 2px;
-  height: 14px;
-  border-radius: 999px;
-  background: rgba(88, 101, 122, 0.78);
-}
-
-.binding-cloud-action {
-  appearance: none;
-  border-radius: 999px;
-  border: 1px solid rgba(77, 145, 255, 0.86);
-  background: linear-gradient(175deg, rgba(39, 99, 211, 0.85), rgba(31, 77, 162, 0.88));
-  color: #dce9ff;
-  padding: 7px 14px;
-  min-height: 34px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.binding-cloud-action:hover {
-  border-color: rgba(111, 174, 255, 0.96);
-  background: linear-gradient(175deg, rgba(47, 113, 233, 0.92), rgba(36, 87, 183, 0.94));
+  background: linear-gradient(90deg, rgba(88, 101, 122, 0.18), rgba(88, 101, 122, 0.72), rgba(88, 101, 122, 0.18));
 }
 
 .binding-metric-grid {
@@ -3186,12 +3185,12 @@ select {
   }
 
   .binding-cloud-canvas {
-    padding: 14px 12px 12px;
+    padding: 12px 10px 10px;
   }
 
   .binding-cloud-grid {
     grid-template-columns: 1fr;
-    row-gap: 10px;
+    row-gap: 8px;
   }
 
   .binding-cloud-wire {
@@ -3199,28 +3198,20 @@ select {
   }
 
   .binding-cloud-node {
-    min-height: 64px;
+    min-height: 52px;
     border-radius: 14px;
-    padding: 9px 14px;
+    padding: 8px 12px;
   }
 
   .binding-cloud-node strong {
-    font-size: 15px;
+    font-size: 14px;
   }
 
-  .binding-cloud-branch {
-    grid-column: 1;
-    padding-left: 0;
-    margin-top: 0;
-  }
-
-  .binding-cloud-branch-wire {
-    display: none;
-  }
-
-  .binding-cloud-action {
+  .binding-cloud-node.action {
     width: 100%;
     justify-content: center;
+    min-height: 48px;
+    font-size: 13px;
   }
 
   .binding-metric-grid {
