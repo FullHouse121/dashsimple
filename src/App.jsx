@@ -474,7 +474,6 @@ const translations = {
     "Track every domain in use and keep its status updated.":
       "Kullanımdaki tüm alan adlarını takip edin ve durumunu güncel tutun.",
     Domain: "Alan Adı",
-    Game: "Oyun",
     Owner: "Sahip",
     Platform: "Platform",
     "PWA Group": "PWA Grup",
@@ -706,7 +705,6 @@ const translations = {
     "No media buyers added yet.": "Henüz medya alıcısı eklenmedi.",
     "Loading domains…": "Alan adları yükleniyor…",
     "No domains added yet.": "Henüz alan adı eklenmedi.",
-    Domain: "Alan Adı",
     "Home Dashboard": "Ana Gösterge Paneli",
     "Roles & Permissions": "Roller ve Yetkiler",
     Roles: "Roller",
@@ -912,7 +910,6 @@ const translations = {
     "Media Buyer Junior": "Medya Alıcısı Junior",
     "Media Buyer Senior": "Medya Alıcısı Senior",
     "Traffic Source": "Trafik Kaynağı",
-    Tools: "Araçlar",
     Designs: "Tasarım",
     Crypto: "Kripto",
     "Bank Transfer": "Banka Havalesi",
@@ -8811,7 +8808,7 @@ function DomainsDashboard({ authUser }) {
   return (
     <section className="form-section">
       <motion.div
-        className="panel"
+        className="panel meta-bindings-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -9338,7 +9335,7 @@ function PixelsDashboard({ authUser }) {
       </AnimatePresence>
 
       <motion.div
-        className="panel"
+        className="panel meta-token-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
@@ -9888,9 +9885,9 @@ function MetaTokenDashboard({ authUser }) {
   }, [selectedBinding]);
 
   return (
-    <section className="form-section">
+    <section className="form-section meta-token-sections">
       <motion.div
-        className="panel"
+        className="panel meta-bindings-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
@@ -9997,7 +9994,7 @@ function MetaTokenDashboard({ authUser }) {
       </motion.div>
 
       <motion.div
-        className="panel"
+        className="panel meta-token-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.06 }}
