@@ -13113,8 +13113,20 @@ export default function App() {
     if (list.includes("api") && !list.includes("meta_token")) {
       list.push("meta_token");
     }
+    if (
+      (authUser?.role === "Boss" || authUser?.role === "Team Leader") &&
+      !list.includes("accounts")
+    ) {
+      list.push("accounts");
+    }
+    if (
+      (list.includes("domains") || list.includes("pixels") || list.includes("meta_token")) &&
+      !list.includes("accounts")
+    ) {
+      list.push("accounts");
+    }
     return Array.from(new Set(list));
-  }, [rolePermissions]);
+  }, [rolePermissions, authUser?.role]);
 
   const allowedNavItems = navItems.filter((item) => {
     const perm = viewPermissionMap[item.key];
