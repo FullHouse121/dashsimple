@@ -11340,51 +11340,51 @@ function MetaTokenDashboard({ authUser }) {
             } ${costBurst ? "pulse-burst" : ""}`}
           >
             <div className="binding-grid-bg" />
-            <div className="binding-topbar">
-              <div className="binding-topbar-copy">
-                <h4 className="binding-main-title">Integration Status</h4>
-                <p className="binding-main-sub">Media Buyer Tracking</p>
+            <div className="binding-cloud-head">
+              <div className="binding-cloud-head-copy">
+                <h4 className="binding-cloud-title">Integration graph</h4>
+                <p className="binding-cloud-sub">Meta Token namespace routing for media buyer tracking</p>
               </div>
-              <div
-                className={`binding-delay-widget ${
-                  flowMode === "online" ? "ok" : flowMode === "delayed" ? "delayed" : "error"
-                }`}
-              >
-                <span className="binding-delay-label">System Delay</span>
+              <div className={`binding-cloud-delay ${flowMode}`}>
+                <span>System Delay</span>
                 <strong>{systemDelayLabel}</strong>
-                <span className="binding-delay-ring" aria-hidden="true" />
+                <i aria-hidden="true" />
               </div>
             </div>
-            <div className="binding-signal-rail">
-              <span className="binding-signal-line" />
-              {bindingChecks?.checks.map((item) => (
-                <span
-                  key={`signal-${item.key}`}
-                  className={`binding-signal-node-wrap ${getBindingTone(item)}`}
-                >
-                  <span className="binding-signal-node">{item.ok ? "✓" : "!"}</span>
-                  <span className="binding-signal-drop" />
-                </span>
-              ))}
-            </div>
-            <div className="binding-chain">
-              {bindingChecks?.checks.map((item, index) => (
-                <div key={item.key} className="binding-node-wrap">
-                  <span className={`binding-chip chip-${item.key} ${getBindingTone(item)}`}>
-                    <span className="binding-chip-top">
-                      <em className={`binding-chip-index ${getBindingTone(item)}`}>
-                        {String(index + 1).padStart(2, "0")}
-                      </em>
-                      <strong>{item.label}</strong>
-                    </span>
-                    <small>{item.value}</small>
-                    {item.key === "meta" && !item.ok ? (
-                      <span className="binding-chip-note">Last checked {lastCheckedAgoLabel}</span>
-                    ) : null}
-                    <span className={`binding-chip-state ${getBindingTone(item)}`} />
-                  </span>
-                  {index < bindingChecks.checks.length - 1 ? <span className="binding-link" /> : null}
+            <div className="binding-cloud-canvas">
+              <div className="binding-cloud-grid">
+                <div className="binding-cloud-node source">
+                  <span className="binding-cloud-kicker">Worker</span>
+                  <strong>{selectedBinding?.meta_binding || "raspy-star-473e"}</strong>
                 </div>
+                <span className="binding-cloud-wire" aria-hidden="true" />
+                <div className="binding-cloud-node namespace">
+                  <span className="binding-cloud-kicker">KV namespace</span>
+                  <strong>{selectedBinding?.account_number || "No account"}</strong>
+                </div>
+                <span className="binding-cloud-wire" aria-hidden="true" />
+                <div className="binding-cloud-node target">
+                  <span className="binding-cloud-kicker">Buyer</span>
+                  <strong>{selectedBinding?.buyer_name || "Not assigned"}</strong>
+                </div>
+                <div className="binding-cloud-branch">
+                  <span className="binding-cloud-branch-wire" aria-hidden="true" />
+                  <button type="button" className="binding-cloud-action" onClick={() => handleRunCheck(selectedBinding.id)}>
+                    + Check Integration
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="binding-metric-grid">
+              {bindingChecks?.checks.map((item, index) => (
+                <article key={item.key} className={`binding-metric-card ${getBindingTone(item)}`}>
+                  <div className="binding-metric-head">
+                    <em>{String(index + 1).padStart(2, "0")}</em>
+                    <span>{item.label}</span>
+                  </div>
+                  <strong>{item.value}</strong>
+                  <small>{item.ok ? "Working" : "Missing"}</small>
+                </article>
               ))}
             </div>
             <div className="binding-footer">
@@ -11395,7 +11395,7 @@ function MetaTokenDashboard({ authUser }) {
               >
                 {flowMode === "online" ? "Integration Online" : flowMode === "delayed" ? "Integration Delayed" : "Action Needed"}
               </button>
-              <span className="binding-meta">Last check: {lastCheckedLabel}</span>
+              <span className="binding-meta">Last check: {lastCheckedLabel} ({lastCheckedAgoLabel})</span>
             </div>
             {bindingIssues.length ? (
               <div className="binding-alert">
