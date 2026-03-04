@@ -9893,6 +9893,23 @@ function AccountsDashboard({ authUser }) {
     [getScopedDomains, formOwnerId]
   );
 
+  const resolveOwnerNameById = React.useCallback(
+    (ownerId) => {
+      const parsed = toId(ownerId);
+      if (!parsed) return "";
+      const matchedUser = users.find((user) => toId(user.id) === parsed);
+      if (matchedUser?.username) return matchedUser.username;
+      if (toId(authUser?.id) === parsed) return authUser?.username || "You";
+      return ownerLookup[parsed] || "";
+    },
+    [users, ownerLookup, authUser?.id, authUser?.username, toId]
+  );
+
+  const formOwnerName = React.useMemo(
+    () => resolveOwnerNameById(formOwnerId),
+    [resolveOwnerNameById, formOwnerId]
+  );
+
   React.useEffect(() => {
     const allowedPixelIds = new Set(availableFormPixels.map((pixel) => String(pixel.id)));
     const allowedDomainIds = new Set(availableFormDomains.map((domain) => domain.id));
@@ -10110,6 +10127,11 @@ function AccountsDashboard({ authUser }) {
     [getScopedDomains, editOwnerId]
   );
 
+  const editOwnerName = React.useMemo(
+    () => resolveOwnerNameById(editOwnerId),
+    [resolveOwnerNameById, editOwnerId]
+  );
+
   React.useEffect(() => {
     if (!editModal.open) return;
     const allowedPixelIds = new Set(availableEditPixels.map((pixel) => String(pixel.id)));
@@ -10178,52 +10200,81 @@ function AccountsDashboard({ authUser }) {
     }
   };
 
-  const renderDomainPicker = ({ domainPool, selectedDomainIds, onToggle, emptyLabel }) => {
-    const selected = domainPool.filter((domain) => selectedDomainIds.includes(domain.id));
-    const hasDomainPool = domainPool.length > 0;
+  const renderDomainPicker = ({ domainPool, selectedDomainIds, onToggle, emptyLabel, ownerLabel }) => {
+    const sortedDomainPool = [...domainPool].sort((first, second) =>
+      String(first?.domain || "").localeCompare(String(second?.domain || ""), undefined, { sensitivity: "base" })
+    );
+    const selected = sortedDomainPool.filter((domain) => selectedDomainIds.includes(domain.id));
+    const hasDomainPool = sortedDomainPool.length > 0;
 
     if (!hasDomainPool) {
+      const ownerMessage = ownerLabel
+        ? `No domains available for ${ownerLabel}.`
+        : t("No domains available for this owner.");
       return (
         <div className="accounts-domain-picker is-empty">
-          <div className="accounts-domain-empty-panel">
+          <div className="accounts-domain-inline-empty">
             <span className="accounts-domain-empty-title">{emptyLabel}</span>
-            <span className="accounts-domain-empty-copy">{t("No domains available for this owner.")}</span>
+            <span className="accounts-domain-empty-copy">{ownerMessage}</span>
           </div>
         </div>
       );
     }
 
+    const previewLimit = 2;
+    const selectedPreview = selected.slice(0, previewLimit);
+    const remainingSelected = Math.max(0, selected.length - selectedPreview.length);
+
     return (
-      <div className="accounts-domain-picker">
-        <div className="accounts-domain-chips">
-          {selected.length ? (
-            selected.map((domain) => (
-              <span key={`chip-${domain.id}`} className="accounts-domain-chip">
-                {domain.domain}
-              </span>
-            ))
-          ) : (
-            <span className="accounts-domain-empty">{emptyLabel}</span>
-          )}
+      <details className="accounts-domain-picker">
+        <summary className="accounts-domain-trigger">
+          <div className="accounts-domain-selected">
+            {selectedPreview.length ? (
+              selectedPreview.map((domain) => (
+                <span key={`chip-${domain.id}`} className="accounts-domain-chip">
+                  {domain.domain}
+                </span>
+              ))
+            ) : (
+              <span className="accounts-domain-empty">{emptyLabel}</span>
+            )}
+            {remainingSelected ? <span className="accounts-domain-more">+{remainingSelected}</span> : null}
+          </div>
+          <div className="accounts-domain-meta">
+            <span className="accounts-domain-count">
+              {selected.length}/{sortedDomainPool.length}
+            </span>
+            <span className="accounts-domain-arrow" aria-hidden="true">
+              ▾
+            </span>
+          </div>
+        </summary>
+        <div className="accounts-domain-menu">
+          <div className="accounts-domain-list">
+            {sortedDomainPool.map((domain) => {
+              const checked = selectedDomainIds.includes(domain.id);
+              return (
+                <label
+                  key={`domain-${domain.id}`}
+                  className={`accounts-domain-option${checked ? " is-checked" : ""}`}
+                >
+                  <input type="checkbox" checked={checked} onChange={() => onToggle(domain.id)} />
+                  <span className="accounts-domain-option-name">{domain.domain}</span>
+                  <span className="accounts-domain-option-meta">{domain.country || "No country"}</span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-        <div className="accounts-domain-list">
-          {domainPool.map((domain) => {
-            const checked = selectedDomainIds.includes(domain.id);
-            return (
-              <label
-                key={`domain-${domain.id}`}
-                className={`accounts-domain-option${checked ? " is-checked" : ""}`}
-              >
-                <input type="checkbox" checked={checked} onChange={() => onToggle(domain.id)} />
-                <span className="accounts-domain-option-name">{domain.domain}</span>
-                <span className="accounts-domain-option-meta">{domain.country || "No country"}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
+      </details>
     );
   };
+
+  const formDomainScopeHint = React.useMemo(() => {
+    if (!formOwnerName) return t("Select all domains responsible for this account.");
+    if (availableFormDomains.length === 0) return `No domains found for ${formOwnerName}.`;
+    return `${availableFormDomains.length} domain${availableFormDomains.length === 1 ? "" : "s"} available for ${formOwnerName}.`;
+  }, [formOwnerName, availableFormDomains.length, t]);
 
   const renderCountryPicker = ({ selectedCountries, onToggle, emptyLabel }) => {
     const selected = accountRegistryCountryOptions.filter((country) => selectedCountries.includes(country));
@@ -10354,6 +10405,7 @@ function AccountsDashboard({ authUser }) {
                     selectedDomainIds: editModal.form.domainIds,
                     onToggle: toggleEditDomain,
                     emptyLabel: t("No domains selected"),
+                    ownerLabel: editOwnerName,
                   })}
                 </div>
                 <div className="field field-span-3">
@@ -10472,8 +10524,9 @@ function AccountsDashboard({ authUser }) {
                 selectedDomainIds: form.domainIds,
                 onToggle: toggleFormDomain,
                 emptyLabel: t("No domains selected"),
+                ownerLabel: formOwnerName,
               })}
-              <span className="field-hint">{t("Select all domains responsible for this account.")}</span>
+              <span className="field-hint">{formDomainScopeHint}</span>
             </div>
             {isLeadership ? (
               <div className="field accounts-owner-field">
