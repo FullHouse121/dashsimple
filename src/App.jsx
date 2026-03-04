@@ -9664,6 +9664,17 @@ function AccountsDashboard({ authUser }) {
 
   const accountStatusOptions = ["Active", "Pending", "Paused", "Expired", "Blocked"];
 
+  const readAccountError = React.useCallback(async (response, fallbackMessage) => {
+    const detail = await response.json().catch(() => null);
+    if (response.status === 404) {
+      return (
+        detail?.error ||
+        "Accounts API endpoint not found (404). Redeploy the Render backend with the latest commit."
+      );
+    }
+    return detail?.error || fallbackMessage;
+  }, []);
+
   const toId = React.useCallback((value) => {
     const parsed = Number.parseInt(String(value ?? ""), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -9791,8 +9802,7 @@ function AccountsDashboard({ authUser }) {
       setAccountState({ loading: true, error: null });
       const response = await apiFetch("/api/accounts?limit=500");
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to load accounts.");
+        throw new Error(await readAccountError(response, "Failed to load accounts."));
       }
       const data = await response.json();
       const normalized = Array.isArray(data)
@@ -9808,7 +9818,7 @@ function AccountsDashboard({ authUser }) {
     } catch (error) {
       setAccountState({ loading: false, error: error.message || "Failed to load accounts." });
     }
-  }, [normalizeDomainIds, normalizeCountryList]);
+  }, [normalizeDomainIds, normalizeCountryList, readAccountError]);
 
   const fetchPixels = React.useCallback(async () => {
     try {
@@ -9879,6 +9889,50 @@ function AccountsDashboard({ authUser }) {
     [users]
   );
 
+  const userLookupById = React.useMemo(() => {
+    const map = new Map();
+    users.forEach((user) => {
+      const parsed = toId(user?.id);
+      if (!parsed) return;
+      map.set(parsed, user);
+    });
+    return map;
+  }, [users, toId]);
+
+  const roleUserCount = React.useMemo(
+    () =>
+      users.reduce((acc, user) => {
+        const role = String(user?.role || "").trim();
+        if (!role) return acc;
+        acc[role] = (acc[role] || 0) + 1;
+        return acc;
+      }, {}),
+    [users]
+  );
+
+  const matchesLegacyOwner = React.useCallback(
+    (record, ownerId) => {
+      const parsedOwnerId = toId(ownerId);
+      if (!parsedOwnerId) return false;
+      const selectedOwner = userLookupById.get(parsedOwnerId);
+      if (!selectedOwner) return false;
+
+      const selectedName = String(selectedOwner.username || "").trim().toLowerCase();
+      const recordOwnerName = String(record?.owner_name || "").trim().toLowerCase();
+      if (selectedName && recordOwnerName && selectedName === recordOwnerName) {
+        return true;
+      }
+
+      const selectedRole = String(selectedOwner.role || "").trim();
+      const recordOwnerRole = String(record?.owner_role || "").trim();
+      if (selectedRole && recordOwnerRole && selectedRole === recordOwnerRole) {
+        return (roleUserCount[selectedRole] || 0) === 1;
+      }
+      return false;
+    },
+    [roleUserCount, toId, userLookupById]
+  );
+
   const pixelLookup = React.useMemo(
     () =>
       pixels.reduce((acc, pixel) => {
@@ -9893,9 +9947,15 @@ function AccountsDashboard({ authUser }) {
       if (!isLeadership) return pixels;
       const parsed = toId(ownerId);
       if (!parsed) return [];
-      return pixels.filter((pixel) => toId(pixel.owner_id) === parsed);
+      return pixels.filter((pixel) => {
+        const pixelOwnerId = toId(pixel.owner_id);
+        if (pixelOwnerId) {
+          return pixelOwnerId === parsed;
+        }
+        return matchesLegacyOwner(pixel, parsed);
+      });
     },
-    [isLeadership, pixels, toId]
+    [isLeadership, matchesLegacyOwner, pixels, toId]
   );
 
   const getScopedDomains = React.useCallback(
@@ -9903,9 +9963,15 @@ function AccountsDashboard({ authUser }) {
       if (!isLeadership) return domains;
       const parsed = toId(ownerId);
       if (!parsed) return [];
-      return domains.filter((domain) => toId(domain.owner_id) === parsed);
+      return domains.filter((domain) => {
+        const domainOwnerId = toId(domain.owner_id);
+        if (domainOwnerId) {
+          return domainOwnerId === parsed;
+        }
+        return matchesLegacyOwner(domain, parsed);
+      });
     },
-    [isLeadership, domains, toId]
+    [domains, isLeadership, matchesLegacyOwner, toId]
   );
 
   const formOwnerId = React.useMemo(
@@ -10035,8 +10101,7 @@ function AccountsDashboard({ authUser }) {
         }),
       });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to save account.");
+        throw new Error(await readAccountError(response, "Failed to save account."));
       }
       await fetchAccounts();
       resetForm();
@@ -10054,8 +10119,7 @@ function AccountsDashboard({ authUser }) {
         body: JSON.stringify({ status }),
       });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to update status.");
+        throw new Error(await readAccountError(response, "Failed to update status."));
       }
       await fetchAccounts();
     } catch (error) {
@@ -10223,8 +10287,7 @@ function AccountsDashboard({ authUser }) {
         }),
       });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to update account.");
+        throw new Error(await readAccountError(response, "Failed to update account."));
       }
       await fetchAccounts();
       closeEditModal();
@@ -10241,8 +10304,7 @@ function AccountsDashboard({ authUser }) {
     try {
       const response = await apiFetch(`/api/accounts/${row.id}`, { method: "DELETE" });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to delete account.");
+        throw new Error(await readAccountError(response, "Failed to delete account."));
       }
       await fetchAccounts();
     } catch (error) {
@@ -10697,15 +10759,15 @@ function AccountsDashboard({ authUser }) {
             <span>{t("Registered Accounts")}</span>
             <strong>{accountSummary.total}</strong>
           </div>
-          <div className="accounts-summary-item is-active">
+          <div className="accounts-summary-item">
             <span>{t("Active")}</span>
             <strong>{accountSummary.active}</strong>
           </div>
-          <div className="accounts-summary-item is-attention">
+          <div className="accounts-summary-item">
             <span>{t("Need Attention")}</span>
             <strong>{accountSummary.attention}</strong>
           </div>
-          <div className="accounts-summary-item is-blocked">
+          <div className="accounts-summary-item">
             <span>{t("Blocked")}</span>
             <strong>{accountSummary.blocked}</strong>
           </div>

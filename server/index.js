@@ -315,6 +315,38 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;`,
+    `UPDATE domains d
+     SET owner_id = u.id
+     FROM users u
+     WHERE (d.owner_id IS NULL OR d.owner_id = 0)
+       AND d.owner_role IS NOT NULL
+       AND TRIM(d.owner_role) <> ''
+       AND u.role = d.owner_role
+       AND 1 = (SELECT COUNT(*) FROM users ux WHERE ux.role = d.owner_role);`,
+    `UPDATE pixels p
+     SET owner_id = u.id
+     FROM users u
+     WHERE (p.owner_id IS NULL OR p.owner_id = 0)
+       AND p.owner_role IS NOT NULL
+       AND TRIM(p.owner_role) <> ''
+       AND u.role = p.owner_role
+       AND 1 = (SELECT COUNT(*) FROM users ux WHERE ux.role = p.owner_role);`,
+    `UPDATE meta_token_integrations m
+     SET owner_id = u.id
+     FROM users u
+     WHERE (m.owner_id IS NULL OR m.owner_id = 0)
+       AND m.owner_role IS NOT NULL
+       AND TRIM(m.owner_role) <> ''
+       AND u.role = m.owner_role
+       AND 1 = (SELECT COUNT(*) FROM users ux WHERE ux.role = m.owner_role);`,
+    `UPDATE accounts_registry a
+     SET owner_id = u.id
+     FROM users u
+     WHERE (a.owner_id IS NULL OR a.owner_id = 0)
+       AND a.owner_role IS NOT NULL
+       AND TRIM(a.owner_role) <> ''
+       AND u.role = a.owner_role
+       AND 1 = (SELECT COUNT(*) FROM users ux WHERE ux.role = a.owner_role);`,
     `UPDATE accounts_registry
      SET status = 'Active'
      WHERE status IS NULL OR TRIM(status) = '';`,

@@ -75,6 +75,7 @@ Notes:
 ### Netlify (Frontend)
 - Build command: `npm run build`
 - Publish directory: `dist`
+- Set Netlify env var `VITE_API_ORIGIN` to your Render API URL (for example `https://your-api.onrender.com`).
 - Ensure `netlify.toml` has the correct Render URL:
 
 ```toml

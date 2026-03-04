@@ -2271,30 +2271,6 @@ select {
   font-weight: 700;
 }
 
-.accounts-summary-item.is-active {
-  border-color: rgba(53, 231, 161, 0.38);
-}
-
-.accounts-summary-item.is-active strong {
-  color: #6af3c0;
-}
-
-.accounts-summary-item.is-attention {
-  border-color: rgba(247, 198, 37, 0.42);
-}
-
-.accounts-summary-item.is-attention strong {
-  color: #f5da7f;
-}
-
-.accounts-summary-item.is-blocked {
-  border-color: rgba(255, 106, 106, 0.46);
-}
-
-.accounts-summary-item.is-blocked strong {
-  color: #ff9a9a;
-}
-
 .registry-dashboard-panel .form-actions {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 12px;
@@ -3693,6 +3669,10 @@ select {
   position: relative;
 }
 
+.accounts-pixel-picker[open] {
+  z-index: 10;
+}
+
 .accounts-pixel-picker > summary {
   list-style: none;
 }
@@ -3715,8 +3695,8 @@ select {
 }
 
 .accounts-pixel-picker[open] .accounts-pixel-trigger {
-  border-color: rgba(54, 208, 124, 0.46);
-  box-shadow: 0 0 0 2px rgba(54, 208, 124, 0.1);
+  border-color: rgba(127, 141, 160, 0.4);
+  box-shadow: 0 0 0 2px rgba(102, 115, 136, 0.14);
 }
 
 .accounts-pixel-selected {
@@ -3774,7 +3754,11 @@ select {
 }
 
 .accounts-pixel-menu {
-  margin-top: 8px;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 20;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(160deg, rgba(24, 27, 33, 0.97), rgba(18, 20, 25, 0.98));
@@ -3782,6 +3766,7 @@ select {
   display: grid;
   gap: 8px;
   overflow: hidden;
+  box-shadow: 0 16px 34px rgba(5, 10, 20, 0.56);
 }
 
 .accounts-pixel-search-wrap {
