@@ -181,6 +181,7 @@ const initDb = async () => {
       status TEXT NOT NULL DEFAULT 'Active',
       pixel_id INTEGER,
       meta_integration_id INTEGER,
+      countries TEXT NOT NULL DEFAULT '[]',
       domain_ids TEXT NOT NULL DEFAULT '[]',
       notes TEXT,
       owner_role TEXT,
@@ -306,6 +307,7 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS status TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS meta_integration_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS countries TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS domain_ids TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS notes TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
@@ -314,6 +316,9 @@ const initDb = async () => {
     `UPDATE accounts_registry
      SET status = 'Active'
      WHERE status IS NULL OR TRIM(status) = '';`,
+    `UPDATE accounts_registry
+     SET countries = '[]'
+     WHERE countries IS NULL OR TRIM(countries) = '';`,
     `UPDATE accounts_registry
      SET domain_ids = '[]'
      WHERE domain_ids IS NULL OR TRIM(domain_ids) = '';`,
@@ -970,10 +975,87 @@ const normalizeNumericIds = (value) => {
 
 const serializeNumericIds = (value) => JSON.stringify(normalizeNumericIds(value));
 
+const normalizeStringList = (value) => {
+  if (value === null || value === undefined || value === "") return [];
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (!trimmed) return [];
+    try {
+      source = JSON.parse(trimmed);
+    } catch (error) {
+      source = trimmed.split(",");
+    }
+  }
+  const list = Array.isArray(source) ? source : [source];
+  const normalized = list
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(normalized));
+};
+
+const serializeStringList = (value) => JSON.stringify(normalizeStringList(value));
+
+const accountCountryOptions = [
+  "Australia",
+  "France",
+  "Germany",
+  "New Zealand",
+  "Egypt",
+  "Estonia",
+  "Japan",
+  "India",
+  "Vietnam",
+  "Chile",
+  "Argentina",
+  "Peru",
+  "Venezuela",
+  "Colombia",
+  "Costa Rica",
+  "Bolivia",
+  "Russia",
+  "Nigeria",
+  "Ukraine",
+  "Poland",
+  "Ecuador",
+  "Paraguay",
+  "Romania",
+  "Albania",
+  "Norway",
+  "Morocco",
+  "Algeria",
+  "Tunisia",
+  "South Korea",
+  "Switzerland",
+  "Sweden",
+  "Canada",
+  "Iran",
+  "Iraq",
+  "Azerbaijan",
+];
+
+const accountCountryMap = new Map(accountCountryOptions.map((country) => [country.toLowerCase(), country]));
+
+const normalizeAccountCountries = (value) => {
+  const rawCountries = normalizeStringList(value);
+  const normalized = [];
+  for (const rawCountry of rawCountries) {
+    const canonical = accountCountryMap.get(rawCountry.toLowerCase());
+    if (!canonical) {
+      return { error: `Unsupported country: ${rawCountry}` };
+    }
+    if (!normalized.includes(canonical)) {
+      normalized.push(canonical);
+    }
+  }
+  return { value: normalized };
+};
+
 const mapAccountRegistryRow = (row) => {
   if (!row) return null;
   return {
     ...row,
+    countries: normalizeStringList(row.countries),
     domain_ids: normalizeNumericIds(row.domain_ids),
     integration_received_spend: Number(row.integration_received_spend || 0),
   };
@@ -986,6 +1068,7 @@ const selectAccountRegistry = async (limit) => {
             a.status,
             a.pixel_id,
             a.meta_integration_id,
+            a.countries,
             a.domain_ids,
             a.notes,
             a.owner_role,
@@ -1025,6 +1108,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             a.status,
             a.pixel_id,
             a.meta_integration_id,
+            a.countries,
             a.domain_ids,
             a.notes,
             a.owner_role,
@@ -1065,6 +1149,7 @@ const selectAccountRegistryById = async (id) => {
             a.status,
             a.pixel_id,
             a.meta_integration_id,
+            a.countries,
             a.domain_ids,
             a.notes,
             a.owner_role,
@@ -1103,19 +1188,21 @@ const insertAccountRegistry = async (payload) => {
       status,
       pixel_id,
       meta_integration_id,
+      countries,
       domain_ids,
       notes,
       owner_role,
       owner_id,
       updated_at
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
      RETURNING id`,
     [
       payload.account_number,
       payload.status,
       payload.pixel_id,
       payload.meta_integration_id,
+      payload.countries,
       payload.domain_ids,
       payload.notes,
       payload.owner_role,
@@ -3280,6 +3367,7 @@ app.post("/api/accounts", async (req, res) => {
     status = "Active",
     pixelId = null,
     metaIntegrationId = null,
+    countries = [],
     domainIds = [],
     notes = "",
     ownerId,
@@ -3350,6 +3438,12 @@ app.post("/api/accounts", async (req, res) => {
     resolvedMetaIntegrationId = parsedIntegrationId;
   }
 
+  const normalizedCountriesResult = normalizeAccountCountries(countries);
+  if (normalizedCountriesResult.error) {
+    return res.status(400).json({ error: normalizedCountriesResult.error });
+  }
+  const normalizedCountries = normalizedCountriesResult.value;
+
   const normalizedDomainIds = normalizeNumericIds(domainIds);
   for (const domainId of normalizedDomainIds) {
     const domain = await selectDomainById(domainId);
@@ -3370,6 +3464,7 @@ app.post("/api/accounts", async (req, res) => {
     status: String(status || "Active").trim() || "Active",
     pixel_id: resolvedPixelId,
     meta_integration_id: resolvedMetaIntegrationId,
+    countries: serializeStringList(normalizedCountries),
     domain_ids: serializeNumericIds(normalizedDomainIds),
     notes: String(notes || "").trim() || null,
     owner_role: ownerRecord.role || req.user?.role || "",
@@ -3417,6 +3512,7 @@ app.patch("/api/accounts/:id", async (req, res) => {
   const ownerChanged = Number.parseInt(current.owner_id, 10) !== Number.parseInt(resolvedOwnerId, 10);
   const pixelTouched = Object.prototype.hasOwnProperty.call(body, "pixelId");
   const integrationTouched = Object.prototype.hasOwnProperty.call(body, "metaIntegrationId");
+  const countriesTouched = Object.prototype.hasOwnProperty.call(body, "countries");
   const domainsTouched = Object.prototype.hasOwnProperty.call(body, "domainIds");
 
   const nextPixelValueRaw = pixelTouched ? body.pixelId : current.pixel_id;
@@ -3486,6 +3582,14 @@ app.patch("/api/accounts/:id", async (req, res) => {
     }
   }
 
+  const nextCountriesRaw =
+    countriesTouched ? normalizeStringList(body.countries) : normalizeStringList(current.countries);
+  const nextCountriesResult = normalizeAccountCountries(nextCountriesRaw);
+  if (nextCountriesResult.error) {
+    return res.status(400).json({ error: nextCountriesResult.error });
+  }
+  const nextCountries = nextCountriesResult.value;
+
   const nextNotes =
     body.notes !== undefined ? String(body.notes || "").trim() || null : String(current.notes || "").trim() || null;
 
@@ -3495,17 +3599,19 @@ app.patch("/api/accounts/:id", async (req, res) => {
          status = $2,
          pixel_id = $3,
          meta_integration_id = $4,
-         domain_ids = $5,
-         notes = $6,
-         owner_role = $7,
-         owner_id = $8,
+         countries = $5,
+         domain_ids = $6,
+         notes = $7,
+         owner_role = $8,
+         owner_id = $9,
          updated_at = NOW()
-     WHERE id = $9`,
+     WHERE id = $10`,
     [
       nextAccountNumber,
       nextStatus,
       nextPixelId,
       nextMetaIntegrationId,
+      serializeStringList(nextCountries),
       serializeNumericIds(nextDomainIds),
       nextNotes,
       ownerRecord.role || current.owner_role || req.user?.role || "",

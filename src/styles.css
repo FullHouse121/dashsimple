@@ -2125,7 +2125,7 @@ select {
 }
 
 .accounts-table {
-  min-width: 1380px;
+  min-width: 1280px;
 }
 
 .registry-dashboard-panel {
@@ -3068,6 +3068,13 @@ select {
   color: #d7dbe3;
 }
 
+.accounts-country-cell {
+  max-width: 220px;
+  white-space: normal;
+  line-height: 1.45;
+  color: #d2d8e2;
+}
+
 .accounts-comment-cell {
   max-width: 240px;
   white-space: normal;
@@ -3176,6 +3183,139 @@ select {
   padding: 8px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.accounts-country-picker {
+  position: relative;
+}
+
+.accounts-country-picker > summary {
+  list-style: none;
+}
+
+.accounts-country-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.accounts-country-trigger {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(25, 27, 32, 0.95), rgba(20, 22, 27, 0.95));
+  min-height: 52px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.accounts-country-picker[open] .accounts-country-trigger {
+  border-color: rgba(54, 208, 124, 0.46);
+  box-shadow: 0 0 0 2px rgba(54, 208, 124, 0.1);
+}
+
+.accounts-country-selected {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.accounts-country-placeholder {
+  color: rgba(151, 157, 168, 0.9);
+  font-size: 13px;
+}
+
+.accounts-country-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.14);
+  color: #7ce2a7;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+}
+
+.accounts-country-arrow {
+  color: #96a0af;
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.accounts-country-picker[open] .accounts-country-arrow {
+  transform: rotate(180deg);
+}
+
+.accounts-country-menu {
+  margin-top: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(24, 27, 33, 0.97), rgba(18, 20, 25, 0.98));
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.accounts-country-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.accounts-country-menu::-webkit-scrollbar-thumb {
+  background: rgba(140, 146, 158, 0.42);
+  border-radius: 999px;
+}
+
+.accounts-country-option {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.01);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.accounts-country-option input {
+  display: none;
+}
+
+.accounts-country-option:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.accounts-country-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(148, 157, 171, 0.75);
+  color: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.accounts-country-option.is-checked {
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.12);
+}
+
+.accounts-country-option.is-checked .accounts-country-check {
+  border-color: rgba(54, 208, 124, 0.8);
+  background: rgba(54, 208, 124, 0.85);
+  color: #07150d;
+}
+
+.accounts-country-name {
+  font-size: 13px;
+  color: #e7eaef;
 }
 
 .accounts-pixel-select {

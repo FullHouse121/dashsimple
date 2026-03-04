@@ -199,6 +199,44 @@ const countryOptions = [
   "Vietnam",
 ];
 
+const accountRegistryCountryOptions = [
+  "Australia",
+  "France",
+  "Germany",
+  "New Zealand",
+  "Egypt",
+  "Estonia",
+  "Japan",
+  "India",
+  "Vietnam",
+  "Chile",
+  "Argentina",
+  "Peru",
+  "Venezuela",
+  "Colombia",
+  "Costa Rica",
+  "Bolivia",
+  "Russia",
+  "Nigeria",
+  "Ukraine",
+  "Poland",
+  "Ecuador",
+  "Paraguay",
+  "Romania",
+  "Albania",
+  "Norway",
+  "Morocco",
+  "Algeria",
+  "Tunisia",
+  "South Korea",
+  "Switzerland",
+  "Sweden",
+  "Canada",
+  "Iran",
+  "Iraq",
+  "Azerbaijan",
+];
+
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
 const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
@@ -9576,8 +9614,6 @@ function AccountsDashboard({ authUser }) {
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
   const [domains, setDomains] = React.useState([]);
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
-  const [integrations, setIntegrations] = React.useState([]);
-  const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
@@ -9585,7 +9621,7 @@ function AccountsDashboard({ authUser }) {
     accountNumber: "",
     status: "Active",
     pixelId: "",
-    metaIntegrationId: "",
+    countries: [],
     domainIds: [],
     notes: "",
     ownerId: authUser?.id ? String(authUser.id) : "",
@@ -9598,7 +9634,7 @@ function AccountsDashboard({ authUser }) {
       accountNumber: "",
       status: "Active",
       pixelId: "",
-      metaIntegrationId: "",
+      countries: [],
       domainIds: [],
       notes: "",
       ownerId: authUser?.id ? String(authUser.id) : "",
@@ -9628,6 +9664,25 @@ function AccountsDashboard({ authUser }) {
           .split(",")
           .map((item) => Number.parseInt(item, 10))
           .filter((item) => Number.isFinite(item) && item > 0);
+      }
+    }
+    return [];
+  }, []);
+
+  const normalizeCountryList = React.useCallback((value) => {
+    if (Array.isArray(value)) {
+      const normalized = value
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+      return Array.from(new Set(normalized));
+    }
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      try {
+        return normalizeCountryList(JSON.parse(trimmed));
+      } catch (error) {
+        return normalizeCountryList(trimmed.split(","));
       }
     }
     return [];
@@ -9664,12 +9719,26 @@ function AccountsDashboard({ authUser }) {
     });
   };
 
+  const toggleFormCountry = (country) => {
+    const normalized = String(country || "").trim();
+    if (!normalized) return;
+    setForm((prev) => {
+      const hasCountry = prev.countries.includes(normalized);
+      return {
+        ...prev,
+        countries: hasCountry
+          ? prev.countries.filter((item) => item !== normalized)
+          : [...prev.countries, normalized],
+      };
+    });
+  };
+
   const resetForm = React.useCallback(() => {
     setForm({
       accountNumber: "",
       status: "Active",
       pixelId: "",
-      metaIntegrationId: "",
+      countries: [],
       domainIds: [],
       notes: "",
       ownerId: authUser?.id ? String(authUser.id) : "",
@@ -9690,14 +9759,18 @@ function AccountsDashboard({ authUser }) {
       }
       const data = await response.json();
       const normalized = Array.isArray(data)
-        ? data.map((row) => ({ ...row, domain_ids: normalizeDomainIds(row?.domain_ids) }))
+        ? data.map((row) => ({
+            ...row,
+            domain_ids: normalizeDomainIds(row?.domain_ids),
+            countries: normalizeCountryList(row?.countries),
+          }))
         : [];
       setAccounts(normalized);
       setAccountState({ loading: false, error: null });
     } catch (error) {
       setAccountState({ loading: false, error: error.message || "Failed to load accounts." });
     }
-  }, [normalizeDomainIds]);
+  }, [normalizeDomainIds, normalizeCountryList]);
 
   const fetchPixels = React.useCallback(async () => {
     try {
@@ -9731,22 +9804,6 @@ function AccountsDashboard({ authUser }) {
     }
   }, []);
 
-  const fetchIntegrations = React.useCallback(async () => {
-    try {
-      setIntegrationState({ loading: true, error: null });
-      const response = await apiFetch("/api/meta-tokens?limit=500");
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to load integrations.");
-      }
-      const data = await response.json();
-      setIntegrations(Array.isArray(data) ? data : []);
-      setIntegrationState({ loading: false, error: null });
-    } catch (error) {
-      setIntegrationState({ loading: false, error: error.message || "Failed to load integrations." });
-    }
-  }, []);
-
   const fetchUsers = React.useCallback(async () => {
     if (!isLeadership) {
       setUsers([]);
@@ -9772,9 +9829,8 @@ function AccountsDashboard({ authUser }) {
     fetchAccounts();
     fetchPixels();
     fetchDomains();
-    fetchIntegrations();
     fetchUsers();
-  }, [fetchAccounts, fetchPixels, fetchDomains, fetchIntegrations, fetchUsers]);
+  }, [fetchAccounts, fetchPixels, fetchDomains, fetchUsers]);
 
   const ownerLookup = React.useMemo(
     () =>
@@ -9803,15 +9859,6 @@ function AccountsDashboard({ authUser }) {
     [domains]
   );
 
-  const integrationLookup = React.useMemo(
-    () =>
-      integrations.reduce((acc, integration) => {
-        acc[integration.id] = integration;
-        return acc;
-      }, {}),
-    [integrations]
-  );
-
   const getScopedPixels = React.useCallback(
     (ownerId) => {
       if (!isLeadership) return pixels;
@@ -9832,16 +9879,6 @@ function AccountsDashboard({ authUser }) {
     [isLeadership, domains, toId]
   );
 
-  const getScopedIntegrations = React.useCallback(
-    (ownerId) => {
-      if (!isLeadership) return integrations;
-      const parsed = toId(ownerId);
-      if (!parsed) return [];
-      return integrations.filter((integration) => toId(integration.owner_id) === parsed);
-    },
-    [isLeadership, integrations, toId]
-  );
-
   const formOwnerId = React.useMemo(
     () => (isLeadership ? toId(form.ownerId) : toId(authUser?.id)),
     [isLeadership, form.ownerId, authUser?.id, toId]
@@ -9855,39 +9892,23 @@ function AccountsDashboard({ authUser }) {
     () => getScopedDomains(formOwnerId),
     [getScopedDomains, formOwnerId]
   );
-  const availableFormIntegrations = React.useMemo(
-    () => getScopedIntegrations(formOwnerId),
-    [getScopedIntegrations, formOwnerId]
-  );
 
   React.useEffect(() => {
     const allowedPixelIds = new Set(availableFormPixels.map((pixel) => String(pixel.id)));
     const allowedDomainIds = new Set(availableFormDomains.map((domain) => domain.id));
-    const allowedIntegrationIds = new Set(
-      availableFormIntegrations.map((integration) => String(integration.id))
-    );
     setForm((prev) => {
       const nextPixelId = prev.pixelId && allowedPixelIds.has(String(prev.pixelId)) ? prev.pixelId : "";
-      const nextMetaIntegrationId =
-        prev.metaIntegrationId && allowedIntegrationIds.has(String(prev.metaIntegrationId))
-          ? prev.metaIntegrationId
-          : "";
       const nextDomainIds = prev.domainIds.filter((id) => allowedDomainIds.has(id));
-      if (
-        nextPixelId === prev.pixelId &&
-        nextMetaIntegrationId === prev.metaIntegrationId &&
-        areSameIds(nextDomainIds, prev.domainIds)
-      ) {
+      if (nextPixelId === prev.pixelId && areSameIds(nextDomainIds, prev.domainIds)) {
         return prev;
       }
       return {
         ...prev,
         pixelId: nextPixelId,
-        metaIntegrationId: nextMetaIntegrationId,
         domainIds: nextDomainIds,
       };
     });
-  }, [availableFormPixels, availableFormDomains, availableFormIntegrations, areSameIds]);
+  }, [availableFormPixels, availableFormDomains, areSameIds]);
 
   const visibleAccounts = React.useMemo(() => {
     if (isLeadership) return accounts;
@@ -9928,21 +9949,10 @@ function AccountsDashboard({ authUser }) {
     return ids.map((id) => domainLookup[id]?.domain || `#${id}`).join(", ");
   };
 
-  const resolveIntegrationLabel = (row) => {
-    const linked = integrationLookup[row?.meta_integration_id];
-    const accountNumber = row?.integration_account_number || linked?.account_number || "";
-    const buyer = row?.integration_buyer_name || linked?.buyer_name || "";
-    if (!accountNumber && !buyer) return "—";
-    if (!buyer) return accountNumber;
-    return `${accountNumber} · ${buyer}`;
-  };
-
-  const resolveIntegrationCost = (row) => {
-    const linked = integrationLookup[row?.meta_integration_id];
-    const explicit = Number(row?.integration_received_spend);
-    if (Number.isFinite(explicit)) return explicit;
-    const fallback = Number(linked?.received_spend);
-    return Number.isFinite(fallback) ? fallback : 0;
+  const resolveCountriesLabel = (row) => {
+    const countries = normalizeCountryList(row?.countries);
+    if (!countries.length) return "—";
+    return countries.join(", ");
   };
 
   const handleCreate = async (event) => {
@@ -9955,7 +9965,7 @@ function AccountsDashboard({ authUser }) {
           accountNumber: form.accountNumber,
           status: form.status,
           pixelId: form.pixelId || null,
-          metaIntegrationId: form.metaIntegrationId || null,
+          countries: form.countries,
           domainIds: form.domainIds,
           notes: form.notes,
           ownerId: isLeadership && formOwnerId ? formOwnerId : undefined,
@@ -10017,7 +10027,7 @@ function AccountsDashboard({ authUser }) {
         accountNumber: String(row?.account_number || ""),
         status: String(row?.status || "Active"),
         pixelId: row?.pixel_id ? String(row.pixel_id) : "",
-        metaIntegrationId: row?.meta_integration_id ? String(row.meta_integration_id) : "",
+        countries: normalizeCountryList(row?.countries),
         domainIds: normalizeDomainIds(row?.domain_ids),
         notes: String(row?.notes || ""),
         ownerId: row?.owner_id ? String(row.owner_id) : authUser?.id ? String(authUser.id) : "",
@@ -10034,7 +10044,7 @@ function AccountsDashboard({ authUser }) {
         accountNumber: "",
         status: "Active",
         pixelId: "",
-        metaIntegrationId: "",
+        countries: [],
         domainIds: [],
         notes: "",
         ownerId: authUser?.id ? String(authUser.id) : "",
@@ -10067,6 +10077,24 @@ function AccountsDashboard({ authUser }) {
     });
   };
 
+  const toggleEditCountry = (country) => {
+    const normalized = String(country || "").trim();
+    if (!normalized) return;
+    setEditModal((prev) => {
+      if (!prev.open) return prev;
+      const hasCountry = prev.form.countries.includes(normalized);
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          countries: hasCountry
+            ? prev.form.countries.filter((item) => item !== normalized)
+            : [...prev.form.countries, normalized],
+        },
+      };
+    });
+  };
+
   const editOwnerId = React.useMemo(() => {
     if (!editModal.open) return null;
     if (isLeadership) return toId(editModal.form.ownerId);
@@ -10081,32 +10109,17 @@ function AccountsDashboard({ authUser }) {
     () => getScopedDomains(editOwnerId),
     [getScopedDomains, editOwnerId]
   );
-  const availableEditIntegrations = React.useMemo(
-    () => getScopedIntegrations(editOwnerId),
-    [getScopedIntegrations, editOwnerId]
-  );
 
   React.useEffect(() => {
     if (!editModal.open) return;
     const allowedPixelIds = new Set(availableEditPixels.map((pixel) => String(pixel.id)));
     const allowedDomainIds = new Set(availableEditDomains.map((domain) => domain.id));
-    const allowedIntegrationIds = new Set(
-      availableEditIntegrations.map((integration) => String(integration.id))
-    );
     setEditModal((prev) => {
       if (!prev.open) return prev;
       const nextPixelId =
         prev.form.pixelId && allowedPixelIds.has(String(prev.form.pixelId)) ? prev.form.pixelId : "";
-      const nextMetaIntegrationId =
-        prev.form.metaIntegrationId && allowedIntegrationIds.has(String(prev.form.metaIntegrationId))
-          ? prev.form.metaIntegrationId
-          : "";
       const nextDomainIds = prev.form.domainIds.filter((id) => allowedDomainIds.has(id));
-      if (
-        nextPixelId === prev.form.pixelId &&
-        nextMetaIntegrationId === prev.form.metaIntegrationId &&
-        areSameIds(nextDomainIds, prev.form.domainIds)
-      ) {
+      if (nextPixelId === prev.form.pixelId && areSameIds(nextDomainIds, prev.form.domainIds)) {
         return prev;
       }
       return {
@@ -10114,12 +10127,11 @@ function AccountsDashboard({ authUser }) {
         form: {
           ...prev.form,
           pixelId: nextPixelId,
-          metaIntegrationId: nextMetaIntegrationId,
           domainIds: nextDomainIds,
         },
       };
     });
-  }, [editModal.open, availableEditPixels, availableEditDomains, availableEditIntegrations, areSameIds]);
+  }, [editModal.open, availableEditPixels, availableEditDomains, areSameIds]);
 
   const handleEditSave = async () => {
     if (!editModal.open || !editModal.row?.id || !canManageRow(editModal.row)) return;
@@ -10132,7 +10144,7 @@ function AccountsDashboard({ authUser }) {
           accountNumber: editModal.form.accountNumber,
           status: editModal.form.status,
           pixelId: editModal.form.pixelId || null,
-          metaIntegrationId: editModal.form.metaIntegrationId || null,
+          countries: editModal.form.countries,
           domainIds: editModal.form.domainIds,
           notes: editModal.form.notes,
           ownerId: isLeadership && editOwnerId ? editOwnerId : undefined,
@@ -10200,6 +10212,45 @@ function AccountsDashboard({ authUser }) {
           ) : null}
         </div>
       </div>
+    );
+  };
+
+  const renderCountryPicker = ({ selectedCountries, onToggle, emptyLabel }) => {
+    const selected = accountRegistryCountryOptions.filter((country) => selectedCountries.includes(country));
+    return (
+      <details className="accounts-country-picker">
+        <summary className="accounts-country-trigger">
+          <div className="accounts-country-selected">
+            {selected.length ? (
+              selected.map((country) => (
+                <span key={`country-chip-${country}`} className="accounts-country-chip">
+                  {country}
+                </span>
+              ))
+            ) : (
+              <span className="accounts-country-placeholder">{emptyLabel}</span>
+            )}
+          </div>
+          <span className="accounts-country-arrow" aria-hidden="true">
+            ▾
+          </span>
+        </summary>
+        <div className="accounts-country-menu">
+          {accountRegistryCountryOptions.map((country) => {
+            const checked = selectedCountries.includes(country);
+            return (
+              <label
+                key={`country-option-${country}`}
+                className={`accounts-country-option${checked ? " is-checked" : ""}`}
+              >
+                <input type="checkbox" checked={checked} onChange={() => onToggle(country)} />
+                <span className="accounts-country-check">{checked ? "✓" : ""}</span>
+                <span className="accounts-country-name">{country}</span>
+              </label>
+            );
+          })}
+        </div>
+      </details>
     );
   };
 
@@ -10278,22 +10329,13 @@ function AccountsDashboard({ authUser }) {
                     ))}
                   </select>
                 </div>
-                <div className="field">
-                  <label>{t("Meta Integration")}</label>
-                  <select value={editModal.form.metaIntegrationId} onChange={updateEditForm("metaIntegrationId")}>
-                    <option value="">
-                      {integrationState.loading
-                        ? t("Loading...")
-                        : availableEditIntegrations.length
-                          ? t("Select")
-                          : t("No integrations")}
-                    </option>
-                    {availableEditIntegrations.map((integration) => (
-                      <option key={integration.id} value={integration.id}>
-                        {integration.account_number || `#${integration.id}`} · {integration.buyer_name || "—"}
-                      </option>
-                    ))}
-                  </select>
+                <div className="field field-span-3">
+                  <label>{t("Countries")}</label>
+                  {renderCountryPicker({
+                    selectedCountries: editModal.form.countries,
+                    onToggle: toggleEditCountry,
+                    emptyLabel: t("No countries selected"),
+                  })}
                 </div>
                 <div className="field field-span-3">
                   <label>{t("Domains under account")}</label>
@@ -10337,7 +10379,7 @@ function AccountsDashboard({ authUser }) {
           <div>
             <h3 className="panel-title">{t("Accounts Registry")}</h3>
             <p className="panel-subtitle">
-              {t("Register account numbers, manage status, and bind pixel + Meta integration cost in one view.")}
+              {t("Register account numbers, manage status, and assign countries, pixels, and domains in one view.")}
             </p>
           </div>
           <button className="action-pill" type="button" onClick={() => setShowForm((value) => !value)}>
@@ -10406,22 +10448,12 @@ function AccountsDashboard({ authUser }) {
               </select>
             </div>
             <div className="field">
-              <label>{t("Meta Integration")}</label>
-              <select value={form.metaIntegrationId} onChange={updateForm("metaIntegrationId")}>
-                <option value="">
-                  {integrationState.loading
-                    ? t("Loading...")
-                    : availableFormIntegrations.length
-                      ? t("Select")
-                      : t("No integrations")}
-                </option>
-                {availableFormIntegrations.map((integration) => (
-                  <option key={integration.id} value={integration.id}>
-                    {integration.account_number || `#${integration.id}`} · {integration.buyer_name || "—"} ·{" "}
-                    {formatCurrency(Number(integration.received_spend || 0))}
-                  </option>
-                ))}
-              </select>
+              <label>{t("Countries")}</label>
+              {renderCountryPicker({
+                selectedCountries: form.countries,
+                onToggle: toggleFormCountry,
+                emptyLabel: t("No countries selected"),
+              })}
             </div>
             <div className="field field-span-2">
               <label>{t("Domains under account")}</label>
@@ -10466,7 +10498,6 @@ function AccountsDashboard({ authUser }) {
         {accountState.error ? <div className="empty-state error">{accountState.error}</div> : null}
         {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
         {domainState.error ? <div className="empty-state error">{domainState.error}</div> : null}
-        {integrationState.error ? <div className="empty-state error">{integrationState.error}</div> : null}
         {userState.error ? <div className="empty-state error">{userState.error}</div> : null}
 
         {accountState.loading ? (
@@ -10482,8 +10513,7 @@ function AccountsDashboard({ authUser }) {
                   <th>{t("Account")}</th>
                   <th>{t("Status")}</th>
                   <th>{t("Pixel")}</th>
-                  <th>{t("Meta Binding")}</th>
-                  <th>{t("Integration Cost")}</th>
+                  <th>{t("Countries")}</th>
                   <th>{t("Domains")}</th>
                   <th>{t("Comment")}</th>
                   <th>{t("Owner")}</th>
@@ -10534,8 +10564,7 @@ function AccountsDashboard({ authUser }) {
                         </select>
                         <span className="field-hint accounts-pixel-hint">{resolvePixelLabel(row)}</span>
                       </td>
-                      <td className="accounts-binding-cell">{resolveIntegrationLabel(row)}</td>
-                      <td>{formatCurrency(resolveIntegrationCost(row))}</td>
+                      <td className="accounts-country-cell">{resolveCountriesLabel(row)}</td>
                       <td className="accounts-domain-cell">{resolveDomainLabel(row)}</td>
                       <td className="accounts-comment-cell">{row.notes || "—"}</td>
                       <td>{resolveOwnerLabel(row)}</td>
