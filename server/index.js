@@ -180,6 +180,7 @@ const initDb = async () => {
       account_number TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'Active',
       pixel_id INTEGER,
+      pixel_ids TEXT NOT NULL DEFAULT '[]',
       meta_integration_id INTEGER,
       countries TEXT NOT NULL DEFAULT '[]',
       domain_ids TEXT NOT NULL DEFAULT '[]',
@@ -306,6 +307,7 @@ const initDb = async () => {
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS status TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_ids TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS meta_integration_id INTEGER;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS countries TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS domain_ids TEXT;`,
@@ -319,6 +321,12 @@ const initDb = async () => {
     `UPDATE accounts_registry
      SET countries = '[]'
      WHERE countries IS NULL OR TRIM(countries) = '';`,
+    `UPDATE accounts_registry
+     SET pixel_ids = CASE
+       WHEN pixel_id IS NULL THEN '[]'
+       ELSE '[' || pixel_id || ']'
+     END
+     WHERE pixel_ids IS NULL OR TRIM(pixel_ids) = '';`,
     `UPDATE accounts_registry
      SET domain_ids = '[]'
      WHERE domain_ids IS NULL OR TRIM(domain_ids) = '';`,
@@ -997,41 +1005,42 @@ const normalizeStringList = (value) => {
 const serializeStringList = (value) => JSON.stringify(normalizeStringList(value));
 
 const accountCountryOptions = [
-  "Australia",
-  "France",
-  "Germany",
-  "New Zealand",
-  "Egypt",
-  "Estonia",
-  "Japan",
-  "India",
-  "Vietnam",
-  "Chile",
+  "Albania",
+  "Algeria",
   "Argentina",
-  "Peru",
-  "Venezuela",
+  "Australia",
+  "Azerbaijan",
+  "Bolivia",
+  "Brazil",
+  "Canada",
+  "Chile",
   "Colombia",
   "Costa Rica",
-  "Bolivia",
-  "Russia",
-  "Nigeria",
-  "Ukraine",
-  "Poland",
   "Ecuador",
-  "Paraguay",
-  "Romania",
-  "Albania",
-  "Norway",
-  "Morocco",
-  "Algeria",
-  "Tunisia",
-  "South Korea",
-  "Switzerland",
-  "Sweden",
-  "Canada",
+  "Egypt",
+  "Estonia",
+  "France",
+  "Germany",
+  "India",
   "Iran",
   "Iraq",
-  "Azerbaijan",
+  "Japan",
+  "Morocco",
+  "New Zealand",
+  "Nigeria",
+  "Norway",
+  "Paraguay",
+  "Peru",
+  "Poland",
+  "Romania",
+  "Russia",
+  "South Korea",
+  "Sweden",
+  "Switzerland",
+  "Tunisia",
+  "Ukraine",
+  "Venezuela",
+  "Vietnam",
 ];
 
 const accountCountryMap = new Map(accountCountryOptions.map((country) => [country.toLowerCase(), country]));
@@ -1053,8 +1062,18 @@ const normalizeAccountCountries = (value) => {
 
 const mapAccountRegistryRow = (row) => {
   if (!row) return null;
+  const normalizedPixelIds = normalizeNumericIds(row.pixel_ids);
+  const fallbackPixelId = Number.parseInt(row.pixel_id, 10);
+  const pixelIds =
+    normalizedPixelIds.length > 0
+      ? normalizedPixelIds
+      : Number.isFinite(fallbackPixelId) && fallbackPixelId > 0
+        ? [fallbackPixelId]
+        : [];
   return {
     ...row,
+    pixel_id: pixelIds[0] || null,
+    pixel_ids: pixelIds,
     countries: normalizeStringList(row.countries),
     domain_ids: normalizeNumericIds(row.domain_ids),
     integration_received_spend: Number(row.integration_received_spend || 0),
@@ -1067,6 +1086,7 @@ const selectAccountRegistry = async (limit) => {
             a.account_number,
             a.status,
             a.pixel_id,
+            a.pixel_ids,
             a.meta_integration_id,
             a.countries,
             a.domain_ids,
@@ -1107,6 +1127,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             a.account_number,
             a.status,
             a.pixel_id,
+            a.pixel_ids,
             a.meta_integration_id,
             a.countries,
             a.domain_ids,
@@ -1148,6 +1169,7 @@ const selectAccountRegistryById = async (id) => {
             a.account_number,
             a.status,
             a.pixel_id,
+            a.pixel_ids,
             a.meta_integration_id,
             a.countries,
             a.domain_ids,
@@ -1187,6 +1209,7 @@ const insertAccountRegistry = async (payload) => {
       account_number,
       status,
       pixel_id,
+      pixel_ids,
       meta_integration_id,
       countries,
       domain_ids,
@@ -1195,12 +1218,13 @@ const insertAccountRegistry = async (payload) => {
       owner_id,
       updated_at
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
      RETURNING id`,
     [
       payload.account_number,
       payload.status,
       payload.pixel_id,
+      payload.pixel_ids,
       payload.meta_integration_id,
       payload.countries,
       payload.domain_ids,
@@ -3366,6 +3390,7 @@ app.post("/api/accounts", async (req, res) => {
     accountNumber,
     status = "Active",
     pixelId = null,
+    pixelIds,
     metaIntegrationId = null,
     countries = [],
     domainIds = [],
@@ -3394,25 +3419,27 @@ app.post("/api/accounts", async (req, res) => {
     return res.status(400).json({ error: "Owner not found." });
   }
 
-  let resolvedPixelId = null;
-  if (pixelId !== undefined && pixelId !== null && String(pixelId).trim() !== "") {
-    const parsedPixelId = Number.parseInt(pixelId, 10);
-    if (!Number.isFinite(parsedPixelId)) {
-      return res.status(400).json({ error: "Invalid pixel id." });
-    }
+  const normalizedPixelIds = normalizeNumericIds(
+    pixelIds !== undefined
+      ? pixelIds
+      : pixelId !== undefined && pixelId !== null && String(pixelId).trim() !== ""
+        ? [pixelId]
+        : []
+  );
+  for (const parsedPixelId of normalizedPixelIds) {
     const pixel = await selectPixelById(parsedPixelId);
     if (!pixel) {
-      return res.status(400).json({ error: "Pixel not found." });
+      return res.status(400).json({ error: `Pixel ${parsedPixelId} not found.` });
     }
     const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
     if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
-      return res.status(400).json({ error: "Pixel must belong to selected owner." });
+      return res.status(400).json({ error: `Pixel ${parsedPixelId} must belong to selected owner.` });
     }
     if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
       return res.status(403).json({ error: "Forbidden." });
     }
-    resolvedPixelId = parsedPixelId;
   }
+  const resolvedPixelId = normalizedPixelIds[0] || null;
 
   let resolvedMetaIntegrationId = null;
   if (
@@ -3463,6 +3490,7 @@ app.post("/api/accounts", async (req, res) => {
     account_number: normalizedAccountNumber,
     status: String(status || "Active").trim() || "Active",
     pixel_id: resolvedPixelId,
+    pixel_ids: serializeNumericIds(normalizedPixelIds),
     meta_integration_id: resolvedMetaIntegrationId,
     countries: serializeStringList(normalizedCountries),
     domain_ids: serializeNumericIds(normalizedDomainIds),
@@ -3510,32 +3538,45 @@ app.patch("/api/accounts/:id", async (req, res) => {
   }
   const nextStatus = String(body.status ?? current.status ?? "Active").trim() || "Active";
   const ownerChanged = Number.parseInt(current.owner_id, 10) !== Number.parseInt(resolvedOwnerId, 10);
-  const pixelTouched = Object.prototype.hasOwnProperty.call(body, "pixelId");
+  const pixelIdTouched = Object.prototype.hasOwnProperty.call(body, "pixelId");
+  const pixelIdsTouched = Object.prototype.hasOwnProperty.call(body, "pixelIds");
+  const pixelTouched = pixelIdTouched || pixelIdsTouched;
   const integrationTouched = Object.prototype.hasOwnProperty.call(body, "metaIntegrationId");
   const countriesTouched = Object.prototype.hasOwnProperty.call(body, "countries");
   const domainsTouched = Object.prototype.hasOwnProperty.call(body, "domainIds");
 
-  const nextPixelValueRaw = pixelTouched ? body.pixelId : current.pixel_id;
-  let nextPixelId = null;
-  if (nextPixelValueRaw !== null && nextPixelValueRaw !== undefined && String(nextPixelValueRaw).trim() !== "") {
-    nextPixelId = Number.parseInt(nextPixelValueRaw, 10);
-    if (!Number.isFinite(nextPixelId)) {
-      return res.status(400).json({ error: "Invalid pixel id." });
-    }
-    if (pixelTouched || ownerChanged) {
+  const currentPixelIds = normalizeNumericIds(
+    normalizeNumericIds(current.pixel_ids).length
+      ? current.pixel_ids
+      : current.pixel_id !== undefined && current.pixel_id !== null && String(current.pixel_id).trim() !== ""
+        ? [current.pixel_id]
+        : []
+  );
+  let nextPixelIds = currentPixelIds;
+  if (pixelIdsTouched) {
+    nextPixelIds = normalizeNumericIds(body.pixelIds);
+  } else if (pixelIdTouched) {
+    nextPixelIds =
+      body.pixelId !== undefined && body.pixelId !== null && String(body.pixelId).trim() !== ""
+        ? normalizeNumericIds([body.pixelId])
+        : [];
+  }
+  if (pixelTouched || ownerChanged) {
+    for (const nextPixelId of nextPixelIds) {
       const pixel = await selectPixelById(nextPixelId);
       if (!pixel) {
-        return res.status(400).json({ error: "Pixel not found." });
+        return res.status(400).json({ error: `Pixel ${nextPixelId} not found.` });
       }
       const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
       if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
-        return res.status(400).json({ error: "Pixel must belong to selected owner." });
+        return res.status(400).json({ error: `Pixel ${nextPixelId} must belong to selected owner.` });
       }
       if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
         return res.status(403).json({ error: "Forbidden." });
       }
     }
   }
+  const nextPixelId = nextPixelIds[0] || null;
 
   const nextIntegrationValueRaw =
     integrationTouched ? body.metaIntegrationId : current.meta_integration_id;
@@ -3598,18 +3639,20 @@ app.patch("/api/accounts/:id", async (req, res) => {
      SET account_number = $1,
          status = $2,
          pixel_id = $3,
-         meta_integration_id = $4,
-         countries = $5,
-         domain_ids = $6,
-         notes = $7,
-         owner_role = $8,
-         owner_id = $9,
+         pixel_ids = $4,
+         meta_integration_id = $5,
+         countries = $6,
+         domain_ids = $7,
+         notes = $8,
+         owner_role = $9,
+         owner_id = $10,
          updated_at = NOW()
-     WHERE id = $10`,
+     WHERE id = $11`,
     [
       nextAccountNumber,
       nextStatus,
       nextPixelId,
+      serializeNumericIds(nextPixelIds),
       nextMetaIntegrationId,
       serializeStringList(nextCountries),
       serializeNumericIds(nextDomainIds),
