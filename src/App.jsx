@@ -10910,7 +10910,7 @@ function AccountsDashboard({ authUser }) {
                           disabled={!rowCanManage}
                         >
                           {accountStatusOptions.map((status) => (
-                            <option key={status} value={status}>
+                            <option key={status} value={status} className={`status-option status-${status.toLowerCase()}`}>
                               {t(status)}
                             </option>
                           ))}
@@ -10921,9 +10921,9 @@ function AccountsDashboard({ authUser }) {
                         <div className="accounts-integration-badges">
                           <span className={`accounts-integration-pill ${integrationState.tone}`}>{integrationState.label}</span>
                         </div>
-                        <span className="accounts-integration-caption">
-                          {row.integration_account_number || t("No integration linked")}
-                        </span>
+                        {row.integration_account_number ? (
+                          <span className="accounts-integration-caption">{row.integration_account_number}</span>
+                        ) : null}
                       </td>
                       <td>{resolveOwnerLabel(row)}</td>
                       <td>
