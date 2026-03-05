@@ -3660,37 +3660,39 @@ select {
 
 .accounts-integration-pill {
   border-radius: 999px;
-  border: 2px solid rgba(126, 136, 152, 0.58);
-  color: #a7b0bf;
-  background: linear-gradient(180deg, rgba(30, 34, 44, 0.76), rgba(20, 24, 33, 0.8));
-  padding: 4px 14px;
-  font-size: 12px;
+  border: 1px solid rgba(88, 103, 130, 0.36);
+  color: #9eb1d2;
+  background: linear-gradient(180deg, rgba(24, 35, 58, 0.86), rgba(18, 28, 46, 0.9));
+  padding: 6px 14px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  min-height: 36px;
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .accounts-integration-pill.is-working {
-  border-color: rgba(54, 208, 124, 0.84);
-  color: #66e3a7;
-  background: linear-gradient(180deg, rgba(13, 44, 30, 0.74), rgba(8, 29, 21, 0.82));
+  border-color: rgba(52, 224, 141, 0.34);
+  color: #31e093;
+  background: linear-gradient(180deg, rgba(10, 66, 47, 0.78), rgba(8, 52, 38, 0.84));
 }
 
 .accounts-integration-pill.is-down {
-  border-color: rgba(248, 84, 96, 0.86);
-  color: #ff9fa8;
-  background: linear-gradient(180deg, rgba(67, 24, 32, 0.76), rgba(46, 18, 24, 0.82));
+  border-color: rgba(249, 93, 93, 0.36);
+  color: #ff8d8d;
+  background: linear-gradient(180deg, rgba(72, 24, 29, 0.78), rgba(56, 19, 23, 0.84));
 }
 
 .accounts-integration-pill.is-pending {
-  border-color: rgba(247, 198, 37, 0.82);
-  color: #f7d97d;
-  background: linear-gradient(180deg, rgba(61, 46, 20, 0.74), rgba(46, 33, 14, 0.82));
+  border-color: rgba(109, 155, 244, 0.34);
+  color: #9ebeff;
+  background: linear-gradient(180deg, rgba(24, 47, 92, 0.8), rgba(20, 40, 78, 0.86));
 }
 
 .accounts-integration-pill.is-not-wired {

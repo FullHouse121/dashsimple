@@ -1499,7 +1499,8 @@ const selectAccountRegistry = async (limit) => {
             a.status,
             a.pixel_id,
             a.pixel_ids,
-            a.meta_integration_id,
+            a.meta_integration_id AS account_meta_integration_id,
+            COALESCE(m.id, a.meta_integration_id) AS meta_integration_id,
             a.countries,
             a.domain_ids,
             a.notes,
@@ -1526,7 +1527,29 @@ const selectAccountRegistry = async (limit) => {
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
-     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     LEFT JOIN LATERAL (
+       SELECT mi.id,
+              mi.account_number,
+              mi.meta_token,
+              mi.buyer_name,
+              mi.status,
+              mi.is_wired,
+              mi.comment,
+              mi.last_checked_at,
+              mi.created_at
+       FROM meta_token_integrations mi
+       WHERE mi.account_number = a.account_number
+         AND (
+           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+           OR mi.owner_id IS NULL
+           OR a.owner_id IS NULL
+         )
+       ORDER BY
+         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         mi.created_at DESC,
+         mi.id DESC
+       LIMIT 1
+     ) m ON TRUE
      ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
      LIMIT $1`,
     [limit]
@@ -1541,7 +1564,8 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             a.status,
             a.pixel_id,
             a.pixel_ids,
-            a.meta_integration_id,
+            a.meta_integration_id AS account_meta_integration_id,
+            COALESCE(m.id, a.meta_integration_id) AS meta_integration_id,
             a.countries,
             a.domain_ids,
             a.notes,
@@ -1568,7 +1592,29 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
-     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     LEFT JOIN LATERAL (
+       SELECT mi.id,
+              mi.account_number,
+              mi.meta_token,
+              mi.buyer_name,
+              mi.status,
+              mi.is_wired,
+              mi.comment,
+              mi.last_checked_at,
+              mi.created_at
+       FROM meta_token_integrations mi
+       WHERE mi.account_number = a.account_number
+         AND (
+           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+           OR mi.owner_id IS NULL
+           OR a.owner_id IS NULL
+         )
+       ORDER BY
+         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         mi.created_at DESC,
+         mi.id DESC
+       LIMIT 1
+     ) m ON TRUE
      WHERE a.owner_id = $1
      ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
      LIMIT $2`,
@@ -1584,7 +1630,8 @@ const selectAccountRegistryById = async (id) => {
             a.status,
             a.pixel_id,
             a.pixel_ids,
-            a.meta_integration_id,
+            a.meta_integration_id AS account_meta_integration_id,
+            COALESCE(m.id, a.meta_integration_id) AS meta_integration_id,
             a.countries,
             a.domain_ids,
             a.notes,
@@ -1611,7 +1658,29 @@ const selectAccountRegistryById = async (id) => {
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
-     LEFT JOIN meta_token_integrations m ON m.id = a.meta_integration_id
+     LEFT JOIN LATERAL (
+       SELECT mi.id,
+              mi.account_number,
+              mi.meta_token,
+              mi.buyer_name,
+              mi.status,
+              mi.is_wired,
+              mi.comment,
+              mi.last_checked_at,
+              mi.created_at
+       FROM meta_token_integrations mi
+       WHERE mi.account_number = a.account_number
+         AND (
+           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+           OR mi.owner_id IS NULL
+           OR a.owner_id IS NULL
+         )
+       ORDER BY
+         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         mi.created_at DESC,
+         mi.id DESC
+       LIMIT 1
+     ) m ON TRUE
      WHERE a.id = $1`,
     [id]
   );
