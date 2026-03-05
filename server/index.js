@@ -412,6 +412,12 @@ const initDb = async () => {
     `UPDATE meta_token_integrations
      SET is_wired = 0
      WHERE is_wired IS NULL;`,
+    `UPDATE meta_token_integrations
+     SET account_number = TRIM(account_number)
+     WHERE account_number IS NOT NULL AND account_number <> TRIM(account_number);`,
+    `UPDATE accounts_registry
+     SET account_number = TRIM(account_number)
+     WHERE account_number IS NOT NULL AND account_number <> TRIM(account_number);`,
     `UPDATE accounts_registry a
      SET meta_integration_id = m.id
      FROM (
@@ -989,12 +995,7 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
   const normalizedAccountNumber = String(accountNumber || "").trim();
   if (!normalizedAccountNumber) return null;
   const parsedOwnerId = Number.parseInt(String(ownerId ?? ""), 10);
-  const params = [normalizedAccountNumber];
-  let ownerFilter = "";
-  if (Number.isFinite(parsedOwnerId) && parsedOwnerId > 0) {
-    params.push(parsedOwnerId);
-    ownerFilter = `AND m.owner_id = $2`;
-  }
+  const normalizedOwnerId = Number.isFinite(parsedOwnerId) && parsedOwnerId > 0 ? parsedOwnerId : 0;
   return getRow(
     `SELECT ranked.id,
             ranked.account_number,
@@ -1021,10 +1022,15 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
                       LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
               ), 0) AS received_spend
        FROM meta_token_integrations m
-       WHERE m.account_number = $1
-         ${ownerFilter}
+       WHERE TRIM(COALESCE(m.account_number, '')) = $1
      ) ranked
      ORDER BY
+       CASE
+         WHEN $2::int > 0 AND ranked.owner_id = $2 THEN 0
+         WHEN $2::int > 0 AND ranked.owner_id IS NULL THEN 1
+         WHEN $2::int > 0 THEN 2
+         ELSE 0
+       END,
        CASE
          WHEN COALESCE(ranked.is_wired, 0) = 1 THEN 0
          WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
@@ -1043,7 +1049,7 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
        ranked.created_at DESC,
        ranked.id DESC
      LIMIT 1`,
-    params
+    [normalizedAccountNumber, normalizedOwnerId]
   );
 };
 
@@ -1122,7 +1128,7 @@ const syncAccountsFromIntegration = async ({
        SET meta_integration_id = $3,
            status = $2,
            updated_at = NOW()
-       WHERE account_number = $1 AND owner_id = $4`,
+       WHERE TRIM(COALESCE(account_number, '')) = $1 AND owner_id = $4`,
       [normalizedAccountNumber, nextAccountStatus, integrationId, parsedOwnerId]
     );
     return result?.rowCount || 0;
@@ -1132,7 +1138,7 @@ const syncAccountsFromIntegration = async ({
      SET meta_integration_id = $3,
          status = $2,
          updated_at = NOW()
-     WHERE account_number = $1`,
+     WHERE TRIM(COALESCE(account_number, '')) = $1`,
     [normalizedAccountNumber, nextAccountStatus, integrationId]
   );
   return result?.rowCount || 0;
@@ -1576,12 +1582,8 @@ const selectAccountRegistry = async (limit) => {
                         LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
                 ), 0) AS received_spend
          FROM meta_token_integrations mi
-         WHERE mi.account_number = a.account_number
-           AND (
-             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-             OR mi.owner_id IS NULL
-             OR a.owner_id IS NULL
-           )
+         WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
+            OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
        ORDER BY
          CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
@@ -1670,12 +1672,8 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
                         LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
                 ), 0) AS received_spend
          FROM meta_token_integrations mi
-         WHERE mi.account_number = a.account_number
-           AND (
-             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-             OR mi.owner_id IS NULL
-             OR a.owner_id IS NULL
-           )
+         WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
+            OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
        ORDER BY
          CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
@@ -1765,12 +1763,8 @@ const selectAccountRegistryById = async (id) => {
                         LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
                 ), 0) AS received_spend
          FROM meta_token_integrations mi
-         WHERE mi.account_number = a.account_number
-           AND (
-             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-             OR mi.owner_id IS NULL
-             OR a.owner_id IS NULL
-           )
+         WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
+            OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
        ORDER BY
          CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
@@ -1803,7 +1797,7 @@ const selectAccountRegistryByAccountNumber = async (accountNumber) =>
   getRow(
     `SELECT id, account_number, owner_role, owner_id
      FROM accounts_registry
-     WHERE account_number = $1
+     WHERE TRIM(COALESCE(account_number, '')) = $1
      ORDER BY updated_at DESC, created_at DESC, id DESC
      LIMIT 1`,
     [accountNumber]
@@ -1813,7 +1807,7 @@ const selectAccountRegistryByAccountNumberAndOwner = async (accountNumber, owner
   getRow(
     `SELECT id, account_number, owner_role, owner_id
      FROM accounts_registry
-     WHERE account_number = $1 AND owner_id = $2
+     WHERE TRIM(COALESCE(account_number, '')) = $1 AND owner_id = $2
      ORDER BY updated_at DESC, created_at DESC, id DESC
      LIMIT 1`,
     [accountNumber, ownerId]

@@ -73,18 +73,35 @@ const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, ""
 
 const buildApiCandidates = (url) => {
   if (typeof url !== "string") return [url];
-  const candidates = [url];
+  const candidates = [];
   if (!isRelativeApiPath(url)) {
-    return candidates;
+    return [url];
   }
   const primaryOrigin = normalizeOrigin(PRIMARY_API_ORIGIN);
   const fallbackOrigin = normalizeOrigin(FALLBACK_API_ORIGIN);
+
+  const isLocalRuntime =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
+  if (isLocalRuntime) {
+    candidates.push(url);
+    if (primaryOrigin) {
+      candidates.push(`${primaryOrigin}${url}`);
+    }
+    if (fallbackOrigin && fallbackOrigin !== primaryOrigin) {
+      candidates.push(`${fallbackOrigin}${url}`);
+    }
+    return Array.from(new Set(candidates));
+  }
+
   if (primaryOrigin) {
     candidates.push(`${primaryOrigin}${url}`);
   }
   if (fallbackOrigin && fallbackOrigin !== primaryOrigin) {
     candidates.push(`${fallbackOrigin}${url}`);
   }
+  candidates.push(url);
   return Array.from(new Set(candidates));
 };
 
@@ -10109,7 +10126,7 @@ function AccountsDashboard({ authUser }) {
       return { hasIntegration: false, tone: "is-pending", label: t("Pending") };
     }
     if (wired || spend > 0 || workingByStatus) {
-      return { hasIntegration: true, tone: "is-working", label: t("Working") };
+      return { hasIntegration: true, tone: "is-working", label: t("Success") };
     }
     if (downByStatus) {
       return {
@@ -14193,7 +14210,7 @@ export default function App() {
         if (!silent) {
           setNotificationState({ loading: true, error: null });
         }
-        const response = await apiFetch("/api/notifications?limit=80", {}, { allow404Fallback: false });
+        const response = await apiFetch("/api/notifications?limit=80");
         if (response.status === 404) {
           setNotifications([]);
           setNotificationUnreadCount(0);
@@ -14236,8 +14253,7 @@ export default function App() {
     try {
       const response = await apiFetch(
         `/api/notifications/${id}/read`,
-        { method: "PATCH" },
-        { allow404Fallback: false }
+        { method: "PATCH" }
       );
       if (response.status === 404) {
         setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
@@ -14263,8 +14279,7 @@ export default function App() {
     try {
       const response = await apiFetch(
         "/api/notifications/read-all",
-        { method: "PATCH" },
-        { allow404Fallback: false }
+        { method: "PATCH" }
       );
       if (response.status === 404) {
         setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
