@@ -2152,7 +2152,7 @@ select {
 }
 
 .accounts-table {
-  min-width: 1460px;
+  min-width: 1320px;
 }
 
 .registry-dashboard-panel {
@@ -3477,39 +3477,41 @@ select {
 }
 
 .accounts-integration-cell {
-  min-width: 220px;
+  min-width: 210px;
 }
 
 .accounts-integration-badges {
   display: inline-flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
 }
 
 .accounts-integration-pill {
-  appearance: none;
   border-radius: 999px;
-  border: 1px solid rgba(106, 116, 132, 0.48);
-  color: #95a1b5;
-  background: rgba(30, 34, 42, 0.65);
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
+  border: 1px solid rgba(126, 136, 152, 0.46);
+  color: #a2adbf;
+  background: linear-gradient(180deg, rgba(29, 35, 45, 0.76), rgba(19, 23, 31, 0.8));
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 700;
   line-height: 1;
-  min-height: 26px;
-  cursor: default;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.01em;
 }
 
 .accounts-integration-pill.is-working.is-active {
-  border-color: rgba(54, 208, 124, 0.6);
-  color: #7ce2a7;
-  background: rgba(54, 208, 124, 0.14);
+  border-color: rgba(118, 130, 149, 0.62);
+  color: #b3bfce;
+  background: linear-gradient(180deg, rgba(38, 46, 60, 0.76), rgba(25, 30, 39, 0.8));
 }
 
 .accounts-integration-pill.is-down.is-active {
-  border-color: rgba(239, 68, 68, 0.6);
-  color: #ff9a9a;
-  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(235, 91, 91, 0.72);
+  color: #ff9f9f;
+  background: linear-gradient(180deg, rgba(64, 28, 34, 0.72), rgba(43, 20, 24, 0.8));
 }
 
 .accounts-integration-caption {
@@ -3528,76 +3530,81 @@ select {
   font-size: 13px;
 }
 
-.accounts-action-btn {
-  appearance: none;
-  border: 1px solid rgba(88, 143, 238, 0.44);
-  background: rgba(16, 26, 44, 0.65);
-  color: #9dc3ff;
-  border-radius: 999px;
-  min-height: 34px;
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-}
-
-.accounts-action-btn:hover {
-  border-color: rgba(117, 168, 255, 0.7);
-  background: rgba(20, 35, 59, 0.78);
-}
-
-.accounts-action-btn.danger {
-  border-color: rgba(239, 68, 68, 0.48);
-  background: rgba(50, 18, 26, 0.62);
-  color: #ffabab;
-}
-
-.accounts-action-btn.danger:hover {
-  border-color: rgba(248, 105, 105, 0.72);
-  background: rgba(70, 22, 32, 0.74);
-}
-
-.accounts-check-wrap {
+.accounts-actions-cell {
   display: grid;
-  gap: 6px;
-  justify-items: start;
+  justify-items: center;
+  gap: 7px;
 }
 
-.accounts-check-btn {
-  border: 1px solid rgba(72, 169, 255, 0.45);
-  color: #8ecfff;
-  background: rgba(12, 22, 38, 0.65);
-  border-radius: 999px;
-  min-width: 92px;
-  min-height: 34px;
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+.accounts-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.accounts-check-btn:hover {
-  border-color: rgba(103, 189, 255, 0.7);
-  background: rgba(19, 34, 56, 0.78);
+.accounts-action-icon {
+  appearance: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  border: 1px solid rgba(91, 104, 124, 0.48);
+  background: linear-gradient(180deg, rgba(37, 42, 52, 0.72), rgba(25, 29, 38, 0.82));
+  color: #d3dbe8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 
-.accounts-check-btn:disabled {
-  opacity: 0.5;
+.accounts-action-icon:hover {
+  border-color: rgba(128, 146, 174, 0.62);
+  background: linear-gradient(180deg, rgba(45, 51, 63, 0.76), rgba(31, 36, 46, 0.86));
+  color: #eff4ff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+}
+
+.accounts-action-icon.is-check {
+  border-color: rgba(58, 129, 236, 0.52);
+  color: #9dcbff;
+}
+
+.accounts-action-icon.is-check:hover {
+  border-color: rgba(103, 168, 255, 0.72);
+  color: #cfe6ff;
+}
+
+.accounts-action-icon.danger {
+  border-color: rgba(232, 90, 90, 0.58);
+  color: #ff9f9f;
+  background: linear-gradient(180deg, rgba(58, 24, 30, 0.68), rgba(40, 18, 22, 0.82));
+}
+
+.accounts-action-icon.danger:hover {
+  border-color: rgba(245, 112, 112, 0.74);
+  color: #ffbcbc;
+  background: linear-gradient(180deg, rgba(74, 30, 38, 0.74), rgba(50, 22, 28, 0.86));
+}
+
+.accounts-action-icon:disabled {
+  opacity: 0.42;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
-.accounts-check-feedback {
-  font-size: 10px;
+.accounts-action-feedback {
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  text-align: center;
 }
 
-.accounts-check-feedback.success {
+.accounts-action-feedback.success {
   color: #7ce2a7;
 }
 
-.accounts-check-feedback.error {
+.accounts-action-feedback.error {
   color: #ff9a9a;
 }
 
@@ -4614,6 +4621,11 @@ select {
 
 .accounts-table td {
   background: rgba(16, 18, 23, 0.52);
+}
+
+.accounts-table th:last-child,
+.accounts-table td:last-child {
+  text-align: center;
 }
 
 .accounts-table .accounts-row:nth-child(even) td {

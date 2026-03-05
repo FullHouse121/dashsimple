@@ -53,6 +53,8 @@ import {
   User,
   Users,
   Lock,
+  Pencil,
+  MessageSquare,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -10872,15 +10874,14 @@ function AccountsDashboard({ authUser }) {
                   <th>{t("Comment")}</th>
                   <th>{t("Integration")}</th>
                   <th>{t("Owner")}</th>
-                  <th>{t("Edit")}</th>
-                  <th>{t("Remove")}</th>
-                  <th>{t("Check Integration")}</th>
+                  <th>{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleAccounts.map((row) => {
                   const integrationState = resolveIntegrationState(row);
                   const checkResult = integrationCheckResult[row.id];
+                  const rowCanManage = canManageRow(row);
                   return (
                     <tr key={row.id} className={`accounts-row status-${String(row.status || "").toLowerCase()}`}>
                       <td className="accounts-account-number">{row.account_number}</td>
@@ -10891,7 +10892,7 @@ function AccountsDashboard({ authUser }) {
                           className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
                           value={row.status || "Active"}
                           onChange={(event) => handleStatusChange(row, event.target.value)}
-                          disabled={!canManageRow(row)}
+                          disabled={!rowCanManage}
                         >
                           {accountStatusOptions.map((status) => (
                             <option key={status} value={status}>
@@ -10903,20 +10904,11 @@ function AccountsDashboard({ authUser }) {
                       <td className="accounts-comment-cell">{row.notes || "—"}</td>
                       <td className="accounts-integration-cell">
                         <div className="accounts-integration-badges">
-                          <button
-                            type="button"
-                            disabled
-                            className={`accounts-integration-pill is-working${integrationState.isWorking ? " is-active" : ""}`}
+                          <span
+                            className={`accounts-integration-pill ${integrationState.isWorking ? "is-working is-active" : "is-down is-active"}`}
                           >
-                            {t("Working")}
-                          </button>
-                          <button
-                            type="button"
-                            disabled
-                            className={`accounts-integration-pill is-down${!integrationState.isWorking ? " is-active" : ""}`}
-                          >
-                            {t("Not Working")}
-                          </button>
+                            {integrationState.isWorking ? t("Working") : t("Not Working")}
+                          </span>
                         </div>
                         <span className="accounts-integration-caption">
                           {row.integration_account_number || t("No integration linked")}
@@ -10924,32 +10916,47 @@ function AccountsDashboard({ authUser }) {
                       </td>
                       <td>{resolveOwnerLabel(row)}</td>
                       <td>
-                        <button className="accounts-action-btn" type="button" onClick={() => openEditModal(row)} title={t("Edit")}>
-                          {t("Edit")}
-                        </button>
-                      </td>
-                      <td>
-                        {canManageRow(row) ? (
-                          <button className="accounts-action-btn danger" type="button" onClick={() => handleDelete(row)} title={t("Remove")}>
-                            {t("Remove")}
-                          </button>
-                        ) : (
-                          <span className="accounts-action-dash">—</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="accounts-check-wrap">
-                          <button
-                            className="accounts-check-btn"
-                            type="button"
-                            onClick={() => handleCheckIntegration(row)}
-                            title={t("Check integration")}
-                            disabled={checkingIntegrationId === row.id || !row.meta_integration_id}
-                          >
-                            {checkingIntegrationId === row.id ? t("Checking...") : t("Check")}
-                          </button>
+                        <div className="accounts-actions-cell">
+                          <div className="accounts-action-group">
+                            <button
+                              className="accounts-action-icon"
+                              type="button"
+                              onClick={() => openEditModal(row)}
+                              title={t("Edit")}
+                              disabled={!rowCanManage}
+                            >
+                              <Pencil size={16} />
+                            </button>
+                            <button
+                              className="accounts-action-icon"
+                              type="button"
+                              onClick={() => openEditModal(row)}
+                              title={t("Comment")}
+                              disabled={!rowCanManage}
+                            >
+                              <MessageSquare size={16} />
+                            </button>
+                            <button
+                              className="accounts-action-icon is-check"
+                              type="button"
+                              onClick={() => handleCheckIntegration(row)}
+                              title={t("Check integration")}
+                              disabled={!rowCanManage || checkingIntegrationId === row.id || !row.meta_integration_id}
+                            >
+                              <CheckCircle size={16} />
+                            </button>
+                            <button
+                              className="accounts-action-icon danger"
+                              type="button"
+                              onClick={() => handleDelete(row)}
+                              title={t("Remove")}
+                              disabled={!rowCanManage}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                           {checkResult ? (
-                            <span className={`accounts-check-feedback ${checkResult.tone}`}>{checkResult.text}</span>
+                            <span className={`accounts-action-feedback ${checkResult.tone}`}>{checkResult.text}</span>
                           ) : null}
                         </div>
                       </td>
