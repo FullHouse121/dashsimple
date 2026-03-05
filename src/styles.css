@@ -3488,9 +3488,9 @@ select {
 
 .accounts-integration-pill {
   border-radius: 999px;
-  border: 1px solid rgba(126, 136, 152, 0.46);
-  color: #a2adbf;
-  background: linear-gradient(180deg, rgba(29, 35, 45, 0.76), rgba(19, 23, 31, 0.8));
+  border: 2px solid rgba(126, 136, 152, 0.58);
+  color: #a7b0bf;
+  background: linear-gradient(180deg, rgba(30, 34, 44, 0.76), rgba(20, 24, 33, 0.8));
   padding: 4px 14px;
   font-size: 12px;
   font-weight: 700;
@@ -3500,18 +3500,25 @@ select {
   align-items: center;
   justify-content: center;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
-.accounts-integration-pill.is-working.is-active {
-  border-color: rgba(118, 130, 149, 0.62);
-  color: #b3bfce;
-  background: linear-gradient(180deg, rgba(38, 46, 60, 0.76), rgba(25, 30, 39, 0.8));
+.accounts-integration-pill.is-working {
+  border-color: rgba(54, 208, 124, 0.84);
+  color: #66e3a7;
+  background: linear-gradient(180deg, rgba(13, 44, 30, 0.74), rgba(8, 29, 21, 0.82));
 }
 
-.accounts-integration-pill.is-down.is-active {
-  border-color: rgba(235, 91, 91, 0.72);
-  color: #ff9f9f;
-  background: linear-gradient(180deg, rgba(64, 28, 34, 0.72), rgba(43, 20, 24, 0.8));
+.accounts-integration-pill.is-down {
+  border-color: rgba(248, 84, 96, 0.86);
+  color: #ff9fa8;
+  background: linear-gradient(180deg, rgba(67, 24, 32, 0.76), rgba(46, 18, 24, 0.82));
+}
+
+.accounts-integration-pill.is-not-wired {
+  border-color: rgba(144, 154, 170, 0.68);
+  color: #bcc4d2;
+  background: linear-gradient(180deg, rgba(40, 45, 56, 0.74), rgba(28, 32, 42, 0.82));
 }
 
 .accounts-integration-caption {

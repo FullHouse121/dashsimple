@@ -748,8 +748,12 @@ const translations = {
     "Expired": "Süresi Doldu",
     "Blocked": "Engellendi",
     "Active": "Aktif",
+    "Working": "Çalışıyor",
+    "Not Working": "Çalışmıyor",
+    "Not Wired": "Bağlı Değil",
     "Onboarding": "Oryantasyon",
     "Inactive": "Pasif",
+    "No integration linked": "Bağlı entegrasyon yok",
     "Loading goals…": "Hedefler yükleniyor…",
     "No goals set yet.": "Henüz hedef belirlenmedi.",
     "No targets": "Hedef yok",
@@ -10072,16 +10076,27 @@ function AccountsDashboard({ authUser }) {
   };
 
   const resolveIntegrationState = (row) => {
+    const integrationId = toId(row?.meta_integration_id);
     const hasIntegration =
-      Boolean(row?.meta_integration_id) ||
-      Boolean(row?.integration_account_number) ||
-      Boolean(row?.integration_meta_token);
+      Boolean(integrationId) &&
+      (Boolean(row?.integration_account_number) ||
+        Boolean(row?.integration_meta_token) ||
+        Boolean(row?.integration_buyer_name) ||
+        Boolean(row?.integration_status) ||
+        Boolean(row?.integration_last_checked_at));
     const status = String(row?.integration_status || "").trim().toLowerCase();
     const spend = Number(row?.integration_received_spend || 0);
-    const workingByStatus = ["active", "done", "wired", "working", "synced", "ok"].includes(status);
+    const workingByStatus = ["active", "done", "wired", "working", "synced", "ok", "success"].includes(status);
+    if (!hasIntegration) {
+      return { hasIntegration: false, tone: "is-not-wired", label: t("Not Wired") };
+    }
+    if (spend > 0 || workingByStatus) {
+      return { hasIntegration: true, tone: "is-working", label: t("Working") };
+    }
     return {
-      hasIntegration,
-      isWorking: hasIntegration && (workingByStatus || spend > 0),
+      hasIntegration: true,
+      tone: "is-down",
+      label: t("Not Working"),
     };
   };
 
@@ -10904,11 +10919,7 @@ function AccountsDashboard({ authUser }) {
                       <td className="accounts-comment-cell">{row.notes || "—"}</td>
                       <td className="accounts-integration-cell">
                         <div className="accounts-integration-badges">
-                          <span
-                            className={`accounts-integration-pill ${integrationState.isWorking ? "is-working is-active" : "is-down is-active"}`}
-                          >
-                            {integrationState.isWorking ? t("Working") : t("Not Working")}
-                          </span>
+                          <span className={`accounts-integration-pill ${integrationState.tone}`}>{integrationState.label}</span>
                         </div>
                         <span className="accounts-integration-caption">
                           {row.integration_account_number || t("No integration linked")}
