@@ -50,6 +50,7 @@ import {
   Map as MapIcon,
   Zap,
   ShieldCheck,
+  Bell,
   User,
   Users,
   Lock,
@@ -10910,7 +10911,7 @@ function AccountsDashboard({ authUser }) {
                           disabled={!rowCanManage}
                         >
                           {accountStatusOptions.map((status) => (
-                            <option key={status} value={status} className={`status-option status-${status.toLowerCase()}`}>
+                            <option key={status} value={status}>
                               {t(status)}
                             </option>
                           ))}
@@ -10988,6 +10989,8 @@ function MetaTokenDashboard({ authUser }) {
   const canManage = authUser?.role === "Boss" || authUser?.role === "Team Leader";
   const [integrations, setIntegrations] = React.useState([]);
   const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
+  const [accountOptionsState, setAccountOptionsState] = React.useState({ loading: true, error: null });
+  const [accountOptions, setAccountOptions] = React.useState([]);
   const [pixels, setPixels] = React.useState([]);
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
@@ -11051,6 +11054,38 @@ function MetaTokenDashboard({ authUser }) {
     }
   }, []);
 
+  const fetchAccountOptions = React.useCallback(async () => {
+    try {
+      setAccountOptionsState({ loading: true, error: null });
+      const response = await apiFetch("/api/accounts?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load accounts.");
+      }
+      const data = await response.json();
+      const rows = Array.isArray(data) ? data : [];
+      const uniqueByNumber = new Map();
+      rows.forEach((row) => {
+        const accountNumber = String(row?.account_number || "").trim();
+        if (!accountNumber) return;
+        if (!uniqueByNumber.has(accountNumber)) {
+          uniqueByNumber.set(accountNumber, row);
+        }
+      });
+      const normalized = Array.from(uniqueByNumber.values()).sort((first, second) =>
+        String(first?.account_number || "").localeCompare(String(second?.account_number || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+      setAccountOptions(normalized);
+      setAccountOptionsState({ loading: false, error: null });
+    } catch (error) {
+      setAccountOptions([]);
+      setAccountOptionsState({ loading: false, error: error.message || "Failed to load accounts." });
+    }
+  }, []);
+
   const fetchUsers = React.useCallback(async () => {
     if (!canManage) return;
     try {
@@ -11082,10 +11117,11 @@ function MetaTokenDashboard({ authUser }) {
 
   React.useEffect(() => {
     fetchIntegrations();
+    fetchAccountOptions();
     fetchPixels();
     fetchUsers();
     fetchBuyers();
-  }, [fetchIntegrations, fetchPixels, fetchUsers, fetchBuyers]);
+  }, [fetchIntegrations, fetchAccountOptions, fetchPixels, fetchUsers, fetchBuyers]);
 
   React.useEffect(() => {
     if (!integrations.length) {
@@ -11447,7 +11483,20 @@ function MetaTokenDashboard({ authUser }) {
         <form className="form-grid api-grid" onSubmit={handleCreate}>
           <div className="field">
             <label>ACC Number</label>
-            <input value={form.accountNumber} onChange={updateForm("accountNumber")} required />
+            <select value={form.accountNumber} onChange={updateForm("accountNumber")} required>
+              <option value="">
+                {accountOptionsState.loading
+                  ? "Loading accounts..."
+                  : accountOptions.length
+                    ? "Select account"
+                    : "No accounts available"}
+              </option>
+              {accountOptions.map((row) => (
+                <option key={`meta-account-${row.id}-${row.account_number}`} value={row.account_number}>
+                  {row.account_number}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="field">
             <label>Token</label>
@@ -11494,6 +11543,7 @@ function MetaTokenDashboard({ authUser }) {
         </form>
 
         {integrationState.error ? <div className="empty-state error">{integrationState.error}</div> : null}
+        {accountOptionsState.error ? <div className="empty-state error">{accountOptionsState.error}</div> : null}
         {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
         {buyerState.error ? <div className="empty-state error">{buyerState.error}</div> : null}
         {integrationState.loading ? (
@@ -13886,6 +13936,10 @@ export default function App() {
   const showFilters = isFinances || usesPerformanceFilters;
   const [viewerBuyer, setViewerBuyer] = React.useState("");
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const [notifications, setNotifications] = React.useState([]);
+  const [notificationUnreadCount, setNotificationUnreadCount] = React.useState(0);
+  const [notificationState, setNotificationState] = React.useState({ loading: false, error: null });
 
   React.useEffect(() => {
     const range = getPeriodDateRange(period, customRange);
@@ -14087,6 +14141,92 @@ export default function App() {
     [language]
   );
 
+  const formatNotificationTime = React.useCallback((value) => {
+    if (!value) return "just now";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "just now";
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 1000));
+    if (elapsedSeconds < 60) return `${elapsedSeconds}s ago`;
+    if (elapsedSeconds < 3600) return `${Math.floor(elapsedSeconds / 60)}m ago`;
+    if (elapsedSeconds < 86400) return `${Math.floor(elapsedSeconds / 3600)}h ago`;
+    return `${Math.floor(elapsedSeconds / 86400)}d ago`;
+  }, []);
+
+  const fetchNotifications = React.useCallback(
+    async ({ silent = false } = {}) => {
+      if (!authUser || !isLeadership) {
+        setNotifications([]);
+        setNotificationUnreadCount(0);
+        setNotificationState({ loading: false, error: null });
+        return;
+      }
+      try {
+        if (!silent) {
+          setNotificationState({ loading: true, error: null });
+        }
+        const response = await apiFetch("/api/notifications?limit=80");
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null);
+          throw new Error(detail?.error || "Failed to load notifications.");
+        }
+        const data = await response.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const unreadCountRaw = Number(data?.unreadCount);
+        const unreadCount = Number.isFinite(unreadCountRaw)
+          ? unreadCountRaw
+          : items.filter((item) => Boolean(item?.unread)).length;
+        setNotifications(items);
+        setNotificationUnreadCount(unreadCount);
+        setNotificationState({ loading: false, error: null });
+      } catch (error) {
+        if (silent) {
+          setNotificationState((prev) => ({
+            ...prev,
+            error: prev.error || error.message || "Failed to load notifications.",
+          }));
+        } else {
+          setNotificationState({ loading: false, error: error.message || "Failed to load notifications." });
+        }
+      }
+    },
+    [authUser, isLeadership]
+  );
+
+  const handleNotificationRead = React.useCallback(async (id) => {
+    if (!id || !isLeadership) return;
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
+    );
+    setNotificationUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      const response = await apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+      if (!response.ok) {
+        throw new Error("Failed to update notification.");
+      }
+      const data = await response.json().catch(() => null);
+      const updated = data?.item;
+      if (updated?.id) {
+        setNotifications((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      }
+    } catch (error) {
+      fetchNotifications({ silent: true });
+    }
+  }, [fetchNotifications, isLeadership]);
+
+  const handleNotificationsReadAll = React.useCallback(async () => {
+    if (!isLeadership || notificationUnreadCount <= 0) return;
+    setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
+    setNotificationUnreadCount(0);
+    try {
+      const response = await apiFetch("/api/notifications/read-all", { method: "PATCH" });
+      if (!response.ok) {
+        throw new Error("Failed to mark notifications as read.");
+      }
+    } catch (error) {
+      fetchNotifications({ silent: true });
+    }
+  }, [fetchNotifications, isLeadership, notificationUnreadCount]);
+
   React.useEffect(() => {
     try {
       localStorage.setItem("dash-language", language);
@@ -14122,6 +14262,20 @@ export default function App() {
       setAuthUser(null);
     }
   }, [authUser]);
+
+  React.useEffect(() => {
+    if (!authUser || !isLeadership) {
+      setNotifications([]);
+      setNotificationUnreadCount(0);
+      setNotificationsOpen(false);
+      return;
+    }
+    fetchNotifications();
+    const timer = setInterval(() => {
+      fetchNotifications({ silent: true });
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [authUser, isLeadership, fetchNotifications]);
 
   const handleLogin = async (username, password) => {
     setAuthState({ loading: true, error: null });
@@ -14181,6 +14335,17 @@ export default function App() {
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [profileMenuOpen]);
+
+  React.useEffect(() => {
+    if (!notificationsOpen) return;
+    const handleClick = (event) => {
+      if (!event.target.closest(".notifications-wrap")) {
+        setNotificationsOpen(false);
+      }
+    };
+    window.addEventListener("click", handleClick);
+    return () => window.removeEventListener("click", handleClick);
+  }, [notificationsOpen]);
 
   const updateFilter = (key) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -14414,6 +14579,69 @@ export default function App() {
           )}
 
           <div className="topbar-actions">
+            {isLeadership ? (
+              <div className="notifications-wrap">
+                <button
+                  className={`notification-btn${notificationsOpen ? " is-open" : ""}`}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setNotificationsOpen((prev) => !prev);
+                    setProfileMenuOpen(false);
+                  }}
+                  title="Notifications"
+                  aria-label="Notifications"
+                >
+                  <Bell size={18} />
+                  {notificationUnreadCount > 0 ? (
+                    <span className="notification-count">{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</span>
+                  ) : null}
+                </button>
+                {notificationsOpen ? (
+                  <div className="notifications-menu">
+                    <div className="notifications-head">
+                      <strong>Notifications</strong>
+                      <button
+                        className="ghost notifications-mark-all"
+                        type="button"
+                        onClick={handleNotificationsReadAll}
+                        disabled={notificationUnreadCount <= 0}
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    {notificationState.error ? (
+                      <div className="notifications-empty notifications-error">{notificationState.error}</div>
+                    ) : notificationState.loading && notifications.length === 0 ? (
+                      <div className="notifications-empty">Loading notifications...</div>
+                    ) : notifications.length === 0 ? (
+                      <div className="notifications-empty">No notifications yet.</div>
+                    ) : (
+                      <div className="notifications-list">
+                        {notifications.map((item) => (
+                          <button
+                            key={`notification-${item.id}`}
+                            className={`notification-item severity-${item.severity || "info"}${item.unread ? " is-unread" : ""}`}
+                            type="button"
+                            onClick={() => handleNotificationRead(item.id)}
+                          >
+                            <span className="notification-dot" aria-hidden="true" />
+                            <span className="notification-copy">
+                              <strong>{item.title || "Notification"}</strong>
+                              <small>{item.message || "No details available."}</small>
+                              <em>
+                                {formatNotificationTime(item.created_at)}
+                                {item.actor_name ? ` · ${item.actor_name}` : ""}
+                              </em>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="profile-menu-wrap">
               <button
                 className={`profile profile-clickable${isProfile ? " is-active" : ""}`}

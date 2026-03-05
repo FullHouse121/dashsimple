@@ -1014,6 +1014,178 @@ select {
   color: var(--green);
 }
 
+.notifications-wrap {
+  position: relative;
+}
+
+.notification-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(100, 184, 255, 0.34);
+  background: linear-gradient(160deg, rgba(20, 24, 32, 0.92), rgba(14, 18, 25, 0.95));
+  color: #b8d8ff;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.notification-btn:hover {
+  border-color: rgba(120, 194, 255, 0.56);
+  background: linear-gradient(160deg, rgba(24, 30, 40, 0.95), rgba(17, 23, 31, 0.96));
+}
+
+.notification-btn.is-open {
+  border-color: rgba(54, 208, 124, 0.55);
+  color: #9aecc5;
+}
+
+.notification-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(160deg, rgba(54, 208, 124, 0.95), rgba(35, 176, 103, 0.92));
+  color: #08120e;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notifications-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: min(420px, 88vw);
+  max-height: min(65vh, 520px);
+  background: linear-gradient(160deg, rgba(18, 21, 27, 0.98), rgba(12, 15, 20, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.48);
+  z-index: 9;
+}
+
+.notifications-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 0;
+}
+
+.notifications-head strong {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d6deec;
+}
+
+.notifications-mark-all {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.notifications-list {
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  max-height: min(58vh, 430px);
+  padding-right: 2px;
+}
+
+.notification-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 10px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(19, 23, 31, 0.72);
+  color: var(--text);
+}
+
+.notification-item:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(24, 30, 41, 0.8);
+}
+
+.notification-item.is-unread {
+  border-color: rgba(54, 208, 124, 0.45);
+  background: linear-gradient(160deg, rgba(22, 40, 34, 0.6), rgba(18, 25, 33, 0.84));
+}
+
+.notification-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: 0 0 auto;
+  background: #5d6b82;
+}
+
+.notification-item.severity-info .notification-dot {
+  background: #69b8ff;
+}
+
+.notification-item.severity-warning .notification-dot {
+  background: #f7c625;
+}
+
+.notification-item.severity-critical .notification-dot {
+  background: #ff7d88;
+}
+
+.notification-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.notification-copy strong {
+  font-size: 13px;
+  color: #f2f6ff;
+}
+
+.notification-copy small {
+  color: #a8b1c1;
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+.notification-copy em {
+  color: #7f8a9f;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.notifications-empty {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(15, 18, 24, 0.74);
+  color: #97a3b8;
+  padding: 14px 12px;
+  font-size: 12px;
+}
+
+.notifications-empty.notifications-error {
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ff9aa4;
+  background: rgba(50, 18, 26, 0.55);
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -4574,14 +4746,14 @@ select {
 
 .accounts-table .status-select {
   min-width: 168px;
-  padding: 8px 38px 8px 18px;
+  padding: 8px 34px 8px 18px;
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.15px;
   text-transform: none;
   background:
-    linear-gradient(160deg, rgba(18, 25, 33, 0.94), rgba(14, 18, 26, 0.96)),
+    linear-gradient(160deg, rgba(19, 31, 36, 0.92), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position:
@@ -4590,27 +4762,21 @@ select {
     calc(100% - 12px) calc(50% - 3px);
   background-size: 100% 100%, 6px 6px, 6px 6px;
   background-repeat: no-repeat;
-  border: 2px solid rgba(54, 208, 124, 0.7);
-  color: #7ce2a7;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 18px rgba(2, 10, 18, 0.35);
+  border: 2px solid rgba(54, 208, 124, 0.82);
+  color: #73dfa6;
+  box-shadow: none;
   appearance: none;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
 }
 
 .accounts-table .status-select:hover {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 22px rgba(2, 10, 18, 0.42);
+  border-color: rgba(80, 223, 143, 0.9);
+  color: #85ebb4;
 }
 
 .accounts-table .status-select:focus-visible {
   outline: none;
-  box-shadow:
-    0 0 0 2px rgba(16, 24, 38, 0.86),
-    0 0 0 4px rgba(72, 159, 255, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: none;
 }
 
 .accounts-table .status-select:disabled {
@@ -4622,7 +4788,7 @@ select {
   border-color: rgba(54, 208, 124, 0.86);
   color: #7ce2a7;
   background:
-    linear-gradient(160deg, rgba(16, 46, 33, 0.5), rgba(14, 22, 27, 0.96)),
+    linear-gradient(160deg, rgba(16, 40, 31, 0.7), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
 }
@@ -4631,7 +4797,7 @@ select {
   border-color: rgba(247, 198, 37, 0.86);
   color: #f9d774;
   background:
-    linear-gradient(160deg, rgba(55, 43, 16, 0.5), rgba(14, 22, 27, 0.96)),
+    linear-gradient(160deg, rgba(56, 42, 16, 0.68), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
 }
@@ -4640,7 +4806,7 @@ select {
   border-color: rgba(162, 169, 181, 0.86);
   color: #c4c9d2;
   background:
-    linear-gradient(160deg, rgba(38, 43, 52, 0.54), rgba(14, 22, 27, 0.96)),
+    linear-gradient(160deg, rgba(36, 42, 53, 0.7), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
 }
@@ -4649,7 +4815,7 @@ select {
   border-color: rgba(246, 140, 140, 0.9);
   color: #ffb5b5;
   background:
-    linear-gradient(160deg, rgba(65, 36, 36, 0.54), rgba(14, 22, 27, 0.96)),
+    linear-gradient(160deg, rgba(66, 35, 35, 0.7), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
 }
@@ -4658,40 +4824,9 @@ select {
   border-color: rgba(239, 68, 68, 0.92);
   color: #ff8a8a;
   background:
-    linear-gradient(160deg, rgba(72, 24, 24, 0.58), rgba(14, 22, 27, 0.96)),
+    linear-gradient(160deg, rgba(71, 24, 24, 0.72), rgba(13, 21, 27, 0.95)),
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
-}
-
-.accounts-table .status-select option {
-  background: #121a27;
-  color: #d7dfec;
-  font-weight: 600;
-}
-
-.accounts-table .status-select option:checked {
-  background: #1a2333;
-  color: #f0f6ff;
-}
-
-.accounts-table .status-select option.status-active {
-  color: #7ce2a7;
-}
-
-.accounts-table .status-select option.status-pending {
-  color: #f9d774;
-}
-
-.accounts-table .status-select option.status-paused {
-  color: #c4c9d2;
-}
-
-.accounts-table .status-select option.status-expired {
-  color: #ffb5b5;
-}
-
-.accounts-table .status-select option.status-blocked {
-  color: #ff8a8a;
 }
 
 .accounts-table td {

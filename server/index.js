@@ -190,6 +190,19 @@ const initDb = async () => {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS system_notifications (
+      id SERIAL PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id INTEGER,
+      actor_id INTEGER,
+      actor_name TEXT,
+      read_by TEXT NOT NULL DEFAULT '[]',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -315,6 +328,25 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS event_type TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS severity TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS title TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS message TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS entity_type TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS entity_id INTEGER;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS actor_id INTEGER;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS actor_name TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS read_by TEXT;`,
+    `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;`,
+    `UPDATE system_notifications
+     SET severity = COALESCE(NULLIF(TRIM(severity), ''), 'info')
+     WHERE severity IS NULL OR TRIM(severity) = '';`,
+    `UPDATE system_notifications
+     SET read_by = '[]'
+     WHERE read_by IS NULL OR TRIM(read_by) = '';`,
+    `UPDATE system_notifications
+     SET created_at = COALESCE(created_at, NOW())
+     WHERE created_at IS NULL;`,
     `UPDATE domains d
      SET owner_id = u.id
      FROM users u
@@ -377,6 +409,10 @@ const initDb = async () => {
     `UPDATE meta_token_integrations
      SET is_wired = 0
      WHERE is_wired IS NULL;`,
+    `CREATE INDEX IF NOT EXISTS idx_system_notifications_created_at
+      ON system_notifications (created_at DESC, id DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_system_notifications_severity
+      ON system_notifications (severity);`,
   ];
 
   for (const statement of statements) {
@@ -1036,6 +1072,138 @@ const normalizeStringList = (value) => {
 
 const serializeStringList = (value) => JSON.stringify(normalizeStringList(value));
 
+const mapSystemNotificationRow = (row) => {
+  if (!row) return null;
+  return {
+    ...row,
+    read_by: normalizeNumericIds(row.read_by),
+  };
+};
+
+const insertSystemNotification = async (payload) => {
+  const { rows } = await query(
+    `INSERT INTO system_notifications (
+      event_type,
+      severity,
+      title,
+      message,
+      entity_type,
+      entity_id,
+      actor_id,
+      actor_name,
+      read_by
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`,
+    [
+      String(payload.event_type || "system_event").trim() || "system_event",
+      String(payload.severity || "info").trim() || "info",
+      String(payload.title || "System event").trim() || "System event",
+      String(payload.message || "No details").trim() || "No details",
+      payload.entity_type ? String(payload.entity_type).trim() : null,
+      Number.isFinite(Number(payload.entity_id)) ? Number(payload.entity_id) : null,
+      Number.isFinite(Number(payload.actor_id)) ? Number(payload.actor_id) : null,
+      payload.actor_name ? String(payload.actor_name).trim() : null,
+      serializeNumericIds(payload.read_by || []),
+    ]
+  );
+  return rows[0];
+};
+
+const createSystemNotification = async (payload) => {
+  try {
+    await insertSystemNotification(payload);
+  } catch (error) {
+    console.warn("Failed to store system notification:", error?.message || error);
+  }
+};
+
+const createResourceCreatedNotification = async ({
+  req,
+  entityType,
+  entityId,
+  title,
+  message,
+}) =>
+  createSystemNotification({
+    event_type: `${entityType}_created`,
+    severity: "info",
+    title,
+    message,
+    entity_type: entityType,
+    entity_id: entityId,
+    actor_id: req?.user?.id || null,
+    actor_name: req?.user?.username || req?.user?.role || "System",
+  });
+
+const createUnexpectedNotification = async ({
+  req,
+  source,
+  error,
+  severity = "warning",
+  entityType = null,
+  entityId = null,
+}) =>
+  createSystemNotification({
+    event_type: "unexpected_event",
+    severity,
+    title: `Unexpected issue: ${String(source || "Unknown source")}`,
+    message: String(error?.message || error || "Unexpected issue"),
+    entity_type: entityType,
+    entity_id: entityId,
+    actor_id: req?.user?.id || null,
+    actor_name: req?.user?.username || req?.user?.role || "System",
+  });
+
+const selectSystemNotifications = async (limit) => {
+  const rows = await getRows(
+    `SELECT n.id,
+            n.event_type,
+            n.severity,
+            n.title,
+            n.message,
+            n.entity_type,
+            n.entity_id,
+            n.actor_id,
+            n.actor_name,
+            n.read_by,
+            n.created_at,
+            u.username AS actor_username
+     FROM system_notifications n
+     LEFT JOIN users u ON u.id = n.actor_id
+     ORDER BY n.created_at DESC, n.id DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return rows.map(mapSystemNotificationRow);
+};
+
+const selectSystemNotificationById = async (id) => {
+  const row = await getRow(
+    `SELECT n.id,
+            n.event_type,
+            n.severity,
+            n.title,
+            n.message,
+            n.entity_type,
+            n.entity_id,
+            n.actor_id,
+            n.actor_name,
+            n.read_by,
+            n.created_at,
+            u.username AS actor_username
+     FROM system_notifications n
+     LEFT JOIN users u ON u.id = n.actor_id
+     WHERE n.id = $1`,
+    [id]
+  );
+  return mapSystemNotificationRow(row);
+};
+
+const updateSystemNotificationReadBy = async (id, readBy) => {
+  await query(`UPDATE system_notifications SET read_by = $1 WHERE id = $2`, [serializeNumericIds(readBy), id]);
+};
+
 const accountCountryOptions = [
   "Albania",
   "Algeria",
@@ -1234,6 +1402,26 @@ const selectAccountRegistryById = async (id) => {
   );
   return mapAccountRegistryRow(row);
 };
+
+const selectAccountRegistryByAccountNumber = async (accountNumber) =>
+  getRow(
+    `SELECT id, account_number, owner_role, owner_id
+     FROM accounts_registry
+     WHERE account_number = $1
+     ORDER BY updated_at DESC, created_at DESC, id DESC
+     LIMIT 1`,
+    [accountNumber]
+  );
+
+const selectAccountRegistryByAccountNumberAndOwner = async (accountNumber, ownerId) =>
+  getRow(
+    `SELECT id, account_number, owner_role, owner_id
+     FROM accounts_registry
+     WHERE account_number = $1 AND owner_id = $2
+     ORDER BY updated_at DESC, created_at DESC, id DESC
+     LIMIT 1`,
+    [accountNumber, ownerId]
+  );
 
 const insertAccountRegistry = async (payload) => {
   const { rows } = await query(
@@ -2675,6 +2863,109 @@ app.use((req, res, next) => {
   return next();
 });
 
+app.get("/api/notifications", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const limitRaw = Number.parseInt(req.query.limit ?? "80", 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 300) : 80;
+    const unreadOnlyRaw = String(req.query.unread || "").toLowerCase();
+    const unreadOnly = unreadOnlyRaw === "1" || unreadOnlyRaw === "true";
+    const viewerId = Number.parseInt(req.user?.id, 10);
+
+    const rows = await selectSystemNotifications(limit);
+    const items = rows.map((row) => {
+      const unread = !row.read_by.includes(viewerId);
+      return {
+        ...row,
+        actor_name: row.actor_name || row.actor_username || "System",
+        unread,
+      };
+    });
+    const unreadCount = items.filter((item) => item.unread).length;
+    return res.json({
+      items: unreadOnly ? items.filter((item) => item.unread) : items,
+      unreadCount,
+    });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "notifications_list",
+      error,
+      severity: "warning",
+      entityType: "notification",
+    });
+    return res.status(500).json({ error: "Failed to load notifications." });
+  }
+});
+
+app.patch("/api/notifications/read-all", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+    const viewerId = Number.parseInt(req.user?.id, 10);
+    const rows = await selectSystemNotifications(limit);
+    let updated = 0;
+    for (const row of rows) {
+      if (row.read_by.includes(viewerId)) continue;
+      await updateSystemNotificationReadBy(row.id, [...row.read_by, viewerId]);
+      updated += 1;
+    }
+    return res.json({ ok: true, updated });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "notifications_read_all",
+      error,
+      severity: "warning",
+      entityType: "notification",
+    });
+    return res.status(500).json({ error: "Failed to update notifications." });
+  }
+});
+
+app.patch("/api/notifications/:id/read", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid notification id." });
+    }
+    const viewerId = Number.parseInt(req.user?.id, 10);
+    const notification = await selectSystemNotificationById(id);
+    if (!notification) {
+      return res.status(404).json({ error: "Notification not found." });
+    }
+    if (!notification.read_by.includes(viewerId)) {
+      await updateSystemNotificationReadBy(id, [...notification.read_by, viewerId]);
+    }
+    const updated = await selectSystemNotificationById(id);
+    return res.json({
+      ok: true,
+      item: {
+        ...updated,
+        actor_name: updated?.actor_name || updated?.actor_username || "System",
+        unread: false,
+      },
+    });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "notifications_read_one",
+      error,
+      severity: "warning",
+      entityType: "notification",
+    });
+    return res.status(500).json({ error: "Failed to update notification." });
+  }
+});
+
 app.get("/api/expenses", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -3346,28 +3637,45 @@ app.post("/api/domains", async (req, res) => {
   if (!country) {
     return res.status(400).json({ error: "Country is required." });
   }
-
-  let resolvedOwnerId = req.user.id;
-  if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
-    const parsedOwner = Number(ownerId);
-    if (!Number.isFinite(parsedOwner)) {
-      return res.status(400).json({ error: "Invalid owner id." });
+  try {
+    let resolvedOwnerId = req.user.id;
+    if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
+      const parsedOwner = Number(ownerId);
+      if (!Number.isFinite(parsedOwner)) {
+        return res.status(400).json({ error: "Invalid owner id." });
+      }
+      resolvedOwnerId = parsedOwner;
     }
-    resolvedOwnerId = parsedOwner;
+
+    const payload = {
+      domain: String(domain).trim(),
+      status,
+      game: String(game).trim(),
+      platform: String(platform).trim(),
+      country: String(country).trim(),
+      owner_role: req.user?.role || "",
+      owner_id: resolvedOwnerId,
+    };
+
+    const info = await insertDomain(payload);
+    await createResourceCreatedNotification({
+      req,
+      entityType: "domain",
+      entityId: info.id,
+      title: "New domain added",
+      message: `${req.user?.username || "User"} added domain ${payload.domain}.`,
+    });
+    return res.status(201).json({ id: info.id });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "domain_create",
+      error,
+      severity: "warning",
+      entityType: "domain",
+    });
+    return res.status(500).json({ error: error.message || "Failed to create domain." });
   }
-
-  const payload = {
-    domain: String(domain).trim(),
-    status,
-    game: String(game).trim(),
-    platform: String(platform).trim(),
-    country: String(country).trim(),
-    owner_role: req.user?.role || "",
-    owner_id: resolvedOwnerId,
-  };
-
-  const info = await insertDomain(payload);
-  res.status(201).json({ id: info.id });
 });
 
 app.patch("/api/domains/:id", async (req, res) => {
@@ -3434,105 +3742,122 @@ app.post("/api/accounts", async (req, res) => {
   if (!normalizedAccountNumber) {
     return res.status(400).json({ error: "Account number is required." });
   }
-
-  let resolvedOwnerId = req.user.id;
-  if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
-    const parsedOwnerId = Number.parseInt(ownerId, 10);
-    if (!Number.isFinite(parsedOwnerId)) {
-      return res.status(400).json({ error: "Invalid owner id." });
+  try {
+    let resolvedOwnerId = req.user.id;
+    if (isLeadership(req.user) && ownerId !== undefined && ownerId !== null && ownerId !== "") {
+      const parsedOwnerId = Number.parseInt(ownerId, 10);
+      if (!Number.isFinite(parsedOwnerId)) {
+        return res.status(400).json({ error: "Invalid owner id." });
+      }
+      resolvedOwnerId = parsedOwnerId;
     }
-    resolvedOwnerId = parsedOwnerId;
-  }
-  if (!isLeadership(req.user) && resolvedOwnerId !== req.user.id) {
-    return res.status(403).json({ error: "Forbidden." });
-  }
-  const ownerRecord = await selectUserById(resolvedOwnerId);
-  if (!ownerRecord) {
-    return res.status(400).json({ error: "Owner not found." });
-  }
-
-  const normalizedPixelIds = normalizeNumericIds(
-    pixelIds !== undefined
-      ? pixelIds
-      : pixelId !== undefined && pixelId !== null && String(pixelId).trim() !== ""
-        ? [pixelId]
-        : []
-  );
-  for (const parsedPixelId of normalizedPixelIds) {
-    const pixel = await selectPixelById(parsedPixelId);
-    if (!pixel) {
-      return res.status(400).json({ error: `Pixel ${parsedPixelId} not found.` });
-    }
-    const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
-    if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
-      return res.status(400).json({ error: `Pixel ${parsedPixelId} must belong to selected owner.` });
-    }
-    if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
+    if (!isLeadership(req.user) && resolvedOwnerId !== req.user.id) {
       return res.status(403).json({ error: "Forbidden." });
     }
-  }
-  const resolvedPixelId = normalizedPixelIds[0] || null;
+    const ownerRecord = await selectUserById(resolvedOwnerId);
+    if (!ownerRecord) {
+      return res.status(400).json({ error: "Owner not found." });
+    }
 
-  let resolvedMetaIntegrationId = null;
-  if (
-    metaIntegrationId !== undefined &&
-    metaIntegrationId !== null &&
-    String(metaIntegrationId).trim() !== ""
-  ) {
-    const parsedIntegrationId = Number.parseInt(metaIntegrationId, 10);
-    if (!Number.isFinite(parsedIntegrationId)) {
-      return res.status(400).json({ error: "Invalid Meta integration id." });
+    const normalizedPixelIds = normalizeNumericIds(
+      pixelIds !== undefined
+        ? pixelIds
+        : pixelId !== undefined && pixelId !== null && String(pixelId).trim() !== ""
+          ? [pixelId]
+          : []
+    );
+    for (const parsedPixelId of normalizedPixelIds) {
+      const pixel = await selectPixelById(parsedPixelId);
+      if (!pixel) {
+        return res.status(400).json({ error: `Pixel ${parsedPixelId} not found.` });
+      }
+      const pixelOwnerId = Number.parseInt(pixel.owner_id, 10);
+      if (!Number.isFinite(pixelOwnerId) || pixelOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: `Pixel ${parsedPixelId} must belong to selected owner.` });
+      }
+      if (!isLeadership(req.user) && pixelOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
     }
-    const integration = await selectMetaTokenIntegrationById(parsedIntegrationId);
-    if (!integration) {
-      return res.status(400).json({ error: "Meta integration not found." });
-    }
-    const integrationOwnerId = Number.parseInt(integration.owner_id, 10);
-    if (!Number.isFinite(integrationOwnerId) || integrationOwnerId !== resolvedOwnerId) {
-      return res.status(400).json({ error: "Meta integration must belong to selected owner." });
-    }
-    if (!isLeadership(req.user) && integrationOwnerId !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
-    resolvedMetaIntegrationId = parsedIntegrationId;
-  }
+    const resolvedPixelId = normalizedPixelIds[0] || null;
 
-  const normalizedCountriesResult = normalizeAccountCountries(countries);
-  if (normalizedCountriesResult.error) {
-    return res.status(400).json({ error: normalizedCountriesResult.error });
-  }
-  const normalizedCountries = normalizedCountriesResult.value;
+    let resolvedMetaIntegrationId = null;
+    if (
+      metaIntegrationId !== undefined &&
+      metaIntegrationId !== null &&
+      String(metaIntegrationId).trim() !== ""
+    ) {
+      const parsedIntegrationId = Number.parseInt(metaIntegrationId, 10);
+      if (!Number.isFinite(parsedIntegrationId)) {
+        return res.status(400).json({ error: "Invalid Meta integration id." });
+      }
+      const integration = await selectMetaTokenIntegrationById(parsedIntegrationId);
+      if (!integration) {
+        return res.status(400).json({ error: "Meta integration not found." });
+      }
+      const integrationOwnerId = Number.parseInt(integration.owner_id, 10);
+      if (!Number.isFinite(integrationOwnerId) || integrationOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: "Meta integration must belong to selected owner." });
+      }
+      if (!isLeadership(req.user) && integrationOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
+      resolvedMetaIntegrationId = parsedIntegrationId;
+    }
 
-  const normalizedDomainIds = normalizeNumericIds(domainIds);
-  for (const domainId of normalizedDomainIds) {
-    const domain = await selectDomainById(domainId);
-    if (!domain) {
-      return res.status(400).json({ error: `Domain ${domainId} not found.` });
+    const normalizedCountriesResult = normalizeAccountCountries(countries);
+    if (normalizedCountriesResult.error) {
+      return res.status(400).json({ error: normalizedCountriesResult.error });
     }
-    const domainOwnerId = Number.parseInt(domain.owner_id, 10);
-    if (!Number.isFinite(domainOwnerId) || domainOwnerId !== resolvedOwnerId) {
-      return res.status(400).json({ error: `Domain ${domainId} must belong to selected owner.` });
-    }
-    if (!isLeadership(req.user) && domainOwnerId !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
-    }
-  }
+    const normalizedCountries = normalizedCountriesResult.value;
 
-  const payload = {
-    account_number: normalizedAccountNumber,
-    status: String(status || "Active").trim() || "Active",
-    pixel_id: resolvedPixelId,
-    pixel_ids: serializeNumericIds(normalizedPixelIds),
-    meta_integration_id: resolvedMetaIntegrationId,
-    countries: serializeStringList(normalizedCountries),
-    domain_ids: serializeNumericIds(normalizedDomainIds),
-    notes: String(notes || "").trim() || null,
-    owner_role: ownerRecord.role || req.user?.role || "",
-    owner_id: ownerRecord.id,
-  };
-  const info = await insertAccountRegistry(payload);
-  const row = await selectAccountRegistryById(info.id);
-  return res.status(201).json(row || { id: info.id });
+    const normalizedDomainIds = normalizeNumericIds(domainIds);
+    for (const domainId of normalizedDomainIds) {
+      const domain = await selectDomainById(domainId);
+      if (!domain) {
+        return res.status(400).json({ error: `Domain ${domainId} not found.` });
+      }
+      const domainOwnerId = Number.parseInt(domain.owner_id, 10);
+      if (!Number.isFinite(domainOwnerId) || domainOwnerId !== resolvedOwnerId) {
+        return res.status(400).json({ error: `Domain ${domainId} must belong to selected owner.` });
+      }
+      if (!isLeadership(req.user) && domainOwnerId !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
+    }
+
+    const payload = {
+      account_number: normalizedAccountNumber,
+      status: String(status || "Active").trim() || "Active",
+      pixel_id: resolvedPixelId,
+      pixel_ids: serializeNumericIds(normalizedPixelIds),
+      meta_integration_id: resolvedMetaIntegrationId,
+      countries: serializeStringList(normalizedCountries),
+      domain_ids: serializeNumericIds(normalizedDomainIds),
+      notes: String(notes || "").trim() || null,
+      owner_role: ownerRecord.role || req.user?.role || "",
+      owner_id: ownerRecord.id,
+    };
+    const info = await insertAccountRegistry(payload);
+    await createResourceCreatedNotification({
+      req,
+      entityType: "account",
+      entityId: info.id,
+      title: "New account registered",
+      message: `${req.user?.username || "User"} registered account ${payload.account_number}.`,
+    });
+    const row = await selectAccountRegistryById(info.id);
+    return res.status(201).json(row || { id: info.id });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "account_create",
+      error,
+      severity: "warning",
+      entityType: "account",
+    });
+    return res.status(500).json({ error: error.message || "Failed to create account." });
+  }
 });
 
 app.patch("/api/accounts/:id", async (req, res) => {
@@ -3740,32 +4065,50 @@ app.post("/api/pixels", async (req, res) => {
   if (!pixelId || !tokenEaag || !geo || !(flow || flows)) {
     return res.status(400).json({ error: "Pixel ID, token, GEO, and Flow are required." });
   }
-  let resolvedOwnerId = req.user.id;
-  let resolvedOwnerRole = req.user?.role || "";
-  if (isLeadership(req.user) && ownerId) {
-    const parsedOwner = Number(ownerId);
-    if (!Number.isFinite(parsedOwner)) {
-      return res.status(400).json({ error: "Invalid owner id." });
+  try {
+    let resolvedOwnerId = req.user.id;
+    let resolvedOwnerRole = req.user?.role || "";
+    if (isLeadership(req.user) && ownerId) {
+      const parsedOwner = Number(ownerId);
+      if (!Number.isFinite(parsedOwner)) {
+        return res.status(400).json({ error: "Invalid owner id." });
+      }
+      const ownerRecord = await selectUserById(parsedOwner);
+      if (!ownerRecord) {
+        return res.status(400).json({ error: "Owner not found." });
+      }
+      resolvedOwnerId = ownerRecord.id;
+      resolvedOwnerRole = ownerRecord.role || "";
     }
-    const ownerRecord = await selectUserById(parsedOwner);
-    if (!ownerRecord) {
-      return res.status(400).json({ error: "Owner not found." });
-    }
-    resolvedOwnerId = ownerRecord.id;
-    resolvedOwnerRole = ownerRecord.role || "";
+    const payload = {
+      pixel_id: String(pixelId).trim(),
+      token_eaag: String(tokenEaag).trim(),
+      flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
+      geo: String(geo).trim(),
+      status: String(status || "Active").trim(),
+      comment: comment ? String(comment).trim() : null,
+      owner_role: resolvedOwnerRole,
+      owner_id: resolvedOwnerId,
+    };
+    const info = await insertPixel(payload);
+    await createResourceCreatedNotification({
+      req,
+      entityType: "pixel",
+      entityId: info.id,
+      title: "New pixel added",
+      message: `${req.user?.username || "User"} added pixel ${payload.pixel_id}.`,
+    });
+    return res.status(201).json({ id: info.id });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "pixel_create",
+      error,
+      severity: "warning",
+      entityType: "pixel",
+    });
+    return res.status(500).json({ error: error.message || "Failed to create pixel." });
   }
-  const payload = {
-    pixel_id: String(pixelId).trim(),
-    token_eaag: String(tokenEaag).trim(),
-    flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
-    geo: String(geo).trim(),
-    status: String(status || "Active").trim(),
-    comment: comment ? String(comment).trim() : null,
-    owner_role: resolvedOwnerRole,
-    owner_id: resolvedOwnerId,
-  };
-  const info = await insertPixel(payload);
-  res.status(201).json({ id: info.id });
 });
 
 app.patch("/api/pixels/:id", async (req, res) => {
@@ -3900,66 +4243,105 @@ app.post("/api/meta-tokens", async (req, res) => {
   if (!accountNumber || !token || !buyerName) {
     return res.status(400).json({ error: "Account number, token, and buyer are required." });
   }
-
-  const buyerInput = String(buyerName || "").trim();
-  const buyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
-  const parsedBuyerId = Number.parseInt(buyerId, 10);
-  let resolvedBuyerId = Number.isFinite(parsedBuyerId) ? parsedBuyerId : buyerMatch?.id || null;
-  if (!isLeadership(req.user) && resolvedBuyerId && resolvedBuyerId !== req.user.id) {
-    return res.status(403).json({ error: "Forbidden." });
-  }
-  if (!resolvedBuyerId && !isLeadership(req.user)) {
-    resolvedBuyerId = req.user.id;
-  }
-
-  let parsedPixelId = null;
-  let pixel = null;
-  if (pixelId !== null && pixelId !== undefined && String(pixelId).trim() !== "") {
-    parsedPixelId = Number.parseInt(pixelId, 10);
-    if (!Number.isFinite(parsedPixelId)) {
-      return res.status(400).json({ error: "Invalid pixel id." });
+  try {
+    const normalizedAccountNumber = String(accountNumber || "").trim();
+    const accountRecord = isLeadership(req.user)
+      ? await selectAccountRegistryByAccountNumber(normalizedAccountNumber)
+      : await selectAccountRegistryByAccountNumberAndOwner(normalizedAccountNumber, req.user.id);
+    if (!accountRecord) {
+      return res.status(400).json({ error: "Account number must be registered in Accounts." });
     }
-    pixel = await selectPixelById(parsedPixelId);
-    if (!pixel) {
-      return res.status(400).json({ error: "Pixel not found." });
-    }
-    if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+    const accountOwnerId = Number.parseInt(accountRecord.owner_id, 10);
+    if (!isLeadership(req.user) && (!Number.isFinite(accountOwnerId) || accountOwnerId !== req.user.id)) {
       return res.status(403).json({ error: "Forbidden." });
     }
+
+    const buyerInput = String(buyerName || "").trim();
+    const buyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
+    const parsedBuyerId = Number.parseInt(buyerId, 10);
+    let resolvedBuyerId = Number.isFinite(parsedBuyerId) ? parsedBuyerId : buyerMatch?.id || null;
+    if (!isLeadership(req.user) && resolvedBuyerId && resolvedBuyerId !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+    if (!resolvedBuyerId && !isLeadership(req.user)) {
+      resolvedBuyerId = req.user.id;
+    }
+
+    let parsedPixelId = null;
+    let pixel = null;
+    if (pixelId !== null && pixelId !== undefined && String(pixelId).trim() !== "") {
+      parsedPixelId = Number.parseInt(pixelId, 10);
+      if (!Number.isFinite(parsedPixelId)) {
+        return res.status(400).json({ error: "Invalid pixel id." });
+      }
+      pixel = await selectPixelById(parsedPixelId);
+      if (!pixel) {
+        return res.status(400).json({ error: "Pixel not found." });
+      }
+      if (!isLeadership(req.user) && pixel.owner_id !== req.user.id) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
+    }
+
+    const resolvedOwnerId =
+      Number.isFinite(accountOwnerId)
+        ? accountOwnerId
+        : Number.isFinite(Number(pixel?.owner_id))
+        ? Number(pixel.owner_id)
+        : Number.isFinite(Number(resolvedBuyerId))
+          ? Number(resolvedBuyerId)
+          : req.user.id;
+    if (
+      parsedPixelId !== null &&
+      parsedPixelId !== undefined &&
+      Number.isFinite(accountOwnerId) &&
+      Number.parseInt(pixel?.owner_id, 10) !== accountOwnerId
+    ) {
+      return res.status(400).json({ error: "Pixel must belong to the owner of the selected account." });
+    }
+    const ownerRecord = await selectUserById(resolvedOwnerId);
+    const resolvedBuyerName = buyerMatch?.username || buyerInput;
+    const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
+    const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
+    const resolvedStatus = String(status || "").trim() || autoStatus;
+
+    const payload = {
+      account_number: normalizedAccountNumber,
+      meta_token: String(token).trim(),
+      keitaro_token: String(keitaroToken || "").trim() || null,
+      buyer_name: resolvedBuyerName,
+      buyer_id: Number.isFinite(Number(resolvedBuyerId)) ? Number(resolvedBuyerId) : null,
+      adset_macro: normalizeAdsetMacro(adsetMacro),
+      pixel_id: parsedPixelId,
+      status: resolvedStatus,
+      comment: String(comment || "").trim() || null,
+      owner_role: ownerRecord?.role || req.user?.role || "",
+      owner_id: resolvedOwnerId,
+      meta_binding: String(metaBinding || "").trim() || "raspy-star-473e",
+    };
+    payload.is_wired = isMetaIntegrationWired(payload) && receivedSpend > 0;
+    payload.last_checked_at = new Date();
+
+    const info = await insertMetaTokenIntegration(payload);
+    await createResourceCreatedNotification({
+      req,
+      entityType: "integration",
+      entityId: info.id,
+      title: "New Meta integration added",
+      message: `${req.user?.username || "User"} linked Meta integration for account ${payload.account_number}.`,
+    });
+    const row = await selectMetaTokenIntegrationById(info.id);
+    return res.status(201).json(row || { id: info.id });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "meta_integration_create",
+      error,
+      severity: "warning",
+      entityType: "integration",
+    });
+    return res.status(500).json({ error: error.message || "Failed to create integration." });
   }
-
-  const resolvedOwnerId =
-    Number.isFinite(Number(pixel?.owner_id))
-      ? Number(pixel.owner_id)
-      : Number.isFinite(Number(resolvedBuyerId))
-        ? Number(resolvedBuyerId)
-        : req.user.id;
-  const ownerRecord = await selectUserById(resolvedOwnerId);
-  const resolvedBuyerName = buyerMatch?.username || buyerInput;
-  const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
-  const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
-  const resolvedStatus = String(status || "").trim() || autoStatus;
-
-  const payload = {
-    account_number: String(accountNumber).trim(),
-    meta_token: String(token).trim(),
-    keitaro_token: String(keitaroToken || "").trim() || null,
-    buyer_name: resolvedBuyerName,
-    buyer_id: Number.isFinite(Number(resolvedBuyerId)) ? Number(resolvedBuyerId) : null,
-    adset_macro: normalizeAdsetMacro(adsetMacro),
-    pixel_id: parsedPixelId,
-    status: resolvedStatus,
-    comment: String(comment || "").trim() || null,
-    owner_role: ownerRecord?.role || req.user?.role || "",
-    owner_id: resolvedOwnerId,
-    meta_binding: String(metaBinding || "").trim() || "raspy-star-473e",
-  };
-  payload.is_wired = isMetaIntegrationWired(payload) && receivedSpend > 0;
-  payload.last_checked_at = new Date();
-
-  const info = await insertMetaTokenIntegration(payload);
-  const row = await selectMetaTokenIntegrationById(info.id);
-  return res.status(201).json(row || { id: info.id });
 });
 
 app.patch("/api/meta-tokens/:id", async (req, res) => {
@@ -4050,6 +4432,30 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
         : String(current.meta_binding || "raspy-star-473e").trim(),
   };
 
+  const accountRecord = isLeadership(req.user)
+    ? await selectAccountRegistryByAccountNumber(next.account_number)
+    : await selectAccountRegistryByAccountNumberAndOwner(next.account_number, req.user.id);
+  if (!accountRecord) {
+    return res.status(400).json({ error: "Account number must be registered in Accounts." });
+  }
+  const accountOwnerId = Number.parseInt(accountRecord.owner_id, 10);
+  if (!isLeadership(req.user) && (!Number.isFinite(accountOwnerId) || accountOwnerId !== req.user.id)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  if (Number.isFinite(accountOwnerId)) {
+    next.owner_id = accountOwnerId;
+    next.owner_role = accountRecord.owner_role || next.owner_role || "";
+  }
+  if (next.pixel_id !== null && next.pixel_id !== undefined) {
+    const pixelForAccount = pixel || (await selectPixelById(next.pixel_id));
+    if (!pixelForAccount) {
+      return res.status(400).json({ error: "Pixel not found." });
+    }
+    if (Number.isFinite(accountOwnerId) && Number.parseInt(pixelForAccount.owner_id, 10) !== accountOwnerId) {
+      return res.status(400).json({ error: "Pixel must belong to the owner of the selected account." });
+    }
+  }
+
   if (!next.account_number || !next.meta_token || !next.buyer_name) {
     return res.status(400).json({ error: "Account number, token, and buyer are required." });
   }
@@ -4126,6 +4532,18 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     [wired ? 1 : 0, status, id]
   );
   const row = await selectMetaTokenIntegrationById(id);
+  if (!wired) {
+    await createSystemNotification({
+      event_type: "integration_issue",
+      severity: "warning",
+      title: "Meta integration needs attention",
+      message: `Integration #${id} has issues: ${issues.join("; ")}`,
+      entity_type: "integration",
+      entity_id: id,
+      actor_id: req.user?.id || null,
+      actor_name: req.user?.username || req.user?.role || "System",
+    });
+  }
   return res.json({ ok: wired, status, issues, receivedSpend, row });
 });
 
@@ -4216,6 +4634,12 @@ app.all("/api/postbacks/install", async (req, res) => {
       raw: JSON.stringify(payload),
     });
   } catch (error) {
+    await createUnexpectedNotification({
+      source: "postback_install",
+      error,
+      severity: "warning",
+      entityType: "postback",
+    });
     if (error?.code !== "SQLITE_CONSTRAINT_UNIQUE" && error?.code !== "23505") {
       return res.status(500).json({ error: "Failed to store install." });
     }
@@ -4295,6 +4719,12 @@ const handleConversionPostback = (eventType) => async (req, res) => {
       raw: JSON.stringify(payload),
     });
   } catch (error) {
+    await createUnexpectedNotification({
+      source: `postback_${eventType}`,
+      error,
+      severity: "warning",
+      entityType: "postback",
+    });
     return res.status(500).json({ error: "Failed to store conversion." });
   }
 
@@ -5324,6 +5754,13 @@ app.post("/api/keitaro/test", async (req, res) => {
     }
     res.json({ ok: true });
   } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "keitaro_connection_test",
+      error,
+      severity: "warning",
+      entityType: "keitaro",
+    });
     res.status(500).json({ error: error.message || "Connection failed." });
   }
 });
@@ -5438,6 +5875,12 @@ app.all("/api/keitaro/cron", async (req, res) => {
     res.status(202).json({ ok: true, queued: true, target });
     runSync().catch((error) => {
       console.error("Keitaro async sync failed:", error);
+      createUnexpectedNotification({
+        source: `keitaro_cron_async_${target}`,
+        error,
+        severity: "critical",
+        entityType: "keitaro",
+      });
     });
     return;
   }
@@ -5446,6 +5889,12 @@ app.all("/api/keitaro/cron", async (req, res) => {
     const result = await runSync();
     res.json({ ok: true, ...result });
   } catch (error) {
+    await createUnexpectedNotification({
+      source: `keitaro_cron_${target}`,
+      error,
+      severity: "critical",
+      entityType: "keitaro",
+    });
     res.status(error.status || 500).json({ error: error.message || "Sync failed." });
   }
 });
@@ -5484,6 +5933,13 @@ app.post("/api/keitaro/sync", async (req, res) => {
           });
         } catch (error) {
           console.error("Async Keitaro sync failed:", error);
+          await createUnexpectedNotification({
+            req,
+            source: `keitaro_sync_async_${syncTarget}`,
+            error,
+            severity: "critical",
+            entityType: "keitaro",
+          });
         } finally {
           keitaroSyncState[syncTarget] = false;
         }
@@ -5504,6 +5960,13 @@ app.post("/api/keitaro/sync", async (req, res) => {
 
     res.json({ ok: true, ...result });
   } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: `keitaro_sync_${syncTarget}`,
+      error,
+      severity: "critical",
+      entityType: "keitaro",
+    });
     res.status(error.status || 500).json({ error: error.message || "Sync failed." });
   } finally {
     if (shouldReleaseOnFinally) {
