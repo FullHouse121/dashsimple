@@ -989,35 +989,61 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
   const normalizedAccountNumber = String(accountNumber || "").trim();
   if (!normalizedAccountNumber) return null;
   const parsedOwnerId = Number.parseInt(String(ownerId ?? ""), 10);
+  const params = [normalizedAccountNumber];
+  let ownerFilter = "";
   if (Number.isFinite(parsedOwnerId) && parsedOwnerId > 0) {
-    return getRow(
-      `SELECT id,
-              account_number,
-              meta_token,
-              buyer_name,
-              status,
-              is_wired,
-              owner_id
-       FROM meta_token_integrations
-       WHERE account_number = $1 AND owner_id = $2
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
-      [normalizedAccountNumber, parsedOwnerId]
-    );
+    params.push(parsedOwnerId);
+    ownerFilter = `AND m.owner_id = $2`;
   }
   return getRow(
-    `SELECT id,
-            account_number,
-            meta_token,
-            buyer_name,
-            status,
-            is_wired,
-            owner_id
-     FROM meta_token_integrations
-     WHERE account_number = $1
-     ORDER BY created_at DESC, id DESC
+    `SELECT ranked.id,
+            ranked.account_number,
+            ranked.meta_token,
+            ranked.buyer_name,
+            ranked.status,
+            ranked.is_wired,
+            ranked.owner_id,
+            ranked.received_spend
+     FROM (
+       SELECT m.id,
+              m.account_number,
+              m.meta_token,
+              m.buyer_name,
+              m.status,
+              m.is_wired,
+              m.owner_id,
+              m.created_at,
+              COALESCE((
+                SELECT SUM(ms.spend)
+                FROM media_stats ms
+                WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                  AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                      LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+              ), 0) AS received_spend
+       FROM meta_token_integrations m
+       WHERE m.account_number = $1
+         ${ownerFilter}
+     ) ranked
+     ORDER BY
+       CASE
+         WHEN COALESCE(ranked.is_wired, 0) = 1 THEN 0
+         WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+           ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
+           THEN 0
+         WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
+         WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+           ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
+           THEN 1
+         WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+           ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
+           THEN 2
+         ELSE 3
+       END,
+       COALESCE(ranked.received_spend, 0) DESC,
+       ranked.created_at DESC,
+       ranked.id DESC
      LIMIT 1`,
-    [normalizedAccountNumber]
+    params
   );
 };
 
@@ -1127,14 +1153,13 @@ const syncAccountFromLatestIntegration = async ({ accountNumber, ownerId }) => {
     });
     return null;
   }
-  const latestSpend = await selectReceivedSpendForBuyer(latest.buyer_name);
   await syncAccountsFromIntegration({
     accountNumber: latest.account_number,
     ownerId: latest.owner_id ?? ownerId,
     integrationId: latest.id,
     integrationStatus: latest.status,
     integrationIsWired: latest.is_wired,
-    receivedSpend: latestSpend,
+    receivedSpend: latest.received_spend,
     metaToken: latest.meta_token,
     buyerName: latest.buyer_name,
   });
@@ -1517,37 +1542,66 @@ const selectAccountRegistry = async (limit) => {
             m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS integration_received_spend
+            COALESCE(m.received_spend, 0) AS integration_received_spend
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
      LEFT JOIN LATERAL (
-       SELECT mi.id,
-              mi.account_number,
-              mi.meta_token,
-              mi.buyer_name,
-              mi.status,
-              mi.is_wired,
-              mi.comment,
-              mi.last_checked_at,
-              mi.created_at
-       FROM meta_token_integrations mi
-       WHERE mi.account_number = a.account_number
-         AND (
-           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-           OR mi.owner_id IS NULL
-           OR a.owner_id IS NULL
-         )
+       SELECT ranked.id,
+              ranked.account_number,
+              ranked.meta_token,
+              ranked.buyer_name,
+              ranked.status,
+              ranked.is_wired,
+              ranked.comment,
+              ranked.last_checked_at,
+              ranked.created_at,
+              ranked.received_spend
+       FROM (
+         SELECT mi.id,
+                mi.account_number,
+                mi.meta_token,
+                mi.buyer_name,
+                mi.status,
+                mi.is_wired,
+                mi.comment,
+                mi.last_checked_at,
+                mi.created_at,
+                mi.owner_id,
+                COALESCE((
+                  SELECT SUM(ms.spend)
+                  FROM media_stats ms
+                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+                ), 0) AS received_spend
+         FROM meta_token_integrations mi
+         WHERE mi.account_number = a.account_number
+           AND (
+             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+             OR mi.owner_id IS NULL
+             OR a.owner_id IS NULL
+           )
+       ) ranked
        ORDER BY
-         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
-         mi.created_at DESC,
-         mi.id DESC
+         CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         CASE
+           WHEN COALESCE(ranked.is_wired, 0) = 1 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
+             THEN 0
+           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
+             THEN 1
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
+             THEN 2
+           ELSE 3
+         END,
+         COALESCE(ranked.received_spend, 0) DESC,
+         ranked.created_at DESC,
+         ranked.id DESC
        LIMIT 1
      ) m ON TRUE
      ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
@@ -1582,37 +1636,66 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS integration_received_spend
+            COALESCE(m.received_spend, 0) AS integration_received_spend
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
      LEFT JOIN LATERAL (
-       SELECT mi.id,
-              mi.account_number,
-              mi.meta_token,
-              mi.buyer_name,
-              mi.status,
-              mi.is_wired,
-              mi.comment,
-              mi.last_checked_at,
-              mi.created_at
-       FROM meta_token_integrations mi
-       WHERE mi.account_number = a.account_number
-         AND (
-           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-           OR mi.owner_id IS NULL
-           OR a.owner_id IS NULL
-         )
+       SELECT ranked.id,
+              ranked.account_number,
+              ranked.meta_token,
+              ranked.buyer_name,
+              ranked.status,
+              ranked.is_wired,
+              ranked.comment,
+              ranked.last_checked_at,
+              ranked.created_at,
+              ranked.received_spend
+       FROM (
+         SELECT mi.id,
+                mi.account_number,
+                mi.meta_token,
+                mi.buyer_name,
+                mi.status,
+                mi.is_wired,
+                mi.comment,
+                mi.last_checked_at,
+                mi.created_at,
+                mi.owner_id,
+                COALESCE((
+                  SELECT SUM(ms.spend)
+                  FROM media_stats ms
+                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+                ), 0) AS received_spend
+         FROM meta_token_integrations mi
+         WHERE mi.account_number = a.account_number
+           AND (
+             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+             OR mi.owner_id IS NULL
+             OR a.owner_id IS NULL
+           )
+       ) ranked
        ORDER BY
-         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
-         mi.created_at DESC,
-         mi.id DESC
+         CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         CASE
+           WHEN COALESCE(ranked.is_wired, 0) = 1 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
+             THEN 0
+           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
+             THEN 1
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
+             THEN 2
+           ELSE 3
+         END,
+         COALESCE(ranked.received_spend, 0) DESC,
+         ranked.created_at DESC,
+         ranked.id DESC
        LIMIT 1
      ) m ON TRUE
      WHERE a.owner_id = $1
@@ -1648,37 +1731,66 @@ const selectAccountRegistryById = async (id) => {
             m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS integration_received_spend
+            COALESCE(m.received_spend, 0) AS integration_received_spend
      FROM accounts_registry a
      LEFT JOIN users u ON u.id = a.owner_id
      LEFT JOIN pixels p ON p.id = a.pixel_id
      LEFT JOIN LATERAL (
-       SELECT mi.id,
-              mi.account_number,
-              mi.meta_token,
-              mi.buyer_name,
-              mi.status,
-              mi.is_wired,
-              mi.comment,
-              mi.last_checked_at,
-              mi.created_at
-       FROM meta_token_integrations mi
-       WHERE mi.account_number = a.account_number
-         AND (
-           (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
-           OR mi.owner_id IS NULL
-           OR a.owner_id IS NULL
-         )
+       SELECT ranked.id,
+              ranked.account_number,
+              ranked.meta_token,
+              ranked.buyer_name,
+              ranked.status,
+              ranked.is_wired,
+              ranked.comment,
+              ranked.last_checked_at,
+              ranked.created_at,
+              ranked.received_spend
+       FROM (
+         SELECT mi.id,
+                mi.account_number,
+                mi.meta_token,
+                mi.buyer_name,
+                mi.status,
+                mi.is_wired,
+                mi.comment,
+                mi.last_checked_at,
+                mi.created_at,
+                mi.owner_id,
+                COALESCE((
+                  SELECT SUM(ms.spend)
+                  FROM media_stats ms
+                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
+                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
+                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
+                ), 0) AS received_spend
+         FROM meta_token_integrations mi
+         WHERE mi.account_number = a.account_number
+           AND (
+             (a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id)
+             OR mi.owner_id IS NULL
+             OR a.owner_id IS NULL
+           )
+       ) ranked
        ORDER BY
-         CASE WHEN a.owner_id IS NOT NULL AND mi.owner_id = a.owner_id THEN 0 ELSE 1 END,
-         mi.created_at DESC,
-         mi.id DESC
+         CASE WHEN a.owner_id IS NOT NULL AND ranked.owner_id = a.owner_id THEN 0 ELSE 1 END,
+         CASE
+           WHEN COALESCE(ranked.is_wired, 0) = 1 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
+             THEN 0
+           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
+             THEN 1
+           WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
+             ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
+             THEN 2
+           ELSE 3
+         END,
+         COALESCE(ranked.received_spend, 0) DESC,
+         ranked.created_at DESC,
+         ranked.id DESC
        LIMIT 1
      ) m ON TRUE
      WHERE a.id = $1`,
@@ -4636,15 +4748,9 @@ app.post("/api/meta-tokens", async (req, res) => {
     payload.last_checked_at = new Date();
 
     const info = await insertMetaTokenIntegration(payload);
-    await syncAccountsFromIntegration({
+    await syncAccountFromLatestIntegration({
       accountNumber: payload.account_number,
       ownerId: payload.owner_id,
-      integrationId: info.id,
-      integrationStatus: payload.status,
-      integrationIsWired: payload.is_wired,
-      receivedSpend,
-      metaToken: payload.meta_token,
-      buyerName: payload.buyer_name,
     });
     await createResourceCreatedNotification({
       req,
@@ -4824,15 +4930,9 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
     ]
   );
 
-  await syncAccountsFromIntegration({
+  await syncAccountFromLatestIntegration({
     accountNumber: next.account_number,
     ownerId: next.owner_id,
-    integrationId: id,
-    integrationStatus: next.status,
-    integrationIsWired: wired ? 1 : 0,
-    receivedSpend,
-    metaToken: next.meta_token,
-    buyerName: next.buyer_name,
   });
 
   const nextAccountNumber = String(next.account_number || "").trim();
@@ -4878,15 +4978,9 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
      WHERE id = $3`,
     [wired ? 1 : 0, status, id]
   );
-  await syncAccountsFromIntegration({
+  await syncAccountFromLatestIntegration({
     accountNumber: integration.account_number,
     ownerId: integration.owner_id,
-    integrationId: id,
-    integrationStatus: status,
-    integrationIsWired: wired ? 1 : 0,
-    receivedSpend,
-    metaToken: integration.meta_token,
-    buyerName: integration.buyer_name,
   });
   const row = await selectMetaTokenIntegrationById(id);
   if (!wired) {
