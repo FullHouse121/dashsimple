@@ -170,7 +170,7 @@ const initDb = async () => {
       comment TEXT,
       owner_role TEXT,
       owner_id INTEGER,
-      meta_binding TEXT NOT NULL DEFAULT 'raspy-star-473e',
+      meta_binding TEXT NOT NULL DEFAULT 'admin',
       is_wired INTEGER NOT NULL DEFAULT 0,
       last_checked_at TIMESTAMP,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -401,8 +401,11 @@ const initDb = async () => {
      SET adset_macro = '{{adset.id}}'
      WHERE adset_macro IS NULL OR TRIM(adset_macro) = '';`,
     `UPDATE meta_token_integrations
-     SET meta_binding = 'raspy-star-473e'
+     SET meta_binding = 'admin'
      WHERE meta_binding IS NULL OR TRIM(meta_binding) = '';`,
+    `UPDATE meta_token_integrations
+     SET meta_binding = 'admin'
+     WHERE TRIM(meta_binding) = 'raspy-star-473e';`,
     `UPDATE meta_token_integrations
      SET status = 'Pending'
      WHERE status IS NULL OR TRIM(status) = '';`,
@@ -4237,7 +4240,7 @@ app.post("/api/meta-tokens", async (req, res) => {
     pixelId = null,
     status,
     comment = "",
-    metaBinding = "raspy-star-473e",
+    metaBinding = "admin",
   } = req.body ?? {};
 
   if (!accountNumber || !token || !buyerName) {
@@ -4317,7 +4320,7 @@ app.post("/api/meta-tokens", async (req, res) => {
       comment: String(comment || "").trim() || null,
       owner_role: ownerRecord?.role || req.user?.role || "",
       owner_id: resolvedOwnerId,
-      meta_binding: String(metaBinding || "").trim() || "raspy-star-473e",
+    meta_binding: String(metaBinding || "").trim() || "admin",
     };
     payload.is_wired = isMetaIntegrationWired(payload) && receivedSpend > 0;
     payload.last_checked_at = new Date();
@@ -4428,8 +4431,8 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
     owner_id: resolvedOwnerId,
     meta_binding:
       body.metaBinding !== undefined
-        ? String(body.metaBinding || "").trim() || "raspy-star-473e"
-        : String(current.meta_binding || "raspy-star-473e").trim(),
+        ? String(body.metaBinding || "").trim() || "admin"
+        : String(current.meta_binding || "admin").trim(),
   };
 
   const accountRecord = isLeadership(req.user)

@@ -88,8 +88,9 @@ const buildApiCandidates = (url) => {
   return Array.from(new Set(candidates));
 };
 
-const apiFetch = async (url, options = {}) => {
+const apiFetch = async (url, options = {}, config = {}) => {
   const headers = { ...(options.headers || {}) };
+  const allow404Fallback = config.allow404Fallback !== false;
   if (typeof window !== "undefined") {
     try {
       const stored = JSON.parse(localStorage.getItem("dash-auth") || "null");
@@ -109,7 +110,7 @@ const apiFetch = async (url, options = {}) => {
     try {
       const response = await fetch(candidate, requestOptions);
       lastResponse = response;
-      if (response.status !== 404) {
+      if (response.status !== 404 || !allow404Fallback) {
         if (response.status === 401 && typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("auth:invalid"));
         }
@@ -11419,7 +11420,12 @@ function MetaTokenDashboard({ authUser }) {
                 <span className="binding-cloud-wire" aria-hidden="true" />
                 <div className="binding-cloud-node keitaro">
                   <span className="binding-cloud-kicker">Keitaro</span>
-                  <strong>{selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "raspy-star-473e"}</strong>
+                  <strong>
+                    {(() => {
+                      const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
+                      return binding === "raspy-star-473e" ? "admin" : binding;
+                    })()}
+                  </strong>
                 </div>
                 <span className="binding-cloud-wire" aria-hidden="true" />
                 <button type="button" className="binding-cloud-node action" onClick={() => handleRunCheck(selectedBinding.id)}>
@@ -13940,6 +13946,7 @@ export default function App() {
   const [notifications, setNotifications] = React.useState([]);
   const [notificationUnreadCount, setNotificationUnreadCount] = React.useState(0);
   const [notificationState, setNotificationState] = React.useState({ loading: false, error: null });
+  const [notificationsSupported, setNotificationsSupported] = React.useState(true);
 
   React.useEffect(() => {
     const range = getPeriodDateRange(period, customRange);
@@ -14154,7 +14161,7 @@ export default function App() {
 
   const fetchNotifications = React.useCallback(
     async ({ silent = false } = {}) => {
-      if (!authUser || !isLeadership) {
+      if (!authUser || !isLeadership || !notificationsSupported) {
         setNotifications([]);
         setNotificationUnreadCount(0);
         setNotificationState({ loading: false, error: null });
@@ -14164,7 +14171,15 @@ export default function App() {
         if (!silent) {
           setNotificationState({ loading: true, error: null });
         }
-        const response = await apiFetch("/api/notifications?limit=80");
+        const response = await apiFetch("/api/notifications?limit=80", {}, { allow404Fallback: false });
+        if (response.status === 404) {
+          setNotificationsSupported(false);
+          setNotifications([]);
+          setNotificationUnreadCount(0);
+          setNotificationsOpen(false);
+          setNotificationState({ loading: false, error: null });
+          return;
+        }
         if (!response.ok) {
           const detail = await response.json().catch(() => null);
           throw new Error(detail?.error || "Failed to load notifications.");
@@ -14189,17 +14204,28 @@ export default function App() {
         }
       }
     },
-    [authUser, isLeadership]
+    [authUser, isLeadership, notificationsSupported]
   );
 
   const handleNotificationRead = React.useCallback(async (id) => {
-    if (!id || !isLeadership) return;
+    if (!id || !isLeadership || !notificationsSupported) return;
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
     );
     setNotificationUnreadCount((prev) => Math.max(0, prev - 1));
     try {
-      const response = await apiFetch(`/api/notifications/${id}/read`, { method: "PATCH" });
+      const response = await apiFetch(
+        `/api/notifications/${id}/read`,
+        { method: "PATCH" },
+        { allow404Fallback: false }
+      );
+      if (response.status === 404) {
+        setNotificationsSupported(false);
+        setNotifications([]);
+        setNotificationUnreadCount(0);
+        setNotificationsOpen(false);
+        return;
+      }
       if (!response.ok) {
         throw new Error("Failed to update notification.");
       }
@@ -14211,21 +14237,32 @@ export default function App() {
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership]);
+  }, [fetchNotifications, isLeadership, notificationsSupported]);
 
   const handleNotificationsReadAll = React.useCallback(async () => {
-    if (!isLeadership || notificationUnreadCount <= 0) return;
+    if (!isLeadership || !notificationsSupported || notificationUnreadCount <= 0) return;
     setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
     setNotificationUnreadCount(0);
     try {
-      const response = await apiFetch("/api/notifications/read-all", { method: "PATCH" });
+      const response = await apiFetch(
+        "/api/notifications/read-all",
+        { method: "PATCH" },
+        { allow404Fallback: false }
+      );
+      if (response.status === 404) {
+        setNotificationsSupported(false);
+        setNotifications([]);
+        setNotificationUnreadCount(0);
+        setNotificationsOpen(false);
+        return;
+      }
       if (!response.ok) {
         throw new Error("Failed to mark notifications as read.");
       }
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership, notificationUnreadCount]);
+  }, [fetchNotifications, isLeadership, notificationUnreadCount, notificationsSupported]);
 
   React.useEffect(() => {
     try {
@@ -14268,14 +14305,16 @@ export default function App() {
       setNotifications([]);
       setNotificationUnreadCount(0);
       setNotificationsOpen(false);
+      setNotificationsSupported(true);
       return;
     }
+    if (!notificationsSupported) return;
     fetchNotifications();
     const timer = setInterval(() => {
       fetchNotifications({ silent: true });
     }, 20000);
     return () => clearInterval(timer);
-  }, [authUser, isLeadership, fetchNotifications]);
+  }, [authUser, isLeadership, fetchNotifications, notificationsSupported]);
 
   const handleLogin = async (username, password) => {
     setAuthState({ loading: true, error: null });
@@ -14579,7 +14618,7 @@ export default function App() {
           )}
 
           <div className="topbar-actions">
-            {isLeadership ? (
+            {isLeadership && notificationsSupported ? (
               <div className="notifications-wrap">
                 <button
                   className={`notification-btn${notificationsOpen ? " is-open" : ""}`}

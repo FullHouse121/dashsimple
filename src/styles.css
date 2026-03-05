@@ -4745,38 +4745,45 @@ select {
 }
 
 .accounts-table .status-select {
-  min-width: 168px;
-  padding: 8px 34px 8px 18px;
+  min-width: 164px;
+  padding: 9px 40px 9px 18px;
   border-radius: 999px;
   font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 0.15px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
   text-transform: none;
-  background:
-    linear-gradient(160deg, rgba(19, 31, 36, 0.92), rgba(13, 21, 27, 0.95)),
+  background-color: rgba(12, 20, 30, 0.96);
+  background-image:
     linear-gradient(45deg, transparent 50%, currentColor 50%),
     linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position:
-    0 0,
-    calc(100% - 18px) calc(50% - 3px),
-    calc(100% - 12px) calc(50% - 3px);
-  background-size: 100% 100%, 6px 6px, 6px 6px;
+    calc(100% - 24px) calc(50% - 3px),
+    calc(100% - 16px) calc(50% - 3px);
+  background-size: 8px 8px, 8px 8px;
   background-repeat: no-repeat;
-  border: 2px solid rgba(54, 208, 124, 0.82);
-  color: #73dfa6;
-  box-shadow: none;
+  border: 2px solid rgba(54, 208, 124, 0.9);
+  color: #52e39b;
+  box-shadow: inset 0 0 0 1px rgba(7, 12, 20, 0.45);
   appearance: none;
-  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    background-color 0.16s ease;
 }
 
 .accounts-table .status-select:hover {
-  border-color: rgba(80, 223, 143, 0.9);
-  color: #85ebb4;
+  border-color: rgba(101, 235, 163, 0.95);
+  color: #8af1bb;
 }
 
 .accounts-table .status-select:focus-visible {
   outline: none;
-  box-shadow: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(7, 12, 20, 0.45),
+    0 0 0 2px rgba(54, 208, 124, 0.2);
 }
 
 .accounts-table .status-select:disabled {
@@ -4785,48 +4792,38 @@ select {
 }
 
 .accounts-table .status-select.status-active {
-  border-color: rgba(54, 208, 124, 0.86);
-  color: #7ce2a7;
-  background:
-    linear-gradient(160deg, rgba(16, 40, 31, 0.7), rgba(13, 21, 27, 0.95)),
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  border-color: rgba(54, 208, 124, 0.9);
+  color: #52e39b;
+  background-color: rgba(12, 26, 20, 0.98);
 }
 
 .accounts-table .status-select.status-pending {
-  border-color: rgba(247, 198, 37, 0.86);
-  color: #f9d774;
-  background:
-    linear-gradient(160deg, rgba(56, 42, 16, 0.68), rgba(13, 21, 27, 0.95)),
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  border-color: rgba(247, 198, 37, 0.9);
+  color: #f6d875;
+  background-color: rgba(35, 29, 13, 0.98);
 }
 
 .accounts-table .status-select.status-paused {
-  border-color: rgba(162, 169, 181, 0.86);
-  color: #c4c9d2;
-  background:
-    linear-gradient(160deg, rgba(36, 42, 53, 0.7), rgba(13, 21, 27, 0.95)),
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  border-color: rgba(162, 169, 181, 0.9);
+  color: #c6ccd7;
+  background-color: rgba(22, 28, 38, 0.98);
 }
 
 .accounts-table .status-select.status-expired {
-  border-color: rgba(246, 140, 140, 0.9);
+  border-color: rgba(246, 140, 140, 0.92);
   color: #ffb5b5;
-  background:
-    linear-gradient(160deg, rgba(66, 35, 35, 0.7), rgba(13, 21, 27, 0.95)),
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-color: rgba(44, 22, 22, 0.98);
 }
 
 .accounts-table .status-select.status-blocked {
-  border-color: rgba(239, 68, 68, 0.92);
-  color: #ff8a8a;
-  background:
-    linear-gradient(160deg, rgba(71, 24, 24, 0.72), rgba(13, 21, 27, 0.95)),
-    linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  border-color: rgba(239, 68, 68, 0.95);
+  color: #ff8c8c;
+  background-color: rgba(54, 17, 17, 0.98);
+}
+
+.accounts-table .status-select option {
+  background: #0f1724;
+  color: #dbe6f6;
 }
 
 .accounts-table td {
