@@ -1618,7 +1618,7 @@ function HomeDashboard({
   const loadHomeStats = React.useCallback(async () => {
     try {
       setHomeState({ loading: true, error: null });
-      const response = await apiFetch("/api/media-stats?limit=100000");
+      const response = await apiFetch("/api/media-stats?limit=100000&strict=1");
       if (!response.ok) {
         throw new Error("Failed to load media buyer stats.");
       }
@@ -1762,9 +1762,11 @@ function HomeDashboard({
   );
   const roi = totals.spend > 0 ? ((totalRevenue - totals.spend) / totals.spend) * 100 : null;
   const periodLabel =
-    period === "Custom range" && periodRange.from && periodRange.to
-      ? `${periodRange.from} → ${periodRange.to}`
-      : t(period);
+    effectiveRange.from && effectiveRange.to
+      ? `${effectiveRange.from} → ${effectiveRange.to}`
+      : period === "Custom range" && periodRange.from && periodRange.to
+        ? `${periodRange.from} → ${periodRange.to}`
+        : t(period);
 
   const homePrimaryStats = [
     { label: "Clicks", value: fmtCount(totals.clicks), icon: MousePointerClick, meta: periodLabel },
@@ -10079,8 +10081,9 @@ function AccountsDashboard({ authUser }) {
 
   const resolveIntegrationState = (row) => {
     const integrationId = toId(row?.meta_integration_id);
+    const wired = Number(row?.integration_is_wired || 0) === 1;
     const hasIntegration =
-      Boolean(integrationId) &&
+      Boolean(integrationId) ||
       (Boolean(row?.integration_account_number) ||
         Boolean(row?.integration_meta_token) ||
         Boolean(row?.integration_buyer_name) ||
@@ -10088,17 +10091,37 @@ function AccountsDashboard({ authUser }) {
         Boolean(row?.integration_last_checked_at));
     const status = String(row?.integration_status || "").trim().toLowerCase();
     const spend = Number(row?.integration_received_spend || 0);
-    const workingByStatus = ["active", "done", "wired", "working", "synced", "ok", "success"].includes(status);
+    const workingByStatus = [
+      "active",
+      "done",
+      "wired",
+      "working",
+      "synced",
+      "ok",
+      "success",
+      "healthy",
+      "online",
+    ].includes(status);
+    const downByStatus = ["not working", "blocked", "error", "failed", "offline", "broken", "issue"].includes(
+      status
+    );
     if (!hasIntegration) {
-      return { hasIntegration: false, tone: "is-not-wired", label: t("Not Wired") };
+      return { hasIntegration: false, tone: "is-pending", label: t("Pending") };
     }
-    if (spend > 0 || workingByStatus) {
+    if (wired || spend > 0 || workingByStatus) {
       return { hasIntegration: true, tone: "is-working", label: t("Working") };
+    }
+    if (downByStatus) {
+      return {
+        hasIntegration: true,
+        tone: "is-down",
+        label: t("Not Working"),
+      };
     }
     return {
       hasIntegration: true,
-      tone: "is-down",
-      label: t("Not Working"),
+      tone: "is-pending",
+      label: t("Pending"),
     };
   };
 
@@ -13946,7 +13969,6 @@ export default function App() {
   const [notifications, setNotifications] = React.useState([]);
   const [notificationUnreadCount, setNotificationUnreadCount] = React.useState(0);
   const [notificationState, setNotificationState] = React.useState({ loading: false, error: null });
-  const [notificationsSupported, setNotificationsSupported] = React.useState(true);
 
   React.useEffect(() => {
     const range = getPeriodDateRange(period, customRange);
@@ -14161,7 +14183,7 @@ export default function App() {
 
   const fetchNotifications = React.useCallback(
     async ({ silent = false } = {}) => {
-      if (!authUser || !isLeadership || !notificationsSupported) {
+      if (!authUser || !isLeadership) {
         setNotifications([]);
         setNotificationUnreadCount(0);
         setNotificationState({ loading: false, error: null });
@@ -14173,11 +14195,9 @@ export default function App() {
         }
         const response = await apiFetch("/api/notifications?limit=80", {}, { allow404Fallback: false });
         if (response.status === 404) {
-          setNotificationsSupported(false);
           setNotifications([]);
           setNotificationUnreadCount(0);
-          setNotificationsOpen(false);
-          setNotificationState({ loading: false, error: null });
+          setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
           return;
         }
         if (!response.ok) {
@@ -14204,11 +14224,11 @@ export default function App() {
         }
       }
     },
-    [authUser, isLeadership, notificationsSupported]
+    [authUser, isLeadership]
   );
 
   const handleNotificationRead = React.useCallback(async (id) => {
-    if (!id || !isLeadership || !notificationsSupported) return;
+    if (!id || !isLeadership) return;
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
     );
@@ -14220,10 +14240,7 @@ export default function App() {
         { allow404Fallback: false }
       );
       if (response.status === 404) {
-        setNotificationsSupported(false);
-        setNotifications([]);
-        setNotificationUnreadCount(0);
-        setNotificationsOpen(false);
+        setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
         return;
       }
       if (!response.ok) {
@@ -14237,10 +14254,10 @@ export default function App() {
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership, notificationsSupported]);
+  }, [fetchNotifications, isLeadership]);
 
   const handleNotificationsReadAll = React.useCallback(async () => {
-    if (!isLeadership || !notificationsSupported || notificationUnreadCount <= 0) return;
+    if (!isLeadership || notificationUnreadCount <= 0) return;
     setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
     setNotificationUnreadCount(0);
     try {
@@ -14250,10 +14267,7 @@ export default function App() {
         { allow404Fallback: false }
       );
       if (response.status === 404) {
-        setNotificationsSupported(false);
-        setNotifications([]);
-        setNotificationUnreadCount(0);
-        setNotificationsOpen(false);
+        setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
         return;
       }
       if (!response.ok) {
@@ -14262,7 +14276,7 @@ export default function App() {
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership, notificationUnreadCount, notificationsSupported]);
+  }, [fetchNotifications, isLeadership, notificationUnreadCount]);
 
   React.useEffect(() => {
     try {
@@ -14305,16 +14319,14 @@ export default function App() {
       setNotifications([]);
       setNotificationUnreadCount(0);
       setNotificationsOpen(false);
-      setNotificationsSupported(true);
       return;
     }
-    if (!notificationsSupported) return;
     fetchNotifications();
     const timer = setInterval(() => {
       fetchNotifications({ silent: true });
     }, 20000);
     return () => clearInterval(timer);
-  }, [authUser, isLeadership, fetchNotifications, notificationsSupported]);
+  }, [authUser, isLeadership, fetchNotifications]);
 
   const handleLogin = async (username, password) => {
     setAuthState({ loading: true, error: null });
@@ -14618,7 +14630,7 @@ export default function App() {
           )}
 
           <div className="topbar-actions">
-            {isLeadership && notificationsSupported ? (
+            {isLeadership ? (
               <div className="notifications-wrap">
                 <button
                   className={`notification-btn${notificationsOpen ? " is-open" : ""}`}

@@ -3687,6 +3687,12 @@ select {
   background: linear-gradient(180deg, rgba(67, 24, 32, 0.76), rgba(46, 18, 24, 0.82));
 }
 
+.accounts-integration-pill.is-pending {
+  border-color: rgba(247, 198, 37, 0.82);
+  color: #f7d97d;
+  background: linear-gradient(180deg, rgba(61, 46, 20, 0.74), rgba(46, 33, 14, 0.82));
+}
+
 .accounts-integration-pill.is-not-wired {
   border-color: rgba(144, 154, 170, 0.68);
   color: #bcc4d2;

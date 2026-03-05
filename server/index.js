@@ -412,6 +412,30 @@ const initDb = async () => {
     `UPDATE meta_token_integrations
      SET is_wired = 0
      WHERE is_wired IS NULL;`,
+    `UPDATE accounts_registry a
+     SET meta_integration_id = m.id
+     FROM (
+       SELECT DISTINCT ON (account_number, owner_id)
+         id, account_number, owner_id
+       FROM meta_token_integrations
+       WHERE account_number IS NOT NULL AND TRIM(account_number) <> ''
+       ORDER BY account_number, owner_id, created_at DESC, id DESC
+     ) m
+     WHERE (a.meta_integration_id IS NULL OR a.meta_integration_id = 0)
+       AND a.account_number = m.account_number
+       AND a.owner_id = m.owner_id;`,
+    `UPDATE accounts_registry a
+     SET status = CASE
+       WHEN m.id IS NULL THEN COALESCE(NULLIF(a.status, ''), 'Pending')
+       WHEN COALESCE(m.is_wired, 0) = 1 THEN 'Active'
+       WHEN LOWER(TRIM(COALESCE(m.status, ''))) IN ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
+         THEN 'Active'
+       WHEN LOWER(TRIM(COALESCE(m.status, ''))) IN ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
+         THEN 'Pending'
+       ELSE 'Blocked'
+     END
+     FROM meta_token_integrations m
+     WHERE a.meta_integration_id = m.id;`,
     `CREATE INDEX IF NOT EXISTS idx_system_notifications_created_at
       ON system_notifications (created_at DESC, id DESC);`,
     `CREATE INDEX IF NOT EXISTS idx_system_notifications_severity
@@ -621,7 +645,35 @@ const selectMediaStats = async (limit) =>
   getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
             spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
-     FROM media_stats
+     FROM (
+       SELECT DISTINCT ON (
+         date,
+         buyer,
+         COALESCE(country, ''),
+         COALESCE(city, ''),
+         COALESCE(region, ''),
+         COALESCE(placement, ''),
+         COALESCE(domain, ''),
+         COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''),
+         COALESCE(ad_name, '')
+       )
+         id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
+         spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
+       FROM media_stats
+       ORDER BY
+         date,
+         buyer,
+         COALESCE(country, ''),
+         COALESCE(city, ''),
+         COALESCE(region, ''),
+         COALESCE(placement, ''),
+         COALESCE(domain, ''),
+         COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''),
+         COALESCE(ad_name, ''),
+         id DESC
+     ) dedup
      ORDER BY date DESC, id DESC
      LIMIT $1`,
     [limit]
@@ -932,6 +984,162 @@ const selectMetaTokenIntegrationById = async (id) =>
      WHERE m.id = $1`,
     [id]
   );
+
+const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId) => {
+  const normalizedAccountNumber = String(accountNumber || "").trim();
+  if (!normalizedAccountNumber) return null;
+  const parsedOwnerId = Number.parseInt(String(ownerId ?? ""), 10);
+  if (Number.isFinite(parsedOwnerId) && parsedOwnerId > 0) {
+    return getRow(
+      `SELECT id,
+              account_number,
+              meta_token,
+              buyer_name,
+              status,
+              is_wired,
+              owner_id
+       FROM meta_token_integrations
+       WHERE account_number = $1 AND owner_id = $2
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [normalizedAccountNumber, parsedOwnerId]
+    );
+  }
+  return getRow(
+    `SELECT id,
+            account_number,
+            meta_token,
+            buyer_name,
+            status,
+            is_wired,
+            owner_id
+     FROM meta_token_integrations
+     WHERE account_number = $1
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [normalizedAccountNumber]
+  );
+};
+
+const resolveIntegrationLifecycleStatus = ({
+  status,
+  isWired,
+  receivedSpend,
+  accountNumber,
+  metaToken,
+  buyerName,
+}) => {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+  const wired = Number(isWired) === 1 || isWired === true;
+  const spend = Number(receivedSpend || 0);
+  const hasCore =
+    Boolean(String(accountNumber || "").trim()) &&
+    Boolean(String(metaToken || "").trim()) &&
+    Boolean(String(buyerName || "").trim());
+
+  if (wired || spend > 0) return "working";
+  if (
+    ["success", "working", "active", "wired", "synced", "ok", "done", "healthy", "online"].includes(
+      normalizedStatus
+    )
+  ) {
+    return "working";
+  }
+  if (
+    ["not working", "blocked", "error", "failed", "offline", "broken", "issue"].includes(
+      normalizedStatus
+    )
+  ) {
+    return "not_working";
+  }
+  if (
+    !hasCore ||
+    !normalizedStatus ||
+    ["pending", "processing", "queued", "delayed", "delay", "checking"].includes(normalizedStatus)
+  ) {
+    return "pending";
+  }
+  return "not_working";
+};
+
+const mapAccountStatusFromIntegrationLifecycle = (lifecycle) => {
+  if (lifecycle === "working") return "Active";
+  if (lifecycle === "not_working") return "Blocked";
+  return "Pending";
+};
+
+const syncAccountsFromIntegration = async ({
+  accountNumber,
+  ownerId,
+  integrationId = null,
+  integrationStatus,
+  integrationIsWired,
+  receivedSpend = 0,
+  metaToken,
+  buyerName,
+}) => {
+  const normalizedAccountNumber = String(accountNumber || "").trim();
+  if (!normalizedAccountNumber) return 0;
+  const parsedOwnerId = Number.parseInt(String(ownerId ?? ""), 10);
+  const lifecycle = resolveIntegrationLifecycleStatus({
+    status: integrationStatus,
+    isWired: integrationIsWired,
+    receivedSpend,
+    accountNumber: normalizedAccountNumber,
+    metaToken,
+    buyerName,
+  });
+  const nextAccountStatus = mapAccountStatusFromIntegrationLifecycle(lifecycle);
+  if (Number.isFinite(parsedOwnerId) && parsedOwnerId > 0) {
+    const result = await query(
+      `UPDATE accounts_registry
+       SET meta_integration_id = $3,
+           status = $2,
+           updated_at = NOW()
+       WHERE account_number = $1 AND owner_id = $4`,
+      [normalizedAccountNumber, nextAccountStatus, integrationId, parsedOwnerId]
+    );
+    return result?.rowCount || 0;
+  }
+  const result = await query(
+    `UPDATE accounts_registry
+     SET meta_integration_id = $3,
+         status = $2,
+         updated_at = NOW()
+     WHERE account_number = $1`,
+    [normalizedAccountNumber, nextAccountStatus, integrationId]
+  );
+  return result?.rowCount || 0;
+};
+
+const syncAccountFromLatestIntegration = async ({ accountNumber, ownerId }) => {
+  const latest = await selectLatestMetaTokenIntegrationForAccount(accountNumber, ownerId);
+  if (!latest) {
+    await syncAccountsFromIntegration({
+      accountNumber,
+      ownerId,
+      integrationId: null,
+      integrationStatus: "Pending",
+      integrationIsWired: 0,
+      receivedSpend: 0,
+      metaToken: "",
+      buyerName: "",
+    });
+    return null;
+  }
+  const latestSpend = await selectReceivedSpendForBuyer(latest.buyer_name);
+  await syncAccountsFromIntegration({
+    accountNumber: latest.account_number,
+    ownerId: latest.owner_id ?? ownerId,
+    integrationId: latest.id,
+    integrationStatus: latest.status,
+    integrationIsWired: latest.is_wired,
+    receivedSpend: latestSpend,
+    metaToken: latest.meta_token,
+    buyerName: latest.buyer_name,
+  });
+  return latest;
+};
 
 const insertMetaTokenIntegration = async (payload) => {
   const { rows } = await query(
@@ -1279,6 +1487,7 @@ const mapAccountRegistryRow = (row) => {
     pixel_ids: pixelIds,
     countries: normalizeStringList(row.countries),
     domain_ids: normalizeNumericIds(row.domain_ids),
+    integration_is_wired: Number(row.integration_is_wired || 0),
     integration_received_spend: Number(row.integration_received_spend || 0),
   };
 };
@@ -1304,6 +1513,7 @@ const selectAccountRegistry = async (limit) => {
             m.meta_token AS integration_meta_token,
             m.buyer_name AS integration_buyer_name,
             m.status AS integration_status,
+            m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
             COALESCE((
@@ -1345,6 +1555,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             m.meta_token AS integration_meta_token,
             m.buyer_name AS integration_buyer_name,
             m.status AS integration_status,
+            m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
             COALESCE((
@@ -1387,6 +1598,7 @@ const selectAccountRegistryById = async (id) => {
             m.meta_token AS integration_meta_token,
             m.buyer_name AS integration_buyer_name,
             m.status AS integration_status,
+            m.is_wired AS integration_is_wired,
             m.comment AS integration_comment,
             m.last_checked_at AS integration_last_checked_at,
             COALESCE((
@@ -3062,13 +3274,22 @@ app.get("/api/media-stats", async (req, res) => {
   const maxLimitRaw = Number.parseInt(process.env.MEDIA_STATS_LIMIT_MAX ?? "100000", 10);
   const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 100000;
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  const strictRaw = String(req.query.strict || "").toLowerCase();
+  const strictMode = strictRaw === "1" || strictRaw === "true" || strictRaw === "yes";
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectMediaStats(limit);
-  let installTotals = await selectInstallTotals();
-  let conversionTotals = await selectConversionTotals();
 
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+  }
+
+  if (strictMode) {
+    return res.json(rows.slice(0, limit));
+  }
+
+  let installTotals = await selectInstallTotals();
+  let conversionTotals = await selectConversionTotals();
+  if (viewerBuyer) {
     installTotals = installTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
     conversionTotals = conversionTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
   }
@@ -3785,6 +4006,7 @@ app.post("/api/accounts", async (req, res) => {
     const resolvedPixelId = normalizedPixelIds[0] || null;
 
     let resolvedMetaIntegrationId = null;
+    let linkedIntegration = null;
     if (
       metaIntegrationId !== undefined &&
       metaIntegrationId !== null &&
@@ -3794,11 +4016,11 @@ app.post("/api/accounts", async (req, res) => {
       if (!Number.isFinite(parsedIntegrationId)) {
         return res.status(400).json({ error: "Invalid Meta integration id." });
       }
-      const integration = await selectMetaTokenIntegrationById(parsedIntegrationId);
-      if (!integration) {
+      linkedIntegration = await selectMetaTokenIntegrationById(parsedIntegrationId);
+      if (!linkedIntegration) {
         return res.status(400).json({ error: "Meta integration not found." });
       }
-      const integrationOwnerId = Number.parseInt(integration.owner_id, 10);
+      const integrationOwnerId = Number.parseInt(linkedIntegration.owner_id, 10);
       if (!Number.isFinite(integrationOwnerId) || integrationOwnerId !== resolvedOwnerId) {
         return res.status(400).json({ error: "Meta integration must belong to selected owner." });
       }
@@ -3806,6 +4028,11 @@ app.post("/api/accounts", async (req, res) => {
         return res.status(403).json({ error: "Forbidden." });
       }
       resolvedMetaIntegrationId = parsedIntegrationId;
+    }
+
+    if (!resolvedMetaIntegrationId) {
+      linkedIntegration = await selectLatestMetaTokenIntegrationForAccount(normalizedAccountNumber, resolvedOwnerId);
+      resolvedMetaIntegrationId = linkedIntegration?.id || null;
     }
 
     const normalizedCountriesResult = normalizeAccountCountries(countries);
@@ -3829,9 +4056,23 @@ app.post("/api/accounts", async (req, res) => {
       }
     }
 
+    let resolvedAccountStatus = String(status || "Active").trim() || "Active";
+    if (linkedIntegration) {
+      const linkedSpend = await selectReceivedSpendForBuyer(linkedIntegration.buyer_name);
+      const lifecycle = resolveIntegrationLifecycleStatus({
+        status: linkedIntegration.status,
+        isWired: linkedIntegration.is_wired,
+        receivedSpend: linkedSpend,
+        accountNumber: normalizedAccountNumber,
+        metaToken: linkedIntegration.meta_token,
+        buyerName: linkedIntegration.buyer_name,
+      });
+      resolvedAccountStatus = mapAccountStatusFromIntegrationLifecycle(lifecycle);
+    }
+
     const payload = {
       account_number: normalizedAccountNumber,
-      status: String(status || "Active").trim() || "Active",
+      status: resolvedAccountStatus,
       pixel_id: resolvedPixelId,
       pixel_ids: serializeNumericIds(normalizedPixelIds),
       meta_integration_id: resolvedMetaIntegrationId,
@@ -4326,6 +4567,16 @@ app.post("/api/meta-tokens", async (req, res) => {
     payload.last_checked_at = new Date();
 
     const info = await insertMetaTokenIntegration(payload);
+    await syncAccountsFromIntegration({
+      accountNumber: payload.account_number,
+      ownerId: payload.owner_id,
+      integrationId: info.id,
+      integrationStatus: payload.status,
+      integrationIsWired: payload.is_wired,
+      receivedSpend,
+      metaToken: payload.meta_token,
+      buyerName: payload.buyer_name,
+    });
     await createResourceCreatedNotification({
       req,
       entityType: "integration",
@@ -4359,6 +4610,8 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
   if (!isLeadership(req.user) && current.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
+  const previousAccountNumber = String(current.account_number || "").trim();
+  const previousOwnerId = Number.parseInt(String(current.owner_id ?? ""), 10);
 
   const body = req.body ?? {};
   let nextPixelId = null;
@@ -4502,6 +4755,28 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
     ]
   );
 
+  await syncAccountsFromIntegration({
+    accountNumber: next.account_number,
+    ownerId: next.owner_id,
+    integrationId: id,
+    integrationStatus: next.status,
+    integrationIsWired: wired ? 1 : 0,
+    receivedSpend,
+    metaToken: next.meta_token,
+    buyerName: next.buyer_name,
+  });
+
+  const nextAccountNumber = String(next.account_number || "").trim();
+  const nextOwnerId = Number.parseInt(String(next.owner_id ?? ""), 10);
+  const previousTuple = `${previousAccountNumber}|${Number.isFinite(previousOwnerId) ? previousOwnerId : ""}`;
+  const nextTuple = `${nextAccountNumber}|${Number.isFinite(nextOwnerId) ? nextOwnerId : ""}`;
+  if (previousTuple && previousTuple !== nextTuple) {
+    await syncAccountFromLatestIntegration({
+      accountNumber: previousAccountNumber,
+      ownerId: Number.isFinite(previousOwnerId) ? previousOwnerId : null,
+    });
+  }
+
   const row = await selectMetaTokenIntegrationById(id);
   return res.json(row || { ok: true });
 });
@@ -4534,6 +4809,16 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
      WHERE id = $3`,
     [wired ? 1 : 0, status, id]
   );
+  await syncAccountsFromIntegration({
+    accountNumber: integration.account_number,
+    ownerId: integration.owner_id,
+    integrationId: id,
+    integrationStatus: status,
+    integrationIsWired: wired ? 1 : 0,
+    receivedSpend,
+    metaToken: integration.meta_token,
+    buyerName: integration.buyer_name,
+  });
   const row = await selectMetaTokenIntegrationById(id);
   if (!wired) {
     await createSystemNotification({
@@ -4563,6 +4848,10 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deleteMetaTokenIntegration(id);
+  await syncAccountFromLatestIntegration({
+    accountNumber: integration.account_number,
+    ownerId: integration.owner_id,
+  });
   return res.json({ ok: true });
 });
 
