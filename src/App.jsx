@@ -190,88 +190,47 @@ const navSections = [
   { title: "Tools", items: ["segmentation", "calculator"] },
 ];
 
-const countryOptions = [
-  "Argentina",
+const supportedCountryOptions = [
   "Australia",
-  "Azerbaijan",
-  "Albania",
-  "Algeria",
-  "Bolivia",
-  "Brazil",
-  "Canada",
-  "Chile",
-  "China",
-  "Colombia",
-  "Costa Rica",
-  "Ecuador",
-  "Egypt",
-  "Estonia",
   "France",
   "Germany",
-  "Guyana",
+  "New Zealand",
+  "Egypt",
+  "Estonia",
+  "Japan",
   "India",
+  "Vietnam",
+  "Chile",
+  "Argentina",
+  "Peru",
+  "Venezuela",
+  "Colombia",
+  "Costa Rica",
+  "Bolivia",
+  "Russia",
+  "Nigeria",
+  "Ukraine",
+  "Poland",
+  "Ecuador",
+  "Paraguay",
+  "Romania",
+  "Albania",
+  "Norway",
+  "Morocco",
+  "Algeria",
+  "Tunisia",
+  "South Korea",
+  "Switzerland",
+  "Sweden",
+  "Canada",
   "Iran",
   "Iraq",
-  "Japan",
-  "Morocco",
-  "New Zealand",
-  "Nigeria",
-  "Norway",
-  "Paraguay",
-  "Peru",
-  "Poland",
-  "Romania",
-  "Russia",
-  "South Korea",
-  "Sweden",
-  "Switzerland",
-  "Tunisia",
-  "Turkey",
-  "Ukraine",
-  "United Arab Emirates",
-  "United States",
-  "Venezuela",
-  "Vietnam",
+  "Azerbaijan",
 ];
 
-const accountRegistryCountryOptions = [
-  "Albania",
-  "Algeria",
-  "Argentina",
-  "Australia",
-  "Azerbaijan",
-  "Bolivia",
-  "Brazil",
-  "Canada",
-  "Chile",
-  "Colombia",
-  "Costa Rica",
-  "Ecuador",
-  "Egypt",
-  "Estonia",
-  "France",
-  "Germany",
-  "India",
-  "Iran",
-  "Iraq",
-  "Japan",
-  "Morocco",
-  "New Zealand",
-  "Nigeria",
-  "Norway",
-  "Paraguay",
-  "Peru",
-  "Poland",
-  "Romania",
-  "Russia",
-  "South Korea",
-  "Sweden",
-  "Switzerland",
-  "Tunisia",
-  "Ukraine",
-  "Venezuela",
-  "Vietnam",
-];
+const countryOptions = [...supportedCountryOptions];
+const accountRegistryCountryOptions = [...supportedCountryOptions];
+const defaultCountryOption = supportedCountryOptions[0] || "";
 
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
@@ -325,6 +284,109 @@ const periodOptions = [
   "Last Month",
   "All",
 ];
+
+function CountryDropdownPicker({
+  value,
+  onChange,
+  options,
+  placeholder,
+  allOption = null,
+  searchPlaceholder = "Type to find countries",
+  emptyResultsLabel = "No countries found.",
+}) {
+  const [query, setQuery] = React.useState("");
+  const normalizedValue = String(value ?? "");
+  const normalizedOptions = React.useMemo(
+    () =>
+      Array.isArray(options)
+        ? options.map((item) => ({ value: String(item), label: String(item) }))
+        : [],
+    [options]
+  );
+  const optionList = React.useMemo(() => {
+    const list = [...normalizedOptions];
+    if (allOption) {
+      list.unshift({
+        value: String(allOption.value ?? ""),
+        label: String(allOption.label ?? allOption.value ?? ""),
+      });
+    }
+    return list;
+  }, [normalizedOptions, allOption]);
+  const selectedOption = optionList.find((item) => item.value === normalizedValue) || null;
+  const displayLabel = selectedOption?.label || normalizedValue || placeholder;
+  const hasSelection = Boolean(selectedOption || normalizedValue);
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  const filteredOptions = optionList.filter((item) =>
+    item.label.toLowerCase().includes(normalizedQuery)
+  );
+
+  return (
+    <details
+      className="country-select-picker"
+      onToggle={(event) => {
+        if (!event.currentTarget.open && query) {
+          setQuery("");
+        }
+      }}
+    >
+      <summary className="country-select-trigger">
+        <span className={`country-select-value${hasSelection ? "" : " is-placeholder"}`}>
+          {displayLabel || placeholder}
+        </span>
+        <span className="country-select-arrow" aria-hidden="true">
+          ▾
+        </span>
+      </summary>
+      <div className="country-select-menu">
+        <div className="country-select-search-wrap">
+          <input
+            className="country-select-search"
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={searchPlaceholder}
+          />
+          {query ? (
+            <button
+              type="button"
+              className="country-select-search-clear"
+              onClick={() => setQuery("")}
+              aria-label="Clear country search"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+        <div className="country-select-options">
+          {filteredOptions.length ? (
+            filteredOptions.map((item) => {
+              const selected = item.value === normalizedValue;
+              return (
+                <button
+                  key={`country-select-${item.value || "all"}`}
+                  type="button"
+                  className={`country-select-option${selected ? " is-selected" : ""}`}
+                  onClick={(event) => {
+                    onChange(item.value);
+                    setQuery("");
+                    const details = event.currentTarget.closest("details");
+                    if (details) details.open = false;
+                  }}
+                >
+                  <span className="country-select-check">{selected ? "✓" : ""}</span>
+                  <span className="country-select-name">{item.label}</span>
+                </button>
+              );
+            })
+          ) : (
+            <div className="country-select-empty-results">{emptyResultsLabel}</div>
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 const FlagEN = () => (
   <svg viewBox="0 0 36 36" aria-hidden="true">
@@ -4185,11 +4247,14 @@ function FinancesDashboard({
             </div>
             <div className="field">
               <label>{t("Country")}</label>
-              <select value={entry.country} onChange={onEntryChange("country")}> 
-                {countryOptions.map((country) => (
-                  <option key={country}>{country}</option>
-                ))}
-              </select>
+              <CountryDropdownPicker
+                value={entry.country}
+                onChange={(country) => setEntry((prev) => ({ ...prev, country }))}
+                options={countryOptions}
+                placeholder={t("Select")}
+                searchPlaceholder={t("Type to find countries")}
+                emptyResultsLabel={t("No countries found.")}
+              />
             </div>
             <div className="field">
               <label>{t("Category")}</label>
@@ -4820,7 +4885,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const [statsForm, setStatsForm] = React.useState({
     date: "2026-02-07",
     buyer: effectiveBuyer,
-    country: "Brazil",
+    country: defaultCountryOption,
     spend: "",
     clicks: "",
     installs: "",
@@ -4841,7 +4906,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     setStatsForm({
       date: "2026-02-07",
       buyer: effectiveBuyer,
-      country: "Brazil",
+      country: defaultCountryOption,
       spend: "",
       clicks: "",
       installs: "",
@@ -8187,7 +8252,7 @@ function GoalsDashboard({ authUser }) {
   const { t } = useLanguage();
   const [goalForm, setGoalForm] = React.useState({
     buyer: "DeusInsta",
-    country: "Brazil",
+    country: defaultCountryOption,
     period: "Monthly",
     dateFrom: "2026-02-01",
     dateTo: "2026-02-28",
@@ -8202,7 +8267,7 @@ function GoalsDashboard({ authUser }) {
   const [teamForm, setTeamForm] = React.useState({
     name: "",
     role: "Media Buyer",
-    country: "Brazil",
+    country: defaultCountryOption,
     approach: "Paid Social",
     game: "",
     email: "",
@@ -8223,7 +8288,7 @@ function GoalsDashboard({ authUser }) {
   const resetGoalForm = () => {
     setGoalForm({
       buyer: "DeusInsta",
-      country: "Brazil",
+      country: defaultCountryOption,
       period: "Monthly",
       dateFrom: "2026-02-01",
       dateTo: "2026-02-28",
@@ -8238,7 +8303,7 @@ function GoalsDashboard({ authUser }) {
     setTeamForm({
       name: "",
       role: "Media Buyer",
-      country: "Brazil",
+      country: defaultCountryOption,
       approach: "Paid Social",
       game: "",
       email: "",
@@ -8501,11 +8566,14 @@ function GoalsDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Country")}</label>
-                <select value={goalForm.country} onChange={updateGoalForm("country")}>
-                  {countryOptions.map((country) => (
-                    <option key={country}>{country}</option>
-                  ))}
-                </select>
+                <CountryDropdownPicker
+                  value={goalForm.country}
+                  onChange={(country) => setGoalForm((prev) => ({ ...prev, country }))}
+                  options={countryOptions}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
               </div>
               <div className="field">
                 <label>{t("Period")}</label>
@@ -8734,7 +8802,7 @@ function DomainsDashboard({ authUser }) {
     status: "Active",
     game: "",
     platform: "PWA Group",
-    country: "Brazil",
+    country: defaultCountryOption,
     ownerRole,
   }));
   const [domains, setDomains] = React.useState([]);
@@ -8752,7 +8820,7 @@ function DomainsDashboard({ authUser }) {
       status: "Active",
       game: "",
       platform: "PWA Group",
-      country: "Brazil",
+      country: defaultCountryOption,
       ownerRole,
     });
   };
@@ -8944,13 +9012,14 @@ function DomainsDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>{t("Target Country")}</label>
-            <select value={domainForm.country} onChange={updateDomainForm("country")} required>
-              {countryOptions.map((country) => (
-                <option key={country} value={country}>
-                  {country}
-                </option>
-              ))}
-            </select>
+            <CountryDropdownPicker
+              value={domainForm.country}
+              onChange={(country) => setDomainForm((prev) => ({ ...prev, country }))}
+              options={countryOptions}
+              placeholder={t("Select")}
+              searchPlaceholder={t("Type to find countries")}
+              emptyResultsLabel={t("No countries found.")}
+            />
           </div>
           <div className="field">
             <label>{t("Owner")}</label>
@@ -9052,7 +9121,7 @@ function PixelsDashboard({ authUser }) {
     pixelId: "",
     tokenEaag: "",
     flow: "",
-    geo: "Brazil",
+    geo: defaultCountryOption,
     status: "Active",
     comment: "",
   });
@@ -9081,7 +9150,7 @@ function PixelsDashboard({ authUser }) {
       pixelId: "",
       tokenEaag: "",
       flow: "",
-      geo: "Brazil",
+      geo: defaultCountryOption,
       status: "Active",
       comment: "",
     });
@@ -9496,13 +9565,14 @@ function PixelsDashboard({ authUser }) {
             </div>
             <div className="field">
               <label>{t("GEO")}</label>
-              <select value={pixelForm.geo} onChange={updatePixelForm("geo")} required>
-                {countryOptions.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
+              <CountryDropdownPicker
+                value={pixelForm.geo}
+                onChange={(geo) => setPixelForm((prev) => ({ ...prev, geo }))}
+                options={countryOptions}
+                placeholder={t("Select")}
+                searchPlaceholder={t("Type to find countries")}
+                emptyResultsLabel={t("No countries found.")}
+              />
             </div>
             <div className="field">
               <label>{t("Status")}</label>
@@ -11685,7 +11755,7 @@ function RolesDashboard({ authUser }) {
   const [teamForm, setTeamForm] = React.useState({
     name: "",
     role: "Media Buyer",
-    country: "Brazil",
+    country: defaultCountryOption,
     approach: "Paid Social",
     game: "",
     email: "",
@@ -11707,7 +11777,7 @@ function RolesDashboard({ authUser }) {
     setTeamForm({
       name: "",
       role: "Media Buyer",
-      country: "Brazil",
+      country: defaultCountryOption,
       approach: "Paid Social",
       game: "",
       email: "",
@@ -12171,11 +12241,14 @@ function RolesDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Country")}</label>
-                <select value={teamForm.country} onChange={updateTeamForm("country")}>
-                  {countryOptions.map((country) => (
-                    <option key={country}>{country}</option>
-                  ))}
-                </select>
+                <CountryDropdownPicker
+                  value={teamForm.country}
+                  onChange={(country) => setTeamForm((prev) => ({ ...prev, country }))}
+                  options={countryOptions}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
               </div>
               <div className="field">
                 <label>{t("Approach")}</label>
@@ -13706,14 +13779,15 @@ function KeitaroApiView() {
             </div>
             <div className="field">
               <label>{t("Country")}</label>
-              <select value={campaignForm.country} onChange={updateCampaignForm("country")}>
-                <option value="">{t("All Countries")}</option>
-                {countryOptions.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
+              <CountryDropdownPicker
+                value={campaignForm.country}
+                onChange={(country) => setCampaignForm((prev) => ({ ...prev, country }))}
+                options={countryOptions}
+                placeholder={t("All Countries")}
+                allOption={{ value: "", label: t("All Countries") }}
+                searchPlaceholder={t("Type to find countries")}
+                emptyResultsLabel={t("No countries found.")}
+              />
             </div>
             <div className="field">
               <label>{t("Domain")}</label>
@@ -13945,7 +14019,7 @@ export default function App() {
   });
   const [entry, setEntry] = React.useState({
     date: "2026-02-07",
-    country: "Brazil",
+    country: defaultCountryOption,
     category: "Traffic Source",
     reference: "",
     billing: "Crypto",
@@ -14453,7 +14527,7 @@ export default function App() {
   const resetEntry = () => {
     setEntry({
       date: "2026-02-07",
-      country: "Brazil",
+      country: defaultCountryOption,
       category: "Traffic Source",
       reference: "",
       billing: "Crypto",
@@ -14904,12 +14978,15 @@ export default function App() {
 
                 <div className="field">
                   <label>Country</label>
-                  <select value={filters.country} onChange={updateFilter("country")}>
-                    <option>All</option>
-                    {countryOptions.map((country) => (
-                      <option key={country}>{country}</option>
-                    ))}
-                  </select>
+                  <CountryDropdownPicker
+                    value={filters.country}
+                    onChange={(country) => setFilters((prev) => ({ ...prev, country }))}
+                    options={countryOptions}
+                    placeholder="All"
+                    allOption={{ value: "All", label: "All" }}
+                    searchPlaceholder="Type to find countries"
+                    emptyResultsLabel="No countries found."
+                  />
                 </div>
 
                 {usesPerformanceFilters ? (
