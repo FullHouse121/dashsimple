@@ -207,6 +207,8 @@ const supportedCountryOptions = [
   "Colombia",
   "Costa Rica",
   "Bolivia",
+  "Brazil",
+  "Mexico",
   "Russia",
   "Nigeria",
   "Ukraine",
