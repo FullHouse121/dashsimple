@@ -2359,14 +2359,18 @@ select {
 .domain-registry-panel .panel-head,
 .accounts-registry-panel .panel-head,
 .accounts-registry-panel .accounts-summary-strip,
-.domain-registry-panel .domain-form,
-.accounts-registry-panel .accounts-form,
 .domain-registry-panel .table-wrap,
 .accounts-registry-panel .table-wrap,
 .domain-registry-panel .empty-state,
 .accounts-registry-panel .empty-state {
   position: relative;
   z-index: 2;
+}
+
+.domain-registry-panel .domain-form,
+.accounts-registry-panel .accounts-form {
+  position: relative;
+  z-index: 6;
 }
 
 .registry-dashboard-panel .table-wrap {
@@ -4216,7 +4220,8 @@ select {
 }
 
 .country-select-picker[open] {
-  z-index: 16;
+  z-index: 1200;
+  isolation: isolate;
 }
 
 .country-select-picker > summary {
@@ -4273,10 +4278,11 @@ select {
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  z-index: 25;
+  z-index: 1300;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(160deg, rgba(24, 27, 33, 0.97), rgba(18, 20, 25, 0.98));
+  border: 1px solid rgba(93, 108, 132, 0.6);
+  background: linear-gradient(160deg, rgba(14, 17, 26, 0.995), rgba(10, 13, 20, 0.995));
+  backdrop-filter: blur(8px);
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -4350,7 +4356,7 @@ select {
   width: 100%;
   border: 1px solid transparent;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.01);
+  background: rgba(18, 22, 33, 0.94);
   color: #e7eaef;
   padding: 10px 12px;
   display: grid;
@@ -4362,8 +4368,8 @@ select {
 }
 
 .country-select-option:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(28, 34, 48, 0.96);
 }
 
 .country-select-check {

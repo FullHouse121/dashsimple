@@ -1036,13 +1036,13 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
          WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
            ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
            THEN 0
-         WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
          WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
            ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
            THEN 1
          WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
            ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
            THEN 2
+         WHEN TRIM(COALESCE(ranked.status, '')) = '' AND COALESCE(ranked.received_spend, 0) > 0 THEN 0
          ELSE 3
        END,
        COALESCE(ranked.received_spend, 0) DESC,
@@ -1593,13 +1593,13 @@ const selectAccountRegistry = async (limit) => {
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
              THEN 0
-           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
              THEN 1
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
              THEN 2
+           WHEN TRIM(COALESCE(ranked.status, '')) = '' AND COALESCE(ranked.received_spend, 0) > 0 THEN 0
            ELSE 3
          END,
          COALESCE(ranked.received_spend, 0) DESC,
@@ -1683,13 +1683,13 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
              THEN 0
-           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
              THEN 1
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
              THEN 2
+           WHEN TRIM(COALESCE(ranked.status, '')) = '' AND COALESCE(ranked.received_spend, 0) > 0 THEN 0
            ELSE 3
          END,
          COALESCE(ranked.received_spend, 0) DESC,
@@ -1774,13 +1774,13 @@ const selectAccountRegistryById = async (id) => {
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('success', 'working', 'active', 'wired', 'synced', 'ok', 'done', 'healthy', 'online')
              THEN 0
-           WHEN COALESCE(ranked.received_spend, 0) > 0 THEN 0
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('pending', 'processing', 'queued', 'delayed', 'delay', 'checking')
              THEN 1
            WHEN LOWER(TRIM(COALESCE(ranked.status, ''))) IN
              ('not working', 'blocked', 'error', 'failed', 'offline', 'broken', 'issue')
              THEN 2
+           WHEN TRIM(COALESCE(ranked.status, '')) = '' AND COALESCE(ranked.received_spend, 0) > 0 THEN 0
            ELSE 3
          END,
          COALESCE(ranked.received_spend, 0) DESC,
