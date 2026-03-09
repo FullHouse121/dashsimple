@@ -2965,24 +2965,152 @@ const parseBooleanEnv = (value, fallback) => {
   return fallback;
 };
 
+const keitaroIntervalAliases = new Map([
+  ["today", "today"],
+  ["yesterday", "yesterday"],
+  ["this_week", "this_week"],
+  ["last_week", "last_week"],
+  ["this_month", "this_month"],
+  ["last_month", "last_month"],
+  ["first_day_of_this_month", "first_day_of_this_month"],
+  ["last_7_days", "last_7_days"],
+  ["last_14_days", "last_14_days"],
+  ["last_30_days", "last_30_days"],
+  ["last_60_days", "last_60_days"],
+  ["last_90_days", "last_90_days"],
+  ["custom", "custom"],
+]);
+
+const normalizeKeitaroInterval = (value) => {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return "";
+  const normalized = raw.replace(/[\s-]+/g, "_");
+  return keitaroIntervalAliases.get(normalized) || normalized;
+};
+
+const isKeitaroRelativeRange = (value) => {
+  const normalized = normalizeKeitaroInterval(value);
+  if (!normalized) return false;
+  return (
+    normalized === "today" ||
+    normalized === "yesterday" ||
+    normalized === "this_week" ||
+    normalized === "last_week" ||
+    normalized === "this_month" ||
+    normalized === "last_month" ||
+    normalized === "first_day_of_this_month" ||
+    normalized === "custom" ||
+    /^last_\d+_days$/.test(normalized)
+  );
+};
+
+const isLikelyKeitaroTimezone = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  if (/^UTC(?:[+-]\d{1,2}(?::\d{2})?)?$/i.test(raw)) return true;
+  if (/^[A-Za-z_]+\/[A-Za-z_]+(?:\/[A-Za-z_]+)?$/.test(raw)) return true;
+  return false;
+};
+
+const sanitizeKeitaroRange = (payload) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const nextPayload = { ...payload };
+  const payloadRange =
+    payload.range && typeof payload.range === "object" && !Array.isArray(payload.range)
+      ? { ...payload.range }
+      : null;
+  if (!payloadRange) return nextPayload;
+
+  const fallbackTimezone = isLikelyKeitaroTimezone(process.env.KEITARO_TIMEZONE)
+    ? String(process.env.KEITARO_TIMEZONE).trim()
+    : "UTC";
+
+  const fromRaw = String(payloadRange.from || "").trim();
+  const toRaw = String(payloadRange.to || "").trim();
+  const timezoneRaw = String(payloadRange.timezone || "").trim();
+  let interval = normalizeKeitaroInterval(payloadRange.interval);
+
+  // Recover from malformed payloads where relative interval accidentally landed in from/to/timezone.
+  if (!interval && isKeitaroRelativeRange(fromRaw)) {
+    interval = normalizeKeitaroInterval(fromRaw);
+    delete payloadRange.from;
+    delete payloadRange.to;
+  } else if (!interval && isKeitaroRelativeRange(toRaw)) {
+    interval = normalizeKeitaroInterval(toRaw);
+    delete payloadRange.from;
+    delete payloadRange.to;
+  } else if (!interval && isKeitaroRelativeRange(timezoneRaw)) {
+    interval = normalizeKeitaroInterval(timezoneRaw);
+  }
+
+  if (interval) {
+    payloadRange.interval = interval;
+  }
+
+  if (!isLikelyKeitaroTimezone(payloadRange.timezone)) {
+    payloadRange.timezone = fallbackTimezone;
+  }
+
+  const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+  if (payloadRange.interval === "custom") {
+    if (!isIsoDate(payloadRange.from) || !isIsoDate(payloadRange.to)) {
+      // Avoid sending invalid custom dates to Keitaro.
+      delete payloadRange.from;
+      delete payloadRange.to;
+      payloadRange.interval = "last_7_days";
+    }
+  } else if (payloadRange.interval) {
+    // Preset intervals should not send custom date fields.
+    delete payloadRange.from;
+    delete payloadRange.to;
+  }
+
+  nextPayload.range = payloadRange;
+  return nextPayload;
+};
+
 const applyKeitaroRange = (payload) => {
   if (!payload || typeof payload !== "object") return payload;
+  const normalizedPayload = sanitizeKeitaroRange(payload);
   const rangeDaysRaw = process.env.KEITARO_RANGE_DAYS;
   const rangeDays = Number.parseInt(rangeDaysRaw || "", 10);
-  const rangeFrom = process.env.KEITARO_RANGE_FROM || "";
-  const rangeTo = process.env.KEITARO_RANGE_TO || "";
+  const rangeFrom = String(process.env.KEITARO_RANGE_FROM || "").trim();
+  const rangeTo = String(process.env.KEITARO_RANGE_TO || "").trim();
   const rangeForceCustom = parseBooleanEnv(process.env.KEITARO_RANGE_FORCE_CUSTOM, false);
-  const payloadRange = payload.range && typeof payload.range === "object" ? payload.range : {};
+  const payloadRange =
+    normalizedPayload.range && typeof normalizedPayload.range === "object" ? normalizedPayload.range : {};
   const payloadInterval = String(payloadRange.interval || "").toLowerCase();
   const hasPresetInterval = Boolean(payloadInterval && payloadInterval !== "custom");
+  const isIsoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
 
   let from = rangeFrom;
   let to = rangeTo;
+  const envRangeLooksRelative = isKeitaroRelativeRange(rangeFrom) || isKeitaroRelativeRange(rangeTo);
+  const envRangeHasInvalidCustomDate = (from && !isIsoDate(from)) || (to && !isIsoDate(to));
+
+  if (envRangeLooksRelative && !rangeForceCustom) {
+    const envInterval = normalizeKeitaroInterval(rangeFrom || rangeTo) || "last_7_days";
+    return {
+      ...normalizedPayload,
+      range: {
+        ...payloadRange,
+        interval: envInterval,
+      },
+    };
+  }
+
+  // Ignore malformed custom override dates to avoid breaking sync requests.
+  if (envRangeHasInvalidCustomDate) {
+    from = "";
+    to = "";
+  }
 
   if ((!from || !to) && Number.isFinite(rangeDays) && rangeDays > 0) {
     // Keep payload intervals like "this_month" / "first_day_of_this_month" unless forced.
     if (hasPresetInterval && !rangeForceCustom) {
-      return payload;
+      return normalizedPayload;
     }
     const today = new Date();
     const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
@@ -2992,10 +3120,10 @@ const applyKeitaroRange = (payload) => {
     to = formatIsoDate(end);
   }
 
-  if (!from || !to) return payload;
+  if (!from || !to) return normalizedPayload;
 
   return {
-    ...payload,
+    ...normalizedPayload,
     range: {
       ...payloadRange,
       interval: "custom",
@@ -5434,7 +5562,7 @@ const runKeitaroSync = async ({
 
   const map = mapping || {};
   const syncTarget = target === "device" ? "device" : target === "user_behavior" ? "user_behavior" : "overall";
-  let preparedPayload = normalizeKeitaroPayload(payload);
+  let preparedPayload = normalizeKeitaroPayload(sanitizeKeitaroRange(payload));
   const requiredFields =
     syncTarget === "overall"
       ? [
