@@ -1252,7 +1252,7 @@ select {
   gap: 8px;
 }
 
-.field:first-child {
+.form-grid > .field:first-child {
   grid-column: 1 / -1;
 }
 
@@ -3512,7 +3512,14 @@ select {
 
 .pixel-table-wrap {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+}
+
+.pixel-table-wrap .pixel-table-toolbar {
+  margin: -1px -1px 0;
+  padding: 14px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(13, 17, 25, 0.72), rgba(9, 13, 20, 0.44));
 }
 
 .pixel-table-toolbar {
@@ -3524,6 +3531,11 @@ select {
 
 .pixel-table-toolbar .field {
   gap: 6px;
+  min-width: 0;
+}
+
+.pixel-table-toolbar .field:first-child {
+  grid-column: auto;
 }
 
 .pixel-table-toolbar .field label {
@@ -3533,6 +3545,10 @@ select {
 }
 
 @media (max-width: 720px) {
+  .pixel-table-wrap .pixel-table-toolbar {
+    padding: 12px 10px 8px;
+  }
+
   .pixel-table-toolbar {
     grid-template-columns: 1fr;
   }
