@@ -14807,6 +14807,15 @@ export default function App() {
   const [notifications, setNotifications] = React.useState([]);
   const [notificationUnreadCount, setNotificationUnreadCount] = React.useState(0);
   const [notificationState, setNotificationState] = React.useState({ loading: false, error: null });
+  const [notificationFilters, setNotificationFilters] = React.useState({
+    severity: "all",
+    unreadOnly: false,
+    search: "",
+  });
+  const [notificationMeta, setNotificationMeta] = React.useState({
+    hasMore: false,
+    filteredTotal: 0,
+  });
 
   React.useEffect(() => {
     const range = getPeriodDateRange(period, customRange);
@@ -15020,21 +15029,34 @@ export default function App() {
   }, []);
 
   const fetchNotifications = React.useCallback(
-    async ({ silent = false } = {}) => {
+    async ({ silent = false, append = false, offset = 0, filtersOverride = null } = {}) => {
       if (!authUser || !isLeadership) {
         setNotifications([]);
         setNotificationUnreadCount(0);
+        setNotificationMeta({ hasMore: false, filteredTotal: 0 });
         setNotificationState({ loading: false, error: null });
         return;
       }
       try {
-        if (!silent) {
+        if (!silent && !append) {
           setNotificationState({ loading: true, error: null });
         }
-        const response = await apiFetch("/api/notifications?limit=80");
+        const activeFilters = filtersOverride || notificationFilters;
+        const query = new URLSearchParams();
+        query.set("limit", "80");
+        const safeOffset = Number.isFinite(Number(offset)) ? Math.max(Number(offset), 0) : 0;
+        if (safeOffset > 0) query.set("offset", String(safeOffset));
+        if (activeFilters.unreadOnly) query.set("unread", "1");
+        if (activeFilters.severity && activeFilters.severity !== "all") {
+          query.set("severity", activeFilters.severity);
+        }
+        const search = String(activeFilters.search || "").trim();
+        if (search) query.set("q", search);
+        const response = await apiFetch(`/api/notifications?${query.toString()}`);
         if (response.status === 404) {
           setNotifications([]);
           setNotificationUnreadCount(0);
+          setNotificationMeta({ hasMore: false, filteredTotal: 0 });
           setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
           return;
         }
@@ -15048,8 +15070,20 @@ export default function App() {
         const unreadCount = Number.isFinite(unreadCountRaw)
           ? unreadCountRaw
           : items.filter((item) => Boolean(item?.unread)).length;
-        setNotifications(items);
+        const hasMore = Boolean(data?.hasMore);
+        const filteredTotalRaw = Number(data?.filteredTotal);
+        const filteredTotal = Number.isFinite(filteredTotalRaw) ? filteredTotalRaw : items.length;
+        if (append) {
+          setNotifications((prev) => {
+            const merged = new Map(prev.map((item) => [item.id, item]));
+            items.forEach((item) => merged.set(item.id, item));
+            return Array.from(merged.values());
+          });
+        } else {
+          setNotifications(items);
+        }
         setNotificationUnreadCount(unreadCount);
+        setNotificationMeta({ hasMore, filteredTotal });
         setNotificationState({ loading: false, error: null });
       } catch (error) {
         if (silent) {
@@ -15062,15 +15096,15 @@ export default function App() {
         }
       }
     },
-    [authUser, isLeadership]
+    [authUser, isLeadership, notificationFilters]
   );
+
+  const handleNotificationFilterChange = React.useCallback((key, value) => {
+    setNotificationFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
 
   const handleNotificationRead = React.useCallback(async (id) => {
     if (!id || !isLeadership) return;
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, unread: false } : item))
-    );
-    setNotificationUnreadCount((prev) => Math.max(0, prev - 1));
     try {
       const response = await apiFetch(
         `/api/notifications/${id}/read`,
@@ -15083,11 +15117,47 @@ export default function App() {
       if (!response.ok) {
         throw new Error("Failed to update notification.");
       }
-      const data = await response.json().catch(() => null);
-      const updated = data?.item;
-      if (updated?.id) {
-        setNotifications((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      await fetchNotifications({ silent: true });
+    } catch (error) {
+      fetchNotifications({ silent: true });
+    }
+  }, [fetchNotifications, isLeadership]);
+
+  const handleNotificationUnread = React.useCallback(async (id) => {
+    if (!id || !isLeadership) return;
+    try {
+      const response = await apiFetch(
+        `/api/notifications/${id}/unread`,
+        { method: "PATCH" }
+      );
+      if (response.status === 404) {
+        setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
+        return;
       }
+      if (!response.ok) {
+        throw new Error("Failed to update notification.");
+      }
+      await fetchNotifications({ silent: true });
+    } catch (error) {
+      fetchNotifications({ silent: true });
+    }
+  }, [fetchNotifications, isLeadership]);
+
+  const handleNotificationDelete = React.useCallback(async (id) => {
+    if (!id || !isLeadership) return;
+    try {
+      const response = await apiFetch(
+        `/api/notifications/${id}`,
+        { method: "DELETE" }
+      );
+      if (response.status === 404) {
+        setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("Failed to delete notification.");
+      }
+      await fetchNotifications({ silent: true });
     } catch (error) {
       fetchNotifications({ silent: true });
     }
@@ -15095,11 +15165,17 @@ export default function App() {
 
   const handleNotificationsReadAll = React.useCallback(async () => {
     if (!isLeadership || notificationUnreadCount <= 0) return;
-    setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
-    setNotificationUnreadCount(0);
     try {
+      const query = new URLSearchParams();
+      query.set("limit", "300");
+      if (notificationFilters.unreadOnly) query.set("unread", "1");
+      if (notificationFilters.severity && notificationFilters.severity !== "all") {
+        query.set("severity", notificationFilters.severity);
+      }
+      const search = String(notificationFilters.search || "").trim();
+      if (search) query.set("q", search);
       const response = await apiFetch(
-        "/api/notifications/read-all",
+        `/api/notifications/read-all?${query.toString()}`,
         { method: "PATCH" }
       );
       if (response.status === 404) {
@@ -15109,10 +15185,16 @@ export default function App() {
       if (!response.ok) {
         throw new Error("Failed to mark notifications as read.");
       }
+      await fetchNotifications({ silent: true });
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership, notificationUnreadCount]);
+  }, [fetchNotifications, isLeadership, notificationUnreadCount, notificationFilters]);
+
+  const handleNotificationLoadMore = React.useCallback(() => {
+    if (!notificationMeta.hasMore || notificationState.loading) return;
+    fetchNotifications({ silent: true, append: true, offset: notifications.length });
+  }, [fetchNotifications, notificationMeta.hasMore, notificationState.loading, notifications.length]);
 
   React.useEffect(() => {
     try {
@@ -15154,6 +15236,7 @@ export default function App() {
     if (!authUser || !isLeadership) {
       setNotifications([]);
       setNotificationUnreadCount(0);
+      setNotificationMeta({ hasMore: false, filteredTotal: 0 });
       setNotificationsOpen(false);
       return;
     }
@@ -15482,7 +15565,13 @@ export default function App() {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    setNotificationsOpen((prev) => !prev);
+                    setNotificationsOpen((prev) => {
+                      const next = !prev;
+                      if (next) {
+                        fetchNotifications();
+                      }
+                      return next;
+                    });
                     setProfileMenuOpen(false);
                   }}
                   title="Notifications"
@@ -15497,14 +15586,61 @@ export default function App() {
                   <div className="notifications-menu">
                     <div className="notifications-head">
                       <strong>Notifications</strong>
-                      <button
-                        className="ghost notifications-mark-all"
-                        type="button"
-                        onClick={handleNotificationsReadAll}
-                        disabled={notificationUnreadCount <= 0}
-                      >
-                        Mark all read
-                      </button>
+                      <div className="notifications-head-actions">
+                        <button
+                          className="ghost notifications-mark-all"
+                          type="button"
+                          onClick={() => fetchNotifications()}
+                          disabled={notificationState.loading}
+                        >
+                          Refresh
+                        </button>
+                        <button
+                          className="ghost notifications-mark-all"
+                          type="button"
+                          onClick={handleNotificationsReadAll}
+                          disabled={notificationUnreadCount <= 0}
+                        >
+                          Mark all read
+                        </button>
+                      </div>
+                    </div>
+                    <div className="notifications-controls">
+                      <input
+                        className="notifications-search"
+                        type="text"
+                        value={notificationFilters.search}
+                        onChange={(event) =>
+                          handleNotificationFilterChange("search", event.target.value)
+                        }
+                        placeholder="Search notifications"
+                      />
+                      <div className="notifications-control-row">
+                        <label className="notifications-control-field">
+                          <span>Severity</span>
+                          <select
+                            value={notificationFilters.severity}
+                            onChange={(event) =>
+                              handleNotificationFilterChange("severity", event.target.value)
+                            }
+                          >
+                            <option value="all">All</option>
+                            <option value="info">Info</option>
+                            <option value="warning">Warning</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                        </label>
+                        <label className="notifications-unread-toggle">
+                          <input
+                            type="checkbox"
+                            checked={notificationFilters.unreadOnly}
+                            onChange={(event) =>
+                              handleNotificationFilterChange("unreadOnly", event.target.checked)
+                            }
+                          />
+                          <span>Unread only</span>
+                        </label>
+                      </div>
                     </div>
                     {notificationState.error ? (
                       <div className="notifications-empty notifications-error">{notificationState.error}</div>
@@ -15515,25 +15651,69 @@ export default function App() {
                     ) : (
                       <div className="notifications-list">
                         {notifications.map((item) => (
-                          <button
+                          <div
                             key={`notification-${item.id}`}
                             className={`notification-item severity-${item.severity || "info"}${item.unread ? " is-unread" : ""}`}
-                            type="button"
-                            onClick={() => handleNotificationRead(item.id)}
                           >
-                            <span className="notification-dot" aria-hidden="true" />
-                            <span className="notification-copy">
-                              <strong>{item.title || "Notification"}</strong>
-                              <small>{item.message || "No details available."}</small>
-                              <em>
-                                {formatNotificationTime(item.created_at)}
-                                {item.actor_name ? ` · ${item.actor_name}` : ""}
-                              </em>
-                            </span>
-                          </button>
+                            <button
+                              className="notification-main"
+                              type="button"
+                              onClick={() => {
+                                if (item.unread) {
+                                  handleNotificationRead(item.id);
+                                }
+                              }}
+                            >
+                              <span className="notification-dot" aria-hidden="true" />
+                              <span className="notification-copy">
+                                <strong>{item.title || "Notification"}</strong>
+                                <small>{item.message || "No details available."}</small>
+                                <em>
+                                  {formatNotificationTime(item.created_at)}
+                                  {item.actor_name ? ` · ${item.actor_name}` : ""}
+                                </em>
+                              </span>
+                            </button>
+                            <div className="notification-actions">
+                              {item.unread ? (
+                                <button
+                                  className="ghost notification-action"
+                                  type="button"
+                                  onClick={() => handleNotificationRead(item.id)}
+                                >
+                                  Mark read
+                                </button>
+                              ) : (
+                                <button
+                                  className="ghost notification-action"
+                                  type="button"
+                                  onClick={() => handleNotificationUnread(item.id)}
+                                >
+                                  Mark unread
+                                </button>
+                              )}
+                              <button
+                                className="ghost notification-action notification-action-danger"
+                                type="button"
+                                onClick={() => handleNotificationDelete(item.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}
+                    {notificationMeta.hasMore ? (
+                      <button
+                        className="ghost notifications-load-more"
+                        type="button"
+                        onClick={handleNotificationLoadMore}
+                        disabled={notificationState.loading}
+                      >
+                        Load more
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

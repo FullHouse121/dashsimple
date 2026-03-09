@@ -446,6 +446,10 @@ const initDb = async () => {
       ON system_notifications (created_at DESC, id DESC);`,
     `CREATE INDEX IF NOT EXISTS idx_system_notifications_severity
       ON system_notifications (severity);`,
+    `CREATE INDEX IF NOT EXISTS idx_system_notifications_event_type
+      ON system_notifications (event_type);`,
+    `CREATE INDEX IF NOT EXISTS idx_system_notifications_entity_type
+      ON system_notifications (entity_type);`,
   ];
 
   for (const statement of statements) {
@@ -883,7 +887,18 @@ const selectPixelsByOwner = async (ownerId, limit) =>
   );
 
 const selectPixelById = async (id) =>
-  getRow(`SELECT id, owner_id FROM pixels WHERE id = $1`, [id]);
+  getRow(
+    `SELECT p.id,
+            p.pixel_id,
+            p.status,
+            p.comment,
+            p.owner_id,
+            u.username AS owner_name
+     FROM pixels p
+     LEFT JOIN users u ON u.id = p.owner_id
+     WHERE p.id = $1`,
+    [id]
+  );
 
 const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]);
 
@@ -1258,7 +1273,18 @@ const selectDomainsByOwner = async (ownerId, limit) =>
   );
 
 const selectDomainById = async (id) =>
-  getRow(`SELECT id, owner_id FROM domains WHERE id = $1`, [id]);
+  getRow(
+    `SELECT d.id,
+            d.domain,
+            d.status,
+            d.country,
+            d.owner_id,
+            u.username AS owner_name
+     FROM domains d
+     LEFT JOIN users u ON u.id = d.owner_id
+     WHERE d.id = $1`,
+    [id]
+  );
 
 const selectDomainByNameWithOwner = async (domain) =>
   getRow(
@@ -1315,6 +1341,22 @@ const normalizeStringList = (value) => {
 
 const serializeStringList = (value) => JSON.stringify(normalizeStringList(value));
 
+const normalizeNotificationSeverity = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "info";
+  if (["info", "warning", "critical"].includes(normalized)) return normalized;
+  if (["error", "failed", "failure", "danger"].includes(normalized)) return "critical";
+  return "info";
+};
+
+const parseCsvFilter = (value) =>
+  normalizeStringList(String(value || "").split(","))
+    .map((item) => item.toLowerCase())
+    .filter(Boolean);
+
+const buildReadByContainsViewerSql = (columnExpression, viewerParamReference) =>
+  `COALESCE(REGEXP_REPLACE(COALESCE(${columnExpression}, ''), '\\s+', '', 'g'), '') ~ ('(^|,|\\[)' || ${viewerParamReference}::text || '(,|\\]|$)')`;
+
 const mapSystemNotificationRow = (row) => {
   if (!row) return null;
   return {
@@ -1324,6 +1366,7 @@ const mapSystemNotificationRow = (row) => {
 };
 
 const insertSystemNotification = async (payload) => {
+  const severity = normalizeNotificationSeverity(payload.severity);
   const { rows } = await query(
     `INSERT INTO system_notifications (
       event_type,
@@ -1340,7 +1383,7 @@ const insertSystemNotification = async (payload) => {
      RETURNING id`,
     [
       String(payload.event_type || "system_event").trim() || "system_event",
-      String(payload.severity || "info").trim() || "info",
+      severity,
       String(payload.title || "System event").trim() || "System event",
       String(payload.message || "No details").trim() || "No details",
       payload.entity_type ? String(payload.entity_type).trim() : null,
@@ -1353,12 +1396,76 @@ const insertSystemNotification = async (payload) => {
   return rows[0];
 };
 
+const selectRecentDuplicateSystemNotification = async (payload, dedupeWindowSeconds) => {
+  if (!Number.isFinite(dedupeWindowSeconds) || dedupeWindowSeconds <= 0) return null;
+  return getRow(
+    `SELECT id
+     FROM system_notifications
+     WHERE event_type = $1
+       AND severity = $2
+       AND title = $3
+       AND message = $4
+       AND COALESCE(entity_type, '') = COALESCE($5, '')
+       AND COALESCE(entity_id, 0) = COALESCE($6, 0)
+       AND created_at >= NOW() - ($7::int * INTERVAL '1 second')
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [
+      String(payload.event_type || "system_event").trim() || "system_event",
+      normalizeNotificationSeverity(payload.severity),
+      String(payload.title || "System event").trim() || "System event",
+      String(payload.message || "No details").trim() || "No details",
+      payload.entity_type ? String(payload.entity_type).trim() : null,
+      Number.isFinite(Number(payload.entity_id)) ? Number(payload.entity_id) : null,
+      Math.min(Math.max(Number.parseInt(dedupeWindowSeconds, 10) || 0, 0), 86400),
+    ]
+  );
+};
+
 const createSystemNotification = async (payload) => {
   try {
-    await insertSystemNotification(payload);
+    const dedupeWindowRaw =
+      payload?.dedupe_window_seconds !== undefined
+        ? payload.dedupe_window_seconds
+        : payload?.dedupeWindowSeconds;
+    const dedupeWindowSeconds = Number.parseInt(dedupeWindowRaw ?? "0", 10);
+    if (Number.isFinite(dedupeWindowSeconds) && dedupeWindowSeconds > 0) {
+      const duplicate = await selectRecentDuplicateSystemNotification(payload, dedupeWindowSeconds);
+      if (duplicate?.id) {
+        return { id: duplicate.id, deduped: true };
+      }
+    }
+    const inserted = await insertSystemNotification(payload);
+    return { id: inserted?.id || null, deduped: false };
   } catch (error) {
     console.warn("Failed to store system notification:", error?.message || error);
+    return { id: null, deduped: false };
   }
+};
+
+const createResourceNotification = async ({
+  req,
+  action = "updated",
+  severity = "info",
+  entityType,
+  entityId,
+  title,
+  message,
+  dedupeWindowSeconds = 0,
+}) => {
+  const normalizedEntity = String(entityType || "resource").trim().toLowerCase() || "resource";
+  const normalizedAction = String(action || "updated").trim().toLowerCase() || "updated";
+  return createSystemNotification({
+    event_type: `${normalizedEntity}_${normalizedAction}`,
+    severity,
+    title,
+    message,
+    entity_type: normalizedEntity,
+    entity_id: entityId,
+    actor_id: req?.user?.id || null,
+    actor_name: req?.user?.username || req?.user?.role || "System",
+    dedupeWindowSeconds,
+  });
 };
 
 const createResourceCreatedNotification = async ({
@@ -1368,15 +1475,50 @@ const createResourceCreatedNotification = async ({
   title,
   message,
 }) =>
-  createSystemNotification({
-    event_type: `${entityType}_created`,
+  createResourceNotification({
+    req,
+    action: "created",
     severity: "info",
+    entityType,
+    entityId,
     title,
     message,
-    entity_type: entityType,
-    entity_id: entityId,
-    actor_id: req?.user?.id || null,
-    actor_name: req?.user?.username || req?.user?.role || "System",
+  });
+
+const createResourceUpdatedNotification = async ({
+  req,
+  entityType,
+  entityId,
+  title,
+  message,
+  severity = "info",
+}) =>
+  createResourceNotification({
+    req,
+    action: "updated",
+    severity,
+    entityType,
+    entityId,
+    title,
+    message,
+  });
+
+const createResourceDeletedNotification = async ({
+  req,
+  entityType,
+  entityId,
+  title,
+  message,
+  severity = "warning",
+}) =>
+  createResourceNotification({
+    req,
+    action: "deleted",
+    severity,
+    entityType,
+    entityId,
+    title,
+    message,
   });
 
 const createUnexpectedNotification = async ({
@@ -1386,6 +1528,7 @@ const createUnexpectedNotification = async ({
   severity = "warning",
   entityType = null,
   entityId = null,
+  dedupeWindowSeconds = 120,
 }) =>
   createSystemNotification({
     event_type: "unexpected_event",
@@ -1396,9 +1539,83 @@ const createUnexpectedNotification = async ({
     entity_id: entityId,
     actor_id: req?.user?.id || null,
     actor_name: req?.user?.username || req?.user?.role || "System",
+    dedupeWindowSeconds,
   });
 
-const selectSystemNotifications = async (limit) => {
+const buildSystemNotificationWhereClause = ({
+  viewerId = null,
+  unreadOnly = false,
+  severities = [],
+  eventTypes = [],
+  entityTypes = [],
+  queryText = "",
+}) => {
+  const where = [];
+  const params = [];
+
+  if (unreadOnly && Number.isFinite(Number(viewerId))) {
+    params.push(Number.parseInt(viewerId, 10));
+    where.push(`NOT (${buildReadByContainsViewerSql("n.read_by", `$${params.length}`)})`);
+  }
+
+  if (severities.length) {
+    params.push(severities.map((item) => normalizeNotificationSeverity(item)));
+    where.push(`LOWER(COALESCE(n.severity, '')) = ANY($${params.length}::text[])`);
+  }
+
+  if (eventTypes.length) {
+    params.push(eventTypes.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean));
+    where.push(`LOWER(COALESCE(n.event_type, '')) = ANY($${params.length}::text[])`);
+  }
+
+  if (entityTypes.length) {
+    params.push(entityTypes.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean));
+    where.push(`LOWER(COALESCE(n.entity_type, '')) = ANY($${params.length}::text[])`);
+  }
+
+  const normalizedQuery = String(queryText || "").trim().toLowerCase();
+  if (normalizedQuery) {
+    params.push(`%${normalizedQuery}%`);
+    const queryParam = `$${params.length}`;
+    where.push(
+      `(
+        LOWER(COALESCE(n.title, '')) LIKE ${queryParam}
+        OR LOWER(COALESCE(n.message, '')) LIKE ${queryParam}
+        OR LOWER(COALESCE(n.actor_name, '')) LIKE ${queryParam}
+        OR LOWER(COALESCE(u.username, '')) LIKE ${queryParam}
+      )`
+    );
+  }
+
+  return {
+    whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params,
+  };
+};
+
+const selectSystemNotifications = async ({
+  limit = 80,
+  offset = 0,
+  viewerId = null,
+  unreadOnly = false,
+  severities = [],
+  eventTypes = [],
+  entityTypes = [],
+  queryText = "",
+} = {}) => {
+  const parsedLimit = Number.parseInt(limit, 10);
+  const parsedOffset = Number.parseInt(offset, 10);
+  const safeLimit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 300) : 80;
+  const safeOffset = Number.isFinite(parsedOffset) ? Math.max(parsedOffset, 0) : 0;
+  const filters = buildSystemNotificationWhereClause({
+    viewerId,
+    unreadOnly,
+    severities,
+    eventTypes,
+    entityTypes,
+    queryText,
+  });
+  const rowParams = [...filters.params, safeLimit, safeOffset];
   const rows = await getRows(
     `SELECT n.id,
             n.event_type,
@@ -1414,11 +1631,25 @@ const selectSystemNotifications = async (limit) => {
             u.username AS actor_username
      FROM system_notifications n
      LEFT JOIN users u ON u.id = n.actor_id
+     ${filters.whereSql}
      ORDER BY n.created_at DESC, n.id DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${rowParams.length - 1}
+     OFFSET $${rowParams.length}`,
+    rowParams
   );
-  return rows.map(mapSystemNotificationRow);
+  const totalRow = await getRow(
+    `SELECT COUNT(*)::int AS total
+     FROM system_notifications n
+     LEFT JOIN users u ON u.id = n.actor_id
+     ${filters.whereSql}`,
+    filters.params
+  );
+  return {
+    items: rows.map(mapSystemNotificationRow),
+    total: Number(totalRow?.total || 0),
+    limit: safeLimit,
+    offset: safeOffset,
+  };
 };
 
 const selectSystemNotificationById = async (id) => {
@@ -1445,6 +1676,37 @@ const selectSystemNotificationById = async (id) => {
 
 const updateSystemNotificationReadBy = async (id, readBy) => {
   await query(`UPDATE system_notifications SET read_by = $1 WHERE id = $2`, [serializeNumericIds(readBy), id]);
+};
+
+const countSystemNotificationsUnread = async (viewerId) => {
+  const parsedViewerId = Number.parseInt(viewerId, 10);
+  if (!Number.isFinite(parsedViewerId)) return 0;
+  const row = await getRow(
+    `SELECT COUNT(*)::int AS total
+     FROM system_notifications n
+     WHERE NOT (${buildReadByContainsViewerSql("n.read_by", "$1")})`,
+    [parsedViewerId]
+  );
+  return Number(row?.total || 0);
+};
+
+const updateSystemNotificationReadState = async ({ id, viewerId, unread = false }) => {
+  const notification = await selectSystemNotificationById(id);
+  if (!notification) return null;
+  const parsedViewerId = Number.parseInt(viewerId, 10);
+  if (!Number.isFinite(parsedViewerId)) return notification;
+  const readBy = normalizeNumericIds(notification.read_by);
+  const hasViewer = readBy.includes(parsedViewerId);
+  const nextReadBy = unread ? readBy.filter((item) => item !== parsedViewerId) : hasViewer ? readBy : [...readBy, parsedViewerId];
+  if (serializeNumericIds(nextReadBy) !== serializeNumericIds(readBy)) {
+    await updateSystemNotificationReadBy(id, nextReadBy);
+  }
+  return selectSystemNotificationById(id);
+};
+
+const deleteSystemNotificationById = async (id) => {
+  const result = await query(`DELETE FROM system_notifications WHERE id = $1`, [id]);
+  return result?.rowCount || 0;
 };
 
 const accountCountryOptions = [
@@ -3534,12 +3796,27 @@ app.get("/api/notifications", async (req, res) => {
   try {
     const limitRaw = Number.parseInt(req.query.limit ?? "80", 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 300) : 80;
+    const offsetRaw = Number.parseInt(req.query.offset ?? "0", 10);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
     const unreadOnlyRaw = String(req.query.unread || "").toLowerCase();
     const unreadOnly = unreadOnlyRaw === "1" || unreadOnlyRaw === "true";
+    const severities = parseCsvFilter(req.query.severity);
+    const eventTypes = parseCsvFilter(req.query.eventType ?? req.query.event_type);
+    const entityTypes = parseCsvFilter(req.query.entityType ?? req.query.entity_type);
+    const queryText = String(req.query.q ?? req.query.search ?? "").trim();
     const viewerId = Number.parseInt(req.user?.id, 10);
 
-    const rows = await selectSystemNotifications(limit);
-    const items = rows.map((row) => {
+    const rows = await selectSystemNotifications({
+      limit,
+      offset,
+      viewerId,
+      unreadOnly,
+      severities,
+      eventTypes,
+      entityTypes,
+      queryText,
+    });
+    const items = rows.items.map((row) => {
       const unread = !row.read_by.includes(viewerId);
       return {
         ...row,
@@ -3547,10 +3824,14 @@ app.get("/api/notifications", async (req, res) => {
         unread,
       };
     });
-    const unreadCount = items.filter((item) => item.unread).length;
+    const unreadCount = await countSystemNotificationsUnread(viewerId);
     return res.json({
-      items: unreadOnly ? items.filter((item) => item.unread) : items,
+      items,
       unreadCount,
+      filteredTotal: rows.total,
+      limit: rows.limit,
+      offset: rows.offset,
+      hasMore: rows.offset + items.length < rows.total,
     });
   } catch (error) {
     await createUnexpectedNotification({
@@ -3570,16 +3851,33 @@ app.patch("/api/notifications/read-all", async (req, res) => {
   }
   try {
     const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 300) : 200;
     const viewerId = Number.parseInt(req.user?.id, 10);
-    const rows = await selectSystemNotifications(limit);
+    const severities = parseCsvFilter(req.query.severity);
+    const eventTypes = parseCsvFilter(req.query.eventType ?? req.query.event_type);
+    const entityTypes = parseCsvFilter(req.query.entityType ?? req.query.entity_type);
+    const queryText = String(req.query.q ?? req.query.search ?? "").trim();
     let updated = 0;
-    for (const row of rows) {
-      if (row.read_by.includes(viewerId)) continue;
-      await updateSystemNotificationReadBy(row.id, [...row.read_by, viewerId]);
-      updated += 1;
+    for (let safety = 0; safety < 50; safety += 1) {
+      const batch = await selectSystemNotifications({
+        limit,
+        offset: 0,
+        viewerId,
+        unreadOnly: true,
+        severities,
+        eventTypes,
+        entityTypes,
+        queryText,
+      });
+      if (!batch.items.length) break;
+      for (const row of batch.items) {
+        await updateSystemNotificationReadBy(row.id, [...row.read_by, viewerId]);
+        updated += 1;
+      }
+      if (batch.items.length < limit) break;
     }
-    return res.json({ ok: true, updated });
+    const unreadCount = await countSystemNotificationsUnread(viewerId);
+    return res.json({ ok: true, updated, unreadCount });
   } catch (error) {
     await createUnexpectedNotification({
       req,
@@ -3602,14 +3900,10 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
       return res.status(400).json({ error: "Invalid notification id." });
     }
     const viewerId = Number.parseInt(req.user?.id, 10);
-    const notification = await selectSystemNotificationById(id);
-    if (!notification) {
+    const updated = await updateSystemNotificationReadState({ id, viewerId, unread: false });
+    if (!updated) {
       return res.status(404).json({ error: "Notification not found." });
     }
-    if (!notification.read_by.includes(viewerId)) {
-      await updateSystemNotificationReadBy(id, [...notification.read_by, viewerId]);
-    }
-    const updated = await selectSystemNotificationById(id);
     return res.json({
       ok: true,
       item: {
@@ -3627,6 +3921,67 @@ app.patch("/api/notifications/:id/read", async (req, res) => {
       entityType: "notification",
     });
     return res.status(500).json({ error: "Failed to update notification." });
+  }
+});
+
+app.patch("/api/notifications/:id/unread", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid notification id." });
+    }
+    const viewerId = Number.parseInt(req.user?.id, 10);
+    const updated = await updateSystemNotificationReadState({ id, viewerId, unread: true });
+    if (!updated) {
+      return res.status(404).json({ error: "Notification not found." });
+    }
+    return res.json({
+      ok: true,
+      item: {
+        ...updated,
+        actor_name: updated?.actor_name || updated?.actor_username || "System",
+        unread: true,
+      },
+    });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "notifications_unread_one",
+      error,
+      severity: "warning",
+      entityType: "notification",
+    });
+    return res.status(500).json({ error: "Failed to update notification." });
+  }
+});
+
+app.delete("/api/notifications/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Invalid notification id." });
+    }
+    const deleted = await deleteSystemNotificationById(id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Notification not found." });
+    }
+    const unreadCount = await countSystemNotificationsUnread(req.user?.id);
+    return res.json({ ok: true, deleted: true, unreadCount });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "notifications_delete_one",
+      error,
+      severity: "warning",
+      entityType: "notification",
+    });
+    return res.status(500).json({ error: "Failed to delete notification." });
   }
 });
 
@@ -4359,6 +4714,15 @@ app.patch("/api/domains/:id", async (req, res) => {
     return res.status(400).json({ error: "Status is required." });
   }
   await query(`UPDATE domains SET status = $1 WHERE id = $2`, [status, id]);
+  if (String(domain.status || "").trim() !== String(status || "").trim()) {
+    await createResourceUpdatedNotification({
+      req,
+      entityType: "domain",
+      entityId: id,
+      title: "Domain status updated",
+      message: `${req.user?.username || "User"} changed ${domain.domain || `domain #${id}`} from ${domain.status || "Unknown"} to ${status}.`,
+    });
+  }
   res.json({ ok: true });
 });
 
@@ -4375,6 +4739,13 @@ app.delete("/api/domains/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deleteDomain(id);
+  await createResourceDeletedNotification({
+    req,
+    entityType: "domain",
+    entityId: id,
+    title: "Domain removed",
+    message: `${req.user?.username || "User"} removed ${domain.domain || `domain #${id}`}.`,
+  });
   res.json({ ok: true });
 });
 
@@ -4704,6 +5075,31 @@ app.patch("/api/accounts/:id", async (req, res) => {
     ]
   );
 
+  const changedFields = [];
+  if (String(current.account_number || "").trim() !== nextAccountNumber) changedFields.push("account number");
+  if (String(current.status || "").trim() !== nextStatus) changedFields.push("status");
+  if (serializeNumericIds(current.pixel_ids) !== serializeNumericIds(nextPixelIds)) changedFields.push("pixels");
+  const currentIntegrationIdRaw = Number.parseInt(String(current.meta_integration_id ?? ""), 10);
+  const nextIntegrationIdRaw = Number.parseInt(String(nextMetaIntegrationId ?? ""), 10);
+  const currentIntegrationId = Number.isFinite(currentIntegrationIdRaw) ? currentIntegrationIdRaw : null;
+  const nextIntegrationId = Number.isFinite(nextIntegrationIdRaw) ? nextIntegrationIdRaw : null;
+  if (currentIntegrationId !== nextIntegrationId) {
+    changedFields.push("integration");
+  }
+  if (serializeStringList(current.countries) !== serializeStringList(nextCountries)) changedFields.push("countries");
+  if (serializeNumericIds(current.domain_ids) !== serializeNumericIds(nextDomainIds)) changedFields.push("domains");
+  if (String(current.notes || "") !== String(nextNotes || "")) changedFields.push("comment");
+  if (Number.parseInt(current.owner_id, 10) !== Number.parseInt(ownerRecord.id, 10)) changedFields.push("owner");
+  if (changedFields.length > 0) {
+    await createResourceUpdatedNotification({
+      req,
+      entityType: "account",
+      entityId: id,
+      title: "Account updated",
+      message: `${req.user?.username || "User"} updated ${nextAccountNumber}: ${changedFields.join(", ")}.`,
+    });
+  }
+
   const row = await selectAccountRegistryById(id);
   return res.json(row || { ok: true });
 });
@@ -4721,6 +5117,13 @@ app.delete("/api/accounts/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deleteAccountRegistry(id);
+  await createResourceDeletedNotification({
+    req,
+    entityType: "account",
+    entityId: id,
+    title: "Account removed",
+    message: `${req.user?.username || "User"} removed account ${current.account_number || id}.`,
+  });
   return res.json({ ok: true });
 });
 
@@ -4836,6 +5239,22 @@ app.patch("/api/pixels/:id", async (req, res) => {
      WHERE id = $1`,
     [id]
   );
+  const changedFields = [];
+  if (status !== undefined && String(pixel.status || "").trim() !== String(updated?.status || "").trim()) {
+    changedFields.push("status");
+  }
+  if (comment !== undefined && String(pixel.comment || "") !== String(updated?.comment || "")) {
+    changedFields.push("comment");
+  }
+  if (changedFields.length > 0) {
+    await createResourceUpdatedNotification({
+      req,
+      entityType: "pixel",
+      entityId: id,
+      title: "Pixel updated",
+      message: `${req.user?.username || "User"} updated pixel ${updated?.pixel_id || pixel.pixel_id || id}: ${changedFields.join(", ")}.`,
+    });
+  }
   res.json(updated || { ok: true });
 });
 
@@ -4880,6 +5299,22 @@ app.post("/api/pixels/:id/comment", async (req, res) => {
      WHERE id = $1`,
     [id]
   );
+  const changedFields = [];
+  if (status !== undefined && String(pixel.status || "").trim() !== String(updated?.status || "").trim()) {
+    changedFields.push("status");
+  }
+  if (comment !== undefined && String(pixel.comment || "") !== String(updated?.comment || "")) {
+    changedFields.push("comment");
+  }
+  if (changedFields.length > 0) {
+    await createResourceUpdatedNotification({
+      req,
+      entityType: "pixel",
+      entityId: id,
+      title: "Pixel note updated",
+      message: `${req.user?.username || "User"} updated pixel ${updated?.pixel_id || pixel.pixel_id || id}: ${changedFields.join(", ")}.`,
+    });
+  }
   res.json(updated || { ok: true });
 });
 
@@ -4896,6 +5331,13 @@ app.delete("/api/pixels/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deletePixel(id);
+  await createResourceDeletedNotification({
+    req,
+    entityType: "pixel",
+    entityId: id,
+    title: "Pixel removed",
+    message: `${req.user?.username || "User"} removed pixel ${pixel.pixel_id || id}.`,
+  });
   res.json({ ok: true });
 });
 
@@ -5206,6 +5648,53 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
   }
 
   const row = await selectMetaTokenIntegrationById(id);
+  const changedFields = [];
+  if (String(current.account_number || "").trim() !== String(next.account_number || "").trim()) {
+    changedFields.push("account");
+  }
+  if (String(current.buyer_name || "").trim() !== String(next.buyer_name || "").trim()) {
+    changedFields.push("buyer");
+  }
+  const currentPixelIdRaw = Number.parseInt(String(current.pixel_id ?? ""), 10);
+  const nextPixelChangedRaw = Number.parseInt(String(next.pixel_id ?? ""), 10);
+  const currentPixelId = Number.isFinite(currentPixelIdRaw) ? currentPixelIdRaw : null;
+  const nextPixelValue = Number.isFinite(nextPixelChangedRaw) ? nextPixelChangedRaw : null;
+  if (currentPixelId !== nextPixelValue) {
+    changedFields.push("pixel");
+  }
+  if (String(current.status || "").trim() !== String(next.status || "").trim()) {
+    changedFields.push("status");
+  }
+  if (String(current.comment || "").trim() !== String(next.comment || "").trim()) {
+    changedFields.push("comment");
+  }
+  if (changedFields.length > 0) {
+    await createResourceUpdatedNotification({
+      req,
+      entityType: "integration",
+      entityId: id,
+      title: "Meta integration updated",
+      message: `${req.user?.username || "User"} updated integration for account ${next.account_number}: ${changedFields.join(", ")}.`,
+    });
+  }
+  const previousStatus = String(current.status || "").trim().toLowerCase();
+  const nextStatus = String(row?.status || next.status || "").trim().toLowerCase();
+  const previousWired = Number(current.is_wired || 0) === 1;
+  const nextWired = Number(row?.is_wired || next.is_wired || 0) === 1;
+  if (previousStatus !== nextStatus || previousWired !== nextWired) {
+    const nextIsError = ["not working", "blocked", "error", "failed", "offline", "broken", "issue"].includes(nextStatus);
+    await createSystemNotification({
+      event_type: "integration_status_changed",
+      severity: nextIsError ? "warning" : "info",
+      title: "Integration status changed",
+      message: `Account ${next.account_number}: ${current.status || "Unknown"} -> ${row?.status || next.status || "Unknown"}.`,
+      entity_type: "integration",
+      entity_id: id,
+      actor_id: req.user?.id || null,
+      actor_name: req.user?.username || req.user?.role || "System",
+      dedupeWindowSeconds: 30,
+    });
+  }
   return res.json(row || { ok: true });
 });
 
@@ -5242,18 +5731,19 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     ownerId: integration.owner_id,
   });
   const row = await selectMetaTokenIntegrationById(id);
-  if (!wired) {
-    await createSystemNotification({
-      event_type: "integration_issue",
-      severity: "warning",
-      title: "Meta integration needs attention",
-      message: `Integration #${id} has issues: ${issues.join("; ")}`,
-      entity_type: "integration",
-      entity_id: id,
-      actor_id: req.user?.id || null,
-      actor_name: req.user?.username || req.user?.role || "System",
-    });
-  }
+  await createSystemNotification({
+    event_type: wired ? "integration_verified" : "integration_issue",
+    severity: wired ? "info" : "warning",
+    title: wired ? "Meta integration verified" : "Meta integration needs attention",
+    message: wired
+      ? `Integration #${id} is healthy and receiving cost.`
+      : `Integration #${id} has issues: ${issues.join("; ")}`,
+    entity_type: "integration",
+    entity_id: id,
+    actor_id: req.user?.id || null,
+    actor_name: req.user?.username || req.user?.role || "System",
+    dedupeWindowSeconds: wired ? 30 : 90,
+  });
   return res.json({ ok: wired, status, issues, receivedSpend, row });
 });
 
@@ -5273,6 +5763,13 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
   await syncAccountFromLatestIntegration({
     accountNumber: integration.account_number,
     ownerId: integration.owner_id,
+  });
+  await createResourceDeletedNotification({
+    req,
+    entityType: "integration",
+    entityId: id,
+    title: "Meta integration removed",
+    message: `${req.user?.username || "User"} removed integration for account ${integration.account_number || id}.`,
   });
   return res.json({ ok: true });
 });
