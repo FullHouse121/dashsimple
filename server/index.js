@@ -658,11 +658,7 @@ const selectMediaStats = async (limit) =>
          COALESCE(country, ''),
          COALESCE(city, ''),
          COALESCE(region, ''),
-         COALESCE(placement, ''),
-         COALESCE(domain, ''),
-         COALESCE(campaign_name, ''),
-         COALESCE(adset_name, ''),
-         COALESCE(ad_name, '')
+         COALESCE(placement, '')
        )
          id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
          spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
@@ -674,10 +670,6 @@ const selectMediaStats = async (limit) =>
          COALESCE(city, ''),
          COALESCE(region, ''),
          COALESCE(placement, ''),
-         COALESCE(domain, ''),
-         COALESCE(campaign_name, ''),
-         COALESCE(adset_name, ''),
-         COALESCE(ad_name, ''),
          id DESC
      ) dedup
      ORDER BY date DESC, id DESC
@@ -692,6 +684,15 @@ const deleteMediaStatsByBaseKey = async (date, buyer, country) => {
        AND buyer = $2
        AND COALESCE(country, '') = COALESCE($3, '')`,
     [date, buyer, country || null]
+  );
+};
+
+const deleteMediaStatsByDateRange = async (from, to) => {
+  await query(
+    `DELETE FROM media_stats
+     WHERE date >= $1
+       AND date <= $2`,
+    [from, to]
   );
 };
 
@@ -3163,6 +3164,107 @@ const applyKeitaroRange = (payload) => {
       to,
     },
   };
+};
+
+const parseIsoDateOnly = (value) => {
+  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return { year, month, day };
+};
+
+const shiftIsoDateByDays = (isoDate, deltaDays) => {
+  const parsed = parseIsoDateOnly(isoDate);
+  if (!parsed || !Number.isFinite(deltaDays)) return null;
+  const next = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day));
+  next.setUTCDate(next.getUTCDate() + deltaDays);
+  return formatIsoDate(next);
+};
+
+const sortIsoRange = (from, to) => {
+  if (!from || !to) return null;
+  return from <= to ? { from, to } : { from: to, to: from };
+};
+
+const resolveKeitaroRangeBounds = (range) => {
+  if (!range || typeof range !== "object") return null;
+
+  const timezone = resolveKeitaroTimezone(range.timezone);
+  const today = formatIsoDate(getTimezoneDateUtc(timezone));
+  const interval = normalizeKeitaroInterval(range.interval);
+  const fromRaw = String(range.from || "").trim();
+  const toRaw = String(range.to || "").trim();
+  const hasCustomDates = parseIsoDateOnly(fromRaw) && parseIsoDateOnly(toRaw);
+
+  if (!interval) {
+    return hasCustomDates ? sortIsoRange(fromRaw, toRaw) : null;
+  }
+
+  if (interval === "custom") {
+    return hasCustomDates ? sortIsoRange(fromRaw, toRaw) : null;
+  }
+
+  if (interval === "today") {
+    return { from: today, to: today };
+  }
+
+  if (interval === "yesterday") {
+    const yesterday = shiftIsoDateByDays(today, -1);
+    return yesterday ? { from: yesterday, to: yesterday } : null;
+  }
+
+  if (/^last_\d+_days$/.test(interval)) {
+    const dayCount = Number.parseInt(interval.replace(/^last_(\d+)_days$/, "$1"), 10);
+    if (Number.isFinite(dayCount) && dayCount > 0) {
+      const from = shiftIsoDateByDays(today, -(dayCount - 1));
+      if (from) {
+        return { from, to: today };
+      }
+    }
+    return null;
+  }
+
+  const todayParts = parseIsoDateOnly(today);
+  if (!todayParts) return null;
+
+  const thisMonthStart = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-01`;
+  const previousMonthStartDate = new Date(Date.UTC(todayParts.year, todayParts.month - 2, 1));
+  const previousMonthStart = formatIsoDate(previousMonthStartDate);
+  const previousMonthEnd = shiftIsoDateByDays(thisMonthStart, -1);
+
+  if (interval === "this_month" || interval === "first_day_of_this_month") {
+    return { from: thisMonthStart, to: today };
+  }
+
+  if (interval === "last_month" && previousMonthEnd) {
+    return { from: previousMonthStart, to: previousMonthEnd };
+  }
+
+  const dayOfWeek = new Date(Date.UTC(todayParts.year, todayParts.month - 1, todayParts.day)).getUTCDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const thisWeekStart = shiftIsoDateByDays(today, mondayOffset);
+
+  if (!thisWeekStart) return null;
+
+  if (interval === "this_week") {
+    return { from: thisWeekStart, to: today };
+  }
+
+  if (interval === "last_week") {
+    const lastWeekStart = shiftIsoDateByDays(thisWeekStart, -7);
+    const lastWeekEnd = shiftIsoDateByDays(thisWeekStart, -1);
+    if (lastWeekStart && lastWeekEnd) {
+      return { from: lastWeekStart, to: lastWeekEnd };
+    }
+    return null;
+  }
+
+  return null;
 };
 
 const isValidCurrencyCode = (code) => /^[A-Z]{3}$/.test(code);
@@ -5664,6 +5766,12 @@ const runKeitaroSync = async ({
     preparedPayload = ensurePayloadMeasure(preparedPayload, measure);
   });
   preparedPayload = normalizeKeitaroPayload(preparedPayload);
+  const syncRangeBounds = syncTarget === "overall" ? resolveKeitaroRangeBounds(preparedPayload?.range) : null;
+  const hasRangeBounds = Boolean(syncRangeBounds?.from && syncRangeBounds?.to);
+
+  if (syncTarget === "overall" && replaceExisting && hasRangeBounds) {
+    await deleteMediaStatsByDateRange(syncRangeBounds.from, syncRangeBounds.to);
+  }
 
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
     reportPath || "/admin_api/v1/report/build"
@@ -6042,6 +6150,8 @@ const runKeitaroSync = async ({
   let placementsExtracted = 0;
   const placementSamples = new Set();
   const clearedOverallKeys = new Set();
+  const useLegacyBaseReplace =
+    syncTarget === "overall" && replaceExisting && !hasRangeBounds;
   let totalRows = 0;
 
   await iterateReportPages(preparedPayload, async ({ rows: pageRows, data: pageData }) => {
@@ -6060,9 +6170,9 @@ const runKeitaroSync = async ({
       const campaignId = String(readRowValue(row, "campaign_id") || "").trim();
       const baseRowKey = `${date}|${buyer}|${country}`;
 
-      // Keep sync idempotent via upsert.
-      // Deleting date+buyer+country before insert can leave partial data when a long sync is interrupted.
-      if (syncTarget === "overall" && replaceExisting && !clearedOverallKeys.has(baseRowKey)) {
+      // Legacy replacement path for payloads without resolvable range bounds.
+      // Prefer bounded range replacement to avoid stale keys when payload dimensions change.
+      if (useLegacyBaseReplace && !clearedOverallKeys.has(baseRowKey)) {
         await deleteMediaStatsByBaseKey(date, buyer, country);
         clearedOverallKeys.add(baseRowKey);
       }
