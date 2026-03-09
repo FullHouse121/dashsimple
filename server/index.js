@@ -3529,6 +3529,39 @@ const resolveKeitaroRangeBounds = (range) => {
   return null;
 };
 
+const toKeitaroCustomRangePayload = (payload, fallbackDays = 7) => {
+  if (!payload || typeof payload !== "object") return payload;
+  const normalized = normalizeKeitaroPayload(sanitizeKeitaroRange(payload));
+  const payloadRange =
+    normalized?.range && typeof normalized.range === "object" && !Array.isArray(normalized.range)
+      ? { ...normalized.range }
+      : {};
+  const timezone = resolveKeitaroTimezone(payloadRange.timezone);
+  const rangeBounds = resolveKeitaroRangeBounds({ ...payloadRange, timezone });
+
+  let from = rangeBounds?.from || "";
+  let to = rangeBounds?.to || "";
+  if (!from || !to) {
+    const days = Number.isFinite(fallbackDays) && fallbackDays > 0 ? fallbackDays : 7;
+    const end = getTimezoneDateUtc(timezone);
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    from = formatIsoDate(start);
+    to = formatIsoDate(end);
+  }
+
+  return {
+    ...normalized,
+    range: {
+      ...payloadRange,
+      interval: "custom",
+      timezone,
+      from,
+      to,
+    },
+  };
+};
+
 const isValidCurrencyCode = (code) => /^[A-Z]{3}$/.test(code);
 
 const fetchGoogleRate = async (base, target) => {
@@ -7041,9 +7074,12 @@ app.all("/api/keitaro/cron", async (req, res) => {
     });
   }
 
-  const payload = applyKeitaroRange(parseJsonEnv(payloadRaw));
+  let payload = applyKeitaroRange(parseJsonEnv(payloadRaw));
   if (!payload) {
     return res.status(400).json({ error: "KEITARO_REPORT_PAYLOAD must be valid JSON." });
+  }
+  if (isDeviceTarget || isUserTarget) {
+    payload = toKeitaroCustomRangePayload(payload);
   }
 
   const runSync = async () => {
@@ -7066,7 +7102,10 @@ app.all("/api/keitaro/cron", async (req, res) => {
 
       // Keep user behavior fresh even when cron target is overall.
       if (target === "overall" && process.env.KEITARO_USER_REPORT_PAYLOAD) {
-        const userPayload = applyKeitaroRange(parseJsonEnv(process.env.KEITARO_USER_REPORT_PAYLOAD));
+        let userPayload = applyKeitaroRange(parseJsonEnv(process.env.KEITARO_USER_REPORT_PAYLOAD));
+        if (userPayload) {
+          userPayload = toKeitaroCustomRangePayload(userPayload);
+        }
         if (userPayload) {
           const userMapping = parseJsonEnv(process.env.KEITARO_USER_MAPPING, defaultKeitaroMapping);
           const userReplace = parseBooleanEnv(process.env.KEITARO_USER_REPLACE, true);
