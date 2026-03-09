@@ -8825,6 +8825,11 @@ function DomainsDashboard({ authUser }) {
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
+  const [tableDomainFilter, setTableDomainFilter] = React.useState("all");
+  const [tableGameFilter, setTableGameFilter] = React.useState("all");
+  const [tablePlatformFilter, setTablePlatformFilter] = React.useState("all");
+  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
 
   const updateDomainForm = (key) => (event) => {
     setDomainForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -8972,6 +8977,128 @@ function DomainsDashboard({ authUser }) {
     return domains.filter((domain) => domain.owner_id === authUser?.id);
   }, [canManageDomains, domains, authUser?.id]);
 
+  const domainTableRows = React.useMemo(
+    () =>
+      visibleDomains.map((domain) => ({
+        domain,
+        ownerLabel: resolveOwnerName(domain),
+      })),
+    [visibleDomains, resolveOwnerName]
+  );
+
+  const domainFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.domain?.domain || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [domainTableRows]);
+
+  const gameFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.domain?.game || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [domainTableRows]);
+
+  const platformFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.domain?.platform || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [domainTableRows]);
+
+  const geoFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.domain?.country || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [domainTableRows]);
+
+  const ownerFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.ownerLabel || "").trim();
+      if (!value || value === "—") return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [domainTableRows]);
+
+  React.useEffect(() => {
+    if (tableDomainFilter !== "all" && !domainFilterOptions.some((option) => option.value === tableDomainFilter)) {
+      setTableDomainFilter("all");
+    }
+    if (tableGameFilter !== "all" && !gameFilterOptions.some((option) => option.value === tableGameFilter)) {
+      setTableGameFilter("all");
+    }
+    if (
+      tablePlatformFilter !== "all" &&
+      !platformFilterOptions.some((option) => option.value === tablePlatformFilter)
+    ) {
+      setTablePlatformFilter("all");
+    }
+    if (tableGeoFilter !== "all" && !geoFilterOptions.some((option) => option.value === tableGeoFilter)) {
+      setTableGeoFilter("all");
+    }
+    if (tableOwnerFilter !== "all" && !ownerFilterOptions.some((option) => option.value === tableOwnerFilter)) {
+      setTableOwnerFilter("all");
+    }
+  }, [
+    tableDomainFilter,
+    tableGameFilter,
+    tablePlatformFilter,
+    tableGeoFilter,
+    tableOwnerFilter,
+    domainFilterOptions,
+    gameFilterOptions,
+    platformFilterOptions,
+    geoFilterOptions,
+    ownerFilterOptions,
+  ]);
+
+  const filteredDomainRows = React.useMemo(
+    () =>
+      domainTableRows.filter((row) => {
+        if (tableDomainFilter !== "all" && String(row.domain?.domain || "") !== tableDomainFilter) return false;
+        if (tableGameFilter !== "all" && String(row.domain?.game || "") !== tableGameFilter) return false;
+        if (tablePlatformFilter !== "all" && String(row.domain?.platform || "") !== tablePlatformFilter) return false;
+        if (tableGeoFilter !== "all" && String(row.domain?.country || "") !== tableGeoFilter) return false;
+        if (canManageDomains && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
+        return true;
+      }),
+    [
+      domainTableRows,
+      tableDomainFilter,
+      tableGameFilter,
+      tablePlatformFilter,
+      tableGeoFilter,
+      tableOwnerFilter,
+      canManageDomains,
+    ]
+  );
+
   return (
     <section className="form-section">
       <motion.div
@@ -9062,10 +9189,74 @@ function DomainsDashboard({ authUser }) {
           <div className="empty-state">{t("Loading domains…")}</div>
         ) : domainState.error ? (
           <div className="empty-state error">{domainState.error}</div>
-        ) : visibleDomains.length === 0 ? (
+        ) : domainTableRows.length === 0 ? (
           <div className="empty-state">{t("No domains added yet.")}</div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap pixel-table-wrap">
+            <div className="pixel-table-toolbar">
+              <div className="field">
+                <label>{t("Domain")}</label>
+                <CountryDropdownPicker
+                  value={tableDomainFilter}
+                  onChange={setTableDomainFilter}
+                  options={domainFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find domains")}
+                  emptyResultsLabel={t("No entries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Game")}</label>
+                <CountryDropdownPicker
+                  value={tableGameFilter}
+                  onChange={setTableGameFilter}
+                  options={gameFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find games")}
+                  emptyResultsLabel={t("No entries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Platform")}</label>
+                <CountryDropdownPicker
+                  value={tablePlatformFilter}
+                  onChange={setTablePlatformFilter}
+                  options={platformFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find platforms")}
+                  emptyResultsLabel={t("No entries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("GEO")}</label>
+                <CountryDropdownPicker
+                  value={tableGeoFilter}
+                  onChange={setTableGeoFilter}
+                  options={geoFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              {canManageDomains ? (
+                <div className="field">
+                  <label>{t("Owner")}</label>
+                  <CountryDropdownPicker
+                    value={tableOwnerFilter}
+                    onChange={setTableOwnerFilter}
+                    options={ownerFilterOptions}
+                    allOption={{ value: "all", label: t("All") }}
+                    placeholder={t("Select")}
+                    searchPlaceholder={t("Type to find owners")}
+                    emptyResultsLabel={t("No owners found.")}
+                  />
+                </div>
+              ) : null}
+            </div>
             <table className="entries-table domain-table">
               <thead>
                 <tr>
@@ -9079,13 +9270,13 @@ function DomainsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {visibleDomains.map((domain) => (
+                {filteredDomainRows.map(({ domain, ownerLabel }) => (
                   <tr key={domain.id}>
                     <td>{domain.domain}</td>
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
                     <td>{domain.country || "—"}</td>
-                    <td>{resolveOwnerName(domain)}</td>
+                    <td>{ownerLabel}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
                         <select
@@ -9116,6 +9307,9 @@ function DomainsDashboard({ authUser }) {
                 ))}
               </tbody>
             </table>
+            {!filteredDomainRows.length ? (
+              <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
           </div>
         )}
       </motion.div>
@@ -9134,6 +9328,9 @@ function PixelsDashboard({ authUser }) {
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
   const [tableBuyerFilter, setTableBuyerFilter] = React.useState("all");
+  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
+  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
@@ -9157,6 +9354,7 @@ function PixelsDashboard({ authUser }) {
   });
   const copyToastTimeoutRef = React.useRef(null);
   const normalizeRole = React.useCallback((value) => String(value || "").trim().toLowerCase(), []);
+  const pixelStatusValues = React.useMemo(() => ["Active", "Pending", "Paused", "Expired", "Blocked"], []);
 
   const updatePixelForm = (key) => (event) => {
     setPixelForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -9477,20 +9675,82 @@ function PixelsDashboard({ authUser }) {
   );
 
   const statusDropdownOptions = React.useMemo(
-    () => ["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => ({ value: status, label: t(status) })),
-    [t]
+    () => pixelStatusValues.map((status) => ({ value: status, label: t(status) })),
+    [pixelStatusValues, t]
+  );
+
+  const domainOwnerByFlow = React.useMemo(() => {
+    const map = new Map();
+    domains.forEach((domain) => {
+      const flow = String(domain?.domain || "").trim().toLowerCase();
+      if (!flow) return;
+      let ownerName = "—";
+      if (domain?.owner_name) {
+        ownerName = domain.owner_name;
+      } else if (domain?.owner_id && ownerLookup[domain.owner_id]) {
+        ownerName = ownerLookup[domain.owner_id];
+      } else if (domain?.owner_id && domain.owner_id === authUser?.id) {
+        ownerName = authUser?.username || "You";
+      } else if (domain?.owner_role) {
+        ownerName = t(domain.owner_role);
+      }
+      map.set(flow, ownerName);
+    });
+    return map;
+  }, [domains, ownerLookup, authUser?.id, authUser?.username, t]);
+
+  const normalizeStatusValue = React.useCallback(
+    (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return pixelStatusValues[0];
+      const matched = pixelStatusValues.find((status) => status.toLowerCase() === raw.toLowerCase());
+      return matched || raw;
+    },
+    [pixelStatusValues]
   );
 
   const pixelTableRows = React.useMemo(
     () =>
       visiblePixels.map((pixel) => ({
         pixel,
+        buyerLabel: domainOwnerByFlow.get(String(pixel?.flows || "").trim().toLowerCase()) || "—",
+        geoLabel: String(pixel?.geo || "").trim() || "—",
+        statusLabel: normalizeStatusValue(pixel?.status),
         ownerLabel: resolveOwnerLabel(pixel),
       })),
-    [visiblePixels, authUser?.id, authUser?.username, ownerLookup, t]
+    [visiblePixels, domainOwnerByFlow, normalizeStatusValue, authUser?.id, authUser?.username, ownerLookup, t]
   );
 
   const pixelBuyerOptions = React.useMemo(() => {
+    const unique = new Map();
+    pixelTableRows.forEach((row) => {
+      const buyer = String(row.buyerLabel || "").trim();
+      if (!buyer || buyer === "—") return;
+      unique.set(buyer.toLowerCase(), buyer);
+    });
+    return Array.from(unique.values())
+      .sort((first, second) => first.localeCompare(second))
+      .map((buyer) => ({ value: buyer, label: buyer, search: buyer }));
+  }, [pixelTableRows]);
+
+  const pixelGeoOptions = React.useMemo(() => {
+    const unique = new Map();
+    pixelTableRows.forEach((row) => {
+      const geo = String(row.geoLabel || "").trim();
+      if (!geo || geo === "—") return;
+      unique.set(geo.toLowerCase(), geo);
+    });
+    return Array.from(unique.values())
+      .sort((first, second) => first.localeCompare(second))
+      .map((geo) => ({ value: geo, label: geo, search: geo }));
+  }, [pixelTableRows]);
+
+  const pixelStatusFilterOptions = React.useMemo(
+    () => pixelStatusValues.map((status) => ({ value: status, label: t(status), search: status })),
+    [pixelStatusValues, t]
+  );
+
+  const pixelOwnerOptions = React.useMemo(() => {
     const unique = new Map();
     pixelTableRows.forEach((row) => {
       const owner = String(row.ownerLabel || "").trim();
@@ -9509,10 +9769,30 @@ function PixelsDashboard({ authUser }) {
     }
   }, [tableBuyerFilter, pixelBuyerOptions]);
 
+  React.useEffect(() => {
+    if (tableGeoFilter !== "all" && !pixelGeoOptions.some((option) => option.value === tableGeoFilter)) {
+      setTableGeoFilter("all");
+    }
+    if (
+      tableStatusFilter !== "all" &&
+      !pixelStatusFilterOptions.some((option) => option.value === tableStatusFilter)
+    ) {
+      setTableStatusFilter("all");
+    }
+    if (tableOwnerFilter !== "all" && !pixelOwnerOptions.some((option) => option.value === tableOwnerFilter)) {
+      setTableOwnerFilter("all");
+    }
+  }, [tableGeoFilter, tableStatusFilter, tableOwnerFilter, pixelGeoOptions, pixelStatusFilterOptions, pixelOwnerOptions]);
+
   const filteredPixelTableRows = React.useMemo(() => {
-    if (tableBuyerFilter === "all") return pixelTableRows;
-    return pixelTableRows.filter((row) => row.ownerLabel === tableBuyerFilter);
-  }, [pixelTableRows, tableBuyerFilter]);
+    return pixelTableRows.filter((row) => {
+      if (tableBuyerFilter !== "all" && row.buyerLabel !== tableBuyerFilter) return false;
+      if (tableGeoFilter !== "all" && row.geoLabel !== tableGeoFilter) return false;
+      if (tableStatusFilter !== "all" && row.statusLabel !== tableStatusFilter) return false;
+      if (canManagePixels && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
+      return true;
+    });
+  }, [pixelTableRows, tableBuyerFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, canManagePixels]);
 
   return (
     <section className="form-section">
@@ -9704,6 +9984,44 @@ function PixelsDashboard({ authUser }) {
                   emptyResultsLabel={t("No buyers found.")}
                 />
               </div>
+              <div className="field">
+                <label>{t("GEO")}</label>
+                <CountryDropdownPicker
+                  value={tableGeoFilter}
+                  onChange={setTableGeoFilter}
+                  options={pixelGeoOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Status")}</label>
+                <CountryDropdownPicker
+                  value={tableStatusFilter}
+                  onChange={setTableStatusFilter}
+                  options={pixelStatusFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find status")}
+                  emptyResultsLabel={t("No status found.")}
+                />
+              </div>
+              {canManagePixels ? (
+                <div className="field">
+                  <label>{t("Owner")}</label>
+                  <CountryDropdownPicker
+                    value={tableOwnerFilter}
+                    onChange={setTableOwnerFilter}
+                    options={pixelOwnerOptions}
+                    allOption={{ value: "all", label: t("All") }}
+                    placeholder={t("Select")}
+                    searchPlaceholder={t("Type to find owners")}
+                    emptyResultsLabel={t("No owners found.")}
+                  />
+                </div>
+              ) : null}
             </div>
             <table className="entries-table pixel-table">
               <thead>
@@ -9831,6 +10149,10 @@ function AccountsDashboard({ authUser }) {
   const [editPixelQuery, setEditPixelQuery] = React.useState("");
   const [checkingIntegrationId, setCheckingIntegrationId] = React.useState(null);
   const [integrationCheckResult, setIntegrationCheckResult] = React.useState({});
+  const [tableAccountFilter, setTableAccountFilter] = React.useState("all");
+  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
+  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
   const [form, setForm] = React.useState({
     accountNumber: "",
     status: "Active",
@@ -10261,6 +10583,101 @@ function AccountsDashboard({ authUser }) {
     if (!countries.length) return "—";
     return countries.join(", ");
   };
+
+  const accountTableRows = React.useMemo(
+    () =>
+      visibleAccounts.map((row) => ({
+        row,
+        ownerLabel: resolveOwnerLabel(row),
+        countries: normalizeCountryList(row?.countries),
+      })),
+    [visibleAccounts, normalizeCountryList, authUser?.id, authUser?.username, ownerLookup, t]
+  );
+
+  const accountFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    accountTableRows.forEach(({ row }) => {
+      const value = String(row?.account_number || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [accountTableRows]);
+
+  const accountGeoFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    accountTableRows.forEach(({ countries }) => {
+      countries.forEach((country) => {
+        const value = String(country || "").trim();
+        if (!value) return;
+        unique.set(value.toLowerCase(), value);
+      });
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [accountTableRows]);
+
+  const accountStatusFilterOptions = React.useMemo(
+    () => accountStatusOptions.map((status) => ({ value: status, label: t(status), search: status })),
+    [accountStatusOptions, t]
+  );
+
+  const accountOwnerFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    accountTableRows.forEach(({ ownerLabel }) => {
+      const value = String(ownerLabel || "").trim();
+      if (!value || value === "—") return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [accountTableRows]);
+
+  React.useEffect(() => {
+    if (tableAccountFilter !== "all" && !accountFilterOptions.some((option) => option.value === tableAccountFilter)) {
+      setTableAccountFilter("all");
+    }
+    if (tableGeoFilter !== "all" && !accountGeoFilterOptions.some((option) => option.value === tableGeoFilter)) {
+      setTableGeoFilter("all");
+    }
+    if (
+      tableStatusFilter !== "all" &&
+      !accountStatusFilterOptions.some((option) => option.value === tableStatusFilter)
+    ) {
+      setTableStatusFilter("all");
+    }
+    if (
+      tableOwnerFilter !== "all" &&
+      !accountOwnerFilterOptions.some((option) => option.value === tableOwnerFilter)
+    ) {
+      setTableOwnerFilter("all");
+    }
+  }, [
+    tableAccountFilter,
+    tableGeoFilter,
+    tableStatusFilter,
+    tableOwnerFilter,
+    accountFilterOptions,
+    accountGeoFilterOptions,
+    accountStatusFilterOptions,
+    accountOwnerFilterOptions,
+  ]);
+
+  const filteredAccountRows = React.useMemo(
+    () =>
+      accountTableRows.filter(({ row, ownerLabel, countries }) => {
+        if (tableAccountFilter !== "all" && String(row?.account_number || "") !== tableAccountFilter) return false;
+        if (tableGeoFilter !== "all" && !countries.includes(tableGeoFilter)) return false;
+        if (tableStatusFilter !== "all" && String(row?.status || "") !== tableStatusFilter) return false;
+        if (isLeadership && tableOwnerFilter !== "all" && ownerLabel !== tableOwnerFilter) return false;
+        return true;
+      }),
+    [accountTableRows, tableAccountFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, isLeadership]
+  );
 
   const resolveIntegrationState = (row) => {
     const integrationId = toId(row?.meta_integration_id);
@@ -11083,10 +11500,62 @@ function AccountsDashboard({ authUser }) {
 
         {accountState.loading ? (
           <div className="empty-state">{t("Loading accounts…")}</div>
-        ) : visibleAccounts.length === 0 ? (
+        ) : accountTableRows.length === 0 ? (
           <div className="empty-state">{t("No accounts added yet.")}</div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap pixel-table-wrap">
+            <div className="pixel-table-toolbar">
+              <div className="field">
+                <label>{t("Account")}</label>
+                <CountryDropdownPicker
+                  value={tableAccountFilter}
+                  onChange={setTableAccountFilter}
+                  options={accountFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find accounts")}
+                  emptyResultsLabel={t("No entries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("GEO")}</label>
+                <CountryDropdownPicker
+                  value={tableGeoFilter}
+                  onChange={setTableGeoFilter}
+                  options={accountGeoFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Status")}</label>
+                <CountryDropdownPicker
+                  value={tableStatusFilter}
+                  onChange={setTableStatusFilter}
+                  options={accountStatusFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find status")}
+                  emptyResultsLabel={t("No status found.")}
+                />
+              </div>
+              {isLeadership ? (
+                <div className="field">
+                  <label>{t("Owner")}</label>
+                  <CountryDropdownPicker
+                    value={tableOwnerFilter}
+                    onChange={setTableOwnerFilter}
+                    options={accountOwnerFilterOptions}
+                    allOption={{ value: "all", label: t("All") }}
+                    placeholder={t("Select")}
+                    searchPlaceholder={t("Type to find owners")}
+                    emptyResultsLabel={t("No owners found.")}
+                  />
+                </div>
+              ) : null}
+            </div>
             <table className="entries-table accounts-table">
               <thead>
                 <tr>
@@ -11101,7 +11570,7 @@ function AccountsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {visibleAccounts.map((row) => {
+                {filteredAccountRows.map(({ row, ownerLabel }) => {
                   const integrationState = resolveIntegrationState(row);
                   const checkResult = integrationCheckResult[row.id];
                   const rowCanManage = canManageRow(row);
@@ -11133,7 +11602,7 @@ function AccountsDashboard({ authUser }) {
                           <span className="accounts-integration-caption">{row.integration_account_number}</span>
                         ) : null}
                       </td>
-                      <td>{resolveOwnerLabel(row)}</td>
+                      <td>{ownerLabel}</td>
                       <td>
                         <div className="accounts-actions-cell">
                           <div className="accounts-action-group">
@@ -11184,6 +11653,9 @@ function AccountsDashboard({ authUser }) {
                 })}
               </tbody>
             </table>
+            {!filteredAccountRows.length ? (
+              <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
           </div>
         )}
       </motion.div>
@@ -11205,6 +11677,12 @@ function MetaTokenDashboard({ authUser }) {
   const [buyerState, setBuyerState] = React.useState({ loading: true, error: null });
   const [selectedBindingId, setSelectedBindingId] = React.useState(null);
   const [copyFeedback, setCopyFeedback] = React.useState("");
+  const [commentModal, setCommentModal] = React.useState({
+    open: false,
+    integration: null,
+    value: "",
+    saving: false,
+  });
   const previousCostRef = React.useRef(null);
   const [costBurst, setCostBurst] = React.useState(false);
   const [form, setForm] = React.useState({
@@ -11487,6 +11965,42 @@ function MetaTokenDashboard({ authUser }) {
     }
   };
 
+  const openCommentModal = (integration) => {
+    if (!canManage || !integration?.id) return;
+    setCommentModal({
+      open: true,
+      integration,
+      value: String(integration.comment || ""),
+      saving: false,
+    });
+  };
+
+  const closeCommentModal = () => {
+    setCommentModal({ open: false, integration: null, value: "", saving: false });
+  };
+
+  const handleCommentSave = async () => {
+    const integrationId = Number.parseInt(String(commentModal.integration?.id || ""), 10);
+    if (!Number.isFinite(integrationId)) return;
+    try {
+      setCommentModal((prev) => ({ ...prev, saving: true }));
+      const response = await apiFetch(`/api/meta-tokens/${integrationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: String(commentModal.value || "").trim() || null }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update comment.");
+      }
+      await fetchIntegrations();
+      closeCommentModal();
+    } catch (error) {
+      setCommentModal((prev) => ({ ...prev, saving: false }));
+      setIntegrationState({ loading: false, error: error.message || "Failed to update comment." });
+    }
+  };
+
   const visibleIntegrations = React.useMemo(() => {
     if (canManage) return integrations;
     return integrations.filter((row) => row.owner_id === authUser?.id);
@@ -11611,6 +12125,58 @@ function MetaTokenDashboard({ authUser }) {
 
   return (
     <section className="form-section meta-token-sections">
+      <AnimatePresence>
+        {canManage && commentModal.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeCommentModal}
+          >
+            <motion.div
+              className="modal comment-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">Integration Comment</p>
+                  <h2>Update comment</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closeCommentModal}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="field">
+                  <label>Comment</label>
+                  <textarea
+                    rows={4}
+                    value={commentModal.value}
+                    onChange={(event) =>
+                      setCommentModal((prev) => ({ ...prev, value: event.target.value }))
+                    }
+                    placeholder="Add a comment"
+                  />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={closeCommentModal} disabled={commentModal.saving}>
+                  Cancel
+                </button>
+                <button className="action-pill" type="button" onClick={handleCommentSave} disabled={commentModal.saving}>
+                  {commentModal.saving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div
         className="panel meta-bindings-panel"
         initial={{ opacity: 0, y: 20 }}
@@ -11858,6 +12424,11 @@ function MetaTokenDashboard({ authUser }) {
                         <button className="icon-btn" type="button" onClick={() => handleRunCheck(row.id)} title="Run check">
                           <CheckCircle size={14} />
                         </button>
+                        {canManage ? (
+                          <button className="icon-btn" type="button" onClick={() => openCommentModal(row)} title="Edit comment">
+                            <MessageSquare size={14} />
+                          </button>
+                        ) : null}
                         {canManage ? (
                           <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)} title="Delete">
                             <Trash2 size={14} />

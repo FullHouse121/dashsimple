@@ -3517,7 +3517,7 @@ select {
 
 .pixel-table-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 340px);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   align-items: end;
 }
