@@ -1486,13 +1486,24 @@ const accountCountryOptions = [
   "Azerbaijan",
 ];
 
-const accountCountryMap = new Map(accountCountryOptions.map((country) => [country.toLowerCase(), country]));
+const normalizeCountryKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const accountCountryMap = new Map(
+  accountCountryOptions.map((country) => [normalizeCountryKey(country), country])
+);
+accountCountryMap.set("brasil", "Brazil");
 
 const normalizeAccountCountries = (value) => {
   const rawCountries = normalizeStringList(value);
   const normalized = [];
   for (const rawCountry of rawCountries) {
-    const canonical = accountCountryMap.get(rawCountry.toLowerCase());
+    const canonical = accountCountryMap.get(normalizeCountryKey(rawCountry));
     if (!canonical) {
       return { error: `Unsupported country: ${rawCountry}` };
     }
