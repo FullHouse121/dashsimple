@@ -3432,16 +3432,7 @@ app.patch("/api/expenses/:id", async (req, res) => {
     return res.status(400).json({ error: "Missing status." });
   }
   await query("UPDATE expenses SET status = $1 WHERE id = $2", [status, id]);
-  res.json({
-    ok: true,
-    assigned: {
-      buyer: context.buyer,
-      domain: context.domain,
-      country: context.country,
-      campaign_id: context.campaign_id,
-      external_id: context.external_id,
-    },
-  });
+  res.json({ ok: true, id, status });
 });
 
 app.delete("/api/expenses/:id", async (req, res) => {

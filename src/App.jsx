@@ -4088,6 +4088,7 @@ function FinancesDashboard({
   entries,
   entryState,
   onEntryChange,
+  onEntryValueChange,
   onEntrySubmit,
   onEntryReset,
   onEntryStatusChange,
@@ -4265,7 +4266,7 @@ function FinancesDashboard({
               <label>{t("Country")}</label>
               <CountryDropdownPicker
                 value={entry.country}
-                onChange={(country) => setEntry((prev) => ({ ...prev, country }))}
+                onChange={(country) => onEntryValueChange?.("country", country)}
                 options={countryOptions}
                 placeholder={t("Select")}
                 searchPlaceholder={t("Type to find countries")}
@@ -15228,6 +15229,10 @@ export default function App() {
     setEntry((prev) => ({ ...prev, [key]: event.target.value }));
   };
 
+  const handleEntryValueChange = React.useCallback((key, value) => {
+    setEntry((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
   const resetEntry = () => {
     setEntry({
       date: "2026-02-07",
@@ -15263,6 +15268,10 @@ export default function App() {
 
   const handleEntrySubmit = async (event) => {
     event.preventDefault();
+    if (!String(entry.country || "").trim()) {
+      setEntryState((prev) => ({ ...prev, error: "Country is required." }));
+      return;
+    }
     try {
       const response = await apiFetch("/api/expenses", {
         method: "POST",
@@ -15270,7 +15279,8 @@ export default function App() {
         body: JSON.stringify(entry),
       });
       if (!response.ok) {
-        throw new Error("Failed to save entry.");
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to save entry.");
       }
       await fetchEntries();
       resetEntry();
@@ -15532,6 +15542,7 @@ export default function App() {
             entries={entries}
             entryState={entryState}
             onEntryChange={handleEntryChange}
+            onEntryValueChange={handleEntryValueChange}
             onEntrySubmit={handleEntrySubmit}
             onEntryReset={resetEntry}
             onEntryStatusChange={handleEntryStatusChange}
