@@ -662,7 +662,11 @@ const selectMediaStats = async (limit) =>
          COALESCE(country, ''),
          COALESCE(city, ''),
          COALESCE(region, ''),
-         COALESCE(placement, '')
+         COALESCE(placement, ''),
+         COALESCE(domain, ''),
+         COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''),
+         COALESCE(ad_name, '')
        )
          id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
          spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
@@ -674,6 +678,10 @@ const selectMediaStats = async (limit) =>
          COALESCE(city, ''),
          COALESCE(region, ''),
          COALESCE(placement, ''),
+         COALESCE(domain, ''),
+         COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''),
+         COALESCE(ad_name, ''),
          id DESC
      ) dedup
      ORDER BY date DESC, id DESC
