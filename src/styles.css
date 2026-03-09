@@ -1293,12 +1293,23 @@ select {
 
 .field select {
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 18px) calc(50% - 2px),
-    calc(100% - 12px) calc(50% - 2px);
+  min-height: 52px;
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.11);
+  background: linear-gradient(160deg, rgba(25, 27, 32, 0.95), rgba(20, 22, 27, 0.95));
+  color: #e7edf8;
+  font-weight: 600;
+  background-image: linear-gradient(45deg, transparent 50%, #9aa5b6 50%),
+    linear-gradient(135deg, #9aa5b6 50%, transparent 50%);
+  background-position: calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
   background-size: 6px 6px, 6px 6px;
   background-repeat: no-repeat;
+}
+
+.field select:focus {
+  outline: none;
+  border-color: rgba(62, 205, 133, 0.56);
+  box-shadow: 0 0 0 2px rgba(62, 205, 133, 0.15);
 }
 
 .field-sep {
@@ -3497,6 +3508,34 @@ select {
 
 .pixel-table {
   min-width: 1080px;
+}
+
+.pixel-table-wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.pixel-table-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 340px);
+  gap: 12px;
+  align-items: end;
+}
+
+.pixel-table-toolbar .field {
+  gap: 6px;
+}
+
+.pixel-table-toolbar .field label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .pixel-table-toolbar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stats-table {

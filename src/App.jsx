@@ -299,10 +299,23 @@ function CountryDropdownPicker({
   const [query, setQuery] = React.useState("");
   const normalizedValue = String(value ?? "");
   const normalizedOptions = React.useMemo(
-    () =>
-      Array.isArray(options)
-        ? options.map((item) => ({ value: String(item), label: String(item) }))
-        : [],
+    () => {
+      if (!Array.isArray(options)) return [];
+      return options
+        .map((item) => {
+          if (item && typeof item === "object") {
+            const optionValue = String(item.value ?? item.label ?? "");
+            if (!optionValue) return null;
+            const optionLabel = String(item.label ?? optionValue);
+            const optionSearch = String(item.search ?? `${optionLabel} ${optionValue}`);
+            return { value: optionValue, label: optionLabel, search: optionSearch };
+          }
+          const raw = String(item ?? "");
+          if (!raw) return null;
+          return { value: raw, label: raw, search: raw };
+        })
+        .filter(Boolean);
+    },
     [options]
   );
   const optionList = React.useMemo(() => {
@@ -311,6 +324,7 @@ function CountryDropdownPicker({
       list.unshift({
         value: String(allOption.value ?? ""),
         label: String(allOption.label ?? allOption.value ?? ""),
+        search: String(allOption.search ?? allOption.label ?? allOption.value ?? ""),
       });
     }
     return list;
@@ -320,7 +334,7 @@ function CountryDropdownPicker({
   const hasSelection = Boolean(selectedOption || normalizedValue);
   const normalizedQuery = String(query || "").trim().toLowerCase();
   const filteredOptions = optionList.filter((item) =>
-    item.label.toLowerCase().includes(normalizedQuery)
+    String(item.search ?? item.label).toLowerCase().includes(normalizedQuery)
   );
 
   return (
@@ -9119,6 +9133,7 @@ function PixelsDashboard({ authUser }) {
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(true);
+  const [tableBuyerFilter, setTableBuyerFilter] = React.useState("all");
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
@@ -9248,6 +9263,11 @@ function PixelsDashboard({ authUser }) {
 
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
+    const flow = String(pixelForm.flow || "").trim();
+    if (!flow) {
+      setPixelState({ loading: false, error: "Flow is required." });
+      return;
+    }
     try {
       const response = await apiFetch("/api/pixels", {
         method: "POST",
@@ -9255,7 +9275,7 @@ function PixelsDashboard({ authUser }) {
         body: JSON.stringify({
           pixelId: pixelForm.pixelId,
           tokenEaag: pixelForm.tokenEaag,
-          flow: pixelForm.flow,
+          flow,
           geo: pixelForm.geo,
           status: pixelForm.status,
           comment: pixelForm.comment,
@@ -9401,6 +9421,14 @@ function PixelsDashboard({ authUser }) {
     return pixel?.owner_role ? t(pixel.owner_role) : "—";
   };
 
+  const resolveDomainOwnerLabel = (domain) => {
+    if (domain?.owner_name) return domain.owner_name;
+    if (domain?.owner_id && ownerLookup[domain.owner_id]) return ownerLookup[domain.owner_id];
+    if (domain?.owner_id && domain.owner_id === authUser?.id) return authUser?.username || "You";
+    if (domain?.owner_role) return t(domain.owner_role);
+    return "—";
+  };
+
   const filteredDomains = React.useMemo(() => {
     if (canManagePixels) return domains;
     const loggedIdRaw = authUser?.id;
@@ -9433,6 +9461,58 @@ function PixelsDashboard({ authUser }) {
     if (canManagePixels) return pixels;
     return pixels.filter((pixel) => pixel.owner_id === authUser?.id);
   }, [canManagePixels, pixels, authUser?.id]);
+
+  const flowDropdownOptions = React.useMemo(
+    () =>
+      filteredDomains.map((domain) => {
+        const ownerName = resolveDomainOwnerLabel(domain);
+        const domainName = String(domain?.domain || "").trim();
+        return {
+          value: domainName,
+          label: ownerName && ownerName !== "—" ? `${domainName} · ${ownerName}` : domainName,
+          search: `${domainName} ${ownerName}`.trim(),
+        };
+      }),
+    [filteredDomains, authUser?.id, authUser?.username, ownerLookup, t]
+  );
+
+  const statusDropdownOptions = React.useMemo(
+    () => ["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => ({ value: status, label: t(status) })),
+    [t]
+  );
+
+  const pixelTableRows = React.useMemo(
+    () =>
+      visiblePixels.map((pixel) => ({
+        pixel,
+        ownerLabel: resolveOwnerLabel(pixel),
+      })),
+    [visiblePixels, authUser?.id, authUser?.username, ownerLookup, t]
+  );
+
+  const pixelBuyerOptions = React.useMemo(() => {
+    const unique = new Map();
+    pixelTableRows.forEach((row) => {
+      const owner = String(row.ownerLabel || "").trim();
+      if (!owner || owner === "—") return;
+      unique.set(owner.toLowerCase(), owner);
+    });
+    return Array.from(unique.values())
+      .sort((first, second) => first.localeCompare(second))
+      .map((owner) => ({ value: owner, label: owner, search: owner }));
+  }, [pixelTableRows]);
+
+  React.useEffect(() => {
+    if (tableBuyerFilter === "all") return;
+    if (!pixelBuyerOptions.some((option) => option.value === tableBuyerFilter)) {
+      setTableBuyerFilter("all");
+    }
+  }, [tableBuyerFilter, pixelBuyerOptions]);
+
+  const filteredPixelTableRows = React.useMemo(() => {
+    if (tableBuyerFilter === "all") return pixelTableRows;
+    return pixelTableRows.filter((row) => row.ownerLabel === tableBuyerFilter);
+  }, [pixelTableRows, tableBuyerFilter]);
 
   return (
     <section className="form-section">
@@ -9546,24 +9626,20 @@ function PixelsDashboard({ authUser }) {
             </div>
             <div className="field">
               <label>{t("Flow")}</label>
-              <select
+              <CountryDropdownPicker
                 value={pixelForm.flow}
-                onChange={updatePixelForm("flow")}
-                required
-              >
-                <option value="">
-                  {domainState.loading
+                onChange={(flow) => setPixelForm((prev) => ({ ...prev, flow }))}
+                options={flowDropdownOptions}
+                placeholder={
+                  domainState.loading
                     ? t("Loading...")
-                    : filteredDomains.length
+                    : flowDropdownOptions.length
                       ? t("Select")
-                      : t("No flows")}
-                </option>
-                {filteredDomains.map((domain) => (
-                  <option key={domain.id} value={domain.domain}>
-                    {domain.domain}
-                  </option>
-                ))}
-              </select>
+                      : t("No flows")
+                }
+                searchPlaceholder={t("Type to find flows")}
+                emptyResultsLabel={t("No flows")}
+              />
             </div>
             <div className="field">
               <label>{t("GEO")}</label>
@@ -9578,13 +9654,14 @@ function PixelsDashboard({ authUser }) {
             </div>
             <div className="field">
               <label>{t("Status")}</label>
-              <select value={pixelForm.status} onChange={updatePixelForm("status")}>
-                {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
-                  <option key={status} value={status}>
-                    {t(status)}
-                  </option>
-                ))}
-              </select>
+              <CountryDropdownPicker
+                value={pixelForm.status}
+                onChange={(status) => setPixelForm((prev) => ({ ...prev, status }))}
+                options={statusDropdownOptions}
+                placeholder={t("Select")}
+                searchPlaceholder={t("Type to find status")}
+                emptyResultsLabel={t("No status found.")}
+              />
             </div>
             <div className="field field-full">
               <label>{t("Comment")}</label>
@@ -9610,10 +9687,24 @@ function PixelsDashboard({ authUser }) {
           <div className="empty-state">{t("Loading entries…")}</div>
         ) : pixelState.error ? (
           <div className="empty-state error">{pixelState.error}</div>
-        ) : visiblePixels.length === 0 ? (
+        ) : pixelTableRows.length === 0 ? (
           <div className="empty-state">{t("No pixels added yet.")}</div>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap pixel-table-wrap">
+            <div className="pixel-table-toolbar">
+              <div className="field">
+                <label>{t("Buyer")}</label>
+                <CountryDropdownPicker
+                  value={tableBuyerFilter}
+                  onChange={setTableBuyerFilter}
+                  options={pixelBuyerOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find buyers")}
+                  emptyResultsLabel={t("No buyers found.")}
+                />
+              </div>
+            </div>
             <table className="entries-table pixel-table">
               <thead>
                 <tr>
@@ -9629,7 +9720,7 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {visiblePixels.map((pixel) => (
+                {filteredPixelTableRows.map(({ pixel, ownerLabel }) => (
                   <tr key={pixel.id}>
                     <td>{pixel.id}</td>
                     <td className="copy-cell">
@@ -9696,7 +9787,7 @@ function PixelsDashboard({ authUser }) {
                         </button>
                       )}
                     </td>
-                    <td>{resolveOwnerLabel(pixel)}</td>
+                    <td>{ownerLabel}</td>
                     <td>
                       {canManagePixels ? (
                         <button
@@ -9712,6 +9803,9 @@ function PixelsDashboard({ authUser }) {
                 ))}
               </tbody>
             </table>
+            {!filteredPixelTableRows.length ? (
+              <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
           </div>
         )}
       </motion.div>
@@ -11283,6 +11377,34 @@ function MetaTokenDashboard({ authUser }) {
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [buyers, users]);
 
+  const buyerDropdownOptions = React.useMemo(
+    () => buyerOptions.map((name) => ({ value: name, label: name, search: name })),
+    [buyerOptions]
+  );
+
+  const accountDropdownOptions = React.useMemo(
+    () =>
+      accountOptions
+        .map((row) => {
+          const accountNumber = String(row?.account_number || "").trim();
+          if (!accountNumber) return null;
+          const responsibleName = String(
+            row?.owner_name ||
+              userLookup[row?.owner_id] ||
+              row?.integration_buyer_name ||
+              row?.owner_role ||
+              ""
+          ).trim();
+          return {
+            value: accountNumber,
+            label: responsibleName ? `${accountNumber} · ${responsibleName}` : accountNumber,
+            search: `${accountNumber} ${responsibleName}`.trim(),
+          };
+        })
+        .filter(Boolean),
+    [accountOptions, userLookup]
+  );
+
   const resolveOwnerName = (row) =>
     row?.owner_name || userLookup[row?.owner_id] || row?.owner_role || authUser?.username || "—";
 
@@ -11300,14 +11422,21 @@ function MetaTokenDashboard({ authUser }) {
 
   const handleCreate = async (event) => {
     event.preventDefault();
+    const accountNumber = String(form.accountNumber || "").trim();
+    const token = String(form.token || "").trim();
+    const buyerName = String(form.buyerName || "").trim();
+    if (!accountNumber || !token || !buyerName) {
+      setIntegrationState({ loading: false, error: "Account, token, and buyer are required." });
+      return;
+    }
     try {
       const response = await apiFetch("/api/meta-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accountNumber: form.accountNumber,
-          token: form.token,
-          buyerName: form.buyerName,
+          accountNumber,
+          token,
+          buyerName,
           pixelId: form.pixelId || null,
           comment: form.comment,
         }),
@@ -11601,20 +11730,20 @@ function MetaTokenDashboard({ authUser }) {
         <form className="form-grid api-grid" onSubmit={handleCreate}>
           <div className="field">
             <label>ACC Number</label>
-            <select value={form.accountNumber} onChange={updateForm("accountNumber")} required>
-              <option value="">
-                {accountOptionsState.loading
+            <CountryDropdownPicker
+              value={form.accountNumber}
+              onChange={(accountNumber) => setForm((prev) => ({ ...prev, accountNumber }))}
+              options={accountDropdownOptions}
+              placeholder={
+                accountOptionsState.loading
                   ? "Loading accounts..."
-                  : accountOptions.length
+                  : accountDropdownOptions.length
                     ? "Select account"
-                    : "No accounts available"}
-              </option>
-              {accountOptions.map((row) => (
-                <option key={`meta-account-${row.id}-${row.account_number}`} value={row.account_number}>
-                  {row.account_number}
-                </option>
-              ))}
-            </select>
+                    : "No accounts available"
+              }
+              searchPlaceholder="Type to find accounts"
+              emptyResultsLabel="No accounts found."
+            />
           </div>
           <div className="field">
             <label>Token</label>
@@ -11622,18 +11751,20 @@ function MetaTokenDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>Buyer</label>
-            <input
-              list="meta-buyer-list"
+            <CountryDropdownPicker
               value={form.buyerName}
-              onChange={updateForm("buyerName")}
-              placeholder="e.g. Leticia"
-              required
+              onChange={(buyerName) => setForm((prev) => ({ ...prev, buyerName }))}
+              options={buyerDropdownOptions}
+              placeholder={
+                buyerState.loading
+                  ? "Loading buyers..."
+                  : buyerDropdownOptions.length
+                    ? "Select buyer"
+                    : "No buyers available"
+              }
+              searchPlaceholder="Type to find buyers"
+              emptyResultsLabel="No buyers found."
             />
-            <datalist id="meta-buyer-list">
-              {buyerOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
           </div>
           <div className="field">
             <label>Pixel (optional)</label>
