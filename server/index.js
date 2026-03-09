@@ -689,6 +689,16 @@ const selectMediaStats = async (limit) =>
     [limit]
   );
 
+const selectMediaStatsRaw = async (limit) =>
+  getRows(
+    `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
+            spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
+     FROM media_stats
+     ORDER BY date DESC, id DESC
+     LIMIT $1`,
+    [limit]
+  );
+
 const deleteMediaStatsByBaseKey = async (date, buyer, country) => {
   await query(
     `DELETE FROM media_stats
@@ -3696,7 +3706,14 @@ const decodeToken = (token) => {
   return payload;
 };
 
-const isLeadership = (user) => user?.role === "Boss" || user?.role === "Team Leader";
+const normalizeRoleName = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+const isLeadership = (user) => {
+  const normalized = normalizeRoleName(user?.role);
+  return normalized === "boss" || normalized === "teamleader";
+};
 
 const normalizeBuyerName = (value) =>
   String(value || "")
@@ -4113,7 +4130,7 @@ app.get("/api/media-stats", async (req, res) => {
   const strictRaw = String(req.query.strict || "").toLowerCase();
   const strictMode = strictRaw === "1" || strictRaw === "true" || strictRaw === "yes";
   const viewerBuyer = await resolveViewerBuyer(req.user);
-  let rows = await selectMediaStats(limit);
+  let rows = await (strictMode ? selectMediaStatsRaw(limit) : selectMediaStats(limit));
 
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
@@ -6514,7 +6531,9 @@ const runKeitaroSync = async ({
   const fallbackSpendByDate = new Map();
   const fallbackSpendByBuyer = new Map();
   const fallbackSpendByCampaignId = new Map();
-  if (syncTarget === "overall") {
+  const enableSpendFallback =
+    syncTarget === "overall" && parseBooleanEnv(process.env.KEITARO_ENABLE_SPEND_FALLBACK, false);
+  if (enableSpendFallback) {
     const fallbackDateField = map.dateField || defaultKeitaroMapping.dateField;
     const fallbackBuyerField = map.buyerField || defaultKeitaroMapping.buyerField;
     const fallbackCountryField = map.countryField || defaultKeitaroMapping.countryField;
@@ -6769,7 +6788,7 @@ const runKeitaroSync = async ({
       "uc_campaign",
     ]) ?? 0;
     let spend = readFirstNumericValueExact(row, ["cost", map.spendField, "spend", "expenses"]);
-    if (syncTarget === "overall") {
+    if (enableSpendFallback) {
       const keyDateBuyer = `${date}|${buyer}`;
       const keyDateCountry = `${date}|${country}`;
       const fallbackResolution = [

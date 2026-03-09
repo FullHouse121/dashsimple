@@ -1384,6 +1384,14 @@ const isDateInRange = (value, range) => {
   if (range?.to && day > range.to) return false;
   return true;
 };
+const normalizeRoleKey = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+const isLeadershipRole = (role) => {
+  const normalized = normalizeRoleKey(role);
+  return normalized === "boss" || normalized === "teamleader";
+};
 const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
 const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
 const normalizeBuyerKey = (value) =>
@@ -1741,7 +1749,7 @@ function HomeDashboard({
   viewerBuyer,
 }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const [hoverSeries, setHoverSeries] = React.useState(null);
   const [selectedSeries, setSelectedSeries] = React.useState([]);
   const [hoverGeo, setHoverGeo] = React.useState(null);
@@ -2963,7 +2971,7 @@ function HomeDashboard({
 
 function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const [geoRows, setGeoRows] = React.useState([]);
   const [geoState, setGeoState] = React.useState({ loading: true, error: null });
 
@@ -4926,7 +4934,7 @@ function UtmBuilder() {
 }
 
 function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
@@ -5959,7 +5967,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
 
 function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [placementEntries, setPlacementEntries] = React.useState([]);
   const [placementState, setPlacementState] = React.useState({ loading: true, error: null });
@@ -6529,7 +6537,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
 
 function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [campaignEntries, setCampaignEntries] = React.useState([]);
   const [registeredDomains, setRegisteredDomains] = React.useState([]);
@@ -7338,7 +7346,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
 
 function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [behaviorEntries, setBehaviorEntries] = React.useState([]);
   const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
@@ -7840,7 +7848,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
 
 function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filters, authUser, viewerBuyer }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "";
   const [deviceEntries, setDeviceEntries] = React.useState([]);
   const [deviceState, setDeviceState] = React.useState({ loading: true, error: null });
@@ -8527,7 +8535,7 @@ function GoalsDashboard({ authUser }) {
   );
   const mediaBuyerApproaches = approachOptions.filter((item) => item !== "All");
   const currentRole = authUser?.role || "Media Buyer";
-  const isLeadership = currentRole === "Boss" || currentRole === "Team Leader";
+  const isLeadership = isLeadershipRole(currentRole);
   const buyerId = authUser?.buyerId;
   const buyerNameFromId = teamMembers.find((member) => member.id === buyerId)?.name;
   const viewerBuyer = buyerNameFromId || authUser?.username || "";
@@ -8855,7 +8863,7 @@ function GoalsDashboard({ authUser }) {
 function DomainsDashboard({ authUser }) {
   const { t } = useLanguage();
   const ownerRole = authUser?.role || roleOptions[0];
-  const canManageDomains = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const canManageDomains = isLeadershipRole(authUser?.role);
   const [domainForm, setDomainForm] = React.useState(() => ({
     domain: "",
     status: "Active",
@@ -9362,7 +9370,7 @@ function DomainsDashboard({ authUser }) {
 
 function PixelsDashboard({ authUser }) {
   const { t } = useLanguage();
-  const canManagePixels = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const canManagePixels = isLeadershipRole(authUser?.role);
   const [pixels, setPixels] = React.useState([]);
   const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
   const [domains, setDomains] = React.useState([]);
@@ -10176,7 +10184,7 @@ function PixelsDashboard({ authUser }) {
 
 function AccountsDashboard({ authUser }) {
   const { t } = useLanguage();
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const [accounts, setAccounts] = React.useState([]);
   const [accountState, setAccountState] = React.useState({ loading: true, error: null });
   const [pixels, setPixels] = React.useState([]);
@@ -11708,7 +11716,7 @@ function AccountsDashboard({ authUser }) {
 
 function MetaTokenDashboard({ authUser }) {
   const { t } = useLanguage();
-  const canManage = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const canManage = isLeadershipRole(authUser?.role);
   const [integrations, setIntegrations] = React.useState([]);
   const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
   const [accountOptionsState, setAccountOptionsState] = React.useState({ loading: true, error: null });
@@ -12588,7 +12596,7 @@ function RolesDashboard({ authUser }) {
     fetchBuyers();
   }, [fetchUsers, fetchBuyers]);
 
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
 
   const togglePermission = (roleId, permission) => {
     setRoles((prev) =>
@@ -14796,8 +14804,8 @@ export default function App() {
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isProfile = activeView === "profile";
-  const isLeadership = authUser?.role === "Boss" || authUser?.role === "Team Leader";
-  const canManageExpenses = authUser?.role === "Boss" || authUser?.role === "Team Leader";
+  const isLeadership = isLeadershipRole(authUser?.role);
+  const canManageExpenses = isLeadershipRole(authUser?.role);
   const usesPerformanceFilters =
     isHome || isGeos || isStats || isCampaigns || isPlacements || isUserBehavior || isDevices;
   const showFilters = isFinances || usesPerformanceFilters;
@@ -14960,7 +14968,7 @@ export default function App() {
       list.push("meta_token");
     }
     if (
-      (authUser?.role === "Boss" || authUser?.role === "Team Leader") &&
+      (isLeadershipRole(authUser?.role)) &&
       !list.includes("accounts")
     ) {
       list.push("accounts");
