@@ -1262,18 +1262,60 @@ const toGradientId = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 const axisTickStyle = { fill: "#8b909a", fontSize: 11 };
 const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DASHBOARD_TIMEZONE = "Asia/Dubai";
 const formatIsoDate = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+const getTimezoneDateParts = (date = new Date(), timezone = DASHBOARD_TIMEZONE) => {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(date);
+    const year = Number.parseInt(parts.find((part) => part.type === "year")?.value || "", 10);
+    const month = Number.parseInt(parts.find((part) => part.type === "month")?.value || "", 10);
+    const day = Number.parseInt(parts.find((part) => part.type === "day")?.value || "", 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      throw new Error("Failed to parse timezone date parts.");
+    }
+    return { year, month, day };
+  } catch (error) {
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+    };
+  }
+};
+const toIsoFromParts = ({ year, month, day }) =>
+  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+const parseIsoToUtcDate = (isoDate) => {
+  const match = String(isoDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+};
+const shiftIsoDate = (isoDate, deltaDays) => {
+  const utcDate = parseIsoToUtcDate(isoDate);
+  if (!utcDate || !Number.isFinite(deltaDays)) return isoDate;
+  utcDate.setUTCDate(utcDate.getUTCDate() + deltaDays);
+  return `${utcDate.getUTCFullYear()}-${String(utcDate.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    utcDate.getUTCDate()
+  ).padStart(2, "0")}`;
+};
+const getTodayIsoInTimezone = (timezone = DASHBOARD_TIMEZONE) => toIsoFromParts(getTimezoneDateParts(new Date(), timezone));
 const getDefaultDateRange = () => {
-  const today = new Date();
-  const end = new Date(today);
-  const start = new Date(today);
-  start.setDate(today.getDate() - 6);
-  return { from: formatIsoDate(start), to: formatIsoDate(end) };
+  const todayIso = getTodayIsoInTimezone();
+  return { from: shiftIsoDate(todayIso, -6), to: todayIso };
 };
 const normalizeDateValue = (value) => {
   if (!value) return null;
@@ -1299,35 +1341,35 @@ const normalizeDateRange = (from, to) => {
   return { from: normalizedFrom, to: normalizedTo };
 };
 const getPeriodDateRange = (value, customRange) => {
-  const today = new Date();
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-  const day = today.getDay();
+  const todayIso = getTodayIsoInTimezone();
+  const todayParts = getTimezoneDateParts(new Date(), DASHBOARD_TIMEZONE);
+  const startOfMonthIso = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-01`;
+  const startOfLastMonthIso =
+    todayParts.month === 1
+      ? `${todayParts.year - 1}-12-01`
+      : `${todayParts.year}-${String(todayParts.month - 1).padStart(2, "0")}-01`;
+  const endOfLastMonthIso = shiftIsoDate(startOfMonthIso, -1);
+  const day = parseIsoToUtcDate(todayIso)?.getUTCDay?.() ?? 0;
   const mondayOffset = day === 0 ? -6 : 1 - day;
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(today.getDate() + mondayOffset);
-  const startOfLastWeek = new Date(startOfWeek);
-  startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-  const endOfLastWeek = new Date(startOfWeek);
-  endOfLastWeek.setDate(startOfWeek.getDate() - 1);
+  const startOfWeekIso = shiftIsoDate(todayIso, mondayOffset);
+  const startOfLastWeekIso = shiftIsoDate(startOfWeekIso, -7);
+  const endOfLastWeekIso = shiftIsoDate(startOfWeekIso, -1);
 
   switch (value) {
     case "Today":
-      return normalizeDateRange(today, today);
+      return normalizeDateRange(todayIso, todayIso);
     case "Yesterday": {
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      return normalizeDateRange(yesterday, yesterday);
+      const yesterdayIso = shiftIsoDate(todayIso, -1);
+      return normalizeDateRange(yesterdayIso, yesterdayIso);
     }
     case "This Week":
-      return normalizeDateRange(startOfWeek, today);
+      return normalizeDateRange(startOfWeekIso, todayIso);
     case "Last Week":
-      return normalizeDateRange(startOfLastWeek, endOfLastWeek);
+      return normalizeDateRange(startOfLastWeekIso, endOfLastWeekIso);
     case "This Month":
-      return normalizeDateRange(startOfMonth, today);
+      return normalizeDateRange(startOfMonthIso, todayIso);
     case "Last Month":
-      return normalizeDateRange(startOfLastMonth, endOfLastMonth);
+      return normalizeDateRange(startOfLastMonthIso, endOfLastMonthIso);
     case "Custom range":
       return normalizeDateRange(customRange?.from, customRange?.to);
     default:
@@ -15649,7 +15691,7 @@ export default function App() {
             onClick={() => setFiltersOpen(false)}
           >
             <motion.div
-              className="modal"
+              className="modal dashboard-filters-modal"
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}

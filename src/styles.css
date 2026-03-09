@@ -1208,6 +1208,31 @@ select {
   gap: 18px;
 }
 
+.dashboard-filters-modal {
+  width: min(760px, 94vw);
+}
+
+.dashboard-filters-modal .modal-body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.dashboard-filters-modal .modal-body > .field:first-child {
+  grid-column: 1 / -1;
+}
+
+.dashboard-filters-modal .field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.dashboard-filters-modal .field-row input {
+  min-width: 0;
+  width: 100%;
+}
+
 .modal-head {
   display: flex;
   align-items: center;

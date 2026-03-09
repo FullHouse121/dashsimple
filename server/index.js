@@ -2965,6 +2965,8 @@ const parseBooleanEnv = (value, fallback) => {
   return fallback;
 };
 
+const DEFAULT_KEITARO_TIMEZONE = "Asia/Dubai";
+
 const keitaroIntervalAliases = new Map([
   ["today", "today"],
   ["yesterday", "yesterday"],
@@ -3014,6 +3016,38 @@ const isLikelyKeitaroTimezone = (value) => {
   return false;
 };
 
+const resolveKeitaroTimezone = (value) => {
+  if (isLikelyKeitaroTimezone(value)) {
+    return String(value).trim();
+  }
+  if (isLikelyKeitaroTimezone(process.env.KEITARO_TIMEZONE)) {
+    return String(process.env.KEITARO_TIMEZONE).trim();
+  }
+  return DEFAULT_KEITARO_TIMEZONE;
+};
+
+const getTimezoneDateUtc = (timezone) => {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = Number.parseInt(parts.find((part) => part.type === "year")?.value || "", 10);
+    const month = Number.parseInt(parts.find((part) => part.type === "month")?.value || "", 10);
+    const day = Number.parseInt(parts.find((part) => part.type === "day")?.value || "", 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+      throw new Error("Failed to read timezone date parts.");
+    }
+    return new Date(Date.UTC(year, month - 1, day));
+  } catch (error) {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+};
+
 const sanitizeKeitaroRange = (payload) => {
   if (!payload || typeof payload !== "object") return payload;
   const nextPayload = { ...payload };
@@ -3023,9 +3057,7 @@ const sanitizeKeitaroRange = (payload) => {
       : null;
   if (!payloadRange) return nextPayload;
 
-  const fallbackTimezone = isLikelyKeitaroTimezone(process.env.KEITARO_TIMEZONE)
-    ? String(process.env.KEITARO_TIMEZONE).trim()
-    : "UTC";
+  const fallbackTimezone = resolveKeitaroTimezone(payloadRange.timezone);
 
   const fromRaw = String(payloadRange.from || "").trim();
   const toRaw = String(payloadRange.to || "").trim();
@@ -3097,6 +3129,7 @@ const applyKeitaroRange = (payload) => {
       range: {
         ...payloadRange,
         interval: envInterval,
+        timezone: resolveKeitaroTimezone(payloadRange.timezone),
       },
     };
   }
@@ -3112,8 +3145,7 @@ const applyKeitaroRange = (payload) => {
     if (hasPresetInterval && !rangeForceCustom) {
       return normalizedPayload;
     }
-    const today = new Date();
-    const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const end = getTimezoneDateUtc(resolveKeitaroTimezone(payloadRange.timezone));
     const start = new Date(end);
     start.setUTCDate(start.getUTCDate() - (rangeDays - 1));
     from = formatIsoDate(start);
