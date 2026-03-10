@@ -4452,9 +4452,22 @@ select {
   cursor: pointer;
 }
 
+.country-select-trigger.is-multi {
+  align-items: center;
+}
+
 .country-select-picker[open] .country-select-trigger {
   border-color: rgba(62, 205, 133, 0.56);
   box-shadow: 0 0 0 2px rgba(62, 205, 133, 0.15);
+}
+
+.country-select-multi-values {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 22px;
+  flex: 1;
 }
 
 .country-select-value {
@@ -4464,9 +4477,36 @@ select {
   line-height: 1.25;
 }
 
+.country-select-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(62, 205, 133, 0.38);
+  background: rgba(62, 205, 133, 0.13);
+  color: #78dfab;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 4px 10px;
+  line-height: 1.2;
+}
+
+.country-select-chip-muted {
+  border-color: rgba(129, 141, 160, 0.42);
+  background: rgba(129, 141, 160, 0.16);
+  color: #b4c0d1;
+}
+
 .country-select-value.is-placeholder {
   color: rgba(153, 160, 172, 0.9);
   font-weight: 500;
+}
+
+.country-select-count {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(98, 109, 126, 0.42);
+  color: #a8b2c3;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .country-select-arrow {

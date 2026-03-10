@@ -234,6 +234,44 @@ const countryOptions = [...supportedCountryOptions];
 const accountRegistryCountryOptions = [...supportedCountryOptions];
 const defaultCountryOption = supportedCountryOptions[0] || "";
 
+const normalizeCountryValueKey = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const supportedCountryValueMap = new Map(
+  supportedCountryOptions.map((country) => [normalizeCountryValueKey(country), country])
+);
+supportedCountryValueMap.set("brasil", "Brazil");
+
+const normalizeCountryListValue = (value) => {
+  if (value === null || value === undefined || value === "") return [];
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (!trimmed) return [];
+    try {
+      source = JSON.parse(trimmed);
+    } catch (error) {
+      source = trimmed.includes(",") ? trimmed.split(",") : [trimmed];
+    }
+  }
+  const list = Array.isArray(source) ? source : [source];
+  const normalized = [];
+  list.forEach((item) => {
+    const raw = String(item || "").trim();
+    if (!raw) return;
+    const canonical = supportedCountryValueMap.get(normalizeCountryValueKey(raw)) || raw;
+    if (!normalized.includes(canonical)) {
+      normalized.push(canonical);
+    }
+  });
+  return normalized;
+};
+
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
 const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
@@ -295,9 +333,28 @@ function CountryDropdownPicker({
   allOption = null,
   searchPlaceholder = "Type to find countries",
   emptyResultsLabel = "No countries found.",
+  multiple = false,
+  values = [],
+  onToggle = null,
+  maxVisibleChips = 2,
 }) {
   const [query, setQuery] = React.useState("");
   const normalizedValue = String(value ?? "");
+  const normalizedValues = React.useMemo(() => {
+    if (!multiple) return [];
+    const source = Array.isArray(values)
+      ? values
+      : values === null || values === undefined || values === ""
+        ? []
+        : [values];
+    return Array.from(
+      new Set(
+        source
+          .map((item) => String(item ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+  }, [multiple, values]);
   const normalizedOptions = React.useMemo(
     () => {
       if (!Array.isArray(options)) return [];
@@ -320,7 +377,7 @@ function CountryDropdownPicker({
   );
   const optionList = React.useMemo(() => {
     const list = [...normalizedOptions];
-    if (allOption) {
+    if (allOption && !multiple) {
       list.unshift({
         value: String(allOption.value ?? ""),
         label: String(allOption.label ?? allOption.value ?? ""),
@@ -330,8 +387,11 @@ function CountryDropdownPicker({
     return list;
   }, [normalizedOptions, allOption]);
   const selectedOption = optionList.find((item) => item.value === normalizedValue) || null;
+  const selectedOptions = multiple
+    ? optionList.filter((item) => normalizedValues.includes(item.value))
+    : [];
   const displayLabel = selectedOption?.label || normalizedValue || placeholder;
-  const hasSelection = Boolean(selectedOption || normalizedValue);
+  const hasSelection = multiple ? selectedOptions.length > 0 : Boolean(selectedOption || normalizedValue);
   const normalizedQuery = String(query || "").trim().toLowerCase();
   const filteredOptions = optionList.filter((item) =>
     String(item.search ?? item.label).toLowerCase().includes(normalizedQuery)
@@ -346,10 +406,34 @@ function CountryDropdownPicker({
         }
       }}
     >
-      <summary className="country-select-trigger">
-        <span className={`country-select-value${hasSelection ? "" : " is-placeholder"}`}>
-          {displayLabel || placeholder}
-        </span>
+      <summary className={`country-select-trigger${multiple ? " is-multi" : ""}`}>
+        {multiple ? (
+          <span className="country-select-multi-values">
+            {selectedOptions.length ? (
+              <>
+                {selectedOptions.slice(0, maxVisibleChips).map((item) => (
+                  <span key={`country-chip-${item.value}`} className="country-select-chip">
+                    {item.label}
+                  </span>
+                ))}
+                {selectedOptions.length > maxVisibleChips ? (
+                  <span className="country-select-chip country-select-chip-muted">
+                    +{selectedOptions.length - maxVisibleChips}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span className="country-select-value is-placeholder">{placeholder}</span>
+            )}
+          </span>
+        ) : (
+          <span className={`country-select-value${hasSelection ? "" : " is-placeholder"}`}>
+            {displayLabel || placeholder}
+          </span>
+        )}
+        {multiple && selectedOptions.length ? (
+          <span className="country-select-count">{selectedOptions.length}</span>
+        ) : null}
         <span className="country-select-arrow" aria-hidden="true">
           ▾
         </span>
@@ -377,17 +461,28 @@ function CountryDropdownPicker({
         <div className="country-select-options">
           {filteredOptions.length ? (
             filteredOptions.map((item) => {
-              const selected = item.value === normalizedValue;
+              const selected = multiple
+                ? normalizedValues.includes(item.value)
+                : item.value === normalizedValue;
               return (
                 <button
                   key={`country-select-${item.value || "all"}`}
                   type="button"
                   className={`country-select-option${selected ? " is-selected" : ""}`}
+                  aria-pressed={selected}
                   onClick={(event) => {
-                    onChange(item.value);
-                    setQuery("");
-                    const details = event.currentTarget.closest("details");
-                    if (details) details.open = false;
+                    if (multiple) {
+                      if (typeof onToggle === "function") {
+                        onToggle(item.value);
+                      } else if (typeof onChange === "function") {
+                        onChange(item.value);
+                      }
+                    } else {
+                      onChange(item.value);
+                      setQuery("");
+                      const details = event.currentTarget.closest("details");
+                      if (details) details.open = false;
+                    }
                   }}
                 >
                   <span className="country-select-check">{selected ? "✓" : ""}</span>
@@ -8869,7 +8964,7 @@ function DomainsDashboard({ authUser }) {
     status: "Active",
     game: "",
     platform: "PWA Group",
-    country: defaultCountryOption,
+    countries: [],
     ownerRole,
   }));
   const [domains, setDomains] = React.useState([]);
@@ -8892,10 +8987,25 @@ function DomainsDashboard({ authUser }) {
       status: "Active",
       game: "",
       platform: "PWA Group",
-      country: defaultCountryOption,
+      countries: [],
       ownerRole,
     });
   };
+
+  const toggleDomainCountry = React.useCallback((country) => {
+    const normalized = String(country || "").trim();
+    if (!normalized) return;
+    setDomainForm((prev) => {
+      const current = normalizeCountryListValue(prev.countries);
+      const hasCountry = current.includes(normalized);
+      return {
+        ...prev,
+        countries: hasCountry
+          ? current.filter((item) => item !== normalized)
+          : [...current, normalized],
+      };
+    });
+  }, []);
 
   React.useEffect(() => {
     setDomainForm((prev) => ({ ...prev, ownerRole }));
@@ -8978,11 +9088,19 @@ function DomainsDashboard({ authUser }) {
 
   const handleDomainSubmit = async (event) => {
     event.preventDefault();
+    const normalizedCountries = normalizeCountryListValue(domainForm.countries);
+    if (!normalizedCountries.length) {
+      setDomainState({ loading: false, error: "At least one country is required." });
+      return;
+    }
     try {
       const response = await apiFetch("/api/domains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(domainForm),
+        body: JSON.stringify({
+          ...domainForm,
+          countries: normalizedCountries,
+        }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -9033,6 +9151,9 @@ function DomainsDashboard({ authUser }) {
       visibleDomains.map((domain) => ({
         domain,
         ownerLabel: resolveOwnerName(domain),
+        countries: normalizeCountryListValue(
+          Array.isArray(domain?.countries) && domain.countries.length ? domain.countries : domain?.country
+        ),
       })),
     [visibleDomains, resolveOwnerName]
   );
@@ -9076,9 +9197,11 @@ function DomainsDashboard({ authUser }) {
   const geoFilterOptions = React.useMemo(() => {
     const unique = new Map();
     domainTableRows.forEach((row) => {
-      const value = String(row.domain?.country || "").trim();
-      if (!value) return;
-      unique.set(value.toLowerCase(), value);
+      row.countries.forEach((country) => {
+        const value = String(country || "").trim();
+        if (!value) return;
+        unique.set(value.toLowerCase(), value);
+      });
     });
     return Array.from(unique.values())
       .sort((a, b) => a.localeCompare(b))
@@ -9135,7 +9258,7 @@ function DomainsDashboard({ authUser }) {
         if (tableDomainFilter !== "all" && String(row.domain?.domain || "") !== tableDomainFilter) return false;
         if (tableGameFilter !== "all" && String(row.domain?.game || "") !== tableGameFilter) return false;
         if (tablePlatformFilter !== "all" && String(row.domain?.platform || "") !== tablePlatformFilter) return false;
-        if (tableGeoFilter !== "all" && String(row.domain?.country || "") !== tableGeoFilter) return false;
+        if (tableGeoFilter !== "all" && !row.countries.includes(tableGeoFilter)) return false;
         if (canManageDomains && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
         return true;
       }),
@@ -9205,12 +9328,13 @@ function DomainsDashboard({ authUser }) {
             </select>
           </div>
           <div className="field">
-            <label>{t("Target Country")}</label>
+            <label>{t("Target Countries")}</label>
             <CountryDropdownPicker
-              value={domainForm.country}
-              onChange={(country) => setDomainForm((prev) => ({ ...prev, country }))}
+              multiple
+              values={domainForm.countries}
+              onToggle={toggleDomainCountry}
               options={countryOptions}
-              placeholder={t("Select")}
+              placeholder={t("No countries selected")}
               searchPlaceholder={t("Type to find countries")}
               emptyResultsLabel={t("No countries found.")}
             />
@@ -9321,12 +9445,12 @@ function DomainsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredDomainRows.map(({ domain, ownerLabel }) => (
+                {filteredDomainRows.map(({ domain, ownerLabel, countries }) => (
                   <tr key={domain.id}>
                     <td>{domain.domain}</td>
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
-                    <td>{domain.country || "—"}</td>
+                    <td>{countries.length ? countries.join(", ") : "—"}</td>
                     <td>{ownerLabel}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
@@ -9386,7 +9510,7 @@ function PixelsDashboard({ authUser }) {
     pixelId: "",
     tokenEaag: "",
     flow: "",
-    geo: defaultCountryOption,
+    geos: [],
     status: "Active",
     comment: "",
   });
@@ -9416,11 +9540,24 @@ function PixelsDashboard({ authUser }) {
       pixelId: "",
       tokenEaag: "",
       flow: "",
-      geo: defaultCountryOption,
+      geos: [],
       status: "Active",
       comment: "",
     });
   };
+
+  const togglePixelGeo = React.useCallback((geo) => {
+    const normalized = String(geo || "").trim();
+    if (!normalized) return;
+    setPixelForm((prev) => {
+      const current = normalizeCountryListValue(prev.geos);
+      const hasGeo = current.includes(normalized);
+      return {
+        ...prev,
+        geos: hasGeo ? current.filter((item) => item !== normalized) : [...current, normalized],
+      };
+    });
+  }, []);
 
   const fetchPixels = React.useCallback(async () => {
     try {
@@ -9513,8 +9650,13 @@ function PixelsDashboard({ authUser }) {
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
     const flow = String(pixelForm.flow || "").trim();
+    const normalizedGeos = normalizeCountryListValue(pixelForm.geos);
     if (!flow) {
       setPixelState({ loading: false, error: "Flow is required." });
+      return;
+    }
+    if (!normalizedGeos.length) {
+      setPixelState({ loading: false, error: "At least one GEO is required." });
       return;
     }
     try {
@@ -9525,7 +9667,7 @@ function PixelsDashboard({ authUser }) {
           pixelId: pixelForm.pixelId,
           tokenEaag: pixelForm.tokenEaag,
           flow,
-          geo: pixelForm.geo,
+          geos: normalizedGeos,
           status: pixelForm.status,
           comment: pixelForm.comment,
         }),
@@ -9765,7 +9907,9 @@ function PixelsDashboard({ authUser }) {
       visiblePixels.map((pixel) => ({
         pixel,
         buyerLabel: domainOwnerByFlow.get(String(pixel?.flows || "").trim().toLowerCase()) || "—",
-        geoLabel: String(pixel?.geo || "").trim() || "—",
+        geos: normalizeCountryListValue(
+          Array.isArray(pixel?.geos) && pixel.geos.length ? pixel.geos : pixel?.geo
+        ),
         statusLabel: normalizeStatusValue(pixel?.status),
         ownerLabel: resolveOwnerLabel(pixel),
       })),
@@ -9787,9 +9931,11 @@ function PixelsDashboard({ authUser }) {
   const pixelGeoOptions = React.useMemo(() => {
     const unique = new Map();
     pixelTableRows.forEach((row) => {
-      const geo = String(row.geoLabel || "").trim();
-      if (!geo || geo === "—") return;
-      unique.set(geo.toLowerCase(), geo);
+      row.geos.forEach((geo) => {
+        const value = String(geo || "").trim();
+        if (!value) return;
+        unique.set(value.toLowerCase(), value);
+      });
     });
     return Array.from(unique.values())
       .sort((first, second) => first.localeCompare(second))
@@ -9838,7 +9984,7 @@ function PixelsDashboard({ authUser }) {
   const filteredPixelTableRows = React.useMemo(() => {
     return pixelTableRows.filter((row) => {
       if (tableBuyerFilter !== "all" && row.buyerLabel !== tableBuyerFilter) return false;
-      if (tableGeoFilter !== "all" && row.geoLabel !== tableGeoFilter) return false;
+      if (tableGeoFilter !== "all" && !row.geos.includes(tableGeoFilter)) return false;
       if (tableStatusFilter !== "all" && row.statusLabel !== tableStatusFilter) return false;
       if (canManagePixels && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
       return true;
@@ -9975,10 +10121,11 @@ function PixelsDashboard({ authUser }) {
             <div className="field">
               <label>{t("GEO")}</label>
               <CountryDropdownPicker
-                value={pixelForm.geo}
-                onChange={(geo) => setPixelForm((prev) => ({ ...prev, geo }))}
+                multiple
+                values={pixelForm.geos}
+                onToggle={togglePixelGeo}
                 options={countryOptions}
-                placeholder={t("Select")}
+                placeholder={t("No countries selected")}
                 searchPlaceholder={t("Type to find countries")}
                 emptyResultsLabel={t("No countries found.")}
               />
@@ -10089,7 +10236,7 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredPixelTableRows.map(({ pixel, ownerLabel }) => (
+                {filteredPixelTableRows.map(({ pixel, ownerLabel, geos }) => (
                   <tr key={pixel.id}>
                     <td>{pixel.id}</td>
                     <td className="copy-cell">
@@ -10118,7 +10265,7 @@ function PixelsDashboard({ authUser }) {
                         </button>
                       </div>
                     </td>
-                    <td>{pixel.geo || "—"}</td>
+                    <td>{geos.length ? geos.join(", ") : "—"}</td>
                     <td>{pixel.flows || "—"}</td>
                     <td>
                       {canManagePixels || pixel.owner_id === authUser?.id ? (
@@ -11194,7 +11341,13 @@ function AccountsDashboard({ authUser }) {
                 >
                   <input type="checkbox" checked={checked} onChange={() => onToggle(domain.id)} />
                   <span className="accounts-domain-option-name">{domain.domain}</span>
-                  <span className="accounts-domain-option-meta">{domain.country || "No country"}</span>
+                  <span className="accounts-domain-option-meta">
+                    {normalizeCountryListValue(
+                      Array.isArray(domain?.countries) && domain.countries.length
+                        ? domain.countries
+                        : domain?.country
+                    ).join(", ") || "No country"}
+                  </span>
                 </label>
               );
             })}

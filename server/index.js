@@ -892,7 +892,7 @@ const selectPixels = async (limit) =>
      ORDER BY created_at DESC, id DESC
      LIMIT $1`,
     [limit]
-  );
+  ).then((rows) => rows.map(mapPixelRow));
 
 const selectPixelsByOwner = async (ownerId, limit) =>
   getRows(
@@ -902,12 +902,13 @@ const selectPixelsByOwner = async (ownerId, limit) =>
      ORDER BY created_at DESC, id DESC
      LIMIT $2`,
     [ownerId, limit]
-  );
+  ).then((rows) => rows.map(mapPixelRow));
 
 const selectPixelById = async (id) =>
   getRow(
     `SELECT p.id,
             p.pixel_id,
+            p.geo,
             p.status,
             p.comment,
             p.owner_id,
@@ -916,7 +917,7 @@ const selectPixelById = async (id) =>
      LEFT JOIN users u ON u.id = p.owner_id
      WHERE p.id = $1`,
     [id]
-  );
+  ).then(mapPixelRow);
 
 const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]);
 
@@ -1276,7 +1277,7 @@ const selectDomains = async (limit) =>
      ORDER BY d.domain ASC, d.id DESC
      LIMIT $1`,
     [limit]
-  );
+  ).then((rows) => rows.map(mapDomainRow));
 
 const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
@@ -1288,7 +1289,7 @@ const selectDomainsByOwner = async (ownerId, limit) =>
      ORDER BY d.domain ASC, d.id DESC
      LIMIT $2`,
     [ownerId, limit]
-  );
+  ).then((rows) => rows.map(mapDomainRow));
 
 const selectDomainById = async (id) =>
   getRow(
@@ -1302,7 +1303,7 @@ const selectDomainById = async (id) =>
      LEFT JOIN users u ON u.id = d.owner_id
      WHERE d.id = $1`,
     [id]
-  );
+  ).then(mapDomainRow);
 
 const selectDomainByNameWithOwner = async (domain) =>
   getRow(
@@ -1313,7 +1314,7 @@ const selectDomainByNameWithOwner = async (domain) =>
      ORDER BY d.id DESC
      LIMIT 1`,
     [domain]
-  );
+  ).then(mapDomainRow);
 
 const deleteDomain = async (id) => query(`DELETE FROM domains WHERE id = $1`, [id]);
 
@@ -1358,6 +1359,37 @@ const normalizeStringList = (value) => {
 };
 
 const serializeStringList = (value) => JSON.stringify(normalizeStringList(value));
+
+const parseCountryListValue = (value) => {
+  const values = normalizeStringList(value);
+  return Array.from(
+    new Set(
+      values
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+    )
+  );
+};
+
+const mapPixelRow = (row) => {
+  if (!row) return null;
+  const geos = parseCountryListValue(row.geo);
+  return {
+    ...row,
+    geo: geos[0] || "",
+    geos,
+  };
+};
+
+const mapDomainRow = (row) => {
+  if (!row) return null;
+  const countries = parseCountryListValue(row.country);
+  return {
+    ...row,
+    country: countries[0] || "",
+    countries,
+  };
+};
 
 const normalizeNotificationSeverity = (value) => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -4701,7 +4733,8 @@ app.get("/api/domains", async (req, res) => {
 });
 
 app.post("/api/domains", async (req, res) => {
-  const { domain, status, ownerId, game, platform, country } = req.body ?? {};
+  const { domain, status, ownerId, game, platform } = req.body ?? {};
+  const countriesRaw = req.body?.countries ?? req.body?.country;
 
   if (!domain || !status) {
     return res.status(400).json({ error: "Domain and status are required." });
@@ -4711,8 +4744,13 @@ app.post("/api/domains", async (req, res) => {
     return res.status(400).json({ error: "Game and platform are required." });
   }
 
-  if (!country) {
-    return res.status(400).json({ error: "Country is required." });
+  const normalizedCountriesResult = normalizeAccountCountries(countriesRaw);
+  if (normalizedCountriesResult.error) {
+    return res.status(400).json({ error: normalizedCountriesResult.error });
+  }
+  const normalizedCountries = normalizedCountriesResult.value;
+  if (!normalizedCountries.length) {
+    return res.status(400).json({ error: "At least one country is required." });
   }
   try {
     let resolvedOwnerId = req.user.id;
@@ -4729,7 +4767,7 @@ app.post("/api/domains", async (req, res) => {
       status,
       game: String(game).trim(),
       platform: String(platform).trim(),
-      country: String(country).trim(),
+      country: serializeStringList(normalizedCountries),
       owner_role: req.user?.role || "",
       owner_id: resolvedOwnerId,
     };
@@ -5203,11 +5241,18 @@ app.post("/api/pixels", async (req, res) => {
     flow,
     flows = "",
     geo,
+    geos,
     comment = "",
     status = "Active",
     ownerId,
   } = req.body ?? {};
-  if (!pixelId || !tokenEaag || !geo || !(flow || flows)) {
+  const geoSource = geos !== undefined ? geos : geo;
+  const normalizedGeosResult = normalizeAccountCountries(geoSource);
+  if (normalizedGeosResult.error) {
+    return res.status(400).json({ error: normalizedGeosResult.error });
+  }
+  const normalizedGeos = normalizedGeosResult.value;
+  if (!pixelId || !tokenEaag || !normalizedGeos.length || !(flow || flows)) {
     return res.status(400).json({ error: "Pixel ID, token, GEO, and Flow are required." });
   }
   try {
@@ -5229,7 +5274,7 @@ app.post("/api/pixels", async (req, res) => {
       pixel_id: String(pixelId).trim(),
       token_eaag: String(tokenEaag).trim(),
       flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
-      geo: String(geo).trim(),
+      geo: serializeStringList(normalizedGeos),
       status: String(status || "Active").trim(),
       comment: comment ? String(comment).trim() : null,
       owner_role: resolvedOwnerRole,
@@ -5296,7 +5341,7 @@ app.patch("/api/pixels/:id", async (req, res) => {
      FROM pixels
      WHERE id = $1`,
     [id]
-  );
+  ).then(mapPixelRow);
   const changedFields = [];
   if (status !== undefined && String(pixel.status || "").trim() !== String(updated?.status || "").trim()) {
     changedFields.push("status");
@@ -5356,7 +5401,7 @@ app.post("/api/pixels/:id/comment", async (req, res) => {
      FROM pixels
      WHERE id = $1`,
     [id]
-  );
+  ).then(mapPixelRow);
   const changedFields = [];
   if (status !== undefined && String(pixel.status || "").trim() !== String(updated?.status || "").trim()) {
     changedFields.push("status");
