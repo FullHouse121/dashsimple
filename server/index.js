@@ -908,6 +908,7 @@ const selectPixelById = async (id) =>
   getRow(
     `SELECT p.id,
             p.pixel_id,
+            p.flows,
             p.geo,
             p.status,
             p.comment,
@@ -920,6 +921,27 @@ const selectPixelById = async (id) =>
   ).then(mapPixelRow);
 
 const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]);
+
+const sqlNormalizeBuyerToken = (expression) =>
+  `REGEXP_REPLACE(LOWER(COALESCE(${expression}, '')), '[^a-z0-9]+', '', 'g')`;
+
+const integrationReceivedSpendSql = (alias) => `COALESCE(
+              (
+                SELECT SUM(ms_flow.spend)
+                FROM media_stats ms_flow
+                LEFT JOIN pixels px_flow ON px_flow.id = ${alias}.pixel_id
+                WHERE TRIM(COALESCE(px_flow.flows, '')) <> ''
+                  AND LOWER(TRIM(COALESCE(ms_flow.domain, ''))) = LOWER(TRIM(COALESCE(px_flow.flows, '')))
+              ),
+              (
+                SELECT SUM(ms_buyer.spend)
+                FROM media_stats ms_buyer
+                WHERE ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} <> ''
+                  AND ${sqlNormalizeBuyerToken("ms_buyer.buyer")}
+                      LIKE '%' || ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} || '%'
+              ),
+              0
+            )`;
 
 const selectMetaTokenIntegrations = async (limit) =>
   getRows(
@@ -939,15 +961,10 @@ const selectMetaTokenIntegrations = async (limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS received_spend,
+            ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
-            p.pixel_id AS pixel_value
+            p.pixel_id AS pixel_value,
+            p.flows AS pixel_flow
      FROM meta_token_integrations m
      LEFT JOIN users u ON u.id = m.owner_id
      LEFT JOIN pixels p ON p.id = m.pixel_id
@@ -974,15 +991,10 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS received_spend,
+            ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
-            p.pixel_id AS pixel_value
+            p.pixel_id AS pixel_value,
+            p.flows AS pixel_flow
      FROM meta_token_integrations m
      LEFT JOIN users u ON u.id = m.owner_id
      LEFT JOIN pixels p ON p.id = m.pixel_id
@@ -1010,15 +1022,10 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
-            COALESCE((
-              SELECT SUM(ms.spend)
-              FROM media_stats ms
-              WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                    LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-            ), 0) AS received_spend,
+            ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
-            p.pixel_id AS pixel_value
+            p.pixel_id AS pixel_value,
+            p.flows AS pixel_flow
      FROM meta_token_integrations m
      LEFT JOIN users u ON u.id = m.owner_id
      LEFT JOIN pixels p ON p.id = m.pixel_id
@@ -1045,18 +1052,15 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
               m.account_number,
               m.meta_token,
               m.buyer_name,
-              m.status,
-              m.is_wired,
-              m.owner_id,
-              m.created_at,
-              COALESCE((
-                SELECT SUM(ms.spend)
-                FROM media_stats ms
-                WHERE REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                  AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                      LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(m.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-              ), 0) AS received_spend
+             m.status,
+             m.is_wired,
+             m.owner_id,
+             m.pixel_id,
+             p.flows AS pixel_flow,
+             m.created_at,
+             ${integrationReceivedSpendSql("m")} AS received_spend
        FROM meta_token_integrations m
+       LEFT JOIN pixels p ON p.id = m.pixel_id
        WHERE TRIM(COALESCE(m.account_number, '')) = $1
      ) ranked
      ORDER BY
@@ -1899,13 +1903,7 @@ const selectAccountRegistry = async (limit) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                COALESCE((
-                  SELECT SUM(ms.spend)
-                  FROM media_stats ms
-                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-                ), 0) AS received_spend
+                ${integrationReceivedSpendSql("mi")} AS received_spend
          FROM meta_token_integrations mi
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
@@ -1989,13 +1987,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                COALESCE((
-                  SELECT SUM(ms.spend)
-                  FROM media_stats ms
-                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-                ), 0) AS received_spend
+                ${integrationReceivedSpendSql("mi")} AS received_spend
          FROM meta_token_integrations mi
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
@@ -2080,13 +2072,7 @@ const selectAccountRegistryById = async (id) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                COALESCE((
-                  SELECT SUM(ms.spend)
-                  FROM media_stats ms
-                  WHERE REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') <> ''
-                    AND REGEXP_REPLACE(LOWER(COALESCE(ms.buyer, '')), '[^a-z0-9]+', '', 'g')
-                        LIKE '%' || REGEXP_REPLACE(LOWER(COALESCE(mi.buyer_name, '')), '[^a-z0-9]+', '', 'g') || '%'
-                ), 0) AS received_spend
+                ${integrationReceivedSpendSql("mi")} AS received_spend
          FROM meta_token_integrations mi
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
@@ -3780,6 +3766,65 @@ const selectReceivedSpendForBuyer = async (buyerName) => {
   return Number(row?.spend || 0);
 };
 
+const selectReceivedSpendForIntegration = async ({ buyerName, pixelId, pixelFlow }) => {
+  const flow = normalizeDomainValue(pixelFlow);
+  if (flow) {
+    const row = await getRow(
+      `SELECT COALESCE(SUM(spend), 0) AS spend
+       FROM media_stats
+       WHERE LOWER(TRIM(COALESCE(domain, ''))) = LOWER($1)`,
+      [flow]
+    );
+    return Number(row?.spend || 0);
+  }
+
+  const parsedPixelId = Number.parseInt(String(pixelId ?? ""), 10);
+  if (Number.isFinite(parsedPixelId) && parsedPixelId > 0) {
+    const pixelRow = await getRow(`SELECT flows FROM pixels WHERE id = $1`, [parsedPixelId]);
+    const flowFromPixel = normalizeDomainValue(pixelRow?.flows);
+    if (flowFromPixel) {
+      const row = await getRow(
+        `SELECT COALESCE(SUM(spend), 0) AS spend
+         FROM media_stats
+         WHERE LOWER(TRIM(COALESCE(domain, ''))) = LOWER($1)`,
+        [flowFromPixel]
+      );
+      return Number(row?.spend || 0);
+    }
+  }
+
+  return selectReceivedSpendForBuyer(buyerName);
+};
+
+const parseFlexibleAmount = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : Number.NaN;
+  }
+  const raw = String(value ?? "").trim();
+  if (!raw) return Number.NaN;
+  const cleaned = raw.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return Number.NaN;
+
+  const commaCount = (cleaned.match(/,/g) || []).length;
+  const dotCount = (cleaned.match(/\./g) || []).length;
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+
+  let normalized = cleaned;
+  if (commaCount > 0 && dotCount > 0) {
+    if (lastComma > lastDot) {
+      normalized = cleaned.replace(/\./g, "").replace(/,/g, ".");
+    } else {
+      normalized = cleaned.replace(/,/g, "");
+    }
+  } else if (commaCount > 0) {
+    normalized = commaCount > 1 ? cleaned.replace(/,/g, "") : cleaned.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+};
+
 const isMetaIntegrationWired = (payload) => {
   const accountReady = Boolean(String(payload?.account_number || "").trim());
   const tokenReady = Boolean(String(payload?.meta_token || "").trim());
@@ -4105,21 +4150,25 @@ app.post("/api/expenses", async (req, res) => {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
-  const parsedAmount = Number.parseFloat(amount);
+  const parsedAmount = parseFlexibleAmount(amount);
   if (!Number.isFinite(parsedAmount)) {
     return res.status(400).json({ error: "Amount must be a number." });
   }
+  const normalizedCountry = String(country || "").trim();
+  if (!normalizedCountry) {
+    return res.status(400).json({ error: "Country is required." });
+  }
 
   const payload = {
-    date,
-    country,
-    category,
-    reference,
-    billing_type: billing,
+    date: String(date).trim(),
+    country: normalizedCountry,
+    category: String(category).trim(),
+    reference: String(reference || "").trim(),
+    billing_type: String(billing).trim(),
     crypto_network: cryptoNetwork || null,
     crypto_hash: cryptoHash || null,
     amount: parsedAmount,
-    status,
+    status: String(status).trim(),
   };
 
   const info = await insertExpense(payload);
@@ -4965,7 +5014,7 @@ app.post("/api/accounts", async (req, res) => {
 
     let resolvedAccountStatus = String(status || "Active").trim() || "Active";
     if (linkedIntegration) {
-      const linkedSpend = await selectReceivedSpendForBuyer(linkedIntegration.buyer_name);
+      const linkedSpend = Number(linkedIntegration.received_spend || 0);
       const lifecycle = resolveIntegrationLifecycleStatus({
         status: linkedIntegration.status,
         isWired: linkedIntegration.is_wired,
@@ -5530,7 +5579,11 @@ app.post("/api/meta-tokens", async (req, res) => {
     }
     const ownerRecord = await selectUserById(resolvedOwnerId);
     const resolvedBuyerName = buyerMatch?.username || buyerInput;
-    const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
+    const receivedSpend = await selectReceivedSpendForIntegration({
+      buyerName: resolvedBuyerName,
+      pixelId: parsedPixelId,
+      pixelFlow: pixel?.flows,
+    });
     const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
     const resolvedStatus = String(status || "").trim() || autoStatus;
 
@@ -5630,7 +5683,11 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
         : req.user.id;
   const ownerRecord = await selectUserById(resolvedOwnerId);
   const resolvedBuyerName = buyerMatch?.username || nextBuyerNameInput;
-  const receivedSpend = await selectReceivedSpendForBuyer(resolvedBuyerName);
+  const receivedSpend = await selectReceivedSpendForIntegration({
+    buyerName: resolvedBuyerName,
+    pixelId: nextPixelId,
+    pixelFlow: pixel?.flows,
+  });
   const autoStatus = receivedSpend > 0 ? "Success" : "Pending";
 
   const next = {
@@ -5818,8 +5875,12 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
   if (!String(integration.account_number || "").trim()) issues.push("Missing account number");
   if (!String(integration.meta_token || "").trim()) issues.push("Missing Meta token");
   if (!String(integration.buyer_name || "").trim()) issues.push("Missing buyer assignment");
-  const receivedSpend = await selectReceivedSpendForBuyer(integration.buyer_name);
-  if (!(receivedSpend > 0)) issues.push("No cost received for this buyer yet");
+  const receivedSpend = await selectReceivedSpendForIntegration({
+    buyerName: integration.buyer_name,
+    pixelId: integration.pixel_id,
+    pixelFlow: integration.pixel_flow,
+  });
+  if (!(receivedSpend > 0)) issues.push("No cost received for this integration yet");
 
   const wired = issues.length === 0;
   const status = wired ? "Success" : "Pending";
