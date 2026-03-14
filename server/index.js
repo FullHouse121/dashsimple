@@ -7161,9 +7161,17 @@ app.all("/api/keitaro/cron", async (req, res) => {
   const target = targetParam || targetEnv || "overall";
   const isDeviceTarget = target === "device";
   const isUserTarget = target === "user_behavior";
+  const asyncDefault = parseBooleanEnv(process.env.KEITARO_CRON_ASYNC_DEFAULT, true);
+  const asyncRaw = String(req.query.async || req.query.background || "")
+    .toLowerCase()
+    .trim();
   const asyncMode =
-    String(req.query.async || req.query.background || "").toLowerCase() === "1" ||
-    String(req.query.async || req.query.background || "").toLowerCase() === "true";
+    asyncRaw === ""
+      ? asyncDefault
+      : asyncRaw === "1" ||
+        asyncRaw === "true" ||
+        asyncRaw === "yes" ||
+        asyncRaw === "on";
 
   const baseUrl = process.env.KEITARO_BASE_URL;
   const apiKey = process.env.KEITARO_API_KEY;

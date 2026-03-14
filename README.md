@@ -69,7 +69,7 @@ Notes:
    - `KEITARO_REPORT_PAYLOAD` (JSON from Keitaro report build)
    - `KEITARO_CRON_SECRET` (any random string)
 2. Create a Render Cron Job that calls:
-   - `POST https://YOUR-RENDER-APP.onrender.com/api/keitaro/cron?secret=KEITARO_CRON_SECRET`
+   - `POST https://YOUR-RENDER-APP.onrender.com/api/keitaro/cron?secret=KEITARO_CRON_SECRET&async=1`
 3. Choose the schedule you want (e.g. every 15 minutes).
 
 ### Netlify (Frontend)
