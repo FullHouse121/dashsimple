@@ -2525,8 +2525,13 @@ const updateRole = async (payload) =>
 
 const deleteRole = async (id) => query(`DELETE FROM roles WHERE id = $1`, [id]);
 
-const postbackSecret = process.env.POSTBACK_SECRET || "";
-const keitaroCronSecret = process.env.KEITARO_CRON_SECRET || "";
+const normalizeSecretValue = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "");
+
+const postbackSecret = normalizeSecretValue(process.env.POSTBACK_SECRET || "");
+const keitaroCronSecret = normalizeSecretValue(process.env.KEITARO_CRON_SECRET || "");
 const keitaroSyncState = {
   overall: false,
   device: false,
@@ -7151,7 +7156,7 @@ app.post("/api/keitaro/test", async (req, res) => {
 });
 
 app.all("/api/keitaro/cron", async (req, res) => {
-  const secret = String(req.headers["x-cron-secret"] || req.query.secret || "");
+  const secret = normalizeSecretValue(req.headers["x-cron-secret"] || req.query.secret || "");
   if (keitaroCronSecret && secret !== keitaroCronSecret) {
     return res.status(401).json({ error: "Unauthorized." });
   }
