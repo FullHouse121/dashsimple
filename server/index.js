@@ -1818,6 +1818,9 @@ accountCountryMap.set("brasil", "Brazil");
 
 const normalizeAccountCountries = (value) => {
   const rawCountries = normalizeStringList(value);
+  if (rawCountries.length > 50) {
+    return { error: "You can select up to 50 countries." };
+  }
   const normalized = [];
   for (const rawCountry of rawCountries) {
     const canonical = accountCountryMap.get(normalizeCountryKey(rawCountry));
@@ -1827,6 +1830,9 @@ const normalizeAccountCountries = (value) => {
     if (!normalized.includes(canonical)) {
       normalized.push(canonical);
     }
+  }
+  if (normalized.length > 50) {
+    return { error: "You can select up to 50 countries." };
   }
   return { value: normalized };
 };
@@ -2701,6 +2707,26 @@ const normalizeDomainValue = (value) => {
   const hostCandidate = withoutProtocol.split("/")[0].trim();
   if (!hostCandidate) return text;
   return hostCandidate.toLowerCase();
+};
+
+const normalizeDomainBatchValues = (value) => {
+  if (value === null || value === undefined || value === "") return [];
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((item) => normalizeDomainValue(item))
+          .filter(Boolean)
+      )
+    );
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const tokens = raw
+    .split(/[\s,;]+/g)
+    .map((item) => normalizeDomainValue(item))
+    .filter(Boolean);
+  return Array.from(new Set(tokens));
 };
 
 const regionDisplayNames =
@@ -4787,11 +4813,16 @@ app.get("/api/domains", async (req, res) => {
 });
 
 app.post("/api/domains", async (req, res) => {
-  const { domain, status, ownerId, game, platform } = req.body ?? {};
+  const { domain, domains, status, ownerId, game, platform } = req.body ?? {};
   const countriesRaw = req.body?.countries ?? req.body?.country;
 
-  if (!domain || !status) {
+  const normalizedDomains = normalizeDomainBatchValues(domains ?? domain);
+
+  if (!normalizedDomains.length || !status) {
     return res.status(400).json({ error: "Domain and status are required." });
+  }
+  if (normalizedDomains.length > 50) {
+    return res.status(400).json({ error: "You can register up to 50 domains per request." });
   }
 
   if (!game || !platform) {
@@ -4817,7 +4848,6 @@ app.post("/api/domains", async (req, res) => {
     }
 
     const payload = {
-      domain: String(domain).trim(),
       status,
       game: String(game).trim(),
       platform: String(platform).trim(),
@@ -4826,15 +4856,30 @@ app.post("/api/domains", async (req, res) => {
       owner_id: resolvedOwnerId,
     };
 
-    const info = await insertDomain(payload);
+    const createdIds = [];
+    for (const normalizedDomain of normalizedDomains) {
+      const info = await insertDomain({
+        ...payload,
+        domain: normalizedDomain,
+      });
+      if (info?.id) createdIds.push(info.id);
+    }
+
     await createResourceCreatedNotification({
       req,
       entityType: "domain",
-      entityId: info.id,
-      title: "New domain added",
-      message: `${req.user?.username || "User"} added domain ${payload.domain}.`,
+      entityId: createdIds[0] || null,
+      title: createdIds.length > 1 ? "New domains added" : "New domain added",
+      message:
+        createdIds.length > 1
+          ? `${req.user?.username || "User"} added ${createdIds.length} domains.`
+          : `${req.user?.username || "User"} added domain ${normalizedDomains[0]}.`,
     });
-    return res.status(201).json({ id: info.id });
+    return res.status(201).json({
+      id: createdIds[0] || null,
+      ids: createdIds,
+      created: createdIds.length,
+    });
   } catch (error) {
     await createUnexpectedNotification({
       req,

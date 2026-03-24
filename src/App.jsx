@@ -272,6 +272,35 @@ const normalizeCountryListValue = (value) => {
   return normalized;
 };
 
+const normalizeDomainInputValue = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const withoutProtocol = text.replace(/^https?:\/\//i, "");
+  const hostCandidate = withoutProtocol.split("/")[0].trim();
+  if (!hostCandidate) return text;
+  return hostCandidate.toLowerCase();
+};
+
+const normalizeDomainInputList = (value) => {
+  if (value === null || value === undefined || value === "") return [];
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((item) => normalizeDomainInputValue(item))
+          .filter(Boolean)
+      )
+    );
+  }
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  const tokens = raw
+    .split(/[\s,;]+/g)
+    .map((item) => normalizeDomainInputValue(item))
+    .filter(Boolean);
+  return Array.from(new Set(tokens));
+};
+
 const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 const billingOptions = ["Crypto", "Bank Transfer", "Card"];
 const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
@@ -8998,6 +9027,10 @@ function DomainsDashboard({ authUser }) {
     setDomainForm((prev) => {
       const current = normalizeCountryListValue(prev.countries);
       const hasCountry = current.includes(normalized);
+      if (!hasCountry && current.length >= 50) {
+        setDomainState({ loading: false, error: "You can select up to 50 countries." });
+        return prev;
+      }
       return {
         ...prev,
         countries: hasCountry
@@ -9088,9 +9121,22 @@ function DomainsDashboard({ authUser }) {
 
   const handleDomainSubmit = async (event) => {
     event.preventDefault();
+    const normalizedDomains = normalizeDomainInputList(domainForm.domain);
     const normalizedCountries = normalizeCountryListValue(domainForm.countries);
+    if (!normalizedDomains.length) {
+      setDomainState({ loading: false, error: "Domain and status are required." });
+      return;
+    }
+    if (normalizedDomains.length > 50) {
+      setDomainState({ loading: false, error: "You can register up to 50 domains per request." });
+      return;
+    }
     if (!normalizedCountries.length) {
       setDomainState({ loading: false, error: "At least one country is required." });
+      return;
+    }
+    if (normalizedCountries.length > 50) {
+      setDomainState({ loading: false, error: "You can select up to 50 countries." });
       return;
     }
     try {
@@ -9099,6 +9145,9 @@ function DomainsDashboard({ authUser }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...domainForm,
+          domain: normalizedDomains.join(","),
+          domains: normalizedDomains,
+          country: normalizedCountries[0] || "",
           countries: normalizedCountries,
         }),
       });
@@ -9294,7 +9343,7 @@ function DomainsDashboard({ authUser }) {
             <input
               value={domainForm.domain}
               onChange={updateDomainForm("domain")}
-              placeholder="landing.yourdomain.com"
+              placeholder="landing.yourdomain.com or multiple separated by comma/space (max 50)"
               required
             />
           </div>
