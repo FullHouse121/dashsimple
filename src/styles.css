@@ -4362,6 +4362,105 @@ select option,
   background: rgba(54, 208, 124, 0.12);
 }
 
+.roles-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.roles-toolbar .log-search {
+  flex: 1;
+  min-width: 220px;
+}
+
+.roles-count {
+  font-size: 11px;
+  color: var(--muted-strong, #a9adb7);
+  font-weight: 500;
+}
+
+.role-locked-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted-strong, #a9adb7);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.role-permission-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.role-perm-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 12px;
+}
+
+.role-perm-group:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.role-perm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-strong, #a9adb7);
+}
+
+.role-perm-group-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.role-perm-group-bulk {
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.role-perm-group-bulk:hover:not(:disabled) {
+  background: rgba(54, 208, 124, 0.08);
+  border-color: rgba(54, 208, 124, 0.3);
+}
+
+.role-perm-group-bulk:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .goals-form .goal-range {
   grid-column: 1 / -1;
 }

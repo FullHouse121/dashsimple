@@ -499,6 +499,12 @@ const initDb = async () => {
     `ALTER TABLE offers ADD COLUMN IF NOT EXISTS valid_to TEXT;`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_project_id ON expenses (project_id);`,
     `CREATE INDEX IF NOT EXISTS idx_campaigns_project_id ON campaigns (project_id);`,
+    // Hot-path indices for media-stats: date-range scans and per-buyer drill-downs.
+    `CREATE INDEX IF NOT EXISTS idx_media_stats_date ON media_stats (date);`,
+    `CREATE INDEX IF NOT EXISTS idx_media_stats_date_buyer_country ON media_stats (date, buyer, country);`,
+    `CREATE INDEX IF NOT EXISTS idx_media_stats_campaign_name ON media_stats (campaign_name);`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date);`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses (status);`,
 
     // Seed the Unassigned brand and backfill any rows still NULL.
     // Using NOT EXISTS so we don't depend on a unique index being present.
@@ -761,6 +767,41 @@ const selectMediaStatsRaw = async (limit) =>
      LIMIT $1`,
     [limit]
   );
+
+// Date-range variants — much cheaper than fetching 100k rows and filtering client-side.
+// Falls back to non-range query when both bounds are null.
+const selectMediaStatsRange = async ({ limit, from, to }) => {
+  if (!from && !to) return selectMediaStats(limit);
+  const params = [];
+  let where = "";
+  if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
+  if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  params.push(limit);
+  return getRows(
+    `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
+            spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
+     FROM (
+       SELECT DISTINCT ON (
+         date, buyer,
+         COALESCE(country, ''), COALESCE(city, ''), COALESCE(region, ''),
+         COALESCE(placement, ''), COALESCE(domain, ''), COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''), COALESCE(ad_name, '')
+       )
+         id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
+         spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
+       FROM media_stats
+       ${where}
+       ORDER BY date, buyer,
+         COALESCE(country, ''), COALESCE(city, ''), COALESCE(region, ''),
+         COALESCE(placement, ''), COALESCE(domain, ''), COALESCE(campaign_name, ''),
+         COALESCE(adset_name, ''), COALESCE(ad_name, ''),
+         id DESC
+     ) dedup
+     ORDER BY date DESC, id DESC
+     LIMIT $${params.length}`,
+    params
+  );
+};
 
 const deleteMediaStatsByBaseKey = async (date, buyer, country) => {
   await query(
@@ -4739,6 +4780,93 @@ app.patch("/api/campaigns/:id/brand", async (req, res) => {
   res.json({ ok: true, id, project_id: parsed });
 });
 
+// ── Dashboard summary ────────────────────────────────────────────────────
+// One round-trip for Home: KPI totals, deltas vs previous window, and a
+// daily series for the chart. Frontend stops scanning 100k rows in JS.
+app.get("/api/dashboard/summary", async (req, res) => {
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  const buyerFilter = viewerBuyer ? " AND lower(buyer) = lower($BUYER)" : "";
+
+  // Helper that returns a single-row totals object for a [from, to] window.
+  const totalsFor = async (winFrom, winTo) => {
+    const params = [];
+    let where = "WHERE 1=1";
+    if (winFrom) { params.push(winFrom); where += ` AND date >= $${params.length}`; }
+    if (winTo)   { params.push(winTo);   where += ` AND date <= $${params.length}`; }
+    let sql = `
+      SELECT
+        COALESCE(SUM(clicks), 0)            AS clicks,
+        COALESCE(SUM(registers), 0)         AS registers,
+        COALESCE(SUM(ftds), 0)              AS ftds,
+        COALESCE(SUM(redeposits), 0)        AS redeposits,
+        COALESCE(SUM(spend), 0)             AS spend,
+        COALESCE(SUM(revenue), 0)           AS revenue,
+        COALESCE(SUM(ftd_revenue), 0)       AS ftd_revenue,
+        COALESCE(SUM(redeposit_revenue), 0) AS redeposit_revenue
+      FROM media_stats ${where}`;
+    if (viewerBuyer) {
+      sql += ` AND lower(buyer) = lower($${params.length + 1})`;
+      params.push(viewerBuyer);
+    }
+    const { rows } = await query(sql, params);
+    return rows[0] || {};
+  };
+
+  // Daily series for the chart in the current window
+  const seriesParams = [];
+  let seriesWhere = "WHERE 1=1";
+  if (from) { seriesParams.push(from); seriesWhere += ` AND date >= $${seriesParams.length}`; }
+  if (to)   { seriesParams.push(to);   seriesWhere += ` AND date <= $${seriesParams.length}`; }
+  let seriesSql = `
+    SELECT date,
+           COALESCE(SUM(clicks), 0)     AS clicks,
+           COALESCE(SUM(registers), 0)  AS registers,
+           COALESCE(SUM(ftds), 0)       AS ftds,
+           COALESCE(SUM(redeposits), 0) AS redeposits,
+           COALESCE(SUM(spend), 0)      AS spend,
+           COALESCE(SUM(revenue), 0)    AS revenue
+    FROM media_stats ${seriesWhere}`;
+  if (viewerBuyer) {
+    seriesSql += ` AND lower(buyer) = lower($${seriesParams.length + 1})`;
+    seriesParams.push(viewerBuyer);
+  }
+  seriesSql += ` GROUP BY date ORDER BY date ASC`;
+  const seriesRowsResult = await query(seriesSql, seriesParams);
+
+  // Previous window of equal length (for delta arrows)
+  let prevFrom = null;
+  let prevTo = null;
+  if (from && to) {
+    const f = new Date(`${from}T00:00:00`);
+    const t = new Date(`${to}T00:00:00`);
+    const days = Math.max(1, Math.round((t - f) / 86400000) + 1);
+    const pf = new Date(f);
+    pf.setDate(pf.getDate() - days);
+    const pt = new Date(f);
+    pt.setDate(pt.getDate() - 1);
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    prevFrom = fmt(pf);
+    prevTo = fmt(pt);
+  }
+
+  const [current, previous] = await Promise.all([
+    totalsFor(from, to),
+    prevFrom ? totalsFor(prevFrom, prevTo) : Promise.resolve({}),
+  ]);
+
+  res.json({
+    from,
+    to,
+    prevFrom,
+    prevTo,
+    current,
+    previous,
+    series: seriesRowsResult.rows || [],
+  });
+});
+
 // ── Finance ROI by project ────────────────────────────────────────────────
 // Two-pass attribution for accurate per-brand revenue:
 // 1. media_stats rows joined to campaigns via campaign_name → if the campaign
@@ -4754,21 +4882,23 @@ app.get("/api/finance/by-project", async (req, res) => {
   const from = req.query.from ? String(req.query.from) : null;
   const to = req.query.to ? String(req.query.to) : null;
 
-  const brands = await getRows(`SELECT id, name FROM brands ORDER BY name`);
-  const offers = await getRows(
-    `SELECT id, brand_id, geos, payout, valid_from, valid_to FROM offers WHERE status = 'Active'`
-  );
-  const campaigns = await getRows(
-    `SELECT name, project_id FROM campaigns WHERE project_id IS NOT NULL`
-  );
+  // Parallelize the three independent reads — saves a couple hundred ms per call.
+  const [brands, offers, campaigns] = await Promise.all([
+    getRows(`SELECT id, name FROM brands ORDER BY name`),
+    getRows(
+      `SELECT id, brand_id, geos, payout, model, valid_from, valid_to
+         FROM offers WHERE status = 'Active'`
+    ),
+    getRows(`SELECT name, project_id FROM campaigns WHERE project_id IS NOT NULL`),
+  ]);
 
-  // Build campaign_name → brand_id map for precise attribution
+  // campaign_name → brand_id (precise attribution)
   const campaignToBrand = new Map();
   for (const c of campaigns) {
     if (c.name) campaignToBrand.set(String(c.name).trim(), c.project_id);
   }
 
-  // Parse geos JSON and bucket offers by brand
+  // Parse geos JSON and bucket offers by brand. Model defaults to CPA.
   const offersByBrand = new Map();
   for (const o of offers) {
     let geos = [];
@@ -4777,15 +4907,17 @@ app.get("/api/finance/by-project", async (req, res) => {
     arr.push({
       payout: Number(o.payout) || 0,
       geos,
+      model: String(o.model || "CPA").trim(),
       validFrom: o.valid_from || null,
       validTo: o.valid_to || null,
     });
     offersByBrand.set(o.brand_id, arr);
   }
 
-  // Expenses per brand in the window
+  // Expenses: exclude Cancelled. Pending/Requested still count as committed
+  // outflow for forecasting; if you want only paid spend, tighten this further.
   const expenseArgs = [];
-  let expenseWhere = "WHERE 1=1";
+  let expenseWhere = `WHERE COALESCE(status, '') <> 'Cancelled'`;
   if (from) { expenseArgs.push(from); expenseWhere += ` AND date >= $${expenseArgs.length}`; }
   if (to)   { expenseArgs.push(to);   expenseWhere += ` AND date <= $${expenseArgs.length}`; }
   const expenseRows = await getRows(
@@ -4798,8 +4930,8 @@ app.get("/api/finance/by-project", async (req, res) => {
     expenseRows.map((row) => [row.project_id, Number(row.total) || 0])
   );
 
-  // FTDs joined with campaign_name + country + date so we can attribute
-  // precisely (via campaign linker) or fall back to geo+date.
+  // FTDs + redeposit revenue joined with campaign_name + country + date.
+  // Pulling redeposit_revenue lets us value RevShare/Hybrid offers correctly.
   const ftdArgs = [];
   let ftdWhere = "WHERE 1=1";
   if (from) { ftdArgs.push(from); ftdWhere += ` AND date >= $${ftdArgs.length}`; }
@@ -4808,7 +4940,8 @@ app.get("/api/finance/by-project", async (req, res) => {
     `SELECT COALESCE(country, '') AS country,
             COALESCE(campaign_name, '') AS campaign_name,
             date,
-            COALESCE(SUM(ftds), 0) AS ftds
+            COALESCE(SUM(ftds), 0) AS ftds,
+            COALESCE(SUM(redeposit_revenue), 0) AS redeposit_revenue
        FROM media_stats ${ftdWhere}
       GROUP BY country, campaign_name, date`,
     ftdArgs
@@ -4821,47 +4954,62 @@ app.get("/api/finance/by-project", async (req, res) => {
     return true;
   };
 
-  // Aggregate revenue + ftds per brand
+  // Revenue calc per row, based on offer model:
+  //   CPA      → FTDs × payout
+  //   RevShare → redeposit_revenue (the affiliate share is already on the row)
+  //   Hybrid   → both, additively
+  const revenueFromOffer = (offer, ftds, redepositRevenue) => {
+    if (!offer) return { cpa: 0, rs: 0 };
+    const model = offer.model || "CPA";
+    const cpa = model === "RevShare" ? 0 : ftds * offer.payout;
+    const rs = model === "CPA" ? 0 : redepositRevenue;
+    return { cpa, rs };
+  };
+
   const brandAgg = new Map();
   const ensure = (brandId) => {
-    if (!brandAgg.has(brandId)) brandAgg.set(brandId, { revenue: 0, ftds: 0 });
+    if (!brandAgg.has(brandId)) {
+      brandAgg.set(brandId, { revenue: 0, cpaRevenue: 0, rsRevenue: 0, ftds: 0, redepositRevenue: 0 });
+    }
     return brandAgg.get(brandId);
   };
 
   for (const row of ftdRows) {
     const ftds = Number(row.ftds) || 0;
-    if (!ftds) continue;
+    const rsRev = Number(row.redeposit_revenue) || 0;
+    if (!ftds && !rsRev) continue;
     const campaignName = String(row.campaign_name || "").trim();
     const linkedBrandId = campaignName ? campaignToBrand.get(campaignName) : null;
     if (linkedBrandId) {
-      // Precise: campaign linked to brand → pick the brand's best offer for
-      // the geo + date, fall back to brand's first valid offer at any geo.
       const offersForBrand = offersByBrand.get(linkedBrandId) || [];
       const match =
         offersForBrand.find((o) => o.geos.includes(row.country) && offerActiveOn(o, row.date)) ||
         offersForBrand.find((o) => offerActiveOn(o, row.date)) ||
         null;
-      const payout = match ? match.payout : 0;
+      const { cpa, rs } = revenueFromOffer(match, ftds, rsRev);
       const bucket = ensure(linkedBrandId);
-      bucket.revenue += ftds * payout;
+      bucket.revenue += cpa + rs;
+      bucket.cpaRevenue += cpa;
+      bucket.rsRevenue += rs;
       bucket.ftds += ftds;
+      bucket.redepositRevenue += rsRev;
     } else {
-      // Fallback: scan all brands' offers for one matching geo + date window.
-      // First matching brand wins (deterministic by brand iteration order).
       let attributed = false;
       for (const [brandId, brandOffers] of offersByBrand) {
         const match = brandOffers.find((o) => o.geos.includes(row.country) && offerActiveOn(o, row.date));
         if (match) {
+          const { cpa, rs } = revenueFromOffer(match, ftds, rsRev);
           const bucket = ensure(brandId);
-          bucket.revenue += ftds * match.payout;
+          bucket.revenue += cpa + rs;
+          bucket.cpaRevenue += cpa;
+          bucket.rsRevenue += rs;
           bucket.ftds += ftds;
+          bucket.redepositRevenue += rsRev;
           attributed = true;
           break;
         }
       }
       if (!attributed) {
-        // Unattributed FTDs — surface under the Unassigned bucket so the
-        // operator can see how much volume isn't linked yet.
         const unassigned = brands.find((b) => b.name === "Unassigned");
         if (unassigned) {
           const bucket = ensure(unassigned.id);
@@ -4872,7 +5020,9 @@ app.get("/api/finance/by-project", async (req, res) => {
   }
 
   const summary = brands.map((brand) => {
-    const agg = brandAgg.get(brand.id) || { revenue: 0, ftds: 0 };
+    const agg = brandAgg.get(brand.id) || {
+      revenue: 0, cpaRevenue: 0, rsRevenue: 0, ftds: 0, redepositRevenue: 0,
+    };
     const spend = expensesByBrand.get(brand.id) || 0;
     const profit = agg.revenue - spend;
     const roi = spend > 0 ? (profit / spend) * 100 : null;
@@ -4881,6 +5031,8 @@ app.get("/api/finance/by-project", async (req, res) => {
       brand: brand.name,
       ftds: agg.ftds,
       revenue: agg.revenue,
+      cpa_revenue: agg.cpaRevenue,
+      rs_revenue: agg.rsRevenue,
       spend,
       profit,
       roi,
@@ -4897,8 +5049,17 @@ app.get("/api/media-stats", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
   const strictRaw = String(req.query.strict || "").toLowerCase();
   const strictMode = strictRaw === "1" || strictRaw === "true" || strictRaw === "yes";
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
   const viewerBuyer = await resolveViewerBuyer(req.user);
-  let rows = await (strictMode ? selectMediaStatsRaw(limit) : selectMediaStats(limit));
+  let rows;
+  if (strictMode) {
+    rows = await selectMediaStatsRaw(limit);
+  } else if (from || to) {
+    rows = await selectMediaStatsRange({ limit, from, to });
+  } else {
+    rows = await selectMediaStats(limit);
+  }
 
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));

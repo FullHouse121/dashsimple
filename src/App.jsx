@@ -4653,23 +4653,32 @@ function FinancesDashboard({
     return () => { cancelled = true; };
   }, [periodRange.from, periodRange.to]);
 
-  // Load media-stats so we can compute ROI, Profit, Cost per FTD
-  const [revenueRows, setRevenueRows] = React.useState(() => readSwrCache("media-stats:limit=100000") || []);
+  // Load media-stats narrowed to the visible period — server-side filtering
+  // is much faster than pulling 100k rows and discarding most.
+  const periodCacheKey = React.useMemo(
+    () => `media-stats:finance:${periodRange.from || "_"}:${periodRange.to || "_"}`,
+    [periodRange.from, periodRange.to]
+  );
+  const [revenueRows, setRevenueRows] = React.useState(() => readSwrCache(periodCacheKey) || []);
   React.useEffect(() => {
     let cancelled = false;
+    setRevenueRows(readSwrCache(periodCacheKey) || []);
     (async () => {
       try {
-        const response = await apiFetch("/api/media-stats?limit=100000");
+        const qs = new URLSearchParams({ limit: "100000" });
+        if (periodRange.from) qs.set("from", periodRange.from);
+        if (periodRange.to) qs.set("to", periodRange.to);
+        const response = await apiFetch(`/api/media-stats?${qs.toString()}`);
         if (!response.ok) return;
         const data = await response.json();
         if (cancelled) return;
         const rows = Array.isArray(data) ? data : [];
-        writeSwrCache("media-stats:limit=100000", rows);
+        writeSwrCache(periodCacheKey, rows);
         setRevenueRows(rows);
       } catch (e) { /* swallow — keep cached */ }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [periodCacheKey, periodRange.from, periodRange.to]);
 
   // Compute revenue + FTDs for the active period (joins with media-stats)
   const revenueStats = React.useMemo(() => {
@@ -14202,6 +14211,45 @@ function RolesDashboard({ authUser }) {
     );
   };
 
+  // ── Roles UI helpers — permission groups, bulk toggles, role search ───
+  // Permission groups mirror the sidebar sections so toggling stays intuitive.
+  const permissionGroups = React.useMemo(
+    () => [
+      { title: t("Overview"), keys: ["dashboard", "geos", "goals"] },
+      { title: t("Performance"), keys: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
+      { title: t("Operations"), keys: ["finances", "offers", "utm", "domains", "pixels", "accounts"] },
+      { title: t("Integrations"), keys: ["meta_token", "api"] },
+      { title: t("Administration"), keys: ["roles", "media_buyers"] },
+    ],
+    [t]
+  );
+
+  // Map every role name → count of users that have it (rendered as a badge).
+  const usersByRole = React.useMemo(() => {
+    const map = new Map();
+    for (const u of users || []) {
+      const key = u.role || "";
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+    return map;
+  }, [users]);
+
+  const [roleSearch, setRoleSearch] = React.useState("");
+
+  const setGroupPermissions = (roleId, groupKeys, enable) => {
+    setRoles((prev) =>
+      prev.map((role) => {
+        if (role.id !== roleId) return role;
+        if (role.name === "Boss" || role.name === "Team Leader") return role;
+        const set = new Set(role.permissions);
+        for (const key of groupKeys) {
+          if (enable) set.add(key); else set.delete(key);
+        }
+        return { ...role, permissions: Array.from(set) };
+      })
+    );
+  };
+
   const handleRoleSave = async (role) => {
     if (!isLeadership) return;
     if (role.name === "Boss" || role.name === "Team Leader") return;
@@ -14369,52 +14417,110 @@ function RolesDashboard({ authUser }) {
           ) : roles.length === 0 ? (
             <div className="empty-state">{t("No roles found.")}</div>
           ) : (
-            <div className="role-grid">
-              {roles.map((role) => {
-                const isLocked = role.name === "Boss" || role.name === "Team Leader";
-                const canEdit = isLeadership && !isLocked;
-                return (
-                <div key={role.id} className="role-card">
-                  <div className="role-card-head">
-                    <div>
-                      <div className="role-name">{t(role.name)}</div>
-                      <div className="role-sub">{t("Permissions")}</div>
-                    </div>
-                    <div className="role-actions">
-                      <button
-                        className="ghost"
-                        type="button"
-                        onClick={() => handleRoleSave(role)}
-                        disabled={savingId === role.id || !canEdit}
-                      >
-                        {savingId === role.id ? t("Saving...") : t("Save Changes")}
-                      </button>
-                      {!isLocked ? (
-                        <button className="icon-btn" type="button" onClick={() => handleRoleDelete(role.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="role-permissions">
-                    {permissionOptions.map((perm) => {
-                      const checked = role.permissions.includes(perm.key);
-                      return (
-                        <label key={perm.key} className={`perm-item${checked ? " is-active" : ""}`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => togglePermission(role.id, perm.key)}
-                            disabled={!canEdit}
-                          />
-                          <span>{t(perm.label)}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )})}
-            </div>
+            <>
+              <div className="roles-toolbar">
+                <input
+                  type="text"
+                  className="log-search"
+                  placeholder={t("Search role name…")}
+                  value={roleSearch}
+                  onChange={(e) => setRoleSearch(e.target.value)}
+                />
+                <span className="roles-count">
+                  {roles.length} {t("roles")} · {users.length} {t("users")}
+                </span>
+              </div>
+              <div className="role-grid">
+                {(() => {
+                  const q = roleSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? roles.filter((role) => String(role.name || "").toLowerCase().includes(q))
+                    : roles;
+                  if (filtered.length === 0) {
+                    return <div className="empty-state">{t("No roles match.")}</div>;
+                  }
+                  return filtered.map((role) => {
+                    const isLocked = role.name === "Boss" || role.name === "Team Leader";
+                    const canEdit = isLeadership && !isLocked;
+                    const userCount = usersByRole.get(role.name) || 0;
+                    return (
+                      <div key={role.id} className="role-card">
+                        <div className="role-card-head">
+                          <div>
+                            <div className="role-name">
+                              {t(role.name)}
+                              {isLocked ? <span className="role-locked-pill" title={t("Built-in role — permissions can't be edited")}>{t("Built-in")}</span> : null}
+                            </div>
+                            <div className="role-sub">
+                              {userCount} {userCount === 1 ? t("user") : t("users")}
+                              {" · "}
+                              {role.permissions.length} / {permissionOptions.length} {t("permissions")}
+                            </div>
+                          </div>
+                          <div className="role-actions">
+                            <button
+                              className="ghost"
+                              type="button"
+                              onClick={() => handleRoleSave(role)}
+                              disabled={savingId === role.id || !canEdit}
+                            >
+                              {savingId === role.id ? t("Saving...") : t("Save Changes")}
+                            </button>
+                            {!isLocked ? (
+                              <button className="icon-btn" type="button" onClick={() => handleRoleDelete(role.id)}>
+                                <Trash2 size={16} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="role-permission-groups">
+                          {permissionGroups.map((group) => {
+                            const groupOpts = group.keys
+                              .map((k) => permissionOptions.find((p) => p.key === k))
+                              .filter(Boolean);
+                            if (groupOpts.length === 0) return null;
+                            const enabledInGroup = groupOpts.filter((p) => role.permissions.includes(p.key)).length;
+                            const allOn = enabledInGroup === groupOpts.length;
+                            return (
+                              <div key={group.title} className="role-perm-group">
+                                <div className="role-perm-group-head">
+                                  <span>{group.title}</span>
+                                  <span className="role-perm-group-count">{enabledInGroup}/{groupOpts.length}</span>
+                                  <button
+                                    type="button"
+                                    className="role-perm-group-bulk"
+                                    disabled={!canEdit}
+                                    onClick={() => setGroupPermissions(role.id, group.keys, !allOn)}
+                                  >
+                                    {allOn ? t("Clear") : t("Select all")}
+                                  </button>
+                                </div>
+                                <div className="role-permissions">
+                                  {groupOpts.map((perm) => {
+                                    const checked = role.permissions.includes(perm.key);
+                                    return (
+                                      <label key={perm.key} className={`perm-item${checked ? " is-active" : ""}`}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => togglePermission(role.id, perm.key)}
+                                          disabled={!canEdit}
+                                        />
+                                        <span>{t(perm.label)}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </>
           )}
         </motion.div>
       </section>
