@@ -1662,15 +1662,21 @@ function HomeDashboard({
   };
 
 
+  // First load — show only skeletons (early-return) so the zero-state real
+  // cards don't pile up below the placeholders. Error case falls through so
+  // the retry banner + cached/zero data render normally.
+  if (homeState.loading && homeRows.length === 0 && !homeState.error) {
+    return (
+      <>
+        <SkeletonCards count={4} />
+        <SkeletonCards count={4} />
+        <SkeletonChart height={240} />
+      </>
+    );
+  }
+
   return (
     <>
-      {homeState.loading && homeRows.length === 0 ? (
-        <>
-          <SkeletonCards count={4} />
-          <SkeletonCards count={4} />
-          <SkeletonChart height={240} />
-        </>
-      ) : null}
       {homeState.error ? (
         <div className="empty-state error stats-error">
           <span className="stats-error-icon" aria-hidden="true">!</span>
