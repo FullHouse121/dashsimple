@@ -495,11 +495,10 @@ const initDb = async () => {
     `CREATE INDEX IF NOT EXISTS idx_campaigns_project_id ON campaigns (project_id);`,
 
     // Seed the Unassigned brand and backfill any rows still NULL.
-    // We keep this brand around permanently so historical entries always
-    // have somewhere to point — UI shows a warning until they're retagged.
+    // Using NOT EXISTS so we don't depend on a unique index being present.
     `INSERT INTO brands (name, status, notes)
-     VALUES ('Unassigned', 'Active', 'Auto-created bucket for legacy expenses. Retag and these will move to their real brand.')
-     ON CONFLICT (name) DO NOTHING;`,
+     SELECT 'Unassigned', 'Active', 'Auto-created bucket for legacy expenses. Retag and these will move to their real brand.'
+      WHERE NOT EXISTS (SELECT 1 FROM brands WHERE name = 'Unassigned');`,
     `UPDATE expenses
         SET project_id = (SELECT id FROM brands WHERE name = 'Unassigned')
       WHERE project_id IS NULL;`,

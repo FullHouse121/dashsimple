@@ -3635,7 +3635,11 @@ function OffersDashboard({ authUser }) {
     setState((prev) => ({ ...prev, loading: true, error: "" }));
     try {
       const response = await apiFetch("/api/brands");
-      if (!response.ok) throw new Error("Failed to load brands.");
+      if (!response.ok) {
+        let detail = "";
+        try { detail = (await response.json())?.error || ""; } catch { /* ignore */ }
+        throw new Error(`Failed to load brands (HTTP ${response.status}${detail ? ` — ${detail}` : ""}).`);
+      }
       const data = await response.json();
       setBrands(Array.isArray(data) ? data : []);
       setState({ loading: false, error: "" });
