@@ -450,6 +450,59 @@ const initDb = async () => {
       ON system_notifications (event_type);`,
     `CREATE INDEX IF NOT EXISTS idx_system_notifications_entity_type
       ON system_notifications (entity_type);`,
+
+    // ── Offers / Brands / Banners ──────────────────────────────────────────
+    `CREATE TABLE IF NOT EXISTS brands (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      contact TEXT,
+      status TEXT NOT NULL DEFAULT 'Active',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS offers (
+      id SERIAL PRIMARY KEY,
+      brand_id INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+      geos TEXT NOT NULL DEFAULT '[]',
+      payout REAL NOT NULL,
+      baseline REAL,
+      model TEXT NOT NULL DEFAULT 'CPA',
+      status TEXT NOT NULL DEFAULT 'Active',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS banners (
+      id SERIAL PRIMARY KEY,
+      brand_id INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      storage_path TEXT,
+      width INTEGER,
+      height INTEGER,
+      format TEXT,
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_offers_brand_id ON offers (brand_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_banners_brand_id ON banners (brand_id);`,
+
+    // Project (= brand) attribution columns
+    `ALTER TABLE expenses ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
+    `ALTER TABLE goals ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
+    `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_project_id ON expenses (project_id);`,
+    `CREATE INDEX IF NOT EXISTS idx_campaigns_project_id ON campaigns (project_id);`,
+
+    // Seed the Unassigned brand and backfill any rows still NULL.
+    // We keep this brand around permanently so historical entries always
+    // have somewhere to point — UI shows a warning until they're retagged.
+    `INSERT INTO brands (name, status, notes)
+     VALUES ('Unassigned', 'Active', 'Auto-created bucket for legacy expenses. Retag and these will move to their real brand.')
+     ON CONFLICT (name) DO NOTHING;`,
+    `UPDATE expenses
+        SET project_id = (SELECT id FROM brands WHERE name = 'Unassigned')
+      WHERE project_id IS NULL;`,
   ];
 
   for (const statement of statements) {
@@ -574,8 +627,8 @@ const seedRoles = async () => {
 
 const insertExpense = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO expenses (date, country, category, reference, billing_type, crypto_network, crypto_hash, amount, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO expenses (date, country, category, reference, billing_type, crypto_network, crypto_hash, amount, status, project_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       payload.date,
@@ -587,6 +640,7 @@ const insertExpense = async (payload) => {
       payload.crypto_hash,
       payload.amount,
       payload.status,
+      payload.project_id ?? null,
     ]
   );
   return rows[0];
@@ -594,9 +648,12 @@ const insertExpense = async (payload) => {
 
 const selectExpenses = async (limit) =>
   getRows(
-    `SELECT id, date, country, category, reference, billing_type, crypto_network, crypto_hash, amount, status
-     FROM expenses
-     ORDER BY date DESC, id DESC
+    `SELECT e.id, e.date, e.country, e.category, e.reference, e.billing_type,
+            e.crypto_network, e.crypto_hash, e.amount, e.status, e.project_id,
+            b.name AS project_name
+     FROM expenses e
+     LEFT JOIN brands b ON b.id = e.project_id
+     ORDER BY e.date DESC, e.id DESC
      LIMIT $1`,
     [limit]
   );
@@ -4167,7 +4224,7 @@ app.post("/api/expenses", async (req, res) => {
   }
   const {
     date,
-    country,
+    country = "",
     category,
     reference = "",
     billing,
@@ -4175,9 +4232,10 @@ app.post("/api/expenses", async (req, res) => {
     cryptoHash = "",
     amount,
     status,
+    projectId,
   } = req.body ?? {};
 
-  if (!date || !country || !category || !billing || amount === undefined || amount === null || !status) {
+  if (!date || !category || !billing || amount === undefined || amount === null || !status) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
@@ -4185,14 +4243,19 @@ app.post("/api/expenses", async (req, res) => {
   if (!Number.isFinite(parsedAmount)) {
     return res.status(400).json({ error: "Amount must be a number." });
   }
-  const normalizedCountry = String(country || "").trim();
-  if (!normalizedCountry) {
-    return res.status(400).json({ error: "Country is required." });
+
+  const parsedProjectId = Number.parseInt(projectId, 10);
+  if (!Number.isFinite(parsedProjectId)) {
+    return res.status(400).json({ error: "Project is required." });
+  }
+  const { rows: brandRows } = await query("SELECT id FROM brands WHERE id = $1", [parsedProjectId]);
+  if (brandRows.length === 0) {
+    return res.status(400).json({ error: "Project not found." });
   }
 
   const payload = {
     date: String(date).trim(),
-    country: normalizedCountry,
+    country: String(country || "").trim(),
     category: String(category).trim(),
     reference: String(reference || "").trim(),
     billing_type: String(billing).trim(),
@@ -4200,6 +4263,7 @@ app.post("/api/expenses", async (req, res) => {
     crypto_hash: cryptoHash || null,
     amount: parsedAmount,
     status: String(status).trim(),
+    project_id: parsedProjectId,
   };
 
   const info = await insertExpense(payload);
@@ -4214,12 +4278,27 @@ app.patch("/api/expenses/:id", async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid expense id." });
   }
-  const { status } = req.body ?? {};
-  if (!status) {
-    return res.status(400).json({ error: "Missing status." });
+  const { status, projectId } = req.body ?? {};
+  const sets = [];
+  const args = [];
+  if (status !== undefined) {
+    sets.push(`status = $${sets.length + 1}`);
+    args.push(String(status));
   }
-  await query("UPDATE expenses SET status = $1 WHERE id = $2", [status, id]);
-  res.json({ ok: true, id, status });
+  if (projectId !== undefined) {
+    const parsed = Number.parseInt(projectId, 10);
+    if (!Number.isFinite(parsed)) {
+      return res.status(400).json({ error: "Invalid project id." });
+    }
+    sets.push(`project_id = $${sets.length + 1}`);
+    args.push(parsed);
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "No fields to update." });
+  }
+  args.push(id);
+  await query(`UPDATE expenses SET ${sets.join(", ")} WHERE id = $${args.length}`, args);
+  res.json({ ok: true, id });
 });
 
 app.delete("/api/expenses/:id", async (req, res) => {
@@ -4232,6 +4311,369 @@ app.delete("/api/expenses/:id", async (req, res) => {
   }
   await query("DELETE FROM expenses WHERE id = $1", [id]);
   res.json({ ok: true });
+});
+
+// ── Brands ────────────────────────────────────────────────────────────────
+// Returns every brand plus an attached `offers` array (geo-payout pairs) and
+// `banners` array. We do this in one round-trip rather than three separate
+// endpoints so the frontend can render the Offers page from a single call.
+app.get("/api/brands", async (req, res) => {
+  const brands = await getRows(
+    `SELECT id, name, contact, status, notes, created_at
+       FROM brands
+      ORDER BY name = 'Unassigned' ASC, name ASC`
+  );
+  const offers = await getRows(
+    `SELECT id, brand_id, geos, payout, baseline, model, status, notes, created_at
+       FROM offers
+      ORDER BY created_at DESC, id DESC`
+  );
+  const banners = await getRows(
+    `SELECT id, brand_id, name, image_url, storage_path, width, height, format, status, created_at
+       FROM banners
+      ORDER BY created_at DESC, id DESC`
+  );
+  const byBrand = (list) => {
+    const map = new Map();
+    for (const row of list) {
+      const arr = map.get(row.brand_id) || [];
+      arr.push(row);
+      map.set(row.brand_id, arr);
+    }
+    return map;
+  };
+  const offersMap = byBrand(offers);
+  const bannersMap = byBrand(banners);
+  const parseGeos = (value) => {
+    if (!value) return [];
+    try { return JSON.parse(value); } catch { return []; }
+  };
+  res.json(
+    brands.map((brand) => ({
+      ...brand,
+      offers: (offersMap.get(brand.id) || []).map((o) => ({ ...o, geos: parseGeos(o.geos) })),
+      banners: bannersMap.get(brand.id) || [],
+    }))
+  );
+});
+
+app.post("/api/brands", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const { name, contact = "", status = "Active", notes = "" } = req.body ?? {};
+  const cleanName = String(name || "").trim();
+  if (!cleanName) {
+    return res.status(400).json({ error: "Name is required." });
+  }
+  try {
+    const { rows } = await query(
+      `INSERT INTO brands (name, contact, status, notes)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [cleanName, String(contact).trim(), String(status).trim(), String(notes).trim()]
+    );
+    res.status(201).json({ id: rows[0].id });
+  } catch (err) {
+    if (err?.code === "23505") {
+      return res.status(409).json({ error: "A brand with that name already exists." });
+    }
+    throw err;
+  }
+});
+
+app.patch("/api/brands/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid brand id." });
+  }
+  const fields = { name: "name", contact: "contact", status: "status", notes: "notes" };
+  const sets = [];
+  const args = [];
+  for (const [key, column] of Object.entries(fields)) {
+    if (req.body?.[key] !== undefined) {
+      sets.push(`${column} = $${sets.length + 1}`);
+      args.push(String(req.body[key]).trim());
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "No fields to update." });
+  }
+  args.push(id);
+  await query(`UPDATE brands SET ${sets.join(", ")} WHERE id = $${args.length}`, args);
+  res.json({ ok: true, id });
+});
+
+app.delete("/api/brands/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid brand id." });
+  }
+  // Refuse to delete the Unassigned bucket — historical rows rely on it.
+  const { rows } = await query("SELECT name FROM brands WHERE id = $1", [id]);
+  if (rows.length === 0) {
+    return res.status(404).json({ error: "Brand not found." });
+  }
+  if (rows[0].name === "Unassigned") {
+    return res.status(400).json({ error: "The Unassigned bucket cannot be deleted." });
+  }
+  // Move any expenses still tagged to this brand back to Unassigned.
+  await query(
+    `UPDATE expenses
+        SET project_id = (SELECT id FROM brands WHERE name = 'Unassigned')
+      WHERE project_id = $1`,
+    [id]
+  );
+  await query("DELETE FROM brands WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// ── Offers ────────────────────────────────────────────────────────────────
+app.post("/api/offers", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const {
+    brandId,
+    geos = [],
+    payout,
+    baseline = null,
+    model = "CPA",
+    status = "Active",
+    notes = "",
+  } = req.body ?? {};
+  const parsedBrandId = Number.parseInt(brandId, 10);
+  if (!Number.isFinite(parsedBrandId)) {
+    return res.status(400).json({ error: "brandId is required." });
+  }
+  const parsedPayout = Number.parseFloat(payout);
+  if (!Number.isFinite(parsedPayout) || parsedPayout < 0) {
+    return res.status(400).json({ error: "payout must be a non-negative number." });
+  }
+  const parsedBaseline =
+    baseline === null || baseline === undefined || baseline === ""
+      ? null
+      : Number.parseFloat(baseline);
+  if (parsedBaseline !== null && (!Number.isFinite(parsedBaseline) || parsedBaseline < 0)) {
+    return res.status(400).json({ error: "baseline must be a non-negative number." });
+  }
+  const cleanGeos = Array.isArray(geos)
+    ? geos.map((g) => String(g || "").trim()).filter(Boolean)
+    : [];
+  const { rows } = await query(
+    `INSERT INTO offers (brand_id, geos, payout, baseline, model, status, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      parsedBrandId,
+      JSON.stringify(cleanGeos),
+      parsedPayout,
+      parsedBaseline,
+      String(model).trim(),
+      String(status).trim(),
+      String(notes).trim(),
+    ]
+  );
+  res.status(201).json({ id: rows[0].id });
+});
+
+app.patch("/api/offers/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid offer id." });
+  }
+  const sets = [];
+  const args = [];
+  if (req.body?.geos !== undefined) {
+    const arr = Array.isArray(req.body.geos)
+      ? req.body.geos.map((g) => String(g || "").trim()).filter(Boolean)
+      : [];
+    sets.push(`geos = $${sets.length + 1}`);
+    args.push(JSON.stringify(arr));
+  }
+  if (req.body?.payout !== undefined) {
+    const parsed = Number.parseFloat(req.body.payout);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return res.status(400).json({ error: "payout must be a non-negative number." });
+    }
+    sets.push(`payout = $${sets.length + 1}`);
+    args.push(parsed);
+  }
+  if (req.body?.baseline !== undefined) {
+    const v = req.body.baseline;
+    const parsed = v === null || v === "" ? null : Number.parseFloat(v);
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 0)) {
+      return res.status(400).json({ error: "baseline must be a non-negative number." });
+    }
+    sets.push(`baseline = $${sets.length + 1}`);
+    args.push(parsed);
+  }
+  for (const field of ["model", "status", "notes"]) {
+    if (req.body?.[field] !== undefined) {
+      sets.push(`${field} = $${sets.length + 1}`);
+      args.push(String(req.body[field]).trim());
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "No fields to update." });
+  }
+  args.push(id);
+  await query(`UPDATE offers SET ${sets.join(", ")} WHERE id = $${args.length}`, args);
+  res.json({ ok: true, id });
+});
+
+app.delete("/api/offers/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid offer id." });
+  }
+  await query("DELETE FROM offers WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// ── Banners (metadata; file uploads wired separately via Supabase) ────────
+app.post("/api/banners", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const {
+    brandId,
+    name,
+    imageUrl,
+    storagePath = null,
+    width = null,
+    height = null,
+    format = null,
+    status = "Active",
+  } = req.body ?? {};
+  const parsedBrandId = Number.parseInt(brandId, 10);
+  if (!Number.isFinite(parsedBrandId)) {
+    return res.status(400).json({ error: "brandId is required." });
+  }
+  const cleanName = String(name || "").trim();
+  const cleanUrl = String(imageUrl || "").trim();
+  if (!cleanName || !cleanUrl) {
+    return res.status(400).json({ error: "name and imageUrl are required." });
+  }
+  const { rows } = await query(
+    `INSERT INTO banners (brand_id, name, image_url, storage_path, width, height, format, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id`,
+    [
+      parsedBrandId,
+      cleanName,
+      cleanUrl,
+      storagePath ? String(storagePath).trim() : null,
+      Number.isFinite(Number(width)) ? Number(width) : null,
+      Number.isFinite(Number(height)) ? Number(height) : null,
+      format ? String(format).trim() : null,
+      String(status).trim(),
+    ]
+  );
+  res.status(201).json({ id: rows[0].id });
+});
+
+app.delete("/api/banners/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid banner id." });
+  }
+  await query("DELETE FROM banners WHERE id = $1", [id]);
+  res.json({ ok: true });
+});
+
+// ── Finance ROI by project ────────────────────────────────────────────────
+// Joins media_stats (FTDs by country) with offers (payout by geo per brand)
+// and expenses (tagged to brand) to produce a per-brand P&L summary.
+app.get("/api/finance/by-project", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+
+  const brands = await getRows(`SELECT id, name FROM brands ORDER BY name`);
+  const offers = await getRows(
+    `SELECT id, brand_id, geos, payout FROM offers WHERE status = 'Active'`
+  );
+  // Parse geos JSON; build a lookup of geo -> [offers]
+  const offersByBrand = new Map();
+  for (const o of offers) {
+    let geos = [];
+    try { geos = JSON.parse(o.geos || "[]"); } catch { geos = []; }
+    const arr = offersByBrand.get(o.brand_id) || [];
+    arr.push({ payout: Number(o.payout) || 0, geos });
+    offersByBrand.set(o.brand_id, arr);
+  }
+
+  // Expenses per brand in the window
+  const expenseArgs = [];
+  let expenseWhere = "WHERE 1=1";
+  if (from) { expenseArgs.push(from); expenseWhere += ` AND date >= $${expenseArgs.length}`; }
+  if (to)   { expenseArgs.push(to);   expenseWhere += ` AND date <= $${expenseArgs.length}`; }
+  const expenseRows = await getRows(
+    `SELECT project_id, COALESCE(SUM(amount), 0) AS total
+       FROM expenses ${expenseWhere}
+      GROUP BY project_id`,
+    expenseArgs
+  );
+  const expensesByBrand = new Map(
+    expenseRows.map((row) => [row.project_id, Number(row.total) || 0])
+  );
+
+  // FTDs by country in the window — needed to compute revenue per brand
+  const ftdArgs = [];
+  let ftdWhere = "WHERE 1=1";
+  if (from) { ftdArgs.push(from); ftdWhere += ` AND date >= $${ftdArgs.length}`; }
+  if (to)   { ftdArgs.push(to);   ftdWhere += ` AND date <= $${ftdArgs.length}`; }
+  const ftdRows = await getRows(
+    `SELECT COALESCE(country, '') AS country, COALESCE(SUM(ftds), 0) AS ftds
+       FROM media_stats ${ftdWhere}
+      GROUP BY country`,
+    ftdArgs
+  );
+
+  const summary = brands.map((brand) => {
+    const brandOffers = offersByBrand.get(brand.id) || [];
+    let revenue = 0;
+    let attributedFtds = 0;
+    for (const { country, ftds } of ftdRows) {
+      const match = brandOffers.find((o) => o.geos.includes(country));
+      if (match) {
+        revenue += Number(ftds) * match.payout;
+        attributedFtds += Number(ftds);
+      }
+    }
+    const spend = expensesByBrand.get(brand.id) || 0;
+    const profit = revenue - spend;
+    const roi = spend > 0 ? (profit / spend) * 100 : null;
+    return {
+      brand_id: brand.id,
+      brand: brand.name,
+      ftds: attributedFtds,
+      revenue,
+      spend,
+      profit,
+      roi,
+    };
+  });
+
+  res.json({ from, to, rows: summary });
 });
 
 app.get("/api/media-stats", async (req, res) => {

@@ -66,6 +66,10 @@ import {
   TrendingDown,
   DollarSign,
   Percent,
+  Tag,
+  Image as ImageIcon,
+  Briefcase,
+  AlertTriangle,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
@@ -161,6 +165,7 @@ const navItems = [
   { key: "geos", label: "GEOS", icon: MapIcon },
   { key: "streams", label: "Goals", icon: Target },
   { key: "finances", label: "Finances", icon: Wallet },
+  { key: "offers", label: "Offers", icon: Tag },
   { key: "utm", label: "UTM Builder", icon: Link2 },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
@@ -191,7 +196,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["finances", "utm", "domains", "pixels", "accounts"] },
+  { title: "Operations", items: ["finances", "offers", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -3602,15 +3607,547 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   );
 }
 
+function OffersDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const role = String(authUser?.role || "").toLowerCase();
+  const isLeadership = role === "admin" || role === "leadership" || role === "owner";
+  const [tab, setTab] = React.useState("brands"); // "brands" | "offers" | "banners"
+  const [brands, setBrands] = React.useState([]);
+  const [state, setState] = React.useState({ loading: true, error: "" });
+
+  const [brandForm, setBrandForm] = React.useState({ name: "", contact: "", status: "Active", notes: "" });
+  const [offerForm, setOfferForm] = React.useState({
+    brandId: "",
+    geos: [],
+    payout: "",
+    baseline: "",
+    baselineMode: "none", // "none" | "amount"
+    model: "CPA",
+    status: "Active",
+    notes: "",
+  });
+  const [bannerForm, setBannerForm] = React.useState({
+    brandId: "",
+    name: "",
+    imageUrl: "",
+  });
+
+  const fetchBrands = React.useCallback(async () => {
+    setState((prev) => ({ ...prev, loading: true, error: "" }));
+    try {
+      const response = await apiFetch("/api/brands");
+      if (!response.ok) throw new Error("Failed to load brands.");
+      const data = await response.json();
+      setBrands(Array.isArray(data) ? data : []);
+      setState({ loading: false, error: "" });
+    } catch (error) {
+      setState({ loading: false, error: error.message || "Failed to load brands." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchBrands();
+  }, [fetchBrands]);
+
+  const brandOptions = React.useMemo(
+    () => brands.filter((b) => b.name !== "Unassigned").map((b) => ({ value: String(b.id), label: b.name })),
+    [brands]
+  );
+
+  // ── Brand form
+  const handleBrandSubmit = async (event) => {
+    event.preventDefault();
+    if (!brandForm.name.trim()) return;
+    try {
+      const response = await apiFetch("/api/brands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(brandForm),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save brand.");
+      }
+      setBrandForm({ name: "", contact: "", status: "Active", notes: "" });
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  const handleBrandDelete = async (id) => {
+    if (!window.confirm(t("Delete this brand? Expenses tagged to it will be moved to Unassigned."))) return;
+    try {
+      const response = await apiFetch(`/api/brands/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to delete brand.");
+      }
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  // ── Offer form
+  const handleOfferSubmit = async (event) => {
+    event.preventDefault();
+    if (!offerForm.brandId || offerForm.payout === "") return;
+    try {
+      const response = await apiFetch("/api/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          brandId: offerForm.brandId,
+          geos: offerForm.geos,
+          payout: offerForm.payout,
+          baseline: offerForm.baselineMode === "amount" ? offerForm.baseline : null,
+          model: offerForm.model,
+          status: offerForm.status,
+          notes: offerForm.notes,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save offer.");
+      }
+      setOfferForm({
+        brandId: "",
+        geos: [],
+        payout: "",
+        baseline: "",
+        baselineMode: "none",
+        model: "CPA",
+        status: "Active",
+        notes: "",
+      });
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  const handleOfferDelete = async (id) => {
+    if (!window.confirm(t("Delete this offer?"))) return;
+    try {
+      const response = await apiFetch(`/api/offers/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete offer.");
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  // ── Banner form (URL-only for now; uploads pending Supabase wiring)
+  const handleBannerSubmit = async (event) => {
+    event.preventDefault();
+    if (!bannerForm.brandId || !bannerForm.name.trim() || !bannerForm.imageUrl.trim()) return;
+    try {
+      const response = await apiFetch("/api/banners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bannerForm),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to save banner.");
+      }
+      setBannerForm({ brandId: "", name: "", imageUrl: "" });
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  const handleBannerDelete = async (id) => {
+    if (!window.confirm(t("Delete this banner?"))) return;
+    try {
+      const response = await apiFetch(`/api/banners/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete banner.");
+      await fetchBrands();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  const tabs = [
+    { key: "brands", label: t("Brands"), icon: Briefcase },
+    { key: "offers", label: t("Offers"), icon: Tag },
+    { key: "banners", label: t("Banners"), icon: ImageIcon },
+  ];
+
+  if (!isLeadership) {
+    return (
+      <section className="panels">
+        <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Offers")}</h3>
+              <p className="panel-subtitle">{t("Brands, offers, and creatives are managed by leadership.")}</p>
+            </div>
+          </div>
+          <div className="empty-state">{t("No access for your role.")}</div>
+        </motion.div>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section className="panels offers-tabs-panel">
+        <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Offers")}</h3>
+              <p className="panel-subtitle">
+                {t("Define brands, geo-payout offers, and creatives. Expenses get tagged to brands so ROI is computed automatically.")}
+              </p>
+            </div>
+            <div className="offers-tabs">
+              {tabs.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`offers-tab${tab === item.key ? " is-active" : ""}`}
+                  onClick={() => setTab(item.key)}
+                >
+                  <item.icon size={14} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          {state.error ? <div className="empty-state error">{state.error}</div> : null}
+        </motion.div>
+      </section>
+
+      {tab === "brands" ? (
+        <section className="panels">
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Add Brand")}</h3>
+                <p className="panel-subtitle">{t("Each brand is a project. Offers and banners attach to it.")}</p>
+              </div>
+            </div>
+            <form className="form-grid" onSubmit={handleBrandSubmit}>
+              <div className="field">
+                <label>{t("Name")}</label>
+                <input
+                  type="text"
+                  placeholder={t("Brand or advertiser")}
+                  value={brandForm.name}
+                  onChange={(e) => setBrandForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Contact")}</label>
+                <input
+                  type="text"
+                  placeholder={t("Account manager, telegram, email")}
+                  value={brandForm.contact}
+                  onChange={(e) => setBrandForm((prev) => ({ ...prev, contact: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Status")}</label>
+                <Select
+                  value={brandForm.status}
+                  onChange={(v) => setBrandForm((prev) => ({ ...prev, status: v }))}
+                  options={["Active", "Paused", "Archived"].map((s) => ({ value: s, label: t(s) }))}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Notes")}</label>
+                <input
+                  type="text"
+                  placeholder={t("Optional notes")}
+                  value={brandForm.notes}
+                  onChange={(e) => setBrandForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+              <div className="form-actions">
+                <button className="action-pill" type="submit">{t("Add Brand")}</button>
+              </div>
+            </form>
+          </motion.div>
+
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Brand Directory")}</h3>
+                <p className="panel-subtitle">{t("All brands and their attached offers + creatives.")}</p>
+              </div>
+            </div>
+            {state.loading ? (
+              <div className="empty-state">{t("Loading…")}</div>
+            ) : brands.length === 0 ? (
+              <div className="empty-state">{t("No brands yet.")}</div>
+            ) : (
+              <div className="brand-list">
+                {brands.map((brand) => (
+                  <div key={brand.id} className={`brand-card${brand.name === "Unassigned" ? " is-unassigned" : ""}`}>
+                    <div className="brand-card-head">
+                      <div>
+                        <div className="brand-card-title">{brand.name}</div>
+                        <div className="brand-card-sub">
+                          {brand.contact ? brand.contact + " · " : ""}{t(brand.status || "Active")}
+                          {" · "}{(brand.offers?.length || 0)} {t("offers")} · {(brand.banners?.length || 0)} {t("banners")}
+                        </div>
+                      </div>
+                      {brand.name !== "Unassigned" ? (
+                        <button className="icon-btn" type="button" onClick={() => handleBrandDelete(brand.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      ) : null}
+                    </div>
+                    {brand.notes ? <div className="brand-card-notes">{brand.notes}</div> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        </section>
+      ) : null}
+
+      {tab === "offers" ? (
+        <section className="panels">
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Add Offer")}</h3>
+                <p className="panel-subtitle">{t("Set the payout per FTD and the geos it applies to.")}</p>
+              </div>
+            </div>
+            <form className="form-grid" onSubmit={handleOfferSubmit}>
+              <div className="field">
+                <label>{t("Brand")}</label>
+                <Select
+                  value={offerForm.brandId}
+                  onChange={(v) => setOfferForm((prev) => ({ ...prev, brandId: v }))}
+                  options={brandOptions}
+                  placeholder={t("Select")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Payout ($)")}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="15.00"
+                  value={offerForm.payout}
+                  onChange={(e) => setOfferForm((prev) => ({ ...prev, payout: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Model")}</label>
+                <Select
+                  value={offerForm.model}
+                  onChange={(v) => setOfferForm((prev) => ({ ...prev, model: v }))}
+                  options={["CPA", "RevShare", "Hybrid"].map((m) => ({ value: m, label: m }))}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Baseline")}</label>
+                <Select
+                  value={offerForm.baselineMode}
+                  onChange={(v) => setOfferForm((prev) => ({ ...prev, baselineMode: v, baseline: v === "none" ? "" : prev.baseline }))}
+                  options={[
+                    { value: "none", label: t("No baseline") },
+                    { value: "amount", label: t("Set amount") },
+                  ]}
+                />
+              </div>
+              {offerForm.baselineMode === "amount" ? (
+                <div className="field">
+                  <label>{t("Baseline amount ($)")}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="500"
+                    value={offerForm.baseline}
+                    onChange={(e) => setOfferForm((prev) => ({ ...prev, baseline: e.target.value }))}
+                  />
+                </div>
+              ) : null}
+              <div className="field field-wide">
+                <label>{t("Geos")} <span className="field-pace-hint">{t("Bulk-select; all share the same payout.")}</span></label>
+                <CountryDropdownPicker
+                  multiple
+                  values={offerForm.geos}
+                  onToggle={(country) => {
+                    setOfferForm((prev) => {
+                      const set = new Set(prev.geos);
+                      if (set.has(country)) set.delete(country);
+                      else set.add(country);
+                      return { ...prev, geos: Array.from(set) };
+                    });
+                  }}
+                  options={countryOptions}
+                  placeholder={t("Pick countries")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              <div className="field field-wide">
+                <label>{t("Notes")}</label>
+                <input
+                  type="text"
+                  placeholder={t("Optional")}
+                  value={offerForm.notes}
+                  onChange={(e) => setOfferForm((prev) => ({ ...prev, notes: e.target.value }))}
+                />
+              </div>
+              <div className="form-actions">
+                <button className="action-pill" type="submit">{t("Add Offer")}</button>
+              </div>
+            </form>
+          </motion.div>
+
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Active Offers")}</h3>
+                <p className="panel-subtitle">{t("Grouped by brand.")}</p>
+              </div>
+            </div>
+            {brands.filter((b) => (b.offers || []).length > 0).length === 0 ? (
+              <div className="empty-state">{t("No offers yet.")}</div>
+            ) : (
+              <div className="offer-list">
+                {brands
+                  .filter((b) => (b.offers || []).length > 0)
+                  .map((brand) => (
+                    <div key={brand.id} className="offer-group">
+                      <div className="offer-group-head">{brand.name}</div>
+                      {brand.offers.map((offer) => (
+                        <div key={offer.id} className="offer-row">
+                          <div className="offer-row-main">
+                            <div className="offer-row-payout">
+                              <strong>${Number(offer.payout).toFixed(2)}</strong>
+                              <span className="offer-row-model">{offer.model}</span>
+                            </div>
+                            <div className="offer-row-geos">
+                              {Array.isArray(offer.geos) && offer.geos.length > 0
+                                ? offer.geos.join(" · ")
+                                : t("All geos")}
+                            </div>
+                            {offer.baseline !== null && offer.baseline !== undefined ? (
+                              <div className="offer-row-baseline">
+                                {t("Baseline")}: ${Number(offer.baseline).toFixed(2)}
+                              </div>
+                            ) : null}
+                          </div>
+                          <button className="icon-btn" type="button" onClick={() => handleOfferDelete(offer.id)}>
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </motion.div>
+        </section>
+      ) : null}
+
+      {tab === "banners" ? (
+        <section className="panels">
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Add Banner")}</h3>
+                <p className="panel-subtitle">
+                  {t("Paste an image URL for now. Direct uploads will be enabled once Supabase storage is wired.")}
+                </p>
+              </div>
+            </div>
+            <form className="form-grid" onSubmit={handleBannerSubmit}>
+              <div className="field">
+                <label>{t("Brand")}</label>
+                <Select
+                  value={bannerForm.brandId}
+                  onChange={(v) => setBannerForm((prev) => ({ ...prev, brandId: v }))}
+                  options={brandOptions}
+                  placeholder={t("Select")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Banner Name")}</label>
+                <input
+                  type="text"
+                  placeholder={t("e.g. Casino X — BR — square 1:1")}
+                  value={bannerForm.name}
+                  onChange={(e) => setBannerForm((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="field field-wide">
+                <label>{t("Image URL")}</label>
+                <input
+                  type="url"
+                  placeholder="https://…"
+                  value={bannerForm.imageUrl}
+                  onChange={(e) => setBannerForm((prev) => ({ ...prev, imageUrl: e.target.value }))}
+                />
+              </div>
+              <div className="form-actions">
+                <button className="action-pill" type="submit">{t("Add Banner")}</button>
+              </div>
+            </form>
+          </motion.div>
+
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Banner Library")}</h3>
+                <p className="panel-subtitle">{t("Creatives by brand.")}</p>
+              </div>
+            </div>
+            {brands.filter((b) => (b.banners || []).length > 0).length === 0 ? (
+              <div className="empty-state">{t("No banners yet.")}</div>
+            ) : (
+              <div className="banner-grid">
+                {brands
+                  .filter((b) => (b.banners || []).length > 0)
+                  .flatMap((brand) =>
+                    brand.banners.map((banner) => (
+                      <div key={banner.id} className="banner-card">
+                        <div className="banner-card-image">
+                          <img src={banner.image_url} alt={banner.name} loading="lazy" />
+                        </div>
+                        <div className="banner-card-meta">
+                          <div className="banner-card-title">{banner.name}</div>
+                          <div className="banner-card-sub">{brand.name}</div>
+                        </div>
+                        <button className="icon-btn banner-card-delete" type="button" onClick={() => handleBannerDelete(banner.id)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+              </div>
+            )}
+          </motion.div>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 function FinancesDashboard({
   entry,
   entries,
   entryState,
+  brands = [],
+  brandsLoaded = false,
   onEntryChange,
   onEntryValueChange,
   onEntrySubmit,
   onEntryReset,
   onEntryStatusChange,
+  onEntryProjectChange,
   onEntryDelete,
   canManageExpenses,
   period,
@@ -3631,6 +4168,28 @@ function FinancesDashboard({
     () => entries.filter((row) => isDateInRange(row.date, periodRange)),
     [entries, periodRange.from, periodRange.to]
   );
+
+  // ROI by project (brand) — pulled from a single backend aggregation endpoint
+  const [byProject, setByProject] = React.useState({ rows: [], loading: true });
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (periodRange.from) params.set("from", periodRange.from);
+        if (periodRange.to) params.set("to", periodRange.to);
+        const qs = params.toString();
+        const response = await apiFetch(`/api/finance/by-project${qs ? `?${qs}` : ""}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled) return;
+        setByProject({ rows: Array.isArray(data?.rows) ? data.rows : [], loading: false });
+      } catch {
+        if (!cancelled) setByProject((prev) => ({ ...prev, loading: false }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [periodRange.from, periodRange.to]);
 
   // Load media-stats so we can compute ROI, Profit, Cost per FTD
   const [revenueRows, setRevenueRows] = React.useState(() => readSwrCache("media-stats:limit=100000") || []);
@@ -4214,6 +4773,63 @@ function FinancesDashboard({
         })}
       </section>
 
+      <section className="panels">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("ROI by Project")}</h3>
+              <p className="panel-subtitle">
+                {t("Revenue is computed from FTDs × offer payout (matched on geo). Spend is total tagged expenses for the period.")}
+              </p>
+            </div>
+          </div>
+          {byProject.loading ? (
+            <div className="empty-state">{t("Loading…")}</div>
+          ) : byProject.rows.length === 0 ? (
+            <div className="empty-state">{t("No brands yet. Add one in the Offers section.")}</div>
+          ) : (
+            <div className="roi-by-project">
+              {byProject.rows
+                .filter((row) => row.brand !== "Unassigned" || row.spend > 0)
+                .sort((a, b) => (b.profit || 0) - (a.profit || 0))
+                .map((row) => {
+                  const roiTone = row.roi === null ? "neutral" : row.roi >= 0 ? "positive" : "negative";
+                  const roiLabel = row.roi === null ? "—" : `${row.roi >= 0 ? "+" : ""}${row.roi.toFixed(0)}%`;
+                  return (
+                    <div key={row.brand_id} className="roi-card">
+                      <div className="roi-card-brand">{row.brand}</div>
+                      <div className={`roi-card-roi ${roiTone}`}>{roiLabel}</div>
+                      <div className="roi-card-stats">
+                        <div className="roi-card-stat">
+                          <span>{t("Revenue")}</span>
+                          <strong>{formatCurrency(row.revenue)}</strong>
+                        </div>
+                        <div className="roi-card-stat">
+                          <span>{t("Spend")}</span>
+                          <strong>{formatCurrency(row.spend)}</strong>
+                        </div>
+                        <div className="roi-card-stat">
+                          <span>{t("Profit")}</span>
+                          <strong>{formatCurrency(row.profit)}</strong>
+                        </div>
+                        <div className="roi-card-stat">
+                          <span>{t("FTDs")}</span>
+                          <strong>{row.ftds || 0}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </motion.div>
+      </section>
+
       <section className="form-section">
         <motion.div
           className="panel form-panel"
@@ -4230,6 +4846,15 @@ function FinancesDashboard({
             </div>
           </div>
           <form className="form-grid" onSubmit={onEntrySubmit}>
+            <div className="field">
+              <label>{t("Project")}</label>
+              <Select
+                value={entry.projectId || ""}
+                onChange={(v) => onEntryValueChange("projectId", v)}
+                options={(brands || []).map((b) => ({ value: String(b.id), label: b.name }))}
+                placeholder={brandsLoaded ? t("Select a brand") : t("Loading brands…")}
+              />
+            </div>
             <div className="field">
               <label>{t("Date")}</label>
               <DeusDatePicker value={entry.date} onChange={(v) => onEntryValueChange("date", v)} />
@@ -4315,6 +4940,26 @@ function FinancesDashboard({
         </motion.div>
       </section>
 
+      {(() => {
+        const unassignedBrand = brands.find((b) => b.name === "Unassigned");
+        const unassignedCount = unassignedBrand
+          ? entries.filter((e) => e.project_id === unassignedBrand.id).length
+          : 0;
+        if (unassignedCount === 0) return null;
+        return (
+          <section className="entries-section">
+            <div className="unassigned-banner">
+              <AlertTriangle size={16} />
+              <span>
+                <strong>{unassignedCount}</strong>{" "}
+                {unassignedCount === 1 ? t("expense is on Unassigned.") : t("expenses are on Unassigned.")}{" "}
+                {t("Retag them to a real brand from the Expense Log to unlock ROI by project.")}
+              </span>
+            </div>
+          </section>
+        );
+      })()}
+
       <section className="entries-section">
         <motion.div
           className="panel form-panel"
@@ -4383,8 +5028,8 @@ function FinancesDashboard({
                     <th onClick={() => toggleSort("date")} className="sortable">
                       {t("Date")} {logSort.key === "date" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
                     </th>
-                    <th onClick={() => toggleSort("country")} className="sortable">
-                      {t("Country")} {logSort.key === "country" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    <th onClick={() => toggleSort("project_name")} className="sortable">
+                      {t("Project")} {logSort.key === "project_name" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
                     </th>
                     <th onClick={() => toggleSort("category")} className="sortable">
                       {t("Category")} {logSort.key === "category" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
@@ -4404,9 +5049,25 @@ function FinancesDashboard({
                 </thead>
                 <tbody>
                   {sortedEntries.map((row) => (
-                    <tr key={row.id}>
+                    <tr key={row.id} className={row.project_name === "Unassigned" ? "row-unassigned" : ""}>
                       <td>{row.date}</td>
-                      <td>{row.country}</td>
+                      <td>
+                        {canManageExpenses ? (
+                          <select
+                            className={`inline-select project-select${row.project_name === "Unassigned" ? " is-unassigned" : ""}`}
+                            value={row.project_id || ""}
+                            onChange={(event) => onEntryProjectChange?.(row.id, event.target.value)}
+                          >
+                            {brands.map((brand) => (
+                              <option key={brand.id} value={brand.id}>
+                                {brand.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          row.project_name || "—"
+                        )}
+                      </td>
                       <td>{t(row.category)}</td>
                       <td>{row.reference || "—"}</td>
                       <td>{t(row.billing_type)}</td>
@@ -15115,11 +15776,15 @@ export default function App() {
     cryptoHash: "",
     amount: "",
     status: "Requested",
+    projectId: "",
   });
   const [entries, setEntries] = React.useState([]);
   const [entryState, setEntryState] = React.useState({ loading: true, error: null });
+  const [brands, setBrands] = React.useState([]);
+  const [brandsLoaded, setBrandsLoaded] = React.useState(false);
 
   const isFinances = activeView === "finances";
+  const isOffers = activeView === "offers";
   const isHome = activeView === "home";
   const isGeos = activeView === "geos";
   const isUtm = activeView === "utm";
@@ -15217,6 +15882,7 @@ export default function App() {
       geos: "geos",
       streams: "goals",
       finances: "finances",
+      offers: "finances",
       utm: "utm",
       statistics: "statistics",
       campaigns: "campaigns",
@@ -15775,6 +16441,7 @@ export default function App() {
       cryptoHash: "",
       amount: "",
       status: "Requested",
+      projectId: "",
     });
   };
 
@@ -15793,14 +16460,27 @@ export default function App() {
     }
   }, []);
 
+  const fetchBrandsForFinance = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/brands");
+      if (!response.ok) return;
+      const data = await response.json();
+      setBrands(Array.isArray(data) ? data : []);
+      setBrandsLoaded(true);
+    } catch {
+      // soft-fail; the form falls back to disabling save when brands aren't loaded
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchEntries();
-  }, [fetchEntries]);
+    fetchBrandsForFinance();
+  }, [fetchEntries, fetchBrandsForFinance]);
 
   const handleEntrySubmit = async (event) => {
     event.preventDefault();
-    if (!String(entry.country || "").trim()) {
-      setEntryState((prev) => ({ ...prev, error: "Country is required." }));
+    if (!entry.projectId) {
+      setEntryState((prev) => ({ ...prev, error: "Project is required." }));
       return;
     }
     try {
@@ -15817,6 +16497,24 @@ export default function App() {
       resetEntry();
     } catch (error) {
       setEntryState({ loading: false, error: error.message || "Failed to save entry." });
+    }
+  };
+
+  const handleEntryProjectChange = async (id, projectId) => {
+    if (!id || !projectId) return;
+    try {
+      const response = await apiFetch(`/api/expenses/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update project.");
+      }
+      await fetchEntries();
+    } catch (error) {
+      setEntryState((prev) => ({ ...prev, error: error.message || "Failed to update project." }));
     }
   };
 
@@ -16292,11 +16990,14 @@ export default function App() {
             entry={entry}
             entries={entries}
             entryState={entryState}
+            brands={brands}
+            brandsLoaded={brandsLoaded}
             onEntryChange={handleEntryChange}
             onEntryValueChange={handleEntryValueChange}
             onEntrySubmit={handleEntrySubmit}
             onEntryReset={resetEntry}
             onEntryStatusChange={handleEntryStatusChange}
+            onEntryProjectChange={handleEntryProjectChange}
             onEntryDelete={handleEntryDelete}
             canManageExpenses={canManageExpenses}
             period={period}
@@ -16304,6 +17005,8 @@ export default function App() {
             customRange={customRange}
             onCustomChange={handleCustomRange}
           />
+        ) : isOffers ? (
+          <OffersDashboard authUser={authUser} />
         ) : isUtm ? (
           <UtmBuilder />
         ) : isGoals ? (
