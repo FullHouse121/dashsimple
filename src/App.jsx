@@ -4225,7 +4225,7 @@ function FinancesDashboard({
             <div>
               <h3 className="panel-title">{t("Manual Entry")}</h3>
               <p className="panel-subtitle">
-                {t("Track expenses by date, country, category, and billing type.")}
+                {t("Track expenses by date, category, and billing type.")}
               </p>
             </div>
           </div>
@@ -4233,17 +4233,6 @@ function FinancesDashboard({
             <div className="field">
               <label>{t("Date")}</label>
               <DeusDatePicker value={entry.date} onChange={(v) => onEntryValueChange("date", v)} />
-            </div>
-            <div className="field">
-              <label>{t("Country")}</label>
-              <CountryDropdownPicker
-                value={entry.country}
-                onChange={(country) => onEntryValueChange?.("country", country)}
-                options={countryOptions}
-                placeholder={t("Select")}
-                searchPlaceholder={t("Type to find countries")}
-                emptyResultsLabel={t("No countries found.")}
-              />
             </div>
             <div className="field">
               <label>{t("Category")}</label>

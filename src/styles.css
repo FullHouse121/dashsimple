@@ -6847,6 +6847,12 @@ select option,
   isolation: isolate;
 }
 
+/* When a dropdown is open inside a .panel, let it overflow the panel
+   (otherwise overflow:hidden on .panel clips the menu). */
+.panel:has(.country-select-picker[open]) {
+  overflow: visible;
+}
+
 .country-select-picker > summary {
   list-style: none;
   outline: none;
