@@ -58,95 +58,103 @@ import {
   MessageSquare,
   Eye,
   EyeOff,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Percent,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
-const FALLBACK_API_ORIGIN =
-  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_FALLBACK_API_ORIGIN) ||
-  "https://dashsimple.onrender.com";
-const PRIMARY_API_ORIGIN =
-  (typeof import.meta !== "undefined" && import.meta?.env?.VITE_API_ORIGIN) || "";
+// Lazy-loaded dashboard views — each splits into its own chunk so the initial
+// bundle stays small. Add more dashboards here as they're extracted to /src/dashboards/
+const DocumentationDashboard = React.lazy(() => import("./dashboards/DocumentationDashboard.jsx"));
 
-const isRelativeApiPath = (url) => typeof url === "string" && url.startsWith("/api/");
+// Command palette (Cmd+K) — lazy so it doesn't add weight to the initial bundle
+const CommandPalette = React.lazy(() => import("./components/CommandPalette.jsx"));
 
-const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
+// Skeleton loaders for graceful loading states across dashboards
+import { SkeletonCards, SkeletonChart } from "./components/Skeleton.jsx";
 
-const buildApiCandidates = (url) => {
-  if (typeof url !== "string") return [url];
-  const candidates = [];
-  if (!isRelativeApiPath(url)) {
-    return [url];
-  }
-  const primaryOrigin = normalizeOrigin(PRIMARY_API_ORIGIN);
-  const fallbackOrigin = normalizeOrigin(FALLBACK_API_ORIGIN);
+// Pure formatting utilities (Phase 1 extraction from inline definitions)
+import {
+  setActiveFxRate,
+  currencyFormatter,
+  formatCurrency,
+  formatAxis,
+  formatVolumeAxis,
+  formatValue,
+  toGradientId,
+  axisTickStyle,
+  tooltipStyle,
+} from "./lib/format.js";
 
-  const isLocalRuntime =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+// Resilient API client with retry, timeout, fallback (Phase 1 extraction)
+import { apiFetch } from "./lib/api.js";
 
-  if (isLocalRuntime) {
-    candidates.push(url);
-    if (primaryOrigin) {
-      candidates.push(`${primaryOrigin}${url}`);
-    }
-    if (fallbackOrigin && fallbackOrigin !== primaryOrigin) {
-      candidates.push(`${fallbackOrigin}${url}`);
-    }
-    return Array.from(new Set(candidates));
-  }
+// Permissions, filters, and sort helpers (Phase 1)
+import { normalizeRoleKey, isLeadershipRole } from "./lib/permissions.js";
+import {
+  normalizeFilterValue,
+  isAllSelection,
+  normalizeBuyerKey,
+  escapeRegExp,
+  matchesBuyerName,
+  matchesBuyerFilter,
+  matchesCountryFilter,
+} from "./lib/filters.js";
+import { toggleSortConfig, compareSortValues, getSortIndicator } from "./lib/sort.js";
 
-  if (primaryOrigin) {
-    candidates.push(`${primaryOrigin}${url}`);
-  }
-  if (fallbackOrigin && fallbackOrigin !== primaryOrigin) {
-    candidates.push(`${fallbackOrigin}${url}`);
-  }
-  candidates.push(url);
-  return Array.from(new Set(candidates));
-};
+// i18n: context, hook, translator factory (Phase 1 extraction)
+import { LanguageContext, useLanguage, makeT } from "./lib/i18n/language.jsx";
 
-const apiFetch = async (url, options = {}, config = {}) => {
-  const headers = { ...(options.headers || {}) };
-  const allow404Fallback = config.allow404Fallback !== false;
-  if (typeof window !== "undefined") {
-    try {
-      const stored = JSON.parse(localStorage.getItem("dash-auth") || "null");
-      if (stored?.token && !headers.Authorization) {
-        headers.Authorization = `Bearer ${stored.token}`;
-      }
-    } catch (error) {
-      // ignore storage issues
-    }
-  }
-  const requestOptions = { ...options, headers };
-  const candidates = buildApiCandidates(url);
-  let lastResponse = null;
-  let lastError = null;
+// Static option arrays + country/domain normalizers (Phase 1)
+import {
+  supportedCountryOptions,
+  countryOptions,
+  accountRegistryCountryOptions,
+  defaultCountryOption,
+  normalizeCountryValueKey,
+  supportedCountryValueMap,
+  normalizeCountryListValue,
+  normalizeDomainInputValue,
+  normalizeDomainInputList,
+  categoryOptions,
+  billingOptions,
+  statusOptions,
+  approachOptions,
+  priorityBuyers,
+  buyerOptions,
+  roleOptions,
+  permissionOptions,
+  periodOptions,
+} from "./lib/constants.js";
 
-  for (const candidate of candidates) {
-    try {
-      const response = await fetch(candidate, requestOptions);
-      lastResponse = response;
-      if (response.status !== 404 || !allow404Fallback) {
-        if (response.status === 401 && typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("auth:invalid"));
-        }
-        return response;
-      }
-    } catch (error) {
-      lastError = error;
-    }
-  }
+// SWR cache helpers (Phase 1 extraction)
+import { readSwrCache, writeSwrCache, clearSwrCache } from "./lib/cache.js";
 
-  if (lastResponse) {
-    if (lastResponse.status === 401 && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("auth:invalid"));
-    }
-    return lastResponse;
-  }
-  if (lastError) throw lastError;
-  throw new Error("API request failed.");
-};
+// Date utilities (Phase 1 extraction)
+import {
+  shortMonths,
+  DASHBOARD_TIMEZONE,
+  formatIsoDate,
+  getTimezoneDateParts,
+  toIsoFromParts,
+  parseIsoToUtcDate,
+  shiftIsoDate,
+  getTodayIsoInTimezone,
+  getDefaultDateRange,
+  normalizeDateValue,
+  normalizeDateRange,
+  getPeriodDateRange,
+  isDateInRange,
+} from "./lib/date.js";
+
+// API client moved to ./lib/api.js (Phase 1 extraction — retry, timeout, fallback all live there)
+// SWR cache helpers moved to ./lib/cache.js (Phase 1 extraction)
 
 const navItems = [
   { key: "home", label: "Dashboard", icon: Home },
@@ -190,169 +198,7 @@ const navSections = [
   { title: "Tools", items: ["segmentation", "calculator"] },
 ];
 
-const supportedCountryOptions = [
-  "Australia",
-  "France",
-  "Germany",
-  "New Zealand",
-  "Egypt",
-  "Estonia",
-  "Japan",
-  "India",
-  "Vietnam",
-  "Chile",
-  "Argentina",
-  "Peru",
-  "Venezuela",
-  "Colombia",
-  "Costa Rica",
-  "Bolivia",
-  "Brazil",
-  "Mexico",
-  "Russia",
-  "Nigeria",
-  "Ukraine",
-  "Poland",
-  "Ecuador",
-  "Paraguay",
-  "Romania",
-  "Albania",
-  "Norway",
-  "Morocco",
-  "Algeria",
-  "Tunisia",
-  "South Korea",
-  "Switzerland",
-  "Sweden",
-  "Canada",
-  "Iran",
-  "Iraq",
-  "Azerbaijan",
-];
-
-const countryOptions = [...supportedCountryOptions];
-const accountRegistryCountryOptions = [...supportedCountryOptions];
-const defaultCountryOption = supportedCountryOptions[0] || "";
-
-const normalizeCountryValueKey = (value) =>
-  String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-const supportedCountryValueMap = new Map(
-  supportedCountryOptions.map((country) => [normalizeCountryValueKey(country), country])
-);
-supportedCountryValueMap.set("brasil", "Brazil");
-
-const normalizeCountryListValue = (value) => {
-  if (value === null || value === undefined || value === "") return [];
-  let source = value;
-  if (typeof source === "string") {
-    const trimmed = source.trim();
-    if (!trimmed) return [];
-    try {
-      source = JSON.parse(trimmed);
-    } catch (error) {
-      source = trimmed.includes(",") ? trimmed.split(",") : [trimmed];
-    }
-  }
-  const list = Array.isArray(source) ? source : [source];
-  const normalized = [];
-  list.forEach((item) => {
-    const raw = String(item || "").trim();
-    if (!raw) return;
-    const canonical = supportedCountryValueMap.get(normalizeCountryValueKey(raw)) || raw;
-    if (!normalized.includes(canonical)) {
-      normalized.push(canonical);
-    }
-  });
-  return normalized;
-};
-
-const normalizeDomainInputValue = (value) => {
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const withoutProtocol = text.replace(/^https?:\/\//i, "");
-  const hostCandidate = withoutProtocol.split("/")[0].trim();
-  if (!hostCandidate) return text;
-  return hostCandidate.toLowerCase();
-};
-
-const normalizeDomainInputList = (value) => {
-  if (value === null || value === undefined || value === "") return [];
-  if (Array.isArray(value)) {
-    return Array.from(
-      new Set(
-        value
-          .map((item) => normalizeDomainInputValue(item))
-          .filter(Boolean)
-      )
-    );
-  }
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-  const tokens = raw
-    .split(/[\s,;]+/g)
-    .map((item) => normalizeDomainInputValue(item))
-    .filter(Boolean);
-  return Array.from(new Set(tokens));
-};
-
-const categoryOptions = ["Traffic Source", "Tools", "Designs"];
-const billingOptions = ["Crypto", "Bank Transfer", "Card"];
-const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
-const approachOptions = ["All", "Organic", "Paid Social", "Influencers", "Search"];
-const priorityBuyers = [
-  "Leo",
-  "Leticia",
-  "Carvalho",
-  "Akku",
-  "Enzo",
-  "Matheus",
-  "Sara",
-  "ZM apps",
-];
-const buyerOptions = ["All", ...priorityBuyers];
-const roleOptions = [
-  "Boss",
-  "Team Leader",
-  "Media Buyer Junior",
-  "Media Buyer",
-  "Media Buyer Senior",
-];
-
-const permissionOptions = [
-  { key: "dashboard", label: "Home Dashboard" },
-  { key: "geos", label: "GEOS" },
-  { key: "goals", label: "Goals" },
-  { key: "finances", label: "Finances" },
-  { key: "utm", label: "UTM Builder" },
-  { key: "statistics", label: "Statistics" },
-  { key: "campaigns", label: "Campaigns" },
-  { key: "placements", label: "Placement" },
-  { key: "user_behavior", label: "User Behavior" },
-  { key: "devices", label: "Devices" },
-  { key: "domains", label: "Domains" },
-  { key: "pixels", label: "Pixels" },
-  { key: "accounts", label: "Accounts" },
-  { key: "meta_token", label: "Meta Token $" },
-  { key: "api", label: "API" },
-  { key: "media_buyers", label: "Media Buyers" },
-  { key: "roles", label: "Roles & Permissions" },
-];
-
-const periodOptions = [
-  "Today",
-  "Yesterday",
-  "This Week",
-  "Last Week",
-  "This Month",
-  "Last Month",
-  "All",
-];
+// Static option arrays + country/domain normalizers moved to ./lib/constants.js (Phase 1)
 
 function CountryDropdownPicker({
   value,
@@ -514,8 +360,8 @@ function CountryDropdownPicker({
                     }
                   }}
                 >
-                  <span className="country-select-check">{selected ? "✓" : ""}</span>
                   <span className="country-select-name">{item.label}</span>
+                  <span className="country-select-check">{selected ? "✓" : ""}</span>
                 </button>
               );
             })
@@ -525,6 +371,156 @@ function CountryDropdownPicker({
         </div>
       </div>
     </details>
+  );
+}
+
+function DeusDatePicker({ value, onChange, placeholder = "Pick a date" }) {
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+  const parse = (s) => {
+    if (!s) return null;
+    const d = new Date(`${s}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const selected = parse(value);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [viewMonth, setViewMonth] = React.useState(() => {
+    const base = selected || today;
+    return new Date(base.getFullYear(), base.getMonth(), 1);
+  });
+
+  React.useEffect(() => {
+    if (selected) {
+      setViewMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  const detailsRef = React.useRef(null);
+  const close = () => {
+    if (detailsRef.current) detailsRef.current.open = false;
+  };
+
+  const displayValue = selected
+    ? selected.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+    : "";
+
+  const prevMonth = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1));
+  const nextMonth = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1));
+
+  // Build 6-week grid starting from Monday
+  const firstDayOffset = (viewMonth.getDay() + 6) % 7;
+  const gridStart = new Date(viewMonth);
+  gridStart.setDate(gridStart.getDate() - firstDayOffset);
+  const days = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+
+  const selectDate = (d) => {
+    onChange(fmt(d));
+    close();
+  };
+
+  const weekdays = ["M", "T", "W", "T", "F", "S", "S"];
+
+  return (
+    <details ref={detailsRef} className="deus-date-picker">
+      <summary className="deus-date-trigger">
+        <CalendarIcon size={14} className="deus-date-trigger-icon" />
+        <span className={`deus-date-trigger-value${selected ? "" : " is-placeholder"}`}>
+          {displayValue || placeholder}
+        </span>
+        <span className="deus-date-trigger-arrow" aria-hidden="true">▾</span>
+      </summary>
+      <div className="deus-date-menu">
+        <div className="deus-date-head">
+          <span className="deus-date-month-label">
+            {viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+          </span>
+          <div className="deus-date-nav">
+            <button type="button" className="deus-date-nav-btn" onClick={prevMonth} aria-label="Previous month">
+              <ChevronLeft size={14} />
+            </button>
+            <button type="button" className="deus-date-nav-btn" onClick={nextMonth} aria-label="Next month">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="deus-date-weekdays">
+          {weekdays.map((d, i) => (
+            <span key={i}>{d}</span>
+          ))}
+        </div>
+        <div className="deus-date-grid">
+          {days.map((d, i) => {
+            const inMonth = d.getMonth() === viewMonth.getMonth();
+            const dStr = fmt(d);
+            const isToday = dStr === fmt(today);
+            const isSelected = selected && dStr === fmt(selected);
+            const classes = ["deus-date-day"];
+            if (!inMonth) classes.push("is-out");
+            if (isToday) classes.push("is-today");
+            if (isSelected) classes.push("is-selected");
+            return (
+              <button
+                key={i}
+                type="button"
+                className={classes.join(" ")}
+                onClick={() => selectDate(d)}
+              >
+                {d.getDate()}
+              </button>
+            );
+          })}
+        </div>
+        <div className="deus-date-foot">
+          <button
+            type="button"
+            className="deus-date-link"
+            onClick={() => {
+              onChange("");
+              close();
+            }}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="deus-date-link"
+            onClick={() => selectDate(new Date())}
+          >
+            Today
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function Select({ value, onChange, options, placeholder = "Select…", searchPlaceholder = "Search…", emptyResultsLabel = "No results.", allOption = null, className }) {
+  const normalized = Array.isArray(options) ? options : [];
+  return (
+    <div className={className || undefined}>
+      <CountryDropdownPicker
+        value={value ?? ""}
+        onChange={onChange}
+        options={normalized}
+        placeholder={placeholder}
+        allOption={allOption}
+        searchPlaceholder={searchPlaceholder}
+        emptyResultsLabel={emptyResultsLabel}
+      />
+    </div>
   );
 }
 
@@ -690,541 +686,6 @@ const languageOptions = [
   { code: "TR", label: "Türkçe", Flag: FlagTR },
 ];
 
-const translations = {
-  tr: {
-    Home: "Ana Sayfa",
-    Goals: "Hedefler",
-    Finances: "Finanslar",
-    "UTM Builder": "UTM Oluşturucu",
-    Statistics: "İstatistikler",
-    Domains: "Alan Adları",
-    API: "API",
-    Profile: "Profil",
-    Tools: "Araçlar",
-    Segmentation: "Segmentasyon",
-    Calculator: "Hesaplayıcı",
-    Overview: "Genel Bakış",
-    Performance: "Performans",
-    Operations: "Operasyonlar",
-    Administration: "Yönetim",
-    Account: "Hesap",
-    Integrations: "Entegrasyonlar",
-    Filters: "Filtreler",
-    "Media Buyer": "Medya Alıcısı",
-    "Media Buyer Directory": "Medya Alıcısı Dizini",
-    "Identify your team members and keep contact details organized.":
-      "Ekip üyelerinizi tanımlayın ve iletişim bilgilerini düzenli tutun.",
-    "Media buyer management is restricted to leadership.":
-      "Medya alıcısı yönetimi yalnızca liderlik tarafından yapılabilir.",
-    "Full name": "Tam isim",
-    "e.g. Crash, Roulette": "örn. Crash, Rulet",
-    "Goal Setup": "Hedef Tanımı",
-    "Define the target outcomes your media buyers must reach.":
-      "Medya alıcılarınızın ulaşması gereken hedefleri tanımlayın.",
-    "Goal Scope": "Hedef Kapsamı",
-    "Global Goal": "Global Hedef",
-    "All Buyers": "Tüm Alıcılar",
-    "Your Progress": "Sizin İlerlemeniz",
-    "Based on your metrics": "Kendi metriklerinize göre",
-    "Goals Assigned": "Atanan Hedefler",
-    "Your goals are managed by leadership. Track progress below.":
-      "Hedefleriniz yönetim tarafından belirlenir. Aşağıdan ilerlemenizi takip edin.",
-    "No goal setup access for your role.": "Rolünüz hedef oluşturma yetkisine sahip değil.",
-    "Achieved Targets": "Başarılan Hedefler",
-    "Unachieved Targets": "Tamamlanmayan Hedefler",
-    "Profile Details": "Profil Detayları",
-    "Account Overview": "Hesap Özeti",
-    "Access Level": "Erişim Seviyesi",
-    "Assigned Media Buyer": "Atanan Medya Alıcısı",
-    "Account Status": "Hesap Durumu",
-    "Loading profile…": "Profil yükleniyor…",
-    "User ID": "Kullanıcı ID",
-    "Buyer ID": "Alıcı ID",
-    "No buyer linked": "Bağlı alıcı yok",
-    Verified: "Doğrulandı",
-    Unverified: "Doğrulanmadı",
-    "Role Permissions": "Rol Yetkileri",
-    "Permissions granted by your role.": "Rolünüz tarafından verilen yetkiler.",
-    "No permissions assigned.": "Yetki atanmadı.",
-    "Goals Overview": "Hedef Özeti",
-    "Track progress vs. targets using live statistics data.":
-      "Canlı istatistik verileriyle hedeflere karşı ilerlemeyi izleyin.",
-    "Domains Registry": "Alan Adı Kaydı",
-    "Track every domain in use and keep its status updated.":
-      "Kullanımdaki tüm alan adlarını takip edin ve durumunu güncel tutun.",
-    Domain: "Alan Adı",
-    Owner: "Sahip",
-    Platform: "Platform",
-    "PWA Group": "PWA Grup",
-    "Link Group": "Link Grup",
-    "ZM apps": "ZM uygulamaları",
-    "Keitaro Connection": "Keitaro Bağlantısı",
-    "Connect your tracker and validate the Admin API key.":
-      "Takip sisteminizi bağlayın ve Admin API anahtarını doğrulayın.",
-    "Step 1": "Adım 1",
-    "Step 2": "Adım 2",
-    "Step 3": "Adım 3",
-    "Connection checklist": "Bağlantı kontrol listesi",
-    "Base URL, API key, and report endpoint are required before syncing.":
-      "Senkronizasyondan önce Temel URL, API anahtarı ve rapor uç noktası gereklidir.",
-    "Report Sync": "Rapor Senkronizasyonu",
-    "Paste a Keitaro report payload and map fields into your statistics table.":
-      "Keitaro rapor yükünü yapıştırın ve alanları istatistik tablonuza eşleyin.",
-    "Required parameters": "Gerekli parametreler",
-    "Provide click_id or campaign_id for attribution.":
-      "Eşleştirme için click_id veya campaign_id sağlayın.",
-    "Optional parameters": "İsteğe bağlı parametreler",
-    "external_id, country, buyer, domain, device, status, payout.":
-      "external_id, country, buyer, domain, device, status, payout.",
-    "Postback Logs": "Postback Kayıtları",
-    "Latest events received from postbacks.":
-      "Postback üzerinden alınan en son olaylar.",
-    Refresh: "Yenile",
-    "Refreshing...": "Yenileniyor...",
-    "No postback logs yet.": "Henüz postback kaydı yok.",
-    "See More": "Daha Fazla",
-    "Show Less": "Daha Az Göster",
-    "Add comment": "Yorum ekle",
-    "Pixel Comment": "Piksel Yorumu",
-    "Change Password": "Şifreyi Değiştir",
-    "Current Password": "Mevcut Şifre",
-    "New Password": "Yeni Şifre",
-    "Confirm Password": "Şifreyi Onayla",
-    "Update Password": "Şifreyi Güncelle",
-    "Password updated.": "Şifre güncellendi.",
-    "Passwords do not match.": "Şifreler eşleşmiyor.",
-    "Reset Password": "Şifreyi Sıfırla",
-    "Password is required.": "Şifre gerekli.",
-    "Session expired. Please sign in again.": "Oturum süresi doldu. Lütfen yeniden giriş yapın.",
-    Time: "Zaman",
-    Event: "Olay",
-    Campaign: "Kampanya",
-    "Click ID": "Click ID",
-    "External ID": "External ID",
-    Source: "Kaynak",
-    "Report Payload (JSON)": "Rapor Yükü (JSON)",
-    "Field Mapping": "Alan Eşlemesi",
-    "Map Keitaro fields to dashboard columns.":
-      "Keitaro alanlarını panel sütunlarına eşleyin.",
-    "Hide Mapping": "Eşlemeyi Gizle",
-    "Show Mapping": "Eşlemeyi Göster",
-    "Mapping hidden. Click show to edit fields.":
-      "Eşleme gizli. Alanları düzenlemek için göster'e tıklayın.",
-    "Identity Fields": "Kimlik Alanları",
-    "Geo Fields": "Coğrafi Alanlar",
-    "Performance Fields": "Performans Alanları",
-    "Event Fields": "Etkinlik Alanları",
-    "Device Fields": "Cihaz Alanları",
-    "Replace existing entries for the same date + buyer + country":
-      "Aynı tarih + alıcı + ülke için mevcut kayıtları değiştir",
-    "Test Connection": "Bağlantıyı Test Et",
-    "Testing...": "Test ediliyor...",
-    "Sync Now": "Şimdi Senkronize Et",
-    "Syncing...": "Senkronize ediliyor...",
-    "Load Example": "Örneği Yükle",
-    "Load Overall Example": "Genel Örneği Yükle",
-    "Load Device Example": "Cihaz Örneğini Yükle",
-    "Connection verified.": "Bağlantı doğrulandı.",
-    "Sync complete.": "Senkronizasyon tamamlandı.",
-    "Report payload must be valid JSON.": "Rapor yükü geçerli JSON olmalıdır.",
-    "Imported {inserted} rows, skipped {skipped} of {total}":
-      "{inserted} satır içe aktarıldı, {total} satırın {skipped} tanesi atlandı",
-    "Base URL": "Temel URL",
-    "API Key": "API Anahtarı",
-    "Report Endpoint": "Rapor Uç Noktası",
-    "Default Keitaro report endpoint.": "Varsayılan Keitaro rapor uç noktası.",
-    "Remember API key locally": "API anahtarını yerelde sakla",
-    "Stored only in your browser.": "Sadece tarayıcınızda saklanır.",
-    "Tip: open a Keitaro report, copy the request payload from your browser network tab, and paste it here.":
-      "İpucu: Bir Keitaro raporu açın, tarayıcınızın ağ sekmesinden istek yükünü kopyalayın ve buraya yapıştırın.",
-    "Date Field": "Tarih Alanı",
-    "Buyer Field": "Alıcı Alanı",
-    "Country Field": "Ülke Alanı",
-    "Spend Field": "Harcama Alanı",
-    "Clicks Field": "Tıklama Alanı",
-    "Installs Field": "Kurulum Alanı",
-    "Registers Field": "Kayıt Alanı",
-    "FTDs Field": "FTD Alanı",
-    "Redeposits Field": "Redepozit Alanı",
-    "FTD Revenue Field": "FTD Gelir Alanı",
-    "Redeposit Revenue Field": "Redepozit Gelir Alanı",
-    "OS Field": "OS Alanı",
-    "OS Version Field": "OS Sürümü Alanı",
-    "OS Icon Field": "OS İkon Alanı",
-    "Device Model Field": "Cihaz Modeli Alanı",
-    OS: "OS",
-    "OS Version": "OS Sürümü",
-    "Device Model": "Cihaz Modeli",
-    Name: "İsim",
-    Role: "Rol",
-    Country: "Ülke",
-    Approach: "Yaklaşım",
-    Game: "Oyun",
-    Email: "E-posta",
-    Contact: "İletişim",
-    Status: "Durum",
-    "Date Range": "Tarih Aralığı",
-    Period: "Dönem",
-    Notes: "Notlar",
-    "FTDs Target": "FTD Hedefi",
-    "Reg2Dep Target (%)": "Reg2Dep Hedefi (%)",
-    "Add Goal": "Hedef Ekle",
-    "Add Member": "Üye Ekle",
-    "Add Domain": "Alan Adı Ekle",
-    Reset: "Sıfırla",
-    "Manual Entry": "Manuel Giriş",
-    "Track expenses by date, country, category, and billing type.":
-      "Giderleri tarih, ülke, kategori ve faturalandırma türüne göre takip edin.",
-    Date: "Tarih",
-    Category: "Kategori",
-    Reference: "Referans",
-    "Tool, vendor, or invoice reference": "Araç, tedarikçi veya fatura referansı",
-    "Billing type": "Faturalandırma türü",
-    "Amount (USD)": "Tutar (USD)",
-    Clear: "Temizle",
-    "Save Entry": "Kaydı Kaydet",
-    "Expense Log": "Gider Günlüğü",
-    "Latest manual entries saved in the database.": "Veritabanına kaydedilen son manuel girişler.",
-    "No entries yet. Add your first expense above.": "Henüz kayıt yok. İlk giderinizi yukarıdan ekleyin.",
-    "Loading entries…": "Kayıtlar yükleniyor…",
-    "Loading media stats…": "Medya istatistikleri yükleniyor…",
-    "Monthly Expenses": "Aylık Giderler",
-    "Total spend": "Toplam Harcama",
-    "Average / month": "Aylık Ortalama",
-    "Category Breakdown": "Kategori Dağılımı",
-    "Spend distribution across categories.": "Kategorilere göre harcama dağılımı.",
-    "Billing Type Mix": "Ödeme Türü Dağılımı",
-    "Share of spend by payment method.": "Ödeme yöntemine göre harcama payı.",
-    "Total Expenses": "Toplam Giderler",
-    "All time": "Tüm zamanlar",
-    "Current month": "Cari ay",
-    "Pending Requests": "Bekleyen Talepler",
-    "Awaiting approval": "Onay bekliyor",
-    Completed: "Tamamlandı",
-    "Marked done": "Tamamlandı olarak işaretlendi",
-    "Last 7 days": "Son 7 gün",
-    "Conversion rate": "Dönüşüm oranı",
-    "Daily conversion rates": "Günlük dönüşüm oranları",
-    "Spend by date": "Tarihe Göre Harcama",
-    "Daily spend trend for the selected period.": "Seçilen dönemdeki günlük harcama trendi.",
-    "Spend per FTD": "FTD Başına Harcama",
-    "Spend per Redeposit": "Redepozit Başına Harcama",
-    "Total Spend": "Toplam Harcama",
-    "Revenue by date": "Tarihe Göre Gelir",
-    "Daily revenue trend for the selected period.": "Seçilen dönemdeki günlük gelir trendi.",
-    "Revenue per FTD": "FTD Başına Gelir",
-    "Revenue per Redeposit": "Redepozit Başına Gelir",
-    "FTD Revenue": "FTD Geliri",
-    "Redeposit Revenue": "Redepozit Geliri",
-    "FTD to Redeposit CR": "FTD → Redepozit Dönüşümü",
-    "Above avg": "Ortalamanın Üstü",
-    "Below avg": "Ortalamanın Altı",
-    "On target": "Hedefte",
-    "No benchmark": "Kıyas yok",
-    "Tip: hover or click legends to isolate a series.":
-      "İpucu: Bir seriyi izole etmek için lejantın üzerine gelin veya tıklayın.",
-    "Top GEO": "En İyi GEO",
-    "Highest FTD conversion rate and Reg2Dep conversion rate":
-      "En yüksek FTD dönüşüm oranı ve Reg2Dep dönüşüm oranı",
-    GEOS: "GEO",
-    "GEO Report": "GEO Raporu",
-    "Performance by country for the selected filters.":
-      "Seçilen filtrelere göre ülke performansı.",
-    "Loading geo report…": "GEO raporu yükleniyor…",
-    "No geo data yet.": "Henüz GEO verisi yok.",
-    "See more": "Daha fazla gör",
-    Spend: "Harcama",
-    Redeposits: "Redepozitler",
-    ARPPU: "ARPPU",
-    LTV: "LTV",
-    "Metric:": "Metrik:",
-    "FTD rate + Reg2Dep rate": "FTD oranı + Reg2Dep oranı",
-    "Active GEO:": "Aktif GEO:",
-    None: "Yok",
-    "Conversion Funnel": "Dönüşüm Hunisi",
-    "Stage counts for the selected period": "Seçilen dönem için aşama sayıları",
-    "Conversion Rates": "Dönüşüm Oranları",
-    "Average rate across each handoff": "Her geçişteki ortalama oran",
-    "Avg rate": "Ort. oran",
-    Value: "Değer",
-    Rate: "Oran",
-    Share: "Pay",
-    "Custom range": "Özel aralık",
-    Cancel: "İptal",
-    Apply: "Uygula",
-    to: "ile",
-    Today: "Bugün",
-    Yesterday: "Dün",
-    "This Week": "Bu Hafta",
-    "Last Week": "Geçen Hafta",
-    "This Month": "Bu Ay",
-    "Last Month": "Geçen Ay",
-    All: "Tümü",
-    Daily: "Günlük",
-    Weekly: "Haftalık",
-    Monthly: "Aylık",
-    Custom: "Özel",
-    "Pending": "Beklemede",
-    "Paused": "Duraklatıldı",
-    "Expired": "Süresi Doldu",
-    "Blocked": "Engellendi",
-    "Active": "Aktif",
-    "Working": "Çalışıyor",
-    "Not Working": "Çalışmıyor",
-    "Not Wired": "Bağlı Değil",
-    "Onboarding": "Oryantasyon",
-    "Inactive": "Pasif",
-    "No integration linked": "Bağlı entegrasyon yok",
-    "Loading goals…": "Hedefler yükleniyor…",
-    "No goals set yet.": "Henüz hedef belirlenmedi.",
-    "No targets": "Hedef yok",
-    Achieved: "Başarıldı",
-    "On track": "Yolunda",
-    Behind: "Geride",
-    "All Countries": "Tüm Ülkeler",
-    Progress: "İlerleme",
-    FTDs: "FTD'ler",
-    "Loading team…": "Ekip yükleniyor…",
-    "No media buyers added yet.": "Henüz medya alıcısı eklenmedi.",
-    "Loading domains…": "Alan adları yükleniyor…",
-    "No domains added yet.": "Henüz alan adı eklenmedi.",
-    "Home Dashboard": "Ana Gösterge Paneli",
-    "Roles & Permissions": "Roller ve Yetkiler",
-    Roles: "Roller",
-    "Media Buyers": "Medya Alıcıları",
-    "Define what each role can access and edit.": "Her rolün neleri görebileceğini ve düzenleyebileceğini tanımlayın.",
-    "Create Role": "Rol Oluştur",
-    "Role Name": "Rol Adı",
-    "Add Role": "Rol Ekle",
-    Permissions: "Yetkiler",
-    "Save Changes": "Değişiklikleri Kaydet",
-    "Saving...": "Kaydediliyor...",
-    "Loading roles…": "Roller yükleniyor…",
-    "No roles found.": "Rol bulunamadı.",
-    "Loading users…": "Kullanıcılar yükleniyor…",
-    "No users found.": "Kullanıcı bulunamadı.",
-    "User Access": "Kullanıcı Erişimi",
-    "Create Login": "Giriş Oluştur",
-    Username: "Kullanıcı adı",
-    Password: "Parola",
-    "Assign Media Buyer": "Medya Alıcısı Ata",
-    "User Accounts": "Kullanıcı Hesapları",
-    "Logged Media Buyer": "Giriş yapan medya alıcısı",
-    "Logged as {role}": "Giriş yapan: {role}",
-    Documentation: "Dokümantasyon",
-    "System Documentation": "Sistem Dokümantasyonu",
-    "Everything you need to operate the dashboard, manage data, and onboard media buyers.":
-      "Paneli yönetmek, verileri yönetmek ve medya alıcılarını sisteme dahil etmek için gereken her şey.",
-    Sections: "Bölümler",
-    Data: "Veri",
-    Access: "Erişim",
-    "Local SQLite": "Yerel SQLite",
-    "Role-based": "Role dayalı",
-    "Getting Started": "Başlangıç",
-    "Use your assigned username and password to sign in. Your role controls what you can view and edit.":
-      "Size atanan kullanıcı adı ve parolayla giriş yapın. Rolünüz, neleri görebileceğinizi ve düzenleyebileceğinizi belirler.",
-    "Use the sidebar to navigate modules.": "Modüller arasında gezinmek için kenar çubuğunu kullanın.",
-    "Use the language switcher at the bottom to toggle EN / TR.":
-      "Alttaki dil değiştiriciyle EN / TR arasında geçiş yapın.",
-    "Your profile in the top right shows the active user and role.":
-      "Sağ üstteki profil, aktif kullanıcıyı ve rolü gösterir.",
-    "Quick overview of clicks, installs, registers, FTDs, and conversion rates.":
-      "Tıklamalar, kurulumlar, kayıtlar, FTD'ler ve dönüşüm oranlarının hızlı özeti.",
-    "Use the period selector for time ranges.": "Zaman aralıkları için dönem seçiciyi kullanın.",
-    "Charts show conversion rates and top GEO distribution.":
-      "Grafikler dönüşüm oranlarını ve en iyi GEO dağılımını gösterir.",
-    "Filters apply to Home and Finances.": "Filtreler Ana Sayfa ve Finanslar için geçerlidir.",
-    "Set targets for FTDs and Reg2Dep conversion by media buyer, country, and period.":
-      "Medya alıcısı, ülke ve döneme göre FTD ve Reg2Dep dönüşüm hedefleri belirleyin.",
-    "Define period or custom date range.": "Dönem ya da özel tarih aralığı tanımlayın.",
-    "Goal overview banner summarizes progress.": "Hedef özet bandı ilerlemeyi özetler.",
-    "Track status: achieved, on track, or behind.": "Durumu takip edin: başarıldı, yolunda veya geride.",
-    "Manual expense entry with billing type and status. Charts update automatically.":
-      "Ödeme türü ve durumuyla manuel gider girişi. Grafikler otomatik güncellenir.",
-    "Fields: date, country, category, reference, billing type, amount, status.":
-      "Alanlar: tarih, ülke, kategori, referans, ödeme türü, tutar, durum.",
-    "Totals and averages refresh on save.": "Toplamlar ve ortalamalar kaydettiğinizde yenilenir.",
-    "Monthly and category charts visualize spend.": "Aylık ve kategori grafikleri harcamayı görselleştirir.",
-    "Enter daily performance per media buyer and country; the system calculates funnel and cost metrics.":
-      "Medya alıcısı ve ülkeye göre günlük performans girin; sistem huni ve maliyet metriklerini hesaplar.",
-    "Inputs: date, spend, clicks, installs, registers, FTDs, country.":
-      "Girdiler: tarih, harcama, tıklamalar, kurulumlar, kayıtlar, FTD'ler, ülke.",
-    "Derived metrics: Click2Install, Click2Register, Install2Reg, Reg2Dep.":
-      "Türetilen metrikler: Click2Install, Click2Register, Install2Reg, Reg2Dep.",
-    "Cost metrics: CPC, CPI, CPR, CPP.": "Maliyet metrikleri: CPC, CPI, CPR, CPP.",
-    "Generate tracking links with fbp and sub1-sub15 parameters.":
-      "fbp ve sub1-sub15 parametreleriyle takip linkleri oluşturun.",
-    "Enter the base domain.": "Temel alan adını girin.",
-    "Fill fbp and any sub fields you need.": "fbp ve ihtiyaç duyduğunuz sub alanlarını doldurun.",
-    "Only filled parameters are added to the final URL.":
-      "Sadece doldurulan parametreler nihai URL'ye eklenir.",
-    "Keep a registry of your landing domains and status.":
-      "Landing alan adlarınız ve durumları için bir kayıt tutun.",
-    "Add domains with status and notes.": "Durum ve notlarla alan adı ekleyin.",
-    "Use statuses to track availability.": "Durumları kullanılabilirliği takip etmek için kullanın.",
-    "Domains list shows the latest entries.": "Alan adları listesi en son girişleri gösterir.",
-    "Roles & Users": "Roller ve Kullanıcılar",
-    "Manage roles, permissions, and verified user access.":
-      "Rolleri, yetkileri ve doğrulanmış kullanıcı erişimini yönetin.",
-    "Create roles and toggle permissions.": "Roller oluşturun ve yetkileri açıp kapayın.",
-    "Assign roles when creating users.": "Kullanıcı oluştururken rol atayın.",
-    "Verified users can access the platform.": "Doğrulanmış kullanıcılar platforma erişebilir.",
-    "Connect Keitaro to pull performance data automatically.":
-      "Performans verilerini otomatik çekmek için Keitaro'ya bağlanın.",
-    "Configure endpoint, API key, and payload mapping.":
-      "Uç nokta, API anahtarı ve payload eşlemesini yapılandırın.",
-    "Keitaro syncs registrations, FTDs, and redeposits. Installs come via postback.":
-      "Keitaro kayıtları, FTD'leri ve redepozitleri senkronize eder. Kurulumlar postback ile gelir.",
-    "Use Sync to fetch data.": "Veri çekmek için Senkronize'yi kullanın.",
-    "Status panel shows last sync.": "Durum paneli son senkronu gösterir.",
-    "Best Practices": "En İyi Uygulamalar",
-    "Keep entries consistent by date and country.":
-      "Girişleri tarih ve ülkeye göre tutarlı tutun.",
-    "Review goals weekly and adjust caps.": "Hedefleri haftalık gözden geçirip limitleri ayarlayın.",
-    "Use UTM templates per buyer to avoid mistakes.":
-      "Hata önlemek için alıcı başına UTM şablonları kullanın.",
-    Devices: "Cihazlar",
-    "Sync Target": "Senkron Hedefi",
-    "Overall Stats": "Genel İstatistikler",
-    "Device Stats": "Cihaz İstatistikleri",
-    "Choose where the report data should be stored.":
-      "Rapor verisinin nereye kaydedileceğini seçin.",
-    "Revenue Field": "Gelir Alanı",
-    "Device Field": "Cihaz Alanı",
-    "Total Revenue": "Toplam Gelir",
-    "Total Installs": "Toplam Kurulum",
-    "Avg CR": "Ort. Dönüşüm",
-    "Device view": "Cihaz görünümü",
-    "FTD / Clicks": "FTD / Tıklamalar",
-    "Top OS": "En İyi OS",
-    "Top OS Version": "En İyi OS Sürümü",
-    "Top OS Installs": "En İyi OS Kurulum",
-    "Top OS CR": "En İyi OS Dönüşüm",
-    "No data": "Veri yok",
-    "Revenue by OS": "OS'a Göre Gelir",
-    "Click by OS": "OS'a Göre Tıklama",
-    "Install By OS": "OS'a Göre Kurulum",
-    "CR by OS": "OS'a Göre Dönüşüm Oranı",
-    "Track revenue contribution by OS.":
-      "OS'a göre gelir katkısını takip edin.",
-    "Clicks volume grouped by OS.": "OS'a göre gruplanmış tıklama hacmi.",
-    "Install postbacks grouped by OS.": "OS'a göre gruplanmış kurulum postback'leri.",
-    "FTD conversion rate by OS.": "OS'a göre FTD dönüşüm oranı.",
-    "Device Breakdown": "Cihaz Dağılımı",
-    "Clicks, installs, revenue, and CR by device.":
-      "Cihaza göre tıklamalar, kurulumlar, gelir ve dönüşüm oranı.",
-    "Loading device stats…": "Cihaz istatistikleri yükleniyor…",
-    "No device data available yet.": "Henüz cihaz verisi yok.",
-    "Conversion Rate": "Dönüşüm Oranı",
-    Revenue: "Gelir",
-    Device: "Cihaz",
-    "Analyze device performance for clicks, installs, revenue, and CR.":
-      "Cihaza göre tıklama, kurulum, gelir ve dönüşüm oranını analiz edin.",
-    "Sync device reports from Keitaro.": "Keitaro'dan cihaz raporlarını senkronize edin.",
-    "Installs come from your postback receiver.": "Kurulumlar postback alıcınızdan gelir.",
-    "Compare revenue and conversion rates per device.":
-      "Cihaz başına gelir ve dönüşüm oranlarını karşılaştırın.",
-    "Install Postback Receiver": "Kurulum Postback Alıcısı",
-    "FTD Postback Receiver": "FTD Postback Alıcısı",
-    "Redeposit Postback Receiver": "Yeniden Yatırım Postback Alıcısı",
-    "Receive install events from your traffic source and attach them to Keitaro campaigns.":
-      "Trafik kaynağınızdan gelen kurulum eventlerini alın ve Keitaro kampanyalarına bağlayın.",
-    "Receive FTD events from your traffic source and attach them to Keitaro campaigns.":
-      "Trafik kaynağınızdan gelen FTD eventlerini alın ve Keitaro kampanyalarına bağlayın.",
-    "Receive redeposit events from your traffic source and attach them to Keitaro campaigns.":
-      "Trafik kaynağınızdan gelen yeniden yatırım eventlerini alın ve Keitaro kampanyalarına bağlayın.",
-    "Postback URL": "Postback URL",
-    "Copy URL": "URL Kopyala",
-    "Copied successfully": "Başarıyla kopyalandı",
-    "Has been copied successfully": "Başarıyla kopyalandı",
-    "Copy failed": "Kopyalama başarısız",
-    "Accepted parameters": "Kabul edilen parametreler",
-    "campaign_id - Keitaro campaign ID or name": "campaign_id - Keitaro kampanya ID veya adı",
-    "buyer - media buyer override": "buyer - medya alıcısı geçersiz kılma",
-    "country - ISO2/ISO3 code": "country - ISO2/ISO3 kodu",
-    "domain - landing domain override": "domain - landing alan adı geçersiz kılma",
-    "device - OS or device type (Android, iOS, Desktop)":
-      "device - OS veya cihaz türü (Android, iOS, Masaüstü)",
-    "Device values are normalized to match Keitaro (Android, iOS, Windows, macOS, Linux).":
-      "Cihaz değerleri Keitaro ile eşleşecek şekilde normalize edilir (Android, iOS, Windows, macOS, Linux).",
-    "click_id / subid - click identifier": "click_id / subid - tıklama kimliği",
-    "date / timestamp - optional": "date / timestamp - isteğe bağlı",
-    "key - required if POSTBACK_SECRET is set":
-      "key - POSTBACK_SECRET ayarlandıysa gerekli",
-    "Example request": "Örnek istek",
-    "Campaign Mapping": "Kampanya Eşleme",
-    "Map Keitaro campaign IDs to media buyers for install attribution.":
-      "Kurulum ataması için Keitaro kampanya ID'lerini medya alıcılarına eşleyin.",
-    "Keitaro Campaign ID": "Keitaro Kampanya ID",
-    "Campaign Name": "Kampanya Adı",
-    "Add Campaign": "Kampanya Ekle",
-    "No campaigns added yet.": "Henüz kampanya eklenmedi.",
-    "Loading campaigns…": "Kampanyalar yükleniyor…",
-    "Sign In": "Giriş Yap",
-    "Invalid credentials.": "Geçersiz bilgiler.",
-    "Username and password are required.": "Kullanıcı adı ve parola gerekli.",
-    "Logging in...": "Giriş yapılıyor...",
-    Logout: "Çıkış Yap",
-    "Welcome back": "Tekrar hoş geldiniz",
-    "Sign in to continue": "Devam etmek için giriş yapın",
-    "Access for media buyers": "Medya alıcıları için erişim",
-    "Use your assigned credentials to access dashboards, goals, and reporting.":
-      "Panolar, hedefler ve raporlamaya erişmek için size atanan bilgileri kullanın.",
-    "Role-based access": "Rol bazlı erişim",
-    "Real-time KPIs": "Gerçek zamanlı KPI'lar",
-    "Secure login": "Güvenli giriş",
-    "Set FTD and Reg2Dep targets by buyer and country.":
-      "Medya alıcısı ve ülkeye göre FTD ve Reg2Dep hedefleri belirleyin.",
-    "Track monthly spend, billing types, and status.":
-      "Aylık harcamaları, ödeme türlerini ve durumu takip edin.",
-    "Review funnel performance with conversion rates.":
-      "Dönüşüm oranlarıyla huni performansını inceleyin.",
-    "Generate links with fbp + sub parameters.":
-      "fbp ve sub parametreleriyle bağlantılar oluşturun.",
-    "Access is managed by your team leader.": "Erişim, takım lideriniz tarafından yönetilir.",
-    "Secure access": "Güvenli erişim",
-    "Available roles": "Mevcut roller",
-    "Remember me": "Beni hatırla",
-    "Need help? Contact admin.": "Yardıma mı ihtiyacınız var? Yöneticinize başvurun.",
-    "Show password": "Parolayı göster",
-    "Hide password": "Parolayı gizle",
-    Boss: "Patron",
-    "Team Leader": "Takım Lideri",
-    "Media Buyer Junior": "Medya Alıcısı Junior",
-    "Media Buyer Senior": "Medya Alıcısı Senior",
-    "Traffic Source": "Trafik Kaynağı",
-    Designs: "Tasarım",
-    Crypto: "Kripto",
-    "Bank Transfer": "Banka Havalesi",
-    Card: "Kart",
-    Requested: "Talep Edildi",
-    Done: "Tamamlandı",
-    Organic: "Organik",
-    "Paid Social": "Ücretli Sosyal",
-    Influencers: "Influencer'lar",
-    Search: "Arama",
-    Clicks: "Tıklamalar",
-    Install: "Kurulum",
-    Register: "Kayıt",
-    FTD: "FTD",
-    Click2Install: "Tıklama→Kurulum",
-    Click2Register: "Tıklama→Kayıt",
-    Install2Reg: "Kurulum→Kayıt",
-    Reg2Dep: "Kayıt→Depozit",
-    Combined: "Birleşik",
-    "FTD rate": "FTD oranı",
-    "Reg2Dep rate": "Reg2Dep oranı",
-    "Top performers": "En iyi performans",
-    "Active GEO": "Aktif GEO",
-  },
-};
-
-const LanguageContext = React.createContext({
-  language: "EN",
-  t: (key, vars) => key,
-});
-
-const useLanguage = () => React.useContext(LanguageContext);
 
 const defaultKeitaroOverallPayloadObject = {
   dimensions: ["day", "campaign", "country", "city", "sub_id_1", "source", "sub_id_3", "sub_id_4", "sub_id_5"],
@@ -1341,239 +802,9 @@ const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
   deviceModelField: "device_model",
 };
 
-const tooltipStyle = {
-  background: "rgba(20, 22, 26, 0.95)",
-  border: "1px solid #2b2e35",
-  borderRadius: "10px",
-  padding: "10px 12px",
-  boxShadow: "0 12px 20px rgba(0,0,0,0.4)",
-};
-
-let activeFxRate = 1;
-
-const setActiveFxRate = (rate) => {
-  if (!Number.isFinite(rate) || rate <= 0) return;
-  activeFxRate = rate;
-};
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const formatCurrency = (value, rate = activeFxRate) => {
-  if (value === null || value === undefined || value === "" || Number.isNaN(value)) return "—";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return "—";
-  const fxRate = Number.isFinite(rate) ? rate : 1;
-  return currencyFormatter.format(numeric * fxRate);
-};
-
-const formatAxis = (value) => {
-  if (value === 0) return "0k";
-  const thousands = value / 1000;
-  return `${Number.isInteger(thousands) ? thousands : thousands.toFixed(1)}k`;
-};
-
-const formatVolumeAxis = (value) => (value >= 1000 ? formatAxis(value) : value);
-
-const formatValue = (value) =>
-  Number.isInteger(value) ? value : Number(value).toFixed(2);
-
-const toGradientId = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-
-const axisTickStyle = { fill: "#8b909a", fontSize: 11 };
-const shortMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DASHBOARD_TIMEZONE = "Asia/Dubai";
-const formatIsoDate = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-const getTimezoneDateParts = (date = new Date(), timezone = DASHBOARD_TIMEZONE) => {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const parts = formatter.formatToParts(date);
-    const year = Number.parseInt(parts.find((part) => part.type === "year")?.value || "", 10);
-    const month = Number.parseInt(parts.find((part) => part.type === "month")?.value || "", 10);
-    const day = Number.parseInt(parts.find((part) => part.type === "day")?.value || "", 10);
-    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-      throw new Error("Failed to parse timezone date parts.");
-    }
-    return { year, month, day };
-  } catch (error) {
-    return {
-      year: date.getFullYear(),
-      month: date.getMonth() + 1,
-      day: date.getDate(),
-    };
-  }
-};
-const toIsoFromParts = ({ year, month, day }) =>
-  `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-const parseIsoToUtcDate = (isoDate) => {
-  const match = String(isoDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  const year = Number.parseInt(match[1], 10);
-  const month = Number.parseInt(match[2], 10);
-  const day = Number.parseInt(match[3], 10);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
-  return new Date(Date.UTC(year, month - 1, day));
-};
-const shiftIsoDate = (isoDate, deltaDays) => {
-  const utcDate = parseIsoToUtcDate(isoDate);
-  if (!utcDate || !Number.isFinite(deltaDays)) return isoDate;
-  utcDate.setUTCDate(utcDate.getUTCDate() + deltaDays);
-  return `${utcDate.getUTCFullYear()}-${String(utcDate.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    utcDate.getUTCDate()
-  ).padStart(2, "0")}`;
-};
-const getTodayIsoInTimezone = (timezone = DASHBOARD_TIMEZONE) => toIsoFromParts(getTimezoneDateParts(new Date(), timezone));
-const getDefaultDateRange = () => {
-  const todayIso = getTodayIsoInTimezone();
-  return { from: shiftIsoDate(todayIso, -6), to: todayIso };
-};
-const normalizeDateValue = (value) => {
-  if (!value) return null;
-  if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return formatIsoDate(value);
-  }
-  const text = String(value || "").trim();
-  if (!text) return null;
-  const direct = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (direct) {
-    return `${direct[1]}-${direct[2]}-${direct[3]}`;
-  }
-  const parsed = new Date(text);
-  if (!Number.isFinite(parsed.getTime())) return null;
-  return formatIsoDate(parsed);
-};
-const normalizeDateRange = (from, to) => {
-  let normalizedFrom = normalizeDateValue(from);
-  let normalizedTo = normalizeDateValue(to);
-  if (normalizedFrom && normalizedTo && normalizedFrom > normalizedTo) {
-    [normalizedFrom, normalizedTo] = [normalizedTo, normalizedFrom];
-  }
-  return { from: normalizedFrom, to: normalizedTo };
-};
-const getPeriodDateRange = (value, customRange) => {
-  const todayIso = getTodayIsoInTimezone();
-  const todayParts = getTimezoneDateParts(new Date(), DASHBOARD_TIMEZONE);
-  const startOfMonthIso = `${todayParts.year}-${String(todayParts.month).padStart(2, "0")}-01`;
-  const startOfLastMonthIso =
-    todayParts.month === 1
-      ? `${todayParts.year - 1}-12-01`
-      : `${todayParts.year}-${String(todayParts.month - 1).padStart(2, "0")}-01`;
-  const endOfLastMonthIso = shiftIsoDate(startOfMonthIso, -1);
-  const day = parseIsoToUtcDate(todayIso)?.getUTCDay?.() ?? 0;
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const startOfWeekIso = shiftIsoDate(todayIso, mondayOffset);
-  const startOfLastWeekIso = shiftIsoDate(startOfWeekIso, -7);
-  const endOfLastWeekIso = shiftIsoDate(startOfWeekIso, -1);
-
-  switch (value) {
-    case "Today":
-      return normalizeDateRange(todayIso, todayIso);
-    case "Yesterday": {
-      const yesterdayIso = shiftIsoDate(todayIso, -1);
-      return normalizeDateRange(yesterdayIso, yesterdayIso);
-    }
-    case "This Week":
-      return normalizeDateRange(startOfWeekIso, todayIso);
-    case "Last Week":
-      return normalizeDateRange(startOfLastWeekIso, endOfLastWeekIso);
-    case "This Month":
-      return normalizeDateRange(startOfMonthIso, todayIso);
-    case "Last Month":
-      return normalizeDateRange(startOfLastMonthIso, endOfLastMonthIso);
-    case "Custom range":
-      return normalizeDateRange(customRange?.from, customRange?.to);
-    default:
-      return { from: null, to: null };
-  }
-};
-const isDateInRange = (value, range) => {
-  const day = normalizeDateValue(value);
-  if (!range?.from && !range?.to) return true;
-  if (!day) return false;
-  if (range?.from && day < range.from) return false;
-  if (range?.to && day > range.to) return false;
-  return true;
-};
-const normalizeRoleKey = (value) =>
-  String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z]/g, "");
-const isLeadershipRole = (role) => {
-  const normalized = normalizeRoleKey(role);
-  return normalized === "boss" || normalized === "teamleader";
-};
-const normalizeFilterValue = (value) => String(value || "").trim().toLowerCase();
-const isAllSelection = (value) => !value || normalizeFilterValue(value) === "all";
-const normalizeBuyerKey = (value) =>
-  String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const escapeRegExp = (value) => String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const matchesBuyerName = (buyer, selectedBuyer) => {
-  const normalizedBuyer = normalizeBuyerKey(buyer);
-  const normalizedSelected = normalizeBuyerKey(selectedBuyer);
-  if (!normalizedBuyer || !normalizedSelected) return false;
-  if (normalizedBuyer === normalizedSelected || normalizedBuyer.startsWith(normalizedSelected)) {
-    return true;
-  }
-  const rawBuyer = normalizeFilterValue(buyer);
-  const rawSelected = normalizeFilterValue(selectedBuyer);
-  if (!rawBuyer || !rawSelected) return false;
-  const boundary = new RegExp(`(^|[^a-z0-9])${escapeRegExp(rawSelected)}([^a-z0-9]|$)`);
-  return boundary.test(rawBuyer);
-};
-const matchesBuyerFilter = (buyer, selectedBuyer, viewerBuyer, isLeadership) => {
-  if (!isLeadership) {
-    if (!viewerBuyer) return true;
-    return matchesBuyerName(buyer, viewerBuyer);
-  }
-  if (isAllSelection(selectedBuyer)) return true;
-  return matchesBuyerName(buyer, selectedBuyer);
-};
-const matchesCountryFilter = (country, selectedCountry) => {
-  if (isAllSelection(selectedCountry)) return true;
-  return normalizeFilterValue(country) === normalizeFilterValue(selectedCountry);
-};
-const toggleSortConfig = (prev, key, defaultDir = "desc") =>
-  prev.key === key
-    ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
-    : { key, dir: defaultDir };
-const compareSortValues = (aVal, bVal, dir = "desc", type = "number") => {
-  const direction = dir === "asc" ? 1 : -1;
-  const isNullish = (value) =>
-    value === null ||
-    value === undefined ||
-    (type !== "text" && type !== "date" && Number.isNaN(value));
-
-  const aNull = isNullish(aVal);
-  const bNull = isNullish(bVal);
-  if (aNull && bNull) return 0;
-  if (aNull) return 1;
-  if (bNull) return -1;
-
-  if (type === "text" || type === "date") {
-    return direction * String(aVal || "").localeCompare(String(bVal || ""));
-  }
-
-  if (aVal === bVal) return 0;
-  return direction * (aVal > bVal ? 1 : -1);
-};
-const getSortIndicator = (sortConfig, key) => {
-  if (sortConfig.key !== key) return "↕";
-  return sortConfig.dir === "asc" ? "▲" : "▼";
-};
+// Format utilities moved to ./lib/format.js (Phase 1 extraction — see import at top of file)
+// Date utilities moved to ./lib/date.js (Phase 1 extraction)
+// Permissions, filters, and sort helpers moved to ./lib/{permissions,filters,sort}.js (Phase 1)
 const formatShortDate = (value) => {
   if (!value) return "";
   const parts = value.split("-");
@@ -1777,16 +1008,14 @@ function PeriodSelect({ value, onChange, customRange, onCustomChange }) {
           {showCustom && (
             <div className="period-custom">
               <div className="field-row">
-                <input
-                  type="date"
+                <DeusDatePicker
                   value={customRange.from}
-                  onChange={(event) => onCustomChange("from", event.target.value)}
+                  onChange={(v) => onCustomChange("from", v)}
                 />
                 <span className="field-sep">{t("to")}</span>
-                <input
-                  type="date"
+                <DeusDatePicker
                   value={customRange.to}
-                  onChange={(event) => onCustomChange("to", event.target.value)}
+                  onChange={(v) => onCustomChange("to", v)}
                 />
               </div>
               <div className="period-actions">
@@ -1885,17 +1114,32 @@ function HomeDashboard({
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
 
   const loadHomeStats = React.useCallback(async () => {
-    try {
+    const cacheKey = "media-stats:limit=100000&strict=1";
+    const cached = readSwrCache(cacheKey);
+
+    // If we have cached rows, render immediately. The UI feels instant.
+    if (cached && Array.isArray(cached)) {
+      setHomeRows(cached);
+      setHomeState({ loading: false, error: null });
+    } else {
       setHomeState({ loading: true, error: null });
+    }
+
+    // Always revalidate in the background.
+    try {
       const response = await apiFetch("/api/media-stats?limit=100000&strict=1");
-      if (!response.ok) {
-        throw new Error("Failed to load media buyer stats.");
-      }
+      if (!response.ok) throw new Error("Failed to load media buyer stats.");
       const data = await response.json();
-      setHomeRows(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      writeSwrCache(cacheKey, rows);
+      setHomeRows(rows);
       setHomeState({ loading: false, error: null });
     } catch (error) {
-      setHomeState({ loading: false, error: error.message || "Failed to load stats." });
+      // Only surface an error if we have nothing cached to show.
+      if (!cached) {
+        setHomeState({ loading: false, error: error.message || "Failed to load stats." });
+      }
+      // Otherwise: keep showing cached data silently.
     }
   }, []);
 
@@ -2230,15 +1474,18 @@ function HomeDashboard({
     return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredRows]);
 
-  const revenueTotals = revenueSeries.reduce(
-    (acc, item) => ({
-      revenue: acc.revenue + item.revenue,
-      ftdRevenue: acc.ftdRevenue + item.ftdRevenue,
-      redepositRevenue: acc.redepositRevenue + item.redepositRevenue,
-      ftds: acc.ftds + item.ftds,
-      redeposits: acc.redeposits + item.redeposits,
-    }),
-    { revenue: 0, ftdRevenue: 0, redepositRevenue: 0, ftds: 0, redeposits: 0 }
+  const revenueTotals = React.useMemo(
+    () => revenueSeries.reduce(
+      (acc, item) => ({
+        revenue: acc.revenue + item.revenue,
+        ftdRevenue: acc.ftdRevenue + item.ftdRevenue,
+        redepositRevenue: acc.redepositRevenue + item.redepositRevenue,
+        ftds: acc.ftds + item.ftds,
+        redeposits: acc.redeposits + item.redeposits,
+      }),
+      { revenue: 0, ftdRevenue: 0, redepositRevenue: 0, ftds: 0, redeposits: 0 }
+    ),
+    [revenueSeries]
   );
 
   const avg = (values) =>
@@ -2413,9 +1660,30 @@ function HomeDashboard({
   return (
     <>
       {homeState.loading && homeRows.length === 0 ? (
-        <div className="empty-state">{t("Loading media stats…")}</div>
+        <>
+          <SkeletonCards count={4} />
+          <SkeletonCards count={4} />
+          <SkeletonChart height={240} />
+        </>
       ) : null}
-      {homeState.error ? <div className="empty-state error">{homeState.error}</div> : null}
+      {homeState.error ? (
+        <div className="empty-state error stats-error">
+          <span className="stats-error-icon" aria-hidden="true">!</span>
+          <div className="stats-error-text">
+            <strong>{t("Couldn't load media buyer stats")}</strong>
+            <span>{homeState.error}</span>
+          </div>
+          <button
+            type="button"
+            className="stats-error-retry"
+            onClick={loadHomeStats}
+            disabled={homeState.loading}
+          >
+            <RotateCcw size={12} className={homeState.loading ? "is-spinning" : ""} />
+            {homeState.loading ? t("Retrying…") : t("Retry")}
+          </button>
+        </div>
+      ) : null}
       <section className="cards">
         {homePrimaryStats.map((stat, idx) => {
           const Icon = stat.icon;
@@ -3100,17 +2368,28 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const [geoState, setGeoState] = React.useState({ loading: true, error: null });
 
   const loadGeos = React.useCallback(async () => {
-    try {
+    const cacheKey = "media-stats:limit=100000";
+    const cached = readSwrCache(cacheKey);
+
+    if (cached && Array.isArray(cached)) {
+      setGeoRows(cached);
+      setGeoState({ loading: false, error: null });
+    } else {
       setGeoState({ loading: true, error: null });
+    }
+
+    try {
       const response = await apiFetch("/api/media-stats?limit=100000");
-      if (!response.ok) {
-        throw new Error("Failed to load media buyer stats.");
-      }
+      if (!response.ok) throw new Error("Failed to load media buyer stats.");
       const data = await response.json();
-      setGeoRows(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      writeSwrCache(cacheKey, rows);
+      setGeoRows(rows);
       setGeoState({ loading: false, error: null });
     } catch (error) {
-      setGeoState({ loading: false, error: error.message || "Failed to load stats." });
+      if (!cached) {
+        setGeoState({ loading: false, error: error.message || "Failed to load stats." });
+      }
     }
   }, []);
 
@@ -3487,19 +2766,19 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   const topCityArppu = cityArppuData[0] || null;
   const topCityLtv = cityLtvData[0] || null;
 
+  // DEUS series palette — distinct, on-brand colors so each series is unmistakable
+  const DEUS_SERIES_COLORS = ["#36d07c", "#64b8ff", "#ff9357", "#a15bff", "#f7c625"];
   const ltvGrowthTargets = geoLtvData.map((row) => row.country);
-  const ltvGrowthColors = ["#4b5bff", "#8b7bff", "#c6b9ff", "#7ed6ff", "#5cc9a5"];
   const ltvGrowthSeries = ltvGrowthTargets.map((country, index) => ({
     key: country,
     label: country,
-    color: ltvGrowthColors[index % ltvGrowthColors.length],
+    color: DEUS_SERIES_COLORS[index % DEUS_SERIES_COLORS.length],
   }));
   const arppuGrowthTargets = geoArppuData.map((row) => row.country);
-  const arppuGrowthColors = ["#8b5cf6", "#a78bfa", "#d0b4ff", "#67e8f9", "#4ade80"];
   const arppuGrowthSeries = arppuGrowthTargets.map((country, index) => ({
     key: country,
     label: country,
-    color: arppuGrowthColors[index % arppuGrowthColors.length],
+    color: DEUS_SERIES_COLORS[index % DEUS_SERIES_COLORS.length],
   }));
 
   const ltvGrowthData = React.useMemo(() => {
@@ -3730,10 +3009,28 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("Revenue")]}
                     />
-                    <Bar dataKey="revenue" fill="url(#geoRevenue)" radius={[0, 8, 8, 0]} />
+                    <Bar dataKey="revenue" fill="url(#geoRevenue)" radius={[0, 8, 8, 0]}>
+                      <LabelList
+                        dataKey="revenue"
+                        position="right"
+                        formatter={(value) => formatCurrency(value)}
+                        style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                      />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              {geoRevenueData.length >= 2 ? (() => {
+                const leader = geoRevenueData[0];
+                const runner = geoRevenueData[1];
+                const lift = runner.revenue > 0 ? Math.round(((leader.revenue - runner.revenue) / runner.revenue) * 100) : null;
+                return (
+                  <div className="chart-insight">
+                    <span className="chart-insight-mark">↑</span>
+                    <span><strong>{leader.country}</strong> leads with {formatCurrency(leader.revenue)}{lift !== null ? ` — ${lift}% more than ${runner.country}` : ""}</span>
+                  </div>
+                );
+              })() : null}
             </motion.div>
 
             <motion.div
@@ -3758,8 +3055,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   >
                     <defs>
                       <linearGradient id="geoArppu" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--purple)" stopOpacity={0.95} />
-                        <stop offset="100%" stopColor="var(--purple)" stopOpacity={0.35} />
+                        <stop offset="0%" stopColor="#ff9357" stopOpacity={0.95} />
+                        <stop offset="100%" stopColor="#ff9357" stopOpacity={0.35} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
@@ -3769,9 +3066,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       axisLine={false}
                       tick={axisTickStyle}
                       interval={0}
-                      angle={-18}
-                      textAnchor="end"
-                      height={50}
+                      height={32}
                     />
                     <YAxis
                       tickLine={false}
@@ -3795,6 +3090,12 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              {topGeoArppu ? (
+                <div className="chart-insight">
+                  <span className="chart-insight-mark">★</span>
+                  <span>Highest per-user value: <strong>{topGeoArppu.country}</strong> at {formatCurrency(topGeoArppu.arppu)}</span>
+                </div>
+              ) : null}
             </motion.div>
 
             <motion.div
@@ -3843,10 +3144,23 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("LTV")]}
                     />
-                    <Bar dataKey="ltv" fill="url(#geoLtv)" radius={[0, 8, 8, 0]} />
+                    <Bar dataKey="ltv" fill="url(#geoLtv)" radius={[0, 8, 8, 0]}>
+                      <LabelList
+                        dataKey="ltv"
+                        position="right"
+                        formatter={(value) => formatCurrency(value)}
+                        style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                      />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              {topGeoLtv ? (
+                <div className="chart-insight">
+                  <span className="chart-insight-mark">↑</span>
+                  <span>Strongest repeat behavior: <strong>{topGeoLtv.country}</strong> at {formatCurrency(topGeoLtv.ltv)} LTV</span>
+                </div>
+              ) : null}
             </motion.div>
 
             <motion.div
@@ -4043,11 +3357,9 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     dataKey="city"
                     tickLine={false}
                     axisLine={false}
-                    tick={axisTickStyle}
+                    tick={{ ...axisTickStyle, fontSize: 10 }}
                     interval={0}
-                    angle={-18}
-                    textAnchor="end"
-                    height={52}
+                    height={36}
                   />
                   <YAxis
                     tickLine={false}
@@ -4087,15 +3399,25 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             </div>
             <div className="chart chart-surface">
               <ResponsiveContainer width="100%" height={260}>
-                <ScatterChart margin={{ top: 8, right: 24, left: 90, bottom: 8 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                <BarChart
+                  data={cityLtvData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 60, left: 8, bottom: 8 }}
+                >
+                  <defs>
+                    <linearGradient id="region-ltv-grad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#ff9357" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="#ff9357" stopOpacity={0.45} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
                   <XAxis
                     type="number"
-                    dataKey="ltv"
                     tickLine={false}
                     axisLine={false}
                     tick={axisTickStyle}
                     tickFormatter={(value) => formatCurrency(value)}
+                    domain={[0, 'dataMax']}
                   />
                   <YAxis
                     type="category"
@@ -4106,8 +3428,15 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     width={110}
                   />
                   <Tooltip content={renderMetricTooltip("city", "ltv", t("LTV"))} />
-                  <Scatter data={cityLtvData} fill="var(--orange)" name={t("LTV")} />
-                </ScatterChart>
+                  <Bar dataKey="ltv" name={t("LTV")} fill="url(#region-ltv-grad)" radius={[0, 6, 6, 0]} barSize={18}>
+                    <LabelList
+                      dataKey="ltv"
+                      position="right"
+                      formatter={(value) => formatCurrency(value)}
+                      style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                    />
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
           </motion.div>
@@ -4125,28 +3454,44 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               </div>
             </div>
             <div className="chart chart-surface">
-              <div className="metric-table arppu-matrix">
-                <div className="metric-row metric-header">
-                  <div className="metric-cell city">{t("Region")}</div>
-                  <div className="metric-cell value arppu">
-                    {t("ARPPU")}
-                    <span className="sort-caret">▾</span>
-                  </div>
-                  <div className="metric-cell value users">{t("FTDs")}</div>
-                </div>
-                {cityArppuTable.map((row) => (
-                  <div className="metric-row" key={row.city}>
-                    <div className="metric-cell city">{row.city}</div>
-                    <div className="metric-cell value">
-                      <span className="metric-pill arppu">{formatCurrency(row.arppu)}</span>
+              <div className="region-arppu-list">
+                {cityArppuTable.map((row, idx) => {
+                  const widthPct = Math.max(2, Math.round((row.arppu / maxCityArppu) * 100));
+                  const rank = idx + 1;
+                  const isPodium = rank <= 3;
+                  return (
+                    <div className={`region-arppu-row${isPodium ? " is-podium" : ""}`} key={row.city}>
+                      <div className="region-arppu-head">
+                        <span className={`region-rank rank-${rank}`}>{rank}</span>
+                        <span className="region-name">{row.city}</span>
+                        <span className="region-arppu-val">{formatCurrency(row.arppu)}</span>
+                      </div>
+                      <div className="region-arppu-bar-wrap">
+                        <div className="region-arppu-bar" style={{ width: `${widthPct}%` }} />
+                      </div>
+                      <div className="region-arppu-meta">
+                        <span className="region-meta-chip">
+                          <span className="region-meta-label">FTDs</span>
+                          <span className="region-meta-value">{row.ftdsDisplay.toLocaleString()}</span>
+                        </span>
+                        <span className="region-meta-chip">
+                          <span className="region-meta-label">Revenue</span>
+                          <span className="region-meta-value">{formatCurrency(row.revenue)}</span>
+                        </span>
+                      </div>
                     </div>
-                    <div className="metric-cell value">
-                      <span className="metric-pill ftds">{row.ftdsDisplay.toLocaleString()}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+            {cityArppuTable.length > 0 ? (
+              <div className="chart-insight">
+                <span className="chart-insight-mark">★</span>
+                <span>
+                  <strong>{cityArppuTable[0].city}</strong> commands the highest ARPPU at {formatCurrency(cityArppuTable[0].arppu)}
+                </span>
+              </div>
+            ) : null}
           </motion.div>
           </section>
         </>
@@ -4286,6 +3631,103 @@ function FinancesDashboard({
     () => entries.filter((row) => isDateInRange(row.date, periodRange)),
     [entries, periodRange.from, periodRange.to]
   );
+
+  // Load media-stats so we can compute ROI, Profit, Cost per FTD
+  const [revenueRows, setRevenueRows] = React.useState(() => readSwrCache("media-stats:limit=100000") || []);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/media-stats?limit=100000");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (cancelled) return;
+        const rows = Array.isArray(data) ? data : [];
+        writeSwrCache("media-stats:limit=100000", rows);
+        setRevenueRows(rows);
+      } catch (e) { /* swallow — keep cached */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Compute revenue + FTDs for the active period (joins with media-stats)
+  const revenueStats = React.useMemo(() => {
+    let revenue = 0;
+    let ftds = 0;
+    revenueRows.forEach((row) => {
+      if (!isDateInRange(row.date, periodRange)) return;
+      const r = Number(row.revenue);
+      const ftdRev = Number(row.ftdRevenue ?? row.ftd_revenue ?? 0);
+      const redepRev = Number(row.redepositRevenue ?? row.redeposit_revenue ?? 0);
+      revenue += Number.isFinite(r) && r > 0 ? r : (ftdRev + redepRev);
+      ftds += Number(row.ftds || 0);
+    });
+    return { revenue, ftds };
+  }, [revenueRows, periodRange.from, periodRange.to]);
+
+  // Filter / search / sort state for the expense log
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [logCategory, setLogCategory] = React.useState("All");
+  const [logBilling, setLogBilling] = React.useState("All");
+  const [logStatus, setLogStatus] = React.useState("All");
+  const [logSort, setLogSort] = React.useState({ key: "date", dir: "desc" });
+
+  const searchableEntries = React.useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return filteredEntries.filter((row) => {
+      if (logCategory !== "All" && row.category !== logCategory) return false;
+      if (logBilling !== "All" && row.billing_type !== logBilling && row.billing !== logBilling) return false;
+      if (logStatus !== "All" && row.status !== logStatus) return false;
+      if (!q) return true;
+      const haystack = [
+        row.reference,
+        row.country,
+        row.category,
+        row.billing_type,
+        row.crypto_network,
+        row.crypto_hash,
+      ].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [filteredEntries, searchQuery, logCategory, logBilling, logStatus]);
+
+  const sortedEntries = React.useMemo(() => {
+    const key = logSort.key;
+    const dir = logSort.dir === "asc" ? 1 : -1;
+    const isNum = key === "amount";
+    return [...searchableEntries].sort((a, b) => {
+      const aVal = a[key] ?? "";
+      const bVal = b[key] ?? "";
+      if (isNum) return (Number(aVal) - Number(bVal)) * dir;
+      return String(aVal).localeCompare(String(bVal)) * dir;
+    });
+  }, [searchableEntries, logSort]);
+
+  const toggleSort = (key) => {
+    setLogSort((prev) => prev.key === key
+      ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+      : { key, dir: "desc" });
+  };
+
+  // Monthly budget (persisted to localStorage)
+  const BUDGET_KEY = "deus-budget:monthly";
+  const [monthlyBudget, setMonthlyBudget] = React.useState(() => {
+    try {
+      const raw = localStorage.getItem(BUDGET_KEY);
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    } catch (e) { return 0; }
+  });
+  const [editingBudget, setEditingBudget] = React.useState(false);
+  const [budgetDraft, setBudgetDraft] = React.useState("");
+  const saveBudget = () => {
+    const n = Number(budgetDraft);
+    if (Number.isFinite(n) && n >= 0) {
+      setMonthlyBudget(n);
+      try { localStorage.setItem(BUDGET_KEY, String(n)); } catch (e) { /* ignore */ }
+    }
+    setEditingBudget(false);
+  };
   const isShortWindow =
     period === "Today" ||
     period === "Yesterday" ||
@@ -4377,8 +3819,129 @@ function FinancesDashboard({
   ).length;
   const doneCount = filteredEntries.filter((row) => String(row.status).toLowerCase() === "done").length;
 
+  // Profitability metrics — joins expenses with revenue from media-stats
+  const totalRevenue = revenueStats.revenue;
+  const profit = totalRevenue - totalExpenses;
+  const roi = totalExpenses > 0 ? (profit / totalExpenses) * 100 : null;
+  const costPerFtd = revenueStats.ftds > 0 ? totalExpenses / revenueStats.ftds : null;
+
+  // Previous-period totals for delta indicators (same length, immediately prior)
+  const prevPeriodRange = React.useMemo(() => {
+    if (!periodRange.from || !periodRange.to) return { from: null, to: null };
+    const from = new Date(`${periodRange.from}T00:00:00`);
+    const to = new Date(`${periodRange.to}T00:00:00`);
+    const lengthDays = Math.max(1, Math.round((to - from) / 86400000) + 1);
+    const prevTo = new Date(from); prevTo.setDate(prevTo.getDate() - 1);
+    const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (lengthDays - 1));
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return { from: fmt(prevFrom), to: fmt(prevTo) };
+  }, [periodRange.from, periodRange.to]);
+
+  const prevExpenses = React.useMemo(
+    () => entries.filter((r) => isDateInRange(r.date, prevPeriodRange)).reduce((s, r) => s + Number(r.amount || 0), 0),
+    [entries, prevPeriodRange.from, prevPeriodRange.to]
+  );
+  const prevRevenue = React.useMemo(() => {
+    let rev = 0;
+    revenueRows.forEach((row) => {
+      if (!isDateInRange(row.date, prevPeriodRange)) return;
+      const r = Number(row.revenue);
+      const ftdRev = Number(row.ftdRevenue ?? row.ftd_revenue ?? 0);
+      const redepRev = Number(row.redepositRevenue ?? row.redeposit_revenue ?? 0);
+      rev += Number.isFinite(r) && r > 0 ? r : (ftdRev + redepRev);
+    });
+    return rev;
+  }, [revenueRows, prevPeriodRange.from, prevPeriodRange.to]);
+
+  const prevProfit = prevRevenue - prevExpenses;
+  const prevRoi = prevExpenses > 0 ? (prevProfit / prevExpenses) * 100 : null;
+
+  const computeDelta = (current, prev) => {
+    if (!Number.isFinite(prev) || prev === 0) return null;
+    return ((current - prev) / Math.abs(prev)) * 100;
+  };
+
+  // Daily sparkline data — every day in the period, zero-filled when no data.
+  // Without zero-fill the sparkline only spans the days with values, leaving empty right side.
+  const dailySeries = React.useMemo(() => {
+    if (!periodRange.from || !periodRange.to) return [];
+    const map = new Map();
+    // First, seed every day in the range with zeros so the chart spans full width
+    const from = new Date(`${periodRange.from}T00:00:00`);
+    const to = new Date(`${periodRange.to}T00:00:00`);
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) return [];
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      map.set(fmt(d), { date: fmt(d), revenue: 0, expenses: 0 });
+    }
+    // Then overlay actual data
+    entries.forEach((row) => {
+      const d = normalizeDateValue(row.date);
+      if (!d || !map.has(d)) return;
+      map.get(d).expenses += Number(row.amount || 0);
+    });
+    revenueRows.forEach((row) => {
+      const d = normalizeDateValue(row.date);
+      if (!d || !map.has(d)) return;
+      const r = Number(row.revenue);
+      const ftdRev = Number(row.ftdRevenue ?? row.ftd_revenue ?? 0);
+      const redepRev = Number(row.redepositRevenue ?? row.redeposit_revenue ?? 0);
+      map.get(d).revenue += Number.isFinite(r) && r > 0 ? r : (ftdRev + redepRev);
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [entries, revenueRows, periodRange.from, periodRange.to]);
+
+  const profitabilityMetrics = [
+    {
+      key: "revenue",
+      label: "Total Revenue",
+      value: formatCurrency(totalRevenue),
+      icon: TrendingUp,
+      meta: periodLabel,
+      tone: "green",
+      delta: computeDelta(totalRevenue, prevRevenue),
+      sparkKey: "revenue",
+    },
+    {
+      key: "expenses",
+      label: "Total Expenses",
+      value: formatCurrency(totalExpenses),
+      icon: TrendingDown,
+      meta: periodLabel,
+      tone: "red",
+      delta: computeDelta(totalExpenses, prevExpenses),
+      deltaInverse: true, // expenses going UP is bad
+      sparkKey: "expenses",
+    },
+    {
+      key: "profit",
+      label: "Profit",
+      value: formatCurrency(profit),
+      icon: DollarSign,
+      meta: "Revenue − Expenses",
+      tone: profit >= 0 ? "green" : "red",
+      delta: computeDelta(profit, prevProfit),
+      // sparkline is computed inline (revenue - expenses per day)
+    },
+    {
+      key: "roi",
+      label: "ROI",
+      value: roi === null ? "—" : `${roi.toFixed(1)}%`,
+      icon: Percent,
+      meta: "Profit / Expenses",
+      tone: roi === null ? "neutral" : roi >= 100 ? "green" : roi >= 0 ? "yellow" : "red",
+      delta: roi !== null && prevRoi !== null ? roi - prevRoi : null,
+      deltaIsAbsolute: true, // ROI delta is in percentage-points, not %
+    },
+  ];
+
   const financeMetrics = [
-    { label: "Total Expenses", value: formatCurrency(totalExpenses), icon: Wallet, meta: periodLabel },
+    {
+      label: "Cost per FTD",
+      value: costPerFtd === null ? "—" : formatCurrency(costPerFtd),
+      icon: Wallet,
+      meta: revenueStats.ftds > 0 ? `${revenueStats.ftds.toLocaleString()} FTDs` : "No FTDs",
+    },
     {
       label: "This Month",
       value: formatCurrency(monthExpenses),
@@ -4392,8 +3955,243 @@ function FinancesDashboard({
   const totalSpend = totalExpenses;
   const avgSpend = financeTrendData.length ? Math.round(totalSpend / financeTrendData.length) : 0;
 
+  // Budget pace / forecast computation
+  const budgetPace = (() => {
+    if (monthlyBudget <= 0) return null;
+    const today = new Date();
+    const currentMonthKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+    const inCurrentMonth = entries.filter((row) => String(row.date || "").startsWith(currentMonthKey));
+    const spent = inCurrentMonth.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    const dayOfMonth = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const dailyBurn = dayOfMonth > 0 ? spent / dayOfMonth : 0;
+    const projected = dailyBurn * daysInMonth;
+    const projectedPct = (projected / monthlyBudget) * 100;
+    const status = projected <= monthlyBudget ? "on-track" : projected <= monthlyBudget * 1.1 ? "at-risk" : "behind";
+    return { spent, dailyBurn, projected, projectedPct, status, daysInMonth, dayOfMonth, daysRemaining: daysInMonth - dayOfMonth };
+  })();
+
   return (
     <>
+      <section className="cards profitability-cards">
+        {profitabilityMetrics.map((stat, idx) => {
+          const Icon = stat.icon;
+          // Compute delta visual + sign
+          let deltaDisplay = null;
+          if (stat.delta !== null && Number.isFinite(stat.delta)) {
+            const isUp = stat.delta > 0;
+            const isFlat = Math.abs(stat.delta) < 0.1;
+            // "good direction" depends on metric — for expenses, down is good
+            const isGood = isFlat ? null : stat.deltaInverse ? !isUp : isUp;
+            const arrow = isFlat ? "—" : isUp ? "▲" : "▼";
+            const formatted = stat.deltaIsAbsolute
+              ? `${stat.delta > 0 ? "+" : ""}${stat.delta.toFixed(1)}pt`
+              : `${Math.abs(stat.delta).toFixed(1)}%`;
+            deltaDisplay = { arrow, formatted, tone: isGood === null ? "flat" : isGood ? "good" : "bad" };
+          }
+          return (
+            <motion.div
+              key={stat.key}
+              className={`card profitability-card tone-${stat.tone}`}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.06, duration: 0.45 }}
+            >
+              <div className="profit-card-head">
+                <span className="profit-card-icon">
+                  <Icon size={16} />
+                </span>
+                <span className="profit-card-label">{t(stat.label)}</span>
+              </div>
+              <div className="profit-card-value">{stat.value}</div>
+              <div className="profit-card-meta-row">
+                {deltaDisplay ? (
+                  <span className={`profit-card-delta delta-${deltaDisplay.tone}`}>
+                    <span className="profit-card-delta-arrow">{deltaDisplay.arrow}</span>
+                    {deltaDisplay.formatted}
+                  </span>
+                ) : null}
+                <span className="profit-card-meta">{t(stat.meta)}</span>
+              </div>
+              {stat.sparkKey && dailySeries.length > 1 ? (
+                (() => {
+                  // Detect "all zeros" — would render as flat line and look broken.
+                  const hasData = dailySeries.some((d) => Number(d[stat.sparkKey] || 0) > 0);
+                  if (!hasData) {
+                    return (
+                      <div className="profit-card-empty-strip">
+                        <span>{stat.tone === "red" ? t("No expenses logged for this period") : t("No data for this period")}</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="profit-card-spark">
+                      <ResponsiveContainer width="100%" height={48}>
+                        <AreaChart data={dailySeries} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id={`spark-${stat.key}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={stat.tone === "red" ? "#ff7d88" : "#36d07c"} stopOpacity={0.45} />
+                              <stop offset="100%" stopColor={stat.tone === "red" ? "#ff7d88" : "#36d07c"} stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <Area
+                            type="monotone"
+                            dataKey={stat.sparkKey}
+                            stroke={stat.tone === "red" ? "#ff7d88" : "#36d07c"}
+                            strokeWidth={1.5}
+                            fill={`url(#spark-${stat.key})`}
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  );
+                })()
+              ) : stat.key === "profit" && dailySeries.length > 1 ? (
+                // Profit sparkline = revenue - expenses per day, computed inline
+                (() => {
+                  const profitSeries = dailySeries.map((d) => ({ ...d, profit: d.revenue - d.expenses }));
+                  const hasData = profitSeries.some((d) => d.profit !== 0);
+                  if (!hasData) return <div className="profit-card-empty-strip"><span>{t("No data")}</span></div>;
+                  const profitColor = profit >= 0 ? "#36d07c" : "#ff7d88";
+                  return (
+                    <div className="profit-card-spark">
+                      <ResponsiveContainer width="100%" height={48}>
+                        <AreaChart data={profitSeries} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="spark-profit" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor={profitColor} stopOpacity={0.45} />
+                              <stop offset="100%" stopColor={profitColor} stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <Area
+                            type="monotone"
+                            dataKey="profit"
+                            stroke={profitColor}
+                            strokeWidth={1.5}
+                            fill="url(#spark-profit)"
+                            dot={false}
+                            isAnimationActive={false}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  );
+                })()
+              ) : stat.key === "roi" ? (
+                // ROI gets a horizontal progress bar instead of sparkline (matches visual weight)
+                (() => {
+                  if (roi === null) {
+                    return (
+                      <div className="profit-card-empty-strip">
+                        <span>{t("Set expenses to unlock")}</span>
+                      </div>
+                    );
+                  }
+                  // Map ROI to bar fill: 0% = 0 fill, 100% = full bar, 200%+ = full + glow
+                  const fillPct = Math.max(0, Math.min(100, roi));
+                  const overflowing = roi > 100;
+                  return (
+                    <div className="profit-card-roi-bar">
+                      <div className="profit-card-roi-track">
+                        <div
+                          className={`profit-card-roi-fill ${overflowing ? "is-overflow" : ""}`}
+                          style={{ width: `${fillPct}%` }}
+                        />
+                        <span className="profit-card-roi-marker" style={{ left: "100%" }} aria-label="100% benchmark" />
+                      </div>
+                      <div className="profit-card-roi-scale">
+                        <span>0%</span>
+                        <span>100%</span>
+                        {overflowing ? <span className="overflow-tag">+{Math.round(roi - 100)}pt</span> : null}
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : null}
+            </motion.div>
+          );
+        })}
+      </section>
+
+      <section className="budget-section">
+        <motion.div
+          className="panel budget-panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+        >
+          <div className="budget-head">
+            <div>
+              <h3 className="panel-title">{t("Monthly Budget")}</h3>
+              <p className="panel-subtitle">
+                {monthlyBudget > 0
+                  ? t("Track spend against your monthly cap.")
+                  : t("Set a monthly cap to track burn rate.")}
+              </p>
+            </div>
+            {editingBudget ? (
+              <div className="budget-edit">
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="50000"
+                  value={budgetDraft}
+                  onChange={(e) => setBudgetDraft(e.target.value)}
+                  autoFocus
+                />
+                <button type="button" className="action-pill" onClick={saveBudget}>{t("Save")}</button>
+                <button type="button" className="ghost" onClick={() => setEditingBudget(false)}>{t("Cancel")}</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="action-pill"
+                onClick={() => { setBudgetDraft(String(monthlyBudget || "")); setEditingBudget(true); }}
+              >
+                {monthlyBudget > 0 ? t("Edit") : t("Set budget")}
+              </button>
+            )}
+          </div>
+          {monthlyBudget <= 0 ? (
+            <div className="budget-empty">
+              <span>{t("Set a monthly budget cap to see daily burn rate, end-of-month forecast, and status alerts.")}</span>
+            </div>
+          ) : budgetPace ? (
+            <div className={`goal-pace ${budgetPace.status}`}>
+              <div className="goal-pace-row">
+                <div className="goal-pace-cell">
+                  <span className="goal-pace-label">{t("Spent")}</span>
+                  <span className="goal-pace-value">{formatCurrency(budgetPace.spent)}<small>/ {formatCurrency(monthlyBudget)}</small></span>
+                </div>
+                <div className="goal-pace-cell">
+                  <span className="goal-pace-label">{t("Daily burn")}</span>
+                  <span className="goal-pace-value">{formatCurrency(budgetPace.dailyBurn)}<small>/day</small></span>
+                </div>
+                <div className="goal-pace-cell">
+                  <span className="goal-pace-label">{t("Days left")}</span>
+                  <span className="goal-pace-value">{budgetPace.daysRemaining}<small>/ {budgetPace.daysInMonth}</small></span>
+                </div>
+                <div className="goal-pace-cell">
+                  <span className="goal-pace-label">{t("Forecast")}</span>
+                  <span className="goal-pace-value">{formatCurrency(budgetPace.projected)}<small>({Math.round(budgetPace.projectedPct)}%)</small></span>
+                </div>
+              </div>
+              <div className="goal-pace-hint">
+                <span className="goal-pace-mark">{budgetPace.status === "on-track" ? "✓" : budgetPace.status === "at-risk" ? "!" : "↑"}</span>
+                {budgetPace.status === "on-track"
+                  ? `${t("On pace")} — ${Math.round(budgetPace.projectedPct)}% ${t("of budget")}`
+                  : budgetPace.status === "at-risk"
+                    ? `${t("Trending over")} — ${formatCurrency(budgetPace.projected - monthlyBudget)} ${t("over budget")}`
+                    : `${t("Significantly over")} — ${formatCurrency(budgetPace.projected - monthlyBudget)} ${t("projected overage")}`}
+              </div>
+            </div>
+          ) : null}
+        </motion.div>
+      </section>
+
       <section className="cards">
         {financeMetrics.map((stat, idx) => {
           const Icon = stat.icon;
@@ -4434,7 +4232,7 @@ function FinancesDashboard({
           <form className="form-grid" onSubmit={onEntrySubmit}>
             <div className="field">
               <label>{t("Date")}</label>
-              <input type="date" value={entry.date} onChange={onEntryChange("date")} />
+              <DeusDatePicker value={entry.date} onChange={(v) => onEntryValueChange("date", v)} />
             </div>
             <div className="field">
               <label>{t("Country")}</label>
@@ -4449,13 +4247,12 @@ function FinancesDashboard({
             </div>
             <div className="field">
               <label>{t("Category")}</label>
-              <select value={entry.category} onChange={onEntryChange("category")}> 
-                {categoryOptions.map((category) => (
-                  <option key={category} value={category}>
-                    {t(category)}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={entry.category}
+                onChange={(v) => onEntryValueChange("category", v)}
+                options={categoryOptions.map((c) => ({ value: c, label: t(c) }))}
+                placeholder={t("Select")}
+              />
             </div>
             <div className="field">
               <label>{t("Reference")}</label>
@@ -4468,25 +4265,23 @@ function FinancesDashboard({
             </div>
           <div className="field">
             <label>{t("Billing type")}</label>
-            <select value={entry.billing} onChange={onEntryChange("billing")}> 
-              {billingOptions.map((type) => (
-                <option key={type} value={type}>
-                  {t(type)}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={entry.billing}
+              onChange={(v) => onEntryValueChange("billing", v)}
+              options={billingOptions.map((b) => ({ value: b, label: t(b) }))}
+              placeholder={t("Select")}
+            />
           </div>
           {entry.billing === "Crypto" ? (
             <>
               <div className="field">
                 <label>{t("Network")}</label>
-                <select value={entry.cryptoNetwork} onChange={onEntryChange("cryptoNetwork")}>
-                  {["TRC20", "ERC20", "BTC", "Other"].map((network) => (
-                    <option key={network} value={network}>
-                      {network}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={entry.cryptoNetwork}
+                  onChange={(v) => onEntryValueChange("cryptoNetwork", v)}
+                  options={["TRC20", "ERC20", "BTC", "Other"]}
+                  placeholder={t("Select")}
+                />
               </div>
               <div className="field">
                 <label>{t("TX Hash")}</label>
@@ -4512,13 +4307,12 @@ function FinancesDashboard({
             </div>
             <div className="field">
               <label>{t("Status")}</label>
-              <select value={entry.status} onChange={onEntryChange("status")}> 
-                {statusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {t(status)}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={entry.status}
+                onChange={(v) => onEntryValueChange("status", v)}
+                options={statusOptions.map((s) => ({ value: s, label: t(s) }))}
+                placeholder={t("Select")}
+              />
             </div>
             <div className="form-actions">
               <button className="ghost" type="button" onClick={onEntryReset}>
@@ -4552,24 +4346,75 @@ function FinancesDashboard({
           ) : filteredEntries.length === 0 ? (
             <div className="empty-state">{t("No entries yet. Add your first expense above.")}</div>
           ) : (
+            <>
+            <div className="log-toolbar">
+              <input
+                type="text"
+                className="log-search"
+                placeholder={t("Search by reference, country, hash…")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <div className="log-filter-group">
+                <Select
+                  value={logCategory}
+                  onChange={(v) => setLogCategory(v)}
+                  options={categoryOptions}
+                  allOption={{ value: "All", label: t("All categories") }}
+                  placeholder={t("All categories")}
+                />
+              </div>
+              <div className="log-filter-group">
+                <Select
+                  value={logBilling}
+                  onChange={(v) => setLogBilling(v)}
+                  options={billingOptions}
+                  allOption={{ value: "All", label: t("All billing") }}
+                  placeholder={t("All billing")}
+                />
+              </div>
+              <div className="log-filter-group">
+                <Select
+                  value={logStatus}
+                  onChange={(v) => setLogStatus(v)}
+                  options={statusOptions}
+                  allOption={{ value: "All", label: t("All status") }}
+                  placeholder={t("All status")}
+                />
+              </div>
+              <span className="log-count">{sortedEntries.length} / {filteredEntries.length}</span>
+            </div>
+            {sortedEntries.length === 0 ? (
+              <div className="empty-state">{t("No entries match these filters.")}</div>
+            ) : (
             <div className="table-wrap">
               <table className="entries-table">
                 <thead>
                   <tr>
-                    <th>{t("Date")}</th>
-                    <th>{t("Country")}</th>
-                    <th>{t("Category")}</th>
+                    <th onClick={() => toggleSort("date")} className="sortable">
+                      {t("Date")} {logSort.key === "date" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    </th>
+                    <th onClick={() => toggleSort("country")} className="sortable">
+                      {t("Country")} {logSort.key === "country" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    </th>
+                    <th onClick={() => toggleSort("category")} className="sortable">
+                      {t("Category")} {logSort.key === "category" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    </th>
                     <th>{t("Reference")}</th>
                     <th>{t("Billing type")}</th>
                     <th>{t("Network")}</th>
                     <th>{t("TX Hash")}</th>
-                    <th>{t("Amount (USD)")}</th>
-                    <th>{t("Status")}</th>
+                    <th onClick={() => toggleSort("amount")} className="sortable amount-cell">
+                      {t("Amount (USD)")} {logSort.key === "amount" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    </th>
+                    <th onClick={() => toggleSort("status")} className="sortable">
+                      {t("Status")} {logSort.key === "status" ? (logSort.dir === "asc" ? "▲" : "▼") : "↕"}
+                    </th>
                     {canManageExpenses ? <th>{t("Actions")}</th> : null}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEntries.map((row) => (
+                  {sortedEntries.map((row) => (
                     <tr key={row.id}>
                       <td>{row.date}</td>
                       <td>{row.country}</td>
@@ -4624,6 +4469,8 @@ function FinancesDashboard({
                 </tbody>
               </table>
             </div>
+            )}
+            </>
           )}
         </motion.div>
       </section>
@@ -5114,17 +4961,28 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   }, [effectiveBuyer, isLeadership]);
 
   const fetchStats = React.useCallback(async () => {
-    try {
+    const cacheKey = "media-stats:limit=100000";
+    const cached = readSwrCache(cacheKey);
+
+    if (cached && Array.isArray(cached)) {
+      setStatsEntries(cached);
+      setStatsState({ loading: false, error: null });
+    } else {
       setStatsState({ loading: true, error: null });
+    }
+
+    try {
       const response = await apiFetch("/api/media-stats?limit=100000");
-      if (!response.ok) {
-        throw new Error("Failed to load media buyer stats.");
-      }
+      if (!response.ok) throw new Error("Failed to load media buyer stats.");
       const data = await response.json();
-      setStatsEntries(data);
+      const rows = Array.isArray(data) ? data : [];
+      writeSwrCache(cacheKey, rows);
+      setStatsEntries(rows);
       setStatsState({ loading: false, error: null });
     } catch (error) {
-      setStatsState({ loading: false, error: error.message || "Failed to load stats." });
+      if (!cached) {
+        setStatsState({ loading: false, error: error.message || "Failed to load stats." });
+      }
     }
   }, []);
 
@@ -6098,17 +5956,28 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   const [placementFilter, setPlacementFilter] = React.useState("All placements");
 
   const fetchPlacements = React.useCallback(async () => {
-    try {
+    const cacheKey = "media-stats:limit=100000";
+    const cached = readSwrCache(cacheKey);
+
+    if (cached && Array.isArray(cached)) {
+      setPlacementEntries(cached);
+      setPlacementState({ loading: false, error: null });
+    } else {
       setPlacementState({ loading: true, error: null });
+    }
+
+    try {
       const response = await apiFetch("/api/media-stats?limit=100000");
-      if (!response.ok) {
-        throw new Error("Failed to load placement stats.");
-      }
+      if (!response.ok) throw new Error("Failed to load placement stats.");
       const data = await response.json();
-      setPlacementEntries(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      writeSwrCache(cacheKey, rows);
+      setPlacementEntries(rows);
       setPlacementState({ loading: false, error: null });
     } catch (error) {
-      setPlacementState({ loading: false, error: error.message || "Failed to load placement stats." });
+      if (!cached) {
+        setPlacementState({ loading: false, error: error.message || "Failed to load placement stats." });
+      }
     }
   }, []);
 
@@ -7258,20 +7127,20 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               <p className="panel-subtitle">{t("Clicks and conversions over time.")}</p>
             </div>
             <div className="panel-actions">
-              <select className="inline-select" value={buyerFilter} onChange={(e) => setBuyerFilter(e.target.value)}>
-                {buyerOptionsLocal.map((option) => (
-                  <option key={option} value={option}>
-                    {option === "All buyers" ? t(option) : option}
-                  </option>
-                ))}
-              </select>
-              <select className="inline-select" value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}>
-                {domainOptionsLocal.map((option) => (
-                  <option key={option} value={option}>
-                    {option === "All domains" ? t(option) : option}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={buyerFilter}
+                onChange={(v) => setBuyerFilter(v)}
+                options={buyerOptionsLocal.map((option) => ({ value: option, label: option === "All buyers" ? t(option) : option }))}
+                placeholder={t("All buyers")}
+                searchPlaceholder={t("Find buyer")}
+              />
+              <Select
+                value={domainFilter}
+                onChange={(v) => setDomainFilter(v)}
+                options={domainOptionsLocal.map((option) => ({ value: option, label: option === "All domains" ? t(option) : option }))}
+                placeholder={t("All domains")}
+                searchPlaceholder={t("Find domain")}
+              />
               <PeriodSelect
                 value={period}
                 onChange={setPeriod}
@@ -8449,6 +8318,7 @@ function GoalsDashboard({ authUser }) {
     dateTo: "2026-02-28",
     ftdsTarget: "",
     r2dTarget: "",
+    revenueTarget: "",
     isGlobal: false,
     notes: "",
   });
@@ -8467,6 +8337,7 @@ function GoalsDashboard({ authUser }) {
   });
   const [teamMembers, setTeamMembers] = React.useState([]);
   const [teamState, setTeamState] = React.useState({ loading: true, error: null });
+  const [statusFilter, setStatusFilter] = React.useState("all");
 
   const updateGoalForm = (key) => (event) => {
     setGoalForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -8485,9 +8356,35 @@ function GoalsDashboard({ authUser }) {
       dateTo: "2026-02-28",
       ftdsTarget: "",
       r2dTarget: "",
+      revenueTarget: "",
       isGlobal: false,
       notes: "",
     });
+  };
+
+  // Period → Date range auto-fill helper
+  // When user picks "Daily/Weekly/Monthly", auto-fill the date range to the current period.
+  // "Custom" leaves dates as-is so user can pick freely.
+  const applyPeriodRange = (period) => {
+    const today = new Date();
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let from = null, to = null;
+    if (period === "Daily") {
+      from = today; to = today;
+    } else if (period === "Weekly") {
+      // Monday-Sunday of the current week
+      const dayIdx = today.getDay(); // 0=Sun..6=Sat
+      const mondayOffset = dayIdx === 0 ? -6 : 1 - dayIdx;
+      const monday = new Date(today); monday.setDate(monday.getDate() + mondayOffset);
+      const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+      from = monday; to = sunday;
+    } else if (period === "Monthly") {
+      from = new Date(today.getFullYear(), today.getMonth(), 1);
+      to = new Date(today.getFullYear(), today.getMonth() + 1, 0); // last day of month
+    } else {
+      return null; // Custom — don't change
+    }
+    return { from: fmt(from), to: fmt(to) };
   };
 
   const resetTeamForm = () => {
@@ -8596,6 +8493,43 @@ function GoalsDashboard({ authUser }) {
     }
   };
 
+  const handleGoalDuplicate = (goal) => {
+    // Shift dates forward by one period length so leadership can roll forward easily.
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let nextFrom = goal.date_from;
+    let nextTo = goal.date_to;
+    const from = goal.date_from ? new Date(`${goal.date_from}T00:00:00`) : null;
+    const to = goal.date_to ? new Date(`${goal.date_to}T00:00:00`) : null;
+    if (from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime())) {
+      const days = Math.round((to - from) / 86400000) + 1;
+      const newFrom = new Date(to);
+      newFrom.setDate(newFrom.getDate() + 1);
+      const newTo = new Date(newFrom);
+      newTo.setDate(newTo.getDate() + days - 1);
+      nextFrom = fmt(newFrom);
+      nextTo = fmt(newTo);
+    }
+    setGoalForm({
+      isGlobal: !!goal.is_global,
+      buyer: goal.buyer || "",
+      country: goal.country || "",
+      period: goal.period || "Monthly",
+      dateFrom: nextFrom || "",
+      dateTo: nextTo || "",
+      ftdsTarget: goal.ftds_target ? String(goal.ftds_target) : "",
+      revenueTarget: goal.revenue_target ? String(goal.revenue_target) : "",
+      r2dTarget: goal.r2d_target ? String(goal.r2d_target) : "",
+      notes: goal.notes || "",
+    });
+    // Smooth-scroll to the form so leadership sees the prefilled values.
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        const formEl = document.querySelector(".goals-form");
+        if (formEl) formEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
+
   const handleGoalDelete = async (id) => {
     try {
       const response = await apiFetch(`/api/goals/${id}`, { method: "DELETE" });
@@ -8682,15 +8616,61 @@ function GoalsDashboard({ authUser }) {
       progressValues.length > 0
         ? progressValues.reduce((sumVal, value) => sumVal + value, 0) / progressValues.length
         : null;
-    const statusLabel =
+    const status =
       overall === null
-        ? t("No targets")
+        ? "none"
         : overall >= 100
-        ? t("Achieved")
-        : overall >= 80
-        ? t("On track")
-        : t("Behind");
-    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel };
+          ? "achieved"
+          : overall >= 80
+            ? "on-track"
+            : overall >= 60
+              ? "at-risk"
+              : "behind";
+    const statusLabel =
+      status === "none"
+        ? t("No targets")
+        : status === "achieved"
+          ? t("Achieved")
+          : status === "on-track"
+            ? t("On track")
+            : status === "at-risk"
+              ? t("At risk")
+              : t("Behind");
+
+    // Pace calculation: compare actual daily rate vs. required daily rate.
+    // Only meaningful when the goal period is in progress (not finished, not future).
+    let pace = null;
+    const from = goal.date_from ? new Date(`${goal.date_from}T00:00:00`) : null;
+    const to = goal.date_to ? new Date(`${goal.date_to}T23:59:59`) : null;
+    const today = new Date();
+    const ftdsTargetNum = Number(goal.ftds_target || 0);
+    if (
+      from && to &&
+      !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime()) &&
+      today >= from && ftdsTargetNum > 0 && status !== "achieved"
+    ) {
+      const totalMs = Math.max(1, to.getTime() - from.getTime());
+      const elapsedMs = Math.max(1, Math.min(today.getTime(), to.getTime()) - from.getTime());
+      const totalDays = Math.max(1, Math.round(totalMs / 86400000) + 1);
+      const elapsedDays = Math.max(1, Math.round(elapsedMs / 86400000) + 1);
+      const requiredPace = ftdsTargetNum / totalDays;
+      const actualPace = totals.ftds / elapsedDays;
+      const ratio = requiredPace > 0 ? actualPace / requiredPace : null;
+      let paceStatus = "on-pace";
+      let paceLabel = t("On pace");
+      if (ratio !== null) {
+        if (ratio >= 1.1) {
+          paceStatus = "ahead";
+          paceLabel = t("Ahead");
+        } else if (ratio < 0.9) {
+          paceStatus = "behind-pace";
+          paceLabel = t("Behind pace");
+        }
+      }
+      pace = { requiredPace, actualPace, ratio, status: paceStatus, label: paceLabel, elapsedDays, totalDays };
+    }
+
+    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace };
   };
 
   const goalSummary = React.useMemo(() => {
@@ -8768,45 +8748,176 @@ function GoalsDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Period")}</label>
-                <select value={goalForm.period} onChange={updateGoalForm("period")}>
-                  {["Daily", "Weekly", "Monthly", "Custom"].map((item) => (
-                    <option key={item} value={item}>
-                      {t(item)}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={goalForm.period}
+                  onChange={(v) => {
+                    const range = applyPeriodRange(v);
+                    setGoalForm((prev) => ({
+                      ...prev,
+                      period: v,
+                      ...(range ? { dateFrom: range.from, dateTo: range.to } : {}),
+                    }));
+                  }}
+                  options={["Daily", "Weekly", "Monthly", "Custom"].map((item) => ({ value: item, label: t(item) }))}
+                  placeholder={t("Select")}
+                />
               </div>
               <div className="field goal-range">
                 <label>{t("Date Range")}</label>
+                <div className="goal-date-presets">
+                  {[
+                    { label: t("Today"), range: { from: new Date(), to: new Date() } },
+                    { label: t("This Week"), range: applyPeriodRange("Weekly") },
+                    { label: t("This Month"), range: applyPeriodRange("Monthly") },
+                    { label: t("Next 7d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 6); return { from: f, to: tt }; })() },
+                    { label: t("Next 30d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 29); return { from: f, to: tt }; })() },
+                  ].map((preset) => {
+                    const fmt = (d) => d instanceof Date
+                      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+                      : d;
+                    const from = preset.range?.from ? fmt(preset.range.from) : null;
+                    const to = preset.range?.to ? fmt(preset.range.to) : null;
+                    const isActive = from && to && goalForm.dateFrom === from && goalForm.dateTo === to;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className={`date-preset${isActive ? " is-active" : ""}`}
+                        onClick={() => from && to && setGoalForm((prev) => ({ ...prev, dateFrom: from, dateTo: to }))}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="field-row">
-                  <input type="date" value={goalForm.dateFrom} onChange={updateGoalForm("dateFrom")} />
+                  <DeusDatePicker value={goalForm.dateFrom} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateFrom: v }))} />
                   <span className="field-sep">{t("to")}</span>
-                  <input type="date" value={goalForm.dateTo} onChange={updateGoalForm("dateTo")} />
+                  <DeusDatePicker value={goalForm.dateTo} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateTo: v }))} />
                 </div>
               </div>
-              <div className="field">
-                <label>{t("FTDs Target")}</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={goalForm.ftdsTarget}
-                  onChange={updateGoalForm("ftdsTarget")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Reg2Dep Target (%)")}</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={goalForm.r2dTarget}
-                  onChange={updateGoalForm("r2dTarget")}
-                />
-              </div>
+              {(() => {
+                // Compute period duration + required pace for live hints
+                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
+                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
+                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
+                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
+                const ftdsNum = Number(goalForm.ftdsTarget || 0);
+                const revenueNum = Number(goalForm.revenueTarget || 0);
+                const ftdsPace = days && ftdsNum > 0 ? (ftdsNum / days) : null;
+                const revenuePace = days && revenueNum > 0 ? (revenueNum / days) : null;
+                const fmt = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+                return (
+                  <>
+                    <div className="field">
+                      <label>
+                        {t("FTDs Target")}
+                        {ftdsPace !== null ? <span className="field-pace-hint">~{fmt(ftdsPace)}/{t("day")} · {days} {days === 1 ? t("day") : t("days")}</span> : null}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="50"
+                        value={goalForm.ftdsTarget}
+                        onChange={updateGoalForm("ftdsTarget")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>
+                        {t("Revenue Target")}
+                        {revenuePace !== null ? <span className="field-pace-hint">~{formatCurrency(revenuePace)}/{t("day")}</span> : null}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="$10,000"
+                        value={goalForm.revenueTarget}
+                        onChange={updateGoalForm("revenueTarget")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Reg2Dep Target (%)")}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="25.0"
+                        value={goalForm.r2dTarget}
+                        onChange={updateGoalForm("r2dTarget")}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
               <div className="field">
                 <label>{t("Notes")}</label>
-                <input value={goalForm.notes} onChange={updateGoalForm("notes")} />
+                <input value={goalForm.notes} onChange={updateGoalForm("notes")} placeholder={t("Optional context, reward, or constraint")} />
               </div>
+              {(() => {
+                // Live goal preview — mirrors the saved goal card
+                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
+                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
+                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
+                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
+                const ftdsNum = Number(goalForm.ftdsTarget || 0);
+                const revenueNum = Number(goalForm.revenueTarget || 0);
+                const r2dNum = Number(goalForm.r2dTarget || 0);
+                const hasAny = ftdsNum > 0 || revenueNum > 0 || r2dNum > 0;
+                const scope = goalForm.isGlobal
+                  ? t("All Buyers")
+                  : (goalForm.buyer || t("Any Buyer"));
+                const country = goalForm.country || t("Any Country");
+                const period = goalForm.period || t("Custom");
+                const fmtNum = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+                return (
+                  <div className="goal-preview-card">
+                    <div className="goal-preview-head">
+                      <span className="goal-preview-tag">{t("Preview")}</span>
+                      <span className="goal-preview-period">{t(period)}</span>
+                    </div>
+                    <div className="goal-preview-scope">
+                      <strong>{scope}</strong>
+                      <span className="goal-preview-dot">·</span>
+                      <span>{country}</span>
+                      {days ? (
+                        <>
+                          <span className="goal-preview-dot">·</span>
+                          <span>{days} {days === 1 ? t("day") : t("days")}</span>
+                        </>
+                      ) : null}
+                    </div>
+                    {hasAny ? (
+                      <div className="goal-preview-metrics">
+                        {ftdsNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("FTDs")}</span>
+                            <span className="goal-preview-value">{ftdsNum}</span>
+                            {days ? <span className="goal-preview-pace">~{fmtNum(ftdsNum / days)}/{t("day")}</span> : null}
+                          </div>
+                        ) : null}
+                        {revenueNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("Revenue")}</span>
+                            <span className="goal-preview-value">{formatCurrency(revenueNum)}</span>
+                            {days ? <span className="goal-preview-pace">~{formatCurrency(revenueNum / days)}/{t("day")}</span> : null}
+                          </div>
+                        ) : null}
+                        {r2dNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("R2D")}</span>
+                            <span className="goal-preview-value">{r2dNum}%</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="goal-preview-empty">
+                        {t("Add a target to see your goal preview.")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="form-actions">
                 <button className="ghost" type="button" onClick={resetGoalForm}>
                   {t("Reset")}
@@ -8858,23 +8969,60 @@ function GoalsDashboard({ authUser }) {
           ) : displayGoals.length === 0 ? (
             <div className="empty-state">{t("No goals set yet.")}</div>
           ) : (
+            (() => {
+              // Pre-compute progress + status for all goals (used for both summary + filtering)
+              const withInfo = displayGoals.map((g) => ({ goal: g, info: getGoalProgress(g) }));
+              const counts = { all: withInfo.length, behind: 0, "at-risk": 0, "on-track": 0, achieved: 0, none: 0 };
+              withInfo.forEach(({ info }) => {
+                counts[info.status] = (counts[info.status] || 0) + 1;
+              });
+              const filtered = statusFilter === "all"
+                ? withInfo
+                : withInfo.filter(({ info }) => info.status === statusFilter);
+
+              const tabs = [
+                { key: "all", label: t("All"), count: counts.all, tone: "neutral" },
+                { key: "behind", label: t("Behind"), count: counts.behind, tone: "red" },
+                { key: "at-risk", label: t("At risk"), count: counts["at-risk"], tone: "yellow" },
+                { key: "on-track", label: t("On track"), count: counts["on-track"], tone: "green" },
+                { key: "achieved", label: t("Achieved"), count: counts.achieved, tone: "green-solid" },
+              ];
+
+              return (
             <>
-              <div className="goal-summary">
-                <div className="goal-summary-card">
-                  <span>{t("Achieved Targets")}</span>
-                  <strong>{goalSummary.achieved}</strong>
-                </div>
-                <div className="goal-summary-card is-warning">
-                  <span>{t("Unachieved Targets")}</span>
-                  <strong>{goalSummary.unachieved}</strong>
-                </div>
+              <div className="goal-summary-strip">
+                {tabs.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`goal-summary-tab tone-${item.tone}${statusFilter === item.key ? " is-active" : ""}`}
+                    onClick={() => setStatusFilter(item.key)}
+                    disabled={item.key !== "all" && item.count === 0}
+                  >
+                    <span className="goal-summary-tab-count">{item.count}</span>
+                    <span className="goal-summary-tab-label">{item.label}</span>
+                  </button>
+                ))}
               </div>
+              {filtered.length === 0 ? (
+                <div className="empty-state">{t("No goals match this filter.")}</div>
+              ) : (
               <div className="goal-list">
-                {displayGoals.map((goal) => {
-                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel } =
-                    getGoalProgress(goal);
+                {filtered
+                  .sort((a, b) => {
+                    // Sort urgent goals first: behind > at-risk > on-track > achieved
+                    const order = { behind: 0, "at-risk": 1, "on-track": 2, achieved: 3, none: 4 };
+                    const aRank = order[a.info.status] ?? 5;
+                    const bRank = order[b.info.status] ?? 5;
+                    if (aRank !== bRank) return aRank - bRank;
+                    // Secondary: closer deadlines first
+                    return (a.goal.date_to || "").localeCompare(b.goal.date_to || "");
+                  })
+                  .map(({ goal, info }) => {
+                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace } = info;
+                  const statusClass = `status-${status}`;
                 return (
-                  <div key={goal.id} className={`goal-card${goal.is_global ? " is-global" : ""}`}>
+                  <div key={goal.id} className={`goal-card ${statusClass}${goal.is_global ? " is-global" : ""}`}>
                     <div className="goal-banner">
                       <div className="goal-banner-main">
                         <div>
@@ -8887,13 +9035,31 @@ function GoalsDashboard({ authUser }) {
                           </div>
                         </div>
                         <div className="goal-actions">
-                          <span className={`goal-status ${statusLabel.replace(" ", "-").toLowerCase()}`}>
+                          {pace ? (
+                            <span
+                              className={`goal-pace-badge ${pace.status}`}
+                              title={`${t("Required")}: ~${pace.requiredPace >= 10 ? Math.round(pace.requiredPace) : pace.requiredPace.toFixed(1)}/${t("day")} · ${t("Actual")}: ~${pace.actualPace >= 10 ? Math.round(pace.actualPace) : pace.actualPace.toFixed(1)}/${t("day")}`}
+                            >
+                              {pace.label}
+                            </span>
+                          ) : null}
+                          <span className={`goal-status ${status}`}>
                             {statusLabel}
                           </span>
                           {isLeadership ? (
-                            <button className="icon-btn" type="button" onClick={() => handleGoalDelete(goal.id)}>
-                              <Trash2 size={16} />
-                            </button>
+                            <>
+                              <button
+                                className="icon-btn"
+                                type="button"
+                                title={t("Duplicate goal")}
+                                onClick={() => handleGoalDuplicate(goal)}
+                              >
+                                <Copy size={16} />
+                              </button>
+                              <button className="icon-btn" type="button" onClick={() => handleGoalDelete(goal.id)}>
+                                <Trash2 size={16} />
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </div>
@@ -8969,12 +9135,112 @@ function GoalsDashboard({ authUser }) {
                         );
                       })}
                     </div>
+                    {(() => {
+                      // Pace + forecast widget — turns "set target" into "here's how to hit it"
+                      const target = Number(goal.ftds_target || 0);
+                      if (target <= 0) return null;
+
+                      const dayMs = 86400000;
+                      const from = new Date(`${goal.date_from}T00:00:00`);
+                      const to = new Date(`${goal.date_to}T00:00:00`);
+                      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+
+                      const todayRaw = new Date();
+                      const today = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate());
+                      const totalDays = Math.max(1, Math.round((to - from) / dayMs) + 1);
+                      const actual = Number(totals.ftds || 0);
+
+                      // Period not started yet
+                      if (today < from) {
+                        const startsIn = Math.ceil((from - today) / dayMs);
+                        return (
+                          <div className="goal-pace pending">
+                            <div className="goal-pace-hint">
+                              <span className="goal-pace-mark">◷</span>
+                              Period starts in <strong>{startsIn} {startsIn === 1 ? "day" : "days"}</strong> · {totalDays}-day target
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Period ended
+                      const periodEnded = today > to;
+                      const clampedToday = periodEnded ? to : today;
+                      const daysElapsed = Math.max(1, Math.round((clampedToday - from) / dayMs) + 1);
+                      const daysRemaining = Math.max(0, totalDays - daysElapsed);
+
+                      const currentPace = actual / daysElapsed;
+                      const requiredPace = daysRemaining > 0 ? Math.max(0, (target - actual) / daysRemaining) : 0;
+                      const projected = periodEnded ? actual : currentPace * totalDays;
+                      const projectedPct = target > 0 ? (projected / target) * 100 : 0;
+
+                      const goalAchieved = actual >= target;
+                      const status = goalAchieved
+                        ? "achieved"
+                        : projectedPct >= 100
+                          ? "on-track"
+                          : projectedPct >= 70
+                            ? "at-risk"
+                            : "behind";
+
+                      const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
+
+                      const hint = goalAchieved
+                        ? `Goal hit — ${actual} of ${target} FTDs`
+                        : periodEnded
+                          ? `Period ended at ${Math.round(projectedPct)}% of target`
+                          : projectedPct >= 100
+                            ? `On track to reach ${target} FTDs`
+                            : `Need ${fmtPace(requiredPace)}/day for ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} to hit ${target}`;
+
+                      return (
+                        <div className={`goal-pace ${status}`}>
+                          <div className="goal-pace-row">
+                            <div className="goal-pace-cell">
+                              <span className="goal-pace-label">Days left</span>
+                              <span className="goal-pace-value">
+                                {daysRemaining}
+                                <small>/ {totalDays}</small>
+                              </span>
+                            </div>
+                            <div className="goal-pace-cell">
+                              <span className="goal-pace-label">Current pace</span>
+                              <span className="goal-pace-value">
+                                {fmtPace(currentPace)}
+                                <small>/day</small>
+                              </span>
+                            </div>
+                            <div className="goal-pace-cell">
+                              <span className="goal-pace-label">Required</span>
+                              <span className="goal-pace-value">
+                                {requiredPace > 0 ? fmtPace(requiredPace) : "✓"}
+                                {requiredPace > 0 ? <small>/day</small> : null}
+                              </span>
+                            </div>
+                            <div className="goal-pace-cell">
+                              <span className="goal-pace-label">Forecast</span>
+                              <span className="goal-pace-value">
+                                {Math.round(projected)}
+                                <small>({Math.round(projectedPct)}%)</small>
+                              </span>
+                            </div>
+                          </div>
+                          <div className="goal-pace-hint">
+                            <span className="goal-pace-mark">{status === "achieved" ? "✓" : status === "on-track" ? "→" : status === "at-risk" ? "!" : "↓"}</span>
+                            {hint}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {goal.notes ? <div className="goal-notes">{goal.notes}</div> : null}
                   </div>
                 );
               })}
               </div>
+              )}
             </>
+              );
+            })()
           )}
         </motion.div>
       </section>
@@ -9349,13 +9615,12 @@ function DomainsDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>{t("Status")}</label>
-            <select value={domainForm.status} onChange={updateDomainForm("status")}>
-              {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
-                <option key={status} value={status}>
-                  {t(status)}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={domainForm.status}
+              onChange={(v) => setDomainForm((prev) => ({ ...prev, status: v }))}
+              options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+              placeholder={t("Select")}
+            />
           </div>
           <div className="field">
             <label>{t("Game")}</label>
@@ -9368,13 +9633,12 @@ function DomainsDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>{t("Platform")}</label>
-            <select value={domainForm.platform} onChange={updateDomainForm("platform")} required>
-              {["PWA Group", "Link Group", "ZM apps"].map((platform) => (
-                <option key={platform} value={platform}>
-                  {t(platform)}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={domainForm.platform}
+              onChange={(v) => setDomainForm((prev) => ({ ...prev, platform: v }))}
+              options={["PWA Group", "Link Group", "ZM apps"].map((p) => ({ value: p, label: t(p) }))}
+              placeholder={t("Select")}
+            />
           </div>
           <div className="field">
             <label>{t("Target Countries")}</label>
@@ -11554,27 +11818,23 @@ function AccountsDashboard({ authUser }) {
                 </div>
                 <div className="field">
                   <label>{t("Status")}</label>
-                  <select value={editModal.form.status} onChange={updateEditForm("status")}>
-                    {accountStatusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {t(status)}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    value={editModal.form.status}
+                    onChange={(v) => setEditModal((prev) => prev.open ? { ...prev, form: { ...prev.form, status: v } } : prev)}
+                    options={accountStatusOptions.map((s) => ({ value: s, label: t(s) }))}
+                    placeholder={t("Select")}
+                  />
                 </div>
                 {isLeadership ? (
                   <div className="field">
                     <label>{t("Owner")}</label>
-                    <select value={editModal.form.ownerId} onChange={updateEditForm("ownerId")}>
-                      <option value="">
-                        {userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
-                      </option>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.username} · {t(user.role)}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      value={editModal.form.ownerId || ""}
+                      onChange={(v) => setEditModal((prev) => prev.open ? { ...prev, form: { ...prev.form, ownerId: v } } : prev)}
+                      options={users.map((user) => ({ value: String(user.id), label: `${user.username} · ${t(user.role)}` }))}
+                      placeholder={userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
+                      searchPlaceholder={t("Find owner")}
+                    />
                   </div>
                 ) : null}
                 <div className="field">
@@ -11676,13 +11936,12 @@ function AccountsDashboard({ authUser }) {
             </div>
             <div className="field">
               <label>{t("Status")}</label>
-              <select value={form.status} onChange={updateForm("status")} required>
-                {accountStatusOptions.map((status) => (
-                  <option key={status} value={status}>
-                    {t(status)}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={form.status}
+                onChange={(v) => setForm((prev) => ({ ...prev, status: v }))}
+                options={accountStatusOptions.map((s) => ({ value: s, label: t(s) }))}
+                placeholder={t("Select")}
+              />
             </div>
             <div className="field">
               <label>{t("Pixels")}</label>
@@ -11719,16 +11978,13 @@ function AccountsDashboard({ authUser }) {
             {isLeadership ? (
               <div className="field accounts-owner-field">
                 <label>{t("Owner")}</label>
-                <select value={form.ownerId} onChange={updateForm("ownerId")}>
-                  <option value="">
-                    {userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
-                  </option>
-                  {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.username} · {t(user.role)}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={form.ownerId || ""}
+                  onChange={(v) => setForm((prev) => ({ ...prev, ownerId: v }))}
+                  options={users.map((user) => ({ value: String(user.id), label: `${user.username} · ${t(user.role)}` }))}
+                  placeholder={userState.loading ? t("Loading...") : users.length ? t("Select") : t("No users")}
+                  searchPlaceholder={t("Find owner")}
+                />
               </div>
             ) : null}
             <div className="field field-span-3 accounts-comment-field">
@@ -12587,14 +12843,16 @@ function MetaTokenDashboard({ authUser }) {
           </div>
           <div className="field">
             <label>Pixel (optional)</label>
-            <select value={form.pixelId} onChange={updateForm("pixelId")}>
-              <option value="">Select pixel</option>
-              {pixels.map((pixel) => (
-                <option key={pixel.id} value={pixel.id}>
-                  {pixel.pixel_id} · {pixel.owner_id && userLookup[pixel.owner_id] ? userLookup[pixel.owner_id] : pixel.owner_role || "Owner"}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={form.pixelId || ""}
+              onChange={(v) => setForm((prev) => ({ ...prev, pixelId: v }))}
+              options={pixels.map((pixel) => ({
+                value: String(pixel.id),
+                label: `${pixel.pixel_id} · ${pixel.owner_id && userLookup[pixel.owner_id] ? userLookup[pixel.owner_id] : pixel.owner_role || "Owner"}`,
+              }))}
+              placeholder="Select pixel"
+              searchPlaceholder="Find pixel"
+            />
           </div>
           <div className="field field-span-2">
             <label>Comment</label>
@@ -12945,7 +13203,7 @@ function RolesDashboard({ authUser }) {
   const buyerTagMap = {
     AKKU: "AKDMC",
     ENZO: "ENDMC",
-    "LEO CARVAKHO": "LCDMC",
+    "LEO CARVALHO": "LCDMC",
     CARVALHO: "LCDMC",
     LET: "LNDMC",
     LETICIA: "LNDMC",
@@ -13188,13 +13446,12 @@ function RolesDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Role")}</label>
-                <select value={teamForm.role} onChange={updateTeamForm("role")}>
-                  {roleOptions.map((role) => (
-                    <option key={role} value={role}>
-                      {t(role)}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={teamForm.role}
+                  onChange={(v) => setTeamForm((prev) => ({ ...prev, role: v }))}
+                  options={roleOptions.map((r) => ({ value: r, label: t(r) }))}
+                  placeholder={t("Select")}
+                />
               </div>
               <div className="field">
                 <label>{t("Country")}</label>
@@ -13209,13 +13466,12 @@ function RolesDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Approach")}</label>
-                <select value={teamForm.approach} onChange={updateTeamForm("approach")}>
-                  {mediaBuyerApproaches.map((approach) => (
-                    <option key={approach} value={approach}>
-                      {t(approach)}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={teamForm.approach}
+                  onChange={(v) => setTeamForm((prev) => ({ ...prev, approach: v }))}
+                  options={mediaBuyerApproaches.map((a) => ({ value: a, label: t(a) }))}
+                  placeholder={t("Select")}
+                />
               </div>
               <div className="field">
                 <label>{t("Game")}</label>
@@ -13244,13 +13500,12 @@ function RolesDashboard({ authUser }) {
               </div>
               <div className="field">
                 <label>{t("Status")}</label>
-                <select value={teamForm.status} onChange={updateTeamForm("status")}>
-                  {["Active", "Onboarding", "Inactive"].map((status) => (
-                    <option key={status} value={status}>
-                      {t(status)}
-                    </option>
-                  ))}
-                </select>
+                <Select
+                  value={teamForm.status}
+                  onChange={(v) => setTeamForm((prev) => ({ ...prev, status: v }))}
+                  options={["Active", "Onboarding", "Inactive"].map((s) => ({ value: s, label: t(s) }))}
+                  placeholder={t("Select")}
+                />
               </div>
               <div className="form-actions">
                 <button className="ghost" type="button" onClick={resetTeamForm}>
@@ -13555,185 +13810,6 @@ function ProfileDashboard({ authUser }) {
   );
 }
 
-function DocumentationDashboard() {
-  const { t } = useLanguage();
-  const sections = [
-    {
-      icon: CheckCircle,
-      title: t("Getting Started"),
-      description: t(
-        "Use your assigned username and password to sign in. Your role controls what you can view and edit."
-      ),
-      bullets: [
-        t("Use the sidebar to navigate modules."),
-        t("Use the language switcher at the bottom to toggle EN / TR."),
-        t("Your profile in the top right shows the active user and role."),
-      ],
-    },
-    {
-      icon: Home,
-      title: t("Home Dashboard"),
-      description: t("Quick overview of clicks, installs, registers, FTDs, and conversion rates."),
-      bullets: [
-        t("Use the period selector for time ranges."),
-        t("Charts show conversion rates and top GEO distribution."),
-        t("Filters apply to Home and Finances."),
-      ],
-    },
-    {
-      icon: Target,
-      title: t("Goals"),
-      description: t("Set targets for FTDs and Reg2Dep conversion by media buyer, country, and period."),
-      bullets: [
-        t("Define period or custom date range."),
-        t("Goal overview banner summarizes progress."),
-        t("Track status: achieved, on track, or behind."),
-      ],
-    },
-    {
-      icon: Wallet,
-      title: t("Finances"),
-      description: t("Manual expense entry with billing type and status. Charts update automatically."),
-      bullets: [
-        t("Fields: date, country, category, reference, billing type, amount, status."),
-        t("Totals and averages refresh on save."),
-        t("Monthly and category charts visualize spend."),
-      ],
-    },
-    {
-      icon: BarChart3,
-      title: t("Statistics"),
-      description: t(
-        "Enter daily performance per media buyer and country; the system calculates funnel and cost metrics."
-      ),
-      bullets: [
-        t("Inputs: date, spend, clicks, installs, registers, FTDs, country."),
-        t("Derived metrics: Click2Install, Click2Register, Install2Reg, Reg2Dep."),
-        t("Cost metrics: CPC, CPI, CPR, CPP."),
-      ],
-    },
-    {
-      icon: Smartphone,
-      title: t("Devices"),
-      description: t("Analyze device performance for clicks, installs, revenue, and CR."),
-      bullets: [
-        t("Sync device reports from Keitaro."),
-        t("Installs come from your postback receiver."),
-        t("Compare revenue and conversion rates per device."),
-      ],
-    },
-    {
-      icon: Link2,
-      title: t("UTM Builder"),
-      description: t("Generate tracking links with fbp and sub1-sub15 parameters."),
-      bullets: [
-        t("Enter the base domain."),
-        t("Fill fbp and any sub fields you need."),
-        t("Only filled parameters are added to the final URL."),
-      ],
-    },
-    {
-      icon: Globe,
-      title: t("Domains"),
-      description: t("Keep a registry of your landing domains and status."),
-      bullets: [
-        t("Add domains with status and notes."),
-        t("Use statuses to track availability."),
-        t("Domains list shows the latest entries."),
-      ],
-    },
-    {
-      icon: ShieldCheck,
-      title: t("Roles & Users"),
-      description: t("Manage roles, permissions, and verified user access."),
-      bullets: [
-        t("Create roles and toggle permissions."),
-        t("Assign roles when creating users."),
-        t("Verified users can access the platform."),
-      ],
-    },
-    {
-      icon: Plug,
-      title: t("API"),
-      description: t("Connect Keitaro to pull performance data automatically."),
-      bullets: [
-        t("Configure endpoint, API key, and payload mapping."),
-        t("Keitaro syncs registrations, FTDs, and redeposits. Installs come via postback."),
-        t("Use Sync to fetch data."),
-        t("Status panel shows last sync."),
-      ],
-    },
-  ];
-
-  return (
-    <>
-      <section className="docs-hero">
-        <div>
-          <span className="docs-kicker">{t("System Documentation")}</span>
-          <h2 className="docs-title">{t("Documentation")}</h2>
-          <p className="docs-sub">
-            {t("Everything you need to operate the dashboard, manage data, and onboard media buyers.")}
-          </p>
-        </div>
-        <div className="docs-hero-meta">
-          <div className="docs-meta-card">
-            <span>{t("Sections")}</span>
-            <strong>{sections.length}</strong>
-          </div>
-          <div className="docs-meta-card">
-            <span>{t("Data")}</span>
-            <strong>{t("Local SQLite")}</strong>
-          </div>
-          <div className="docs-meta-card">
-            <span>{t("Access")}</span>
-            <strong>{t("Role-based")}</strong>
-          </div>
-        </div>
-      </section>
-
-      <section className="docs-grid">
-        {sections.map((section, index) => {
-          const Icon = section.icon;
-          return (
-            <motion.div
-              key={section.title}
-              className="doc-card"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05, duration: 0.4 }}
-            >
-              <div className="doc-card-head">
-                <span className="doc-icon">
-                  <Icon size={18} />
-                </span>
-                <div>
-                  <h3>{section.title}</h3>
-                  <p>{section.description}</p>
-                </div>
-              </div>
-              <ul className="doc-list">
-                {section.bullets.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </motion.div>
-          );
-        })}
-      </section>
-
-      <section className="docs-callout">
-        <div>
-          <h3>{t("Best Practices")}</h3>
-          <p className="docs-sub">{t("Keep entries consistent by date and country.")}</p>
-        </div>
-        <ul className="doc-list">
-          <li>{t("Review goals weekly and adjust caps.")}</li>
-          <li>{t("Use UTM templates per buyer to avoid mistakes.")}</li>
-        </ul>
-      </section>
-    </>
-  );
-}
 
 function KeitaroApiView() {
   const { t } = useLanguage();
@@ -14434,11 +14510,16 @@ function KeitaroApiView() {
           <div className="api-subgrid">
             <div className="field">
               <label>{t("Sync Target")}</label>
-              <select value={syncTarget} onChange={(event) => setSyncTarget(event.target.value)}>
-                <option value="overall">{t("Overall Stats")}</option>
-                <option value="device">{t("Device Stats")}</option>
-                <option value="user_behavior">{t("User Behavior")}</option>
-              </select>
+              <Select
+                value={syncTarget}
+                onChange={(v) => setSyncTarget(v)}
+                options={[
+                  { value: "overall", label: t("Overall Stats") },
+                  { value: "device", label: t("Device Stats") },
+                  { value: "user_behavior", label: t("User Behavior") },
+                ]}
+                placeholder={t("Select")}
+              />
               <p className="field-hint">{t("Choose where the report data should be stored.")}</p>
             </div>
             <div className="field field-inline">
@@ -14820,14 +14901,32 @@ function LoginScreen({ onLogin, loading, error }) {
   }, []);
   const [form, setForm] = React.useState({
     username: savedLogin?.username || "",
-    password: savedLogin?.password || "",
+    password: "",
   });
-  const [rememberMe, setRememberMe] = React.useState(
-    Boolean(savedLogin?.username || savedLogin?.password)
-  );
+  const [rememberMe, setRememberMe] = React.useState(Boolean(savedLogin?.username));
   const [showPassword, setShowPassword] = React.useState(false);
+  const [errorDismissed, setErrorDismissed] = React.useState(false);
+  const [errorNonce, setErrorNonce] = React.useState(0);
+  const usernameRef = React.useRef(null);
+  const passwordRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (savedLogin?.username) {
+      passwordRef.current?.focus();
+    } else {
+      usernameRef.current?.focus();
+    }
+  }, [savedLogin]);
+
+  React.useEffect(() => {
+    setErrorDismissed(false);
+    if (error) setErrorNonce((n) => n + 1);
+  }, [error]);
+
+  const visibleError = error && !errorDismissed ? error : null;
 
   const handleChange = (key) => (event) => {
+    if (visibleError) setErrorDismissed(true);
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
 
@@ -14837,7 +14936,7 @@ function LoginScreen({ onLogin, loading, error }) {
       if (rememberMe) {
         localStorage.setItem(
           "dash-remember",
-          JSON.stringify({ username: form.username, password: form.password })
+          JSON.stringify({ username: form.username })
         );
       } else {
         localStorage.removeItem("dash-remember");
@@ -14850,26 +14949,43 @@ function LoginScreen({ onLogin, loading, error }) {
 
   return (
     <div className="login-screen">
-      <div className="login-stack">
-        <div className="login-logo">
+      <motion.div
+        className="login-stack"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <motion.div
+          className="login-logo"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
+        >
           <img src={logo} alt="Deus Affiliates" />
-        </div>
-        <div className="login-card login-card--single">
+        </motion.div>
+        <motion.div
+          className="login-card login-card--single"
+          key={errorNonce}
+          animate={errorNonce ? { x: [0, -6, 6, -4, 4, 0] } : { x: 0 }}
+          transition={{ duration: 0.42 }}
+        >
           <div className="login-right">
             <div className="login-right-header">
               <h3>{t("Sign In")}</h3>
               <span className="login-badge">{t("Secure access")}</span>
             </div>
             <p className="login-sub">{t("Sign in to continue")}</p>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className={loading ? "is-loading" : ""}>
               <div className="field login-field">
                 <label>{t("Username")}</label>
                 <div className="input-wrap">
                   <User size={16} />
                   <input
+                    ref={usernameRef}
                     value={form.username}
                     onChange={handleChange("username")}
                     autoComplete="username"
+                    disabled={loading}
                     required
                   />
                 </div>
@@ -14879,10 +14995,12 @@ function LoginScreen({ onLogin, loading, error }) {
                 <div className="input-wrap">
                   <Lock size={16} />
                   <input
+                    ref={passwordRef}
                     type={showPassword ? "text" : "password"}
                     value={form.password}
                     onChange={handleChange("password")}
                     autoComplete="current-password"
+                    disabled={loading}
                     required
                   />
                   <button
@@ -14900,17 +15018,38 @@ function LoginScreen({ onLogin, loading, error }) {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(event) => setRememberMe(event.target.checked)}
+                  disabled={loading}
                 />
                 {t("Remember me")}
               </label>
-              {error ? <div className="form-error">{error}</div> : null}
+              <AnimatePresence initial={false}>
+                {visibleError ? (
+                  <motion.div
+                    key="login-error"
+                    className="form-error"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.22 }}
+                  >
+                    {visibleError}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
               <button className="action-pill" type="submit" disabled={loading}>
-                {loading ? t("Logging in...") : t("Sign In")}
+                {loading ? (
+                  <>
+                    <span className="login-spinner" aria-hidden="true" />
+                    {t("Logging in...")}
+                  </>
+                ) : (
+                  t("Sign In")
+                )}
               </button>
             </form>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }
@@ -14918,6 +15057,9 @@ function LoginScreen({ onLogin, loading, error }) {
 export default function App() {
   const [activeView, setActiveView] = React.useState("home");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const initialFiltersRef = React.useRef(null);
+  const [compareToPrev, setCompareToPrev] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [rolePermissions, setRolePermissions] = React.useState(null);
   const [authUser, setAuthUser] = React.useState(() => {
     try {
@@ -14942,15 +15084,15 @@ export default function App() {
       dateFrom: range.from,
       dateTo: range.to,
       country: "All",
-      city: "All",
-      geoCity: "All",
-      geoDomain: "All",
-      geoPlacement: "All",
-      geoDevice: "All",
+      city: "",
+      geoCity: "",
+      geoDomain: "",
+      geoPlacement: "",
+      geoDevice: "",
       geoMinClicks: "",
       geoMinFtds: "",
-      placementName: "All",
-      placementDomain: "All",
+      placementName: "",
+      placementDomain: "",
       placementMinClicks: "",
       placementMinRegisters: "",
       placementMinFtds: "",
@@ -15214,18 +15356,7 @@ export default function App() {
     }
   }, [allowedNavItems, activeView, authUser]);
 
-  const t = React.useCallback(
-    (key, vars) => {
-      let text = language === "TR" ? translations.tr?.[key] ?? key : key;
-      if (vars) {
-        Object.entries(vars).forEach(([name, value]) => {
-          text = text.replaceAll(`{${name}}`, String(value));
-        });
-      }
-      return text;
-    },
-    [language]
-  );
+  const t = React.useMemo(() => makeT(language), [language]);
 
   const formatNotificationTime = React.useCallback((value) => {
     if (!value) return "just now";
@@ -15353,8 +15484,14 @@ export default function App() {
     }
   }, [fetchNotifications, isLeadership]);
 
-  const handleNotificationDelete = React.useCallback(async (id) => {
-    if (!id || !isLeadership) return;
+  const [pendingDelete, setPendingDelete] = React.useState(null);
+  const pendingDeleteRef = React.useRef(null);
+  React.useEffect(() => {
+    pendingDeleteRef.current = pendingDelete;
+  }, [pendingDelete]);
+
+  const finalizeDelete = React.useCallback(async (id) => {
+    if (!id) return;
     try {
       const response = await apiFetch(
         `/api/notifications/${id}`,
@@ -15364,14 +15501,44 @@ export default function App() {
         setNotificationState({ loading: false, error: "Notifications endpoint is not available yet." });
         return;
       }
-      if (!response.ok) {
-        throw new Error("Failed to delete notification.");
-      }
-      await fetchNotifications({ silent: true });
+      if (!response.ok) throw new Error("Failed to delete notification.");
     } catch (error) {
       fetchNotifications({ silent: true });
     }
-  }, [fetchNotifications, isLeadership]);
+  }, [fetchNotifications]);
+
+  const handleNotificationDelete = React.useCallback((id) => {
+    if (!id || !isLeadership) return;
+    const item = notifications.find((n) => n.id === id);
+    if (!item) return;
+    // Flush any previous pending delete immediately
+    const prev = pendingDeleteRef.current;
+    if (prev) {
+      clearTimeout(prev.timeoutId);
+      finalizeDelete(prev.id);
+    }
+    // Optimistically remove from list
+    setNotifications((curr) => curr.filter((n) => n.id !== id));
+    if (item.unread) {
+      setNotificationUnreadCount((c) => Math.max(0, c - 1));
+    }
+    const timeoutId = setTimeout(() => {
+      finalizeDelete(id);
+      setPendingDelete(null);
+    }, 5000);
+    setPendingDelete({ id, item, timeoutId });
+  }, [isLeadership, notifications, finalizeDelete]);
+
+  const handleUndoDelete = React.useCallback(() => {
+    const current = pendingDeleteRef.current;
+    if (!current) return;
+    clearTimeout(current.timeoutId);
+    setNotifications((curr) => [current.item, ...curr]);
+    if (current.item.unread) {
+      setNotificationUnreadCount((c) => c + 1);
+    }
+    setPendingDelete(null);
+  }, []);
 
   const handleNotificationsReadAll = React.useCallback(async () => {
     if (!isLeadership || notificationUnreadCount <= 0) return;
@@ -15526,6 +15693,46 @@ export default function App() {
     window.addEventListener("click", handleClick);
     return () => window.removeEventListener("click", handleClick);
   }, [notificationsOpen]);
+
+  React.useEffect(() => {
+    if (filtersOpen) {
+      initialFiltersRef.current = JSON.stringify(filters);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersOpen]);
+
+  React.useEffect(() => {
+    if (!filtersOpen) return;
+    const handler = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFiltersOpen(false);
+      } else if (event.key === "Enter") {
+        const tag = event.target?.tagName;
+        if (tag === "TEXTAREA" || tag === "SELECT") return;
+        event.preventDefault();
+        setFiltersOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [filtersOpen]);
+
+  const filtersDirty = filtersOpen && initialFiltersRef.current !== null && initialFiltersRef.current !== JSON.stringify(filters);
+
+  // Global Cmd+K / Ctrl+K to open the command palette
+  React.useEffect(() => {
+    const handler = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (event.key === "Escape" && paletteOpen) {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [paletteOpen]);
 
   const updateFilter = (key) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -15759,10 +15966,29 @@ export default function App() {
       <main className="main">
         <header className="topbar">
           {showFilters ? (
-            <button className="action-pill" type="button" onClick={() => setFiltersOpen(true)}>
-              <SlidersHorizontal size={18} />
-              {t("Filters")}
-            </button>
+            (() => {
+              let activeCount = 0;
+              if (filters.country && filters.country !== "All") activeCount++;
+              if (filters.buyer && filters.buyer !== "All" && isLeadership) activeCount++;
+              if (filters.city) activeCount++;
+              if (filters.category && filters.category !== "All") activeCount++;
+              if (filters.billing && filters.billing !== "All") activeCount++;
+              if (filters.status && filters.status !== "All") activeCount++;
+              if (filters.approach && filters.approach !== "All") activeCount++;
+              return (
+                <button
+                  className={`action-pill filters-trigger${activeCount > 0 ? " has-active" : ""}`}
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                >
+                  <SlidersHorizontal size={18} />
+                  {t("Filters")}
+                  {activeCount > 0 ? (
+                    <span className="filters-trigger-count">{activeCount}</span>
+                  ) : null}
+                </button>
+              );
+            })()
           ) : (
             <div />
           )}
@@ -15792,28 +16018,36 @@ export default function App() {
                     <span className="notification-count">{notificationUnreadCount > 99 ? "99+" : notificationUnreadCount}</span>
                   ) : null}
                 </button>
+                <AnimatePresence>
                 {notificationsOpen ? (
-                  <div className="notifications-menu">
+                  <motion.div
+                    className="notifications-menu"
+                    initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                  >
                     <div className="notifications-head">
                       <strong>Notifications</strong>
-                      <div className="notifications-head-actions">
-                        <button
-                          className="ghost notifications-mark-all"
-                          type="button"
-                          onClick={() => fetchNotifications()}
-                          disabled={notificationState.loading}
-                        >
-                          Refresh
-                        </button>
-                        <button
-                          className="ghost notifications-mark-all"
-                          type="button"
-                          onClick={handleNotificationsReadAll}
-                          disabled={notificationUnreadCount <= 0}
-                        >
-                          Mark all read
-                        </button>
-                      </div>
+                      <button
+                        className="notifications-mark-all"
+                        type="button"
+                        onClick={handleNotificationsReadAll}
+                        disabled={notificationUnreadCount <= 0}
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    <div className="notifications-subhead">
+                      <button
+                        type="button"
+                        className="notifications-refresh-link"
+                        onClick={() => fetchNotifications()}
+                        disabled={notificationState.loading}
+                      >
+                        <RotateCcw size={11} className={notificationState.loading ? "is-spinning" : ""} />
+                        <span>{notificationState.loading ? "Refreshing…" : "Refresh"}</span>
+                      </button>
                     </div>
                     <div className="notifications-controls">
                       <input
@@ -15826,106 +16060,193 @@ export default function App() {
                         placeholder="Search notifications"
                       />
                       <div className="notifications-control-row">
-                        <label className="notifications-control-field">
-                          <span>Severity</span>
-                          <select
-                            value={notificationFilters.severity}
-                            onChange={(event) =>
-                              handleNotificationFilterChange("severity", event.target.value)
-                            }
-                          >
-                            <option value="all">All</option>
-                            <option value="info">Info</option>
-                            <option value="warning">Warning</option>
-                            <option value="critical">Critical</option>
-                          </select>
-                        </label>
-                        <label className="notifications-unread-toggle">
-                          <input
-                            type="checkbox"
-                            checked={notificationFilters.unreadOnly}
-                            onChange={(event) =>
-                              handleNotificationFilterChange("unreadOnly", event.target.checked)
-                            }
-                          />
+                        <div className="notifications-sev-tabs" role="tablist" aria-label="Severity filter">
+                          {[
+                            { v: "all", label: "All" },
+                            { v: "info", label: "Info" },
+                            { v: "warning", label: "Warning" },
+                            { v: "critical", label: "Critical" },
+                          ].map((opt) => (
+                            <button
+                              key={opt.v}
+                              type="button"
+                              role="tab"
+                              aria-selected={notificationFilters.severity === opt.v}
+                              className={`notifications-sev-tab sev-${opt.v}${notificationFilters.severity === opt.v ? " is-active" : ""}`}
+                              onClick={() => handleNotificationFilterChange("severity", opt.v)}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className={`notifications-unread-toggle${notificationFilters.unreadOnly ? " is-on" : ""}`}
+                          onClick={() =>
+                            handleNotificationFilterChange("unreadOnly", !notificationFilters.unreadOnly)
+                          }
+                          aria-pressed={notificationFilters.unreadOnly}
+                        >
+                          <span className="notifications-unread-toggle-track">
+                            <span className="notifications-unread-toggle-thumb" />
+                          </span>
                           <span>Unread only</span>
-                        </label>
+                        </button>
                       </div>
                     </div>
+                    {pendingDelete ? (
+                      <div className="notifications-undo">
+                        <span>Notification deleted</span>
+                        <button type="button" className="notifications-undo-btn" onClick={handleUndoDelete}>
+                          Undo
+                        </button>
+                      </div>
+                    ) : null}
                     {notificationState.error ? (
-                      <div className="notifications-empty notifications-error">{notificationState.error}</div>
+                      <div className="notifications-empty notifications-error">
+                        <span className="notifications-empty-icon" aria-hidden="true">!</span>
+                        <div className="notifications-empty-text">
+                          <strong>Couldn't load notifications</strong>
+                          <span>{notificationState.error}</span>
+                        </div>
+                      </div>
                     ) : notificationState.loading && notifications.length === 0 ? (
-                      <div className="notifications-empty">Loading notifications...</div>
+                      <div className="notifications-empty">
+                        <span className="login-spinner" aria-hidden="true" />
+                        <span>Loading notifications…</span>
+                      </div>
                     ) : notifications.length === 0 ? (
-                      <div className="notifications-empty">No notifications yet.</div>
-                    ) : (
-                      <div className="notifications-list">
-                        {notifications.map((item) => (
-                          <div
-                            key={`notification-${item.id}`}
-                            className={`notification-item severity-${item.severity || "info"}${item.unread ? " is-unread" : ""}`}
-                          >
+                      (() => {
+                        const hasFilters =
+                          (notificationFilters.search || "").trim().length > 0 ||
+                          notificationFilters.severity !== "all" ||
+                          notificationFilters.unreadOnly;
+                        return hasFilters ? (
+                          <div className="notifications-empty">
+                            <Bell size={20} className="notifications-empty-bell" />
+                            <div className="notifications-empty-text">
+                              <strong>No matches</strong>
+                              <span>Try clearing filters or another search term.</span>
+                            </div>
                             <button
-                              className="notification-main"
                               type="button"
+                              className="notifications-clear-filters"
                               onClick={() => {
-                                if (item.unread) {
-                                  handleNotificationRead(item.id);
-                                }
+                                handleNotificationFilterChange("search", "");
+                                handleNotificationFilterChange("severity", "all");
+                                handleNotificationFilterChange("unreadOnly", false);
                               }}
                             >
-                              <span className="notification-dot" aria-hidden="true" />
-                              <span className="notification-copy">
-                                <strong>{item.title || "Notification"}</strong>
-                                <small>{item.message || "No details available."}</small>
-                                <em>
-                                  {formatNotificationTime(item.created_at)}
-                                  {item.actor_name ? ` · ${item.actor_name}` : ""}
-                                </em>
-                              </span>
+                              Clear
                             </button>
-                            <div className="notification-actions">
-                              {item.unread ? (
-                                <button
-                                  className="ghost notification-action"
-                                  type="button"
-                                  onClick={() => handleNotificationRead(item.id)}
-                                >
-                                  Mark read
-                                </button>
-                              ) : (
-                                <button
-                                  className="ghost notification-action"
-                                  type="button"
-                                  onClick={() => handleNotificationUnread(item.id)}
-                                >
-                                  Mark unread
-                                </button>
-                              )}
-                              <button
-                                className="ghost notification-action notification-action-danger"
-                                type="button"
-                                onClick={() => handleNotificationDelete(item.id)}
-                              >
-                                Delete
-                              </button>
-                            </div>
                           </div>
-                        ))}
+                        ) : (
+                          <div className="notifications-empty">
+                            <Bell size={20} className="notifications-empty-bell" />
+                            <span>You're all caught up.</span>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="notifications-list">
+                        {(() => {
+                          const dayMs = 86400000;
+                          const now = Date.now();
+                          const bucketOrder = ["Today", "Yesterday", "This week", "Earlier", "Older"];
+                          const grouped = {};
+                          notifications.forEach((n) => {
+                            const t = new Date(n.created_at).getTime();
+                            const diff = now - t;
+                            let key = "Older";
+                            if (diff < dayMs) key = "Today";
+                            else if (diff < 2 * dayMs) key = "Yesterday";
+                            else if (diff < 7 * dayMs) key = "This week";
+                            else if (diff < 30 * dayMs) key = "Earlier";
+                            (grouped[key] ||= []).push(n);
+                          });
+                          const renderCard = (item) => {
+                            const severity = item.severity || "info";
+                            return (
+                            <div
+                              key={`notification-${item.id}`}
+                              className={`notif-card severity-${severity}${item.unread ? " is-unread" : ""}`}
+                              onClick={() => {
+                                if (item.unread) handleNotificationRead(item.id);
+                              }}
+                            >
+                              <span className="notif-card-title">
+                                {item.title || "Notification"}
+                              </span>
+                              <span className="notif-card-time">
+                                {formatNotificationTime(item.created_at)}
+                              </span>
+                              {item.message ? (
+                                <p className="notif-card-msg">{item.message}</p>
+                              ) : null}
+                              <div className="notif-card-foot">
+                                <span className="notif-card-meta">
+                                  {item.actor_name ? item.actor_name : "System"}
+                                </span>
+                                <div className="notif-card-actions">
+                                  {item.unread ? (
+                                    <button
+                                      className="notif-card-btn"
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleNotificationRead(item.id); }}
+                                    >
+                                      Mark read
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className="notif-card-btn"
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); handleNotificationUnread(item.id); }}
+                                    >
+                                      Mark unread
+                                    </button>
+                                  )}
+                                  <button
+                                    className="notif-card-btn is-danger"
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleNotificationDelete(item.id); }}
+                                    aria-label="Delete"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            );
+                          };
+                          const blocks = [];
+                          bucketOrder.forEach((label) => {
+                            const items = grouped[label];
+                            if (!items?.length) return;
+                            blocks.push(
+                              <div className="notif-group-header" key={`grp-${label}`}>
+                                <span>{label}</span>
+                                <span className="notif-group-count">{items.length}</span>
+                              </div>
+                            );
+                            items.forEach((item) => blocks.push(renderCard(item)));
+                          });
+                          return blocks;
+                        })()}
+                        {notificationMeta.hasMore && !notificationState.error ? (
+                          <button
+                            className="notifications-load-more"
+                            type="button"
+                            onClick={handleNotificationLoadMore}
+                            disabled={notificationState.loading}
+                          >
+                            {notificationState.loading ? "Loading…" : "Load more"}
+                          </button>
+                        ) : null}
                       </div>
                     )}
-                    {notificationMeta.hasMore ? (
-                      <button
-                        className="ghost notifications-load-more"
-                        type="button"
-                        onClick={handleNotificationLoadMore}
-                        disabled={notificationState.loading}
-                      >
-                        Load more
-                      </button>
-                    ) : null}
-                  </div>
+                  </motion.div>
                 ) : null}
+                </AnimatePresence>
               </div>
             ) : null}
             <div className="profile-menu-wrap">
@@ -15968,6 +16289,15 @@ export default function App() {
           </div>
         </header>
 
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeView}
+            className="view-anim"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          >
         {isFinances ? (
           <FinancesDashboard
             entry={entry}
@@ -16056,7 +16386,9 @@ export default function App() {
             viewerBuyer={effectiveViewerBuyer}
           />
         ) : isDocs ? (
-          <DocumentationDashboard />
+          <React.Suspense fallback={<div className="empty-state"><span className="login-spinner" aria-hidden="true" /><span>Loading…</span></div>}>
+            <DocumentationDashboard t={t} />
+          </React.Suspense>
         ) : (
           <HomeDashboard
             period={period}
@@ -16069,7 +16401,62 @@ export default function App() {
             viewerBuyer={effectiveViewerBuyer}
           />
         )}
+          </motion.div>
+        </AnimatePresence>
       </main>
+
+      <React.Suspense fallback={null}>
+        <CommandPalette
+          open={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          commands={(() => {
+            const commands = [];
+            // Navigation commands — every sidebar item is a jump target
+            allowedNavItems.forEach((item) => {
+              if (item.href) return; // external links skipped
+              commands.push({
+                id: `nav-${item.key}`,
+                label: `Go to ${t(item.label)}`,
+                section: "Navigation",
+                icon: item.icon,
+                keywords: [item.key, item.label.toLowerCase()],
+                run: () => setActiveView(item.key),
+              });
+            });
+            // Quick actions
+            if (showFilters) {
+              commands.push({
+                id: "open-filters",
+                label: t("Open filters"),
+                section: "Actions",
+                icon: SlidersHorizontal,
+                hint: "F",
+                keywords: ["filter", "refine"],
+                run: () => setFiltersOpen(true),
+              });
+            }
+            commands.push({
+              id: "refresh-data",
+              label: t("Refresh data"),
+              section: "Actions",
+              icon: RotateCcw,
+              keywords: ["reload", "sync"],
+              run: () => {
+                window.dispatchEvent(new CustomEvent("keitaro:sync"));
+              },
+            });
+            commands.push({
+              id: "logout",
+              label: t("Logout"),
+              section: "Account",
+              icon: Lock,
+              keywords: ["sign out", "exit"],
+              run: handleLogout,
+            });
+            return commands;
+          })()}
+        />
+      </React.Suspense>
 
       <AnimatePresence>
         {filtersOpen && showFilters && (
@@ -16092,39 +16479,171 @@ export default function App() {
               aria-labelledby="filters-title"
             >
               <div className="modal-head">
-                <div>
-                  <p className="modal-kicker">
-                    {isFinances ? "Finance Filters" : isGeos ? "GEO Filters" : "Dashboard Filters"}
-                  </p>
-                  <h2 id="filters-title">
-                    {isFinances ? "Refine expenses" : isGeos ? "Refine geos" : "Refine performance"}
-                  </h2>
-                </div>
+                <h2 id="filters-title">
+                  {isFinances ? "Refine expenses" : isGeos ? "Refine geos" : "Refine performance"}
+                </h2>
                 <button className="icon-btn" type="button" onClick={() => setFiltersOpen(false)}>
                   <X size={18} />
                 </button>
               </div>
 
               <div className="modal-body">
-                <div className="field">
+                <div className="modal-section-label">
+                  <Clock size={11} />
+                  <span>Time</span>
+                </div>
+                <div className="field field-wide">
                   <label>Date</label>
+                  {(() => {
+                    const fmt = (d) => {
+                      const y = d.getFullYear();
+                      const m = String(d.getMonth() + 1).padStart(2, "0");
+                      const day = String(d.getDate()).padStart(2, "0");
+                      return `${y}-${m}-${day}`;
+                    };
+                    const applyRange = (from, to) => {
+                      setFilters((prev) => ({ ...prev, dateFrom: fmt(from), dateTo: fmt(to) }));
+                    };
+                    const today = new Date();
+                    const presets = [
+                      { label: "Today", action: () => applyRange(today, today) },
+                      { label: "Yesterday", action: () => {
+                        const y = new Date(today); y.setDate(y.getDate() - 1);
+                        applyRange(y, y);
+                      }},
+                      { label: "7d", action: () => {
+                        const start = new Date(today); start.setDate(start.getDate() - 6);
+                        applyRange(start, today);
+                      }},
+                      { label: "30d", action: () => {
+                        const start = new Date(today); start.setDate(start.getDate() - 29);
+                        applyRange(start, today);
+                      }},
+                      { label: "This month", action: () => {
+                        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+                        applyRange(start, today);
+                      }},
+                    ];
+                    const isActivePreset = (label) => {
+                      const f = filters.dateFrom; const t = filters.dateTo;
+                      if (!f || !t) return false;
+                      const eq = (a, b) => fmt(a) === b;
+                      if (label === "Today") return eq(today, f) && eq(today, t);
+                      if (label === "Yesterday") {
+                        const y = new Date(today); y.setDate(y.getDate() - 1);
+                        return eq(y, f) && eq(y, t);
+                      }
+                      if (label === "7d") {
+                        const s = new Date(today); s.setDate(s.getDate() - 6);
+                        return eq(s, f) && eq(today, t);
+                      }
+                      if (label === "30d") {
+                        const s = new Date(today); s.setDate(s.getDate() - 29);
+                        return eq(s, f) && eq(today, t);
+                      }
+                      if (label === "This month") {
+                        const s = new Date(today.getFullYear(), today.getMonth(), 1);
+                        return eq(s, f) && eq(today, t);
+                      }
+                      return false;
+                    };
+                    return (
+                      <div className="date-presets">
+                        {presets.map((p) => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            className={`date-preset${isActivePreset(p.label) ? " is-active" : ""}`}
+                            onClick={p.action}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   <div className="field-row">
-                    <input
-                      type="date"
+                    <DeusDatePicker
                       value={filters.dateFrom}
-                      onChange={updateFilter("dateFrom")}
+                      onChange={(v) => setFilters((prev) => ({ ...prev, dateFrom: v }))}
+                      placeholder="Start date"
                     />
                     <span className="field-sep">to</span>
-                    <input
-                      type="date"
+                    <DeusDatePicker
                       value={filters.dateTo}
-                      onChange={updateFilter("dateTo")}
+                      onChange={(v) => setFilters((prev) => ({ ...prev, dateTo: v }))}
+                      placeholder="End date"
                     />
                   </div>
+                  {(() => {
+                    if (!filters.dateFrom || !filters.dateTo) return null;
+                    const from = new Date(filters.dateFrom);
+                    const to = new Date(filters.dateTo);
+                    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+                    const days = Math.round((to - from) / 86400000) + 1;
+                    const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: from.getFullYear() !== to.getFullYear() ? "numeric" : undefined });
+                    return (
+                      <div className="date-summary">
+                        <strong>{days} {days === 1 ? "day" : "days"}</strong>
+                        <span>·</span>
+                        <span>{fmt(from)} → {fmt(to)}</span>
+                      </div>
+                    );
+                  })()}
+                  <button
+                    type="button"
+                    className={`compare-row${compareToPrev ? " is-on" : ""}`}
+                    onClick={() => setCompareToPrev((v) => !v)}
+                    aria-pressed={compareToPrev}
+                  >
+                    <span className="compare-toggle-track">
+                      <span className="compare-toggle-thumb" />
+                    </span>
+                    <span className="compare-toggle-text">
+                      Compare to previous period
+                    </span>
+                    {compareToPrev && filters.dateFrom && filters.dateTo ? (() => {
+                      const from = new Date(filters.dateFrom);
+                      const to = new Date(filters.dateTo);
+                      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+                      const days = Math.round((to - from) / 86400000) + 1;
+                      const prevTo = new Date(from); prevTo.setDate(prevTo.getDate() - 1);
+                      const prevFrom = new Date(prevTo); prevFrom.setDate(prevFrom.getDate() - (days - 1));
+                      const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                      const sameDay = fmt(prevFrom) === fmt(prevTo);
+                      return (
+                        <span className="compare-preview-pill">
+                          <ArrowRight size={11} />
+                          <span className="compare-preview-range">
+                            {sameDay ? fmt(prevFrom) : `${fmt(prevFrom)} — ${fmt(prevTo)}`}
+                          </span>
+                          <span className="compare-preview-dot">·</span>
+                          <span className="compare-preview-days">{days} {days === 1 ? "day" : "days"}</span>
+                        </span>
+                      );
+                    })() : null}
+                  </button>
                 </div>
 
-                <div className="field">
-                  <label>Country</label>
+                <div className="modal-section-label">
+                  <Users size={11} />
+                  <span>Audience</span>
+                </div>
+
+                <div className={`field${filters.country && filters.country !== "All" ? " is-active" : ""}`}>
+                  <div className="field-label-row">
+                    <label>Country</label>
+                    {filters.country && filters.country !== "All" ? (
+                      <button
+                        type="button"
+                        className="field-clear"
+                        onClick={() => setFilters((prev) => ({ ...prev, country: "All" }))}
+                        aria-label="Clear country"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
                   <CountryDropdownPicker
                     value={filters.country}
                     onChange={(country) => setFilters((prev) => ({ ...prev, country }))}
@@ -16139,22 +16658,44 @@ export default function App() {
                 {usesPerformanceFilters ? (
                   <>
                     {(isHome || isGeos || isPlacements || isUserBehavior) && isLeadership ? (
-                      <div className="field">
-                        <label>Buyer</label>
-                        <select value={filters.buyer} onChange={updateFilter("buyer")}>
-                          <option>All</option>
-                          {buyerOptions
-                            .filter((buyer) => !isAllSelection(buyer))
-                            .map((buyer) => (
-                              <option key={buyer}>{buyer}</option>
-                            ))}
-                        </select>
+                      <div className={`field${filters.buyer && filters.buyer !== "All" ? " is-active" : ""}`}>
+                        <div className="field-label-row">
+                          <label>Buyer</label>
+                          {filters.buyer && filters.buyer !== "All" ? (
+                            <button
+                              type="button"
+                              className="field-clear"
+                              onClick={() => setFilters((prev) => ({ ...prev, buyer: "All" }))}
+                              aria-label="Clear buyer"
+                            >
+                              Clear
+                            </button>
+                          ) : null}
+                        </div>
+                        <CountryDropdownPicker
+                          value={filters.buyer || "All"}
+                          onChange={(buyer) => setFilters((prev) => ({ ...prev, buyer }))}
+                          options={buyerOptions.filter((b) => !isAllSelection(b))}
+                          placeholder="All"
+                          allOption={{ value: "All", label: "All" }}
+                          searchPlaceholder="Find buyer"
+                          emptyResultsLabel="No buyers found."
+                        />
                       </div>
                     ) : null}
                     {isGeos ? (
                       <>
-                        <div className="field">
-                          <label>Region / State</label>
+                        <div className="modal-section-label">
+                          <MapIcon size={11} />
+                          <span>Geography</span>
+                        </div>
+                        <div className={`field${filters.city ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Region / State</label>
+                            {filters.city ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, city: "" }))} aria-label="Clear region">Clear</button>
+                            ) : null}
+                          </div>
                           <input
                             type="text"
                             placeholder="All"
@@ -16162,8 +16703,13 @@ export default function App() {
                             onChange={updateFilter("city")}
                           />
                         </div>
-                        <div className="field">
-                          <label>City</label>
+                        <div className={`field${filters.geoCity ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>City</label>
+                            {filters.geoCity ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoCity: "" }))} aria-label="Clear city">Clear</button>
+                            ) : null}
+                          </div>
                           <input
                             type="text"
                             placeholder="All"
@@ -16171,8 +16717,18 @@ export default function App() {
                             onChange={updateFilter("geoCity")}
                           />
                         </div>
-                        <div className="field">
-                          <label>Domain / Source</label>
+
+                        <div className="modal-section-label">
+                          <Link2 size={11} />
+                          <span>Source</span>
+                        </div>
+                        <div className={`field${filters.geoDomain ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Domain / Source</label>
+                            {filters.geoDomain ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDomain: "" }))} aria-label="Clear domain">Clear</button>
+                            ) : null}
+                          </div>
                           <input
                             type="text"
                             placeholder="All"
@@ -16180,8 +16736,13 @@ export default function App() {
                             onChange={updateFilter("geoDomain")}
                           />
                         </div>
-                        <div className="field">
-                          <label>Placement</label>
+                        <div className={`field${filters.geoPlacement ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Placement</label>
+                            {filters.geoPlacement ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoPlacement: "" }))} aria-label="Clear placement">Clear</button>
+                            ) : null}
+                          </div>
                           <input
                             type="text"
                             placeholder="All"
@@ -16189,8 +16750,13 @@ export default function App() {
                             onChange={updateFilter("geoPlacement")}
                           />
                         </div>
-                        <div className="field">
-                          <label>Device</label>
+                        <div className={`field${filters.geoDevice ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Device</label>
+                            {filters.geoDevice ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDevice: "" }))} aria-label="Clear device">Clear</button>
+                            ) : null}
+                          </div>
                           <input
                             type="text"
                             placeholder="All"
@@ -16198,25 +16764,46 @@ export default function App() {
                             onChange={updateFilter("geoDevice")}
                           />
                         </div>
-                        <div className="field">
-                          <label>Min Clicks</label>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={filters.geoMinClicks}
-                            onChange={updateFilter("geoMinClicks")}
-                          />
+
+                        <div className="modal-section-label">
+                          <BarChart3 size={11} />
+                          <span>Performance</span>
                         </div>
-                        <div className="field">
-                          <label>Min FTDs</label>
-                          <input
-                            type="number"
-                            min="0"
-                            placeholder="0"
-                            value={filters.geoMinFtds}
-                            onChange={updateFilter("geoMinFtds")}
-                          />
+                        <div className={`field${Number(filters.geoMinClicks) > 0 ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Min Clicks</label>
+                            {Number(filters.geoMinClicks) > 0 ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinClicks: "" }))} aria-label="Clear min clicks">Clear</button>
+                            ) : null}
+                          </div>
+                          <div className="threshold-input">
+                            <span className="threshold-prefix">≥</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={filters.geoMinClicks}
+                              onChange={updateFilter("geoMinClicks")}
+                            />
+                          </div>
+                        </div>
+                        <div className={`field${Number(filters.geoMinFtds) > 0 ? " is-active" : ""}`}>
+                          <div className="field-label-row">
+                            <label>Min FTDs</label>
+                            {Number(filters.geoMinFtds) > 0 ? (
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinFtds: "" }))} aria-label="Clear min FTDs">Clear</button>
+                            ) : null}
+                          </div>
+                          <div className="threshold-input">
+                            <span className="threshold-prefix">≥</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={filters.geoMinFtds}
+                              onChange={updateFilter("geoMinFtds")}
+                            />
+                          </div>
                         </div>
                       </>
                     ) : null}
@@ -16359,40 +16946,43 @@ export default function App() {
                   <>
                     <div className="field">
                       <label>Category</label>
-                      <select value={filters.category} onChange={updateFilter("category")}>
-                        <option>All</option>
-                        {categoryOptions.map((category) => (
-                          <option key={category}>{category}</option>
-                        ))}
-                      </select>
+                      <Select
+                        value={filters.category || "All"}
+                        onChange={(v) => setFilters((prev) => ({ ...prev, category: v }))}
+                        options={categoryOptions}
+                        allOption={{ value: "All", label: "All" }}
+                        placeholder="All"
+                      />
                     </div>
 
                     <div className="field">
                       <label>Billing type</label>
-                      <select value={filters.billing} onChange={updateFilter("billing")}>
-                        <option>All</option>
-                        {billingOptions.map((type) => (
-                          <option key={type}>{type}</option>
-                        ))}
-                      </select>
+                      <Select
+                        value={filters.billing || "All"}
+                        onChange={(v) => setFilters((prev) => ({ ...prev, billing: v }))}
+                        options={billingOptions}
+                        allOption={{ value: "All", label: "All" }}
+                        placeholder="All"
+                      />
                     </div>
 
                     <div className="field">
                       <label>Status</label>
-                      <select value={filters.status} onChange={updateFilter("status")}>
-                        <option>All</option>
-                        {statusOptions.map((status) => (
-                          <option key={status}>{status}</option>
-                        ))}
-                      </select>
+                      <Select
+                        value={filters.status || "All"}
+                        onChange={(v) => setFilters((prev) => ({ ...prev, status: v }))}
+                        options={statusOptions}
+                        allOption={{ value: "All", label: "All" }}
+                        placeholder="All"
+                      />
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="modal-actions">
+              <div className="modal-actions modal-actions-split">
                 <button
-                  className="ghost"
+                  className="modal-reset-link"
                   type="button"
                   onClick={() => {
                     const defaultRange = getDefaultDateRange();
@@ -16400,15 +16990,15 @@ export default function App() {
                       dateFrom: defaultRange.from,
                       dateTo: defaultRange.to,
                       country: "All",
-                      city: "All",
-                      geoCity: "All",
-                      geoDomain: "All",
-                      geoPlacement: "All",
-                      geoDevice: "All",
+                      city: "",
+                      geoCity: "",
+                      geoDomain: "",
+                      geoPlacement: "",
+                      geoDevice: "",
                       geoMinClicks: "",
                       geoMinFtds: "",
-                      placementName: "All",
-                      placementDomain: "All",
+                      placementName: "",
+                      placementDomain: "",
                       placementMinClicks: "",
                       placementMinRegisters: "",
                       placementMinFtds: "",
@@ -16430,9 +17020,13 @@ export default function App() {
                     setPeriod("Custom range");
                   }}
                 >
-                  Reset
+                  Reset all
                 </button>
-                <button className="action-pill" type="button" onClick={() => setFiltersOpen(false)}>
+                <button
+                  className={`action-pill${filtersDirty ? " is-dirty" : ""}`}
+                  type="button"
+                  onClick={() => setFiltersOpen(false)}
+                >
                   Apply Filters
                 </button>
               </div>

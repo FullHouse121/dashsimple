@@ -3,7 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DEUSMACHINE Dashboard</title>
+    <meta name="theme-color" content="#121315" />
+    <title>DeusMachine</title>
+
+    <!-- Warm up critical network connections in parallel with bundle -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://dashsimple.onrender.com" />
+    <link rel="dns-prefetch" href="https://dashsimple.onrender.com" />
+
+    <!-- Font loads in parallel with the JS bundle instead of after it -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&display=swap"
+    />
+
+    <!-- Boot color so page doesn't flash white while JS parses -->
+    <style>
+      html, body { background: #121315; color: #f2f2f4; margin: 0; }
+      body { font-family: "Sora", system-ui, -apple-system, sans-serif; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

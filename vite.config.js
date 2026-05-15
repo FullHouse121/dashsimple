@@ -6,7 +6,48 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:5174",
+      "/api": {
+        target: "https://dashsimple.onrender.com",
+        changeOrigin: true,
+        secure: true,
+        ws: false,
+        timeout: 30000,
+        proxyTimeout: 30000,
+        configure: (proxy) => {
+          proxy.on("error", (err, _req, res) => {
+            const code = err?.code || "ERR";
+            // eslint-disable-next-line no-console
+            console.warn(`[proxy ${code}] ${_req?.url || ""}`);
+            if (res && !res.headersSent) {
+              try {
+                res.writeHead(502, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: `Upstream unreachable (${code})` }));
+              } catch (e) { /* ignore */ }
+            }
+          });
+        },
+      },
+    },
+  },
+  build: {
+    target: "es2020",
+    cssCodeSplit: true,
+    minify: "esbuild",
+    sourcemap: false,
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          if (id.includes("react-simple-maps") || id.includes("d3-geo") || id.includes("topojson")) return "maps";
+          if (id.includes("framer-motion")) return "motion";
+          if (id.includes("lucide-react")) return "icons";
+          if (id.includes("react-dom")) return "react-dom";
+          if (id.includes("react")) return "react";
+          return "vendor";
+        },
+      },
     },
   },
 });
