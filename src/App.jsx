@@ -16362,7 +16362,7 @@ export default function App() {
       geos: "geos",
       streams: "goals",
       finances: "finances",
-      offers: "finances",
+      offers: "offers",
       utm: "utm",
       statistics: "statistics",
       campaigns: "campaigns",

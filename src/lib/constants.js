@@ -99,6 +99,7 @@ export const permissionOptions = [
   { key: "geos", label: "GEOS" },
   { key: "goals", label: "Goals" },
   { key: "finances", label: "Finances" },
+  { key: "offers", label: "Offers" },
   { key: "utm", label: "UTM Builder" },
   { key: "statistics", label: "Statistics" },
   { key: "campaigns", label: "Campaigns" },

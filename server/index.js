@@ -519,6 +519,7 @@ const allPermissions = [
   "dashboard",
   "goals",
   "finances",
+  "offers",
   "utm",
   "statistics",
   "campaigns",
