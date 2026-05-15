@@ -3610,11 +3610,31 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
 function OffersDashboard({ authUser }) {
   const { t } = useLanguage();
   const isLeadership = isLeadershipRole(authUser?.role);
-  const [tab, setTab] = React.useState("brands"); // "brands" | "offers" | "banners"
+  const [tab, setTab] = React.useState("brands"); // brands | offers | banners | campaigns
   const [brands, setBrands] = React.useState([]);
   const [state, setState] = React.useState({ loading: true, error: "" });
 
-  const [brandForm, setBrandForm] = React.useState({ name: "", contact: "", status: "Active", notes: "" });
+  // Inline ROI per brand from /api/finance/by-project
+  const [roiByBrand, setRoiByBrand] = React.useState({});
+
+  // Brand directory search + status filter
+  const [brandSearch, setBrandSearch] = React.useState("");
+  const [brandStatusFilter, setBrandStatusFilter] = React.useState("Active"); // Active | Paused | Archived | All
+
+  // Campaigns (Keitaro → brand linker)
+  const [campaigns, setCampaigns] = React.useState([]);
+  const [campaignSearch, setCampaignSearch] = React.useState("");
+
+  const [brandForm, setBrandForm] = React.useState({
+    name: "",
+    contact: "",
+    status: "Active",
+    notes: "",
+    logoUrl: "",
+    accentColor: "",
+  });
+
+  // Offer form supports both single-row entry and bulk CSV paste mode
   const [offerForm, setOfferForm] = React.useState({
     brandId: "",
     geos: [],
@@ -3624,7 +3644,12 @@ function OffersDashboard({ authUser }) {
     model: "CPA",
     status: "Active",
     notes: "",
+    validFrom: "",
+    validTo: "",
+    bulkMode: false,
+    bulkText: "",
   });
+
   const [bannerForm, setBannerForm] = React.useState({
     brandId: "",
     name: "",
@@ -3648,14 +3673,77 @@ function OffersDashboard({ authUser }) {
     }
   }, []);
 
+  // Pull per-brand ROI summary so we can render inline on each card.
+  // Refetches whenever brands change (after creates/deletes).
+  const fetchRoi = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/finance/by-project");
+      if (!response.ok) return;
+      const data = await response.json();
+      const map = {};
+      for (const row of (data?.rows || [])) {
+        map[row.brand_id] = row;
+      }
+      setRoiByBrand(map);
+    } catch {
+      // soft-fail: cards just won't show ROI
+    }
+  }, []);
+
+  const fetchCampaigns = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/campaigns/list");
+      if (!response.ok) return;
+      const data = await response.json();
+      setCampaigns(Array.isArray(data) ? data : []);
+    } catch {
+      // soft-fail
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchBrands();
-  }, [fetchBrands]);
+    fetchRoi();
+    fetchCampaigns();
+  }, [fetchBrands, fetchRoi, fetchCampaigns]);
 
   const brandOptions = React.useMemo(
     () => brands.filter((b) => b.name !== "Unassigned").map((b) => ({ value: String(b.id), label: b.name })),
     [brands]
   );
+
+  // ── Geo-overlap detection
+  // Same-brand: two active offers on the same brand covering the same geo
+  // Cross-brand: two active offers on different brands covering the same geo
+  //   (which would cause ROI double-attribution if campaigns aren't linked)
+  const geoOverlaps = React.useMemo(() => {
+    const sameBrand = [];
+    const crossBrand = [];
+    const geoMap = new Map(); // geo -> [{ brandId, brandName, offerId }]
+    for (const brand of brands) {
+      const brandGeoSeen = new Map(); // geo -> first offerId on THIS brand
+      for (const offer of brand.offers || []) {
+        if (offer.status && offer.status !== "Active") continue;
+        for (const geo of offer.geos || []) {
+          if (brandGeoSeen.has(geo)) {
+            sameBrand.push({ brand: brand.name, geo, offerIds: [brandGeoSeen.get(geo), offer.id] });
+          } else {
+            brandGeoSeen.set(geo, offer.id);
+          }
+          const arr = geoMap.get(geo) || [];
+          arr.push({ brandId: brand.id, brandName: brand.name, offerId: offer.id });
+          geoMap.set(geo, arr);
+        }
+      }
+    }
+    for (const [geo, entries] of geoMap) {
+      const brandsTouching = new Set(entries.map((e) => e.brandId));
+      if (brandsTouching.size > 1) {
+        crossBrand.push({ geo, brands: Array.from(new Set(entries.map((e) => e.brandName))) });
+      }
+    }
+    return { sameBrand, crossBrand };
+  }, [brands]);
 
   // ── Brand form
   const handleBrandSubmit = async (event) => {
@@ -3672,8 +3760,9 @@ function OffersDashboard({ authUser }) {
         try { detail = (await response.json())?.error || ""; } catch { /* ignore */ }
         throw new Error(`Failed to save brand (HTTP ${response.status}${detail ? ` — ${detail}` : ""}).`);
       }
-      setBrandForm({ name: "", contact: "", status: "Active", notes: "" });
+      setBrandForm({ name: "", contact: "", status: "Active", notes: "", logoUrl: "", accentColor: "" });
       await fetchBrands();
+      await fetchRoi();
     } catch (error) {
       setState((prev) => ({ ...prev, error: error.message }));
     }
@@ -3693,39 +3782,84 @@ function OffersDashboard({ authUser }) {
     }
   };
 
-  // ── Offer form
+  const resetOfferForm = () => {
+    setOfferForm({
+      brandId: "",
+      geos: [],
+      payout: "",
+      baseline: "",
+      baselineMode: "none",
+      model: "CPA",
+      status: "Active",
+      notes: "",
+      validFrom: "",
+      validTo: "",
+      bulkMode: false,
+      bulkText: "",
+    });
+  };
+
+  // ── Offer form. Supports two modes:
+  // 1) Single — one offer with N geos sharing the same payout
+  // 2) Bulk   — CSV-style paste, "GEO,payout[,baseline]" per line, each becomes its own offer
   const handleOfferSubmit = async (event) => {
     event.preventDefault();
-    if (!offerForm.brandId || offerForm.payout === "") return;
+    if (!offerForm.brandId) return;
     try {
-      const response = await apiFetch("/api/offers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          brandId: offerForm.brandId,
-          geos: offerForm.geos,
-          payout: offerForm.payout,
-          baseline: offerForm.baselineMode === "amount" ? offerForm.baseline : null,
-          model: offerForm.model,
-          status: offerForm.status,
-          notes: offerForm.notes,
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to save offer.");
+      if (offerForm.bulkMode) {
+        const rows = offerForm.bulkText
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const parts = line.split(/[,\t;]+/).map((s) => s.trim());
+            return { geo: parts[0], payout: parts[1], baseline: parts[2] };
+          })
+          .filter((r) => r.geo && r.payout !== undefined);
+        if (rows.length === 0) {
+          throw new Error("Bulk text didn't parse — expected lines like 'BR, 15' or 'MX,12,500'.");
+        }
+        const response = await apiFetch("/api/offers/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brandId: offerForm.brandId,
+            model: offerForm.model,
+            status: offerForm.status,
+            validFrom: offerForm.validFrom || null,
+            validTo: offerForm.validTo || null,
+            rows,
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data?.error || "Failed to save bulk offers.");
+        }
+      } else {
+        if (offerForm.payout === "") return;
+        const response = await apiFetch("/api/offers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brandId: offerForm.brandId,
+            geos: offerForm.geos,
+            payout: offerForm.payout,
+            baseline: offerForm.baselineMode === "amount" ? offerForm.baseline : null,
+            model: offerForm.model,
+            status: offerForm.status,
+            notes: offerForm.notes,
+            validFrom: offerForm.validFrom || null,
+            validTo: offerForm.validTo || null,
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data?.error || "Failed to save offer.");
+        }
       }
-      setOfferForm({
-        brandId: "",
-        geos: [],
-        payout: "",
-        baseline: "",
-        baselineMode: "none",
-        model: "CPA",
-        status: "Active",
-        notes: "",
-      });
+      resetOfferForm();
       await fetchBrands();
+      await fetchRoi();
     } catch (error) {
       setState((prev) => ({ ...prev, error: error.message }));
     }
@@ -3737,6 +3871,50 @@ function OffersDashboard({ authUser }) {
       const response = await apiFetch(`/api/offers/${id}`, { method: "DELETE" });
       if (!response.ok) throw new Error("Failed to delete offer.");
       await fetchBrands();
+      await fetchRoi();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message }));
+    }
+  };
+
+  // Pre-fill the offer form with this offer's values; user tweaks & saves.
+  // Scrolls to the form so the prefill is obvious.
+  const handleOfferDuplicate = (offer) => {
+    setOfferForm({
+      brandId: String(offer.brand_id),
+      geos: Array.isArray(offer.geos) ? [...offer.geos] : [],
+      payout: offer.payout !== null && offer.payout !== undefined ? String(offer.payout) : "",
+      baseline: offer.baseline !== null && offer.baseline !== undefined ? String(offer.baseline) : "",
+      baselineMode: offer.baseline !== null && offer.baseline !== undefined ? "amount" : "none",
+      model: offer.model || "CPA",
+      status: "Active",
+      notes: offer.notes || "",
+      validFrom: offer.valid_from || "",
+      validTo: offer.valid_to || "",
+      bulkMode: false,
+      bulkText: "",
+    });
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        document.querySelector(".offers-form-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  };
+
+  // Campaign → brand linker
+  const handleCampaignBrandChange = async (campaignId, brandId) => {
+    try {
+      const response = await apiFetch(`/api/campaigns/${campaignId}/brand`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: brandId || null }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to link campaign.");
+      }
+      await fetchCampaigns();
+      await fetchRoi();
     } catch (error) {
       setState((prev) => ({ ...prev, error: error.message }));
     }
@@ -3777,6 +3955,7 @@ function OffersDashboard({ authUser }) {
   const tabs = [
     { key: "brands", label: t("Brands"), icon: Briefcase },
     { key: "offers", label: t("Offers"), icon: Tag },
+    { key: "campaigns", label: t("Campaigns"), icon: Megaphone },
     { key: "banners", label: t("Banners"), icon: ImageIcon },
   ];
 
@@ -3862,6 +4041,31 @@ function OffersDashboard({ authUser }) {
                 />
               </div>
               <div className="field">
+                <label>{t("Accent color")}</label>
+                <div className="brand-color-row">
+                  <input
+                    type="color"
+                    value={brandForm.accentColor || "#36d07c"}
+                    onChange={(e) => setBrandForm((prev) => ({ ...prev, accentColor: e.target.value }))}
+                  />
+                  <input
+                    type="text"
+                    placeholder="#36d07c"
+                    value={brandForm.accentColor}
+                    onChange={(e) => setBrandForm((prev) => ({ ...prev, accentColor: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="field field-wide">
+                <label>{t("Logo URL")}</label>
+                <input
+                  type="url"
+                  placeholder="https://… (paste a square logo, file upload coming with Supabase)"
+                  value={brandForm.logoUrl}
+                  onChange={(e) => setBrandForm((prev) => ({ ...prev, logoUrl: e.target.value }))}
+                />
+              </div>
+              <div className="field field-wide">
                 <label>{t("Notes")}</label>
                 <input
                   type="text"
@@ -3880,179 +4084,427 @@ function OffersDashboard({ authUser }) {
             <div className="panel-head">
               <div>
                 <h3 className="panel-title">{t("Brand Directory")}</h3>
-                <p className="panel-subtitle">{t("All brands and their attached offers + creatives.")}</p>
+                <p className="panel-subtitle">{t("Live ROI per brand. Use search + filter once your roster grows.")}</p>
+              </div>
+            </div>
+            <div className="brand-directory-toolbar">
+              <input
+                type="text"
+                className="log-search"
+                placeholder={t("Search brand or contact…")}
+                value={brandSearch}
+                onChange={(e) => setBrandSearch(e.target.value)}
+              />
+              <div className="brand-status-chips">
+                {["Active", "Paused", "Archived", "All"].map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    className={`status-chip${brandStatusFilter === status ? " is-active" : ""}`}
+                    onClick={() => setBrandStatusFilter(status)}
+                  >
+                    {t(status)}
+                  </button>
+                ))}
               </div>
             </div>
             {state.loading ? (
               <div className="empty-state">{t("Loading…")}</div>
             ) : brands.length === 0 ? (
               <div className="empty-state">{t("No brands yet.")}</div>
-            ) : (
-              <div className="brand-list">
-                {brands.map((brand) => (
-                  <div key={brand.id} className={`brand-card${brand.name === "Unassigned" ? " is-unassigned" : ""}`}>
-                    <div className="brand-card-head">
-                      <div>
-                        <div className="brand-card-title">{brand.name}</div>
-                        <div className="brand-card-sub">
-                          {brand.contact ? brand.contact + " · " : ""}{t(brand.status || "Active")}
-                          {" · "}{(brand.offers?.length || 0)} {t("offers")} · {(brand.banners?.length || 0)} {t("banners")}
+            ) : (() => {
+              const filtered = brands.filter((brand) => {
+                if (brand.name === "Unassigned") {
+                  // Always show Unassigned regardless of filter, but only if relevant
+                  return (brand.offers?.length || 0) > 0 || roiByBrand[brand.id]?.ftds > 0 || roiByBrand[brand.id]?.spend > 0;
+                }
+                if (brandStatusFilter !== "All" && (brand.status || "Active") !== brandStatusFilter) return false;
+                if (brandSearch.trim()) {
+                  const q = brandSearch.trim().toLowerCase();
+                  return (
+                    brand.name.toLowerCase().includes(q) ||
+                    (brand.contact || "").toLowerCase().includes(q)
+                  );
+                }
+                return true;
+              });
+              if (filtered.length === 0) {
+                return <div className="empty-state">{t("No brands match these filters.")}</div>;
+              }
+              return (
+                <div className="brand-list">
+                  {filtered.map((brand) => {
+                    const roi = roiByBrand[brand.id];
+                    const accent = brand.accent_color || "#36d07c";
+                    const roiTone = roi?.roi === null || roi?.roi === undefined
+                      ? "neutral"
+                      : roi.roi >= 0 ? "positive" : "negative";
+                    return (
+                      <div
+                        key={brand.id}
+                        className={`brand-card${brand.name === "Unassigned" ? " is-unassigned" : ""}`}
+                        style={{ "--brand-accent": accent }}
+                      >
+                        <div className="brand-card-accent" />
+                        <div className="brand-card-head">
+                          <div className="brand-card-identity">
+                            {brand.logo_url ? (
+                              <div className="brand-card-logo">
+                                <img src={brand.logo_url} alt={brand.name} loading="lazy" />
+                              </div>
+                            ) : (
+                              <div className="brand-card-logo brand-card-logo-fallback" aria-hidden="true">
+                                {brand.name.slice(0, 1).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <div className="brand-card-title">{brand.name}</div>
+                              <div className="brand-card-sub">
+                                {brand.contact ? brand.contact + " · " : ""}{t(brand.status || "Active")}
+                              </div>
+                            </div>
+                          </div>
+                          {brand.name !== "Unassigned" ? (
+                            <button className="icon-btn" type="button" onClick={() => handleBrandDelete(brand.id)}>
+                              <Trash2 size={16} />
+                            </button>
+                          ) : null}
                         </div>
+                        {roi ? (
+                          <div className="brand-card-roi">
+                            <div className={`brand-card-roi-pct ${roiTone}`}>
+                              {roi.roi === null || roi.roi === undefined
+                                ? "—"
+                                : `${roi.roi >= 0 ? "+" : ""}${roi.roi.toFixed(0)}%`}
+                            </div>
+                            <div className="brand-card-roi-stats">
+                              <span><strong>{formatCurrency(roi.revenue || 0)}</strong> {t("rev")}</span>
+                              <span><strong>{formatCurrency(roi.spend || 0)}</strong> {t("spend")}</span>
+                              <span><strong>{roi.ftds || 0}</strong> {t("FTDs")}</span>
+                            </div>
+                          </div>
+                        ) : null}
+                        <div className="brand-card-meta-row">
+                          <span>{(brand.offers?.length || 0)} {t("offers")}</span>
+                          <span>·</span>
+                          <span>{(brand.banners?.length || 0)} {t("banners")}</span>
+                        </div>
+                        {brand.notes ? <div className="brand-card-notes">{brand.notes}</div> : null}
                       </div>
-                      {brand.name !== "Unassigned" ? (
-                        <button className="icon-btn" type="button" onClick={() => handleBrandDelete(brand.id)}>
-                          <Trash2 size={16} />
-                        </button>
-                      ) : null}
-                    </div>
-                    {brand.notes ? <div className="brand-card-notes">{brand.notes}</div> : null}
-                  </div>
-                ))}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </motion.div>
         </section>
       ) : null}
 
       {tab === "offers" ? (
-        <section className="panels">
+        <>
+          {geoOverlaps.crossBrand.length > 0 || geoOverlaps.sameBrand.length > 0 ? (
+            <section className="panels panels-single">
+              <div className="overlap-banner">
+                <AlertTriangle size={16} />
+                <div className="overlap-banner-body">
+                  {geoOverlaps.crossBrand.length > 0 ? (
+                    <div>
+                      <strong>{t("Cross-brand geo overlap:")}</strong>{" "}
+                      {geoOverlaps.crossBrand.slice(0, 4).map((o) => `${o.geo} (${o.brands.join(" / ")})`).join(", ")}
+                      {geoOverlaps.crossBrand.length > 4 ? "…" : ""}{" "}
+                      — {t("link Keitaro campaigns to brands to remove ROI ambiguity.")}
+                    </div>
+                  ) : null}
+                  {geoOverlaps.sameBrand.length > 0 ? (
+                    <div>
+                      <strong>{t("Same-brand duplicate geos:")}</strong>{" "}
+                      {geoOverlaps.sameBrand.slice(0, 4).map((o) => `${o.brand} / ${o.geo}`).join(", ")}
+                      {geoOverlaps.sameBrand.length > 4 ? "…" : ""}{" "}
+                      — {t("only the first matching offer is used for ROI math.")}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="panels offers-form-anchor">
+            <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("Add Offer")}</h3>
+                  <p className="panel-subtitle">{t("Set the payout per FTD and the geos it applies to.")}</p>
+                </div>
+                <button
+                  type="button"
+                  className={`offers-mode-toggle${offerForm.bulkMode ? " is-active" : ""}`}
+                  onClick={() => setOfferForm((prev) => ({ ...prev, bulkMode: !prev.bulkMode }))}
+                  title={t("Switch to bulk paste — one line per geo")}
+                >
+                  {offerForm.bulkMode ? t("Single offer") : t("Bulk paste")}
+                </button>
+              </div>
+              <form className="form-grid" onSubmit={handleOfferSubmit}>
+                <div className="field">
+                  <label>{t("Brand")}</label>
+                  <Select
+                    value={offerForm.brandId}
+                    onChange={(v) => setOfferForm((prev) => ({ ...prev, brandId: v }))}
+                    options={brandOptions}
+                    placeholder={t("Select")}
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Model")}</label>
+                  <Select
+                    value={offerForm.model}
+                    onChange={(v) => setOfferForm((prev) => ({ ...prev, model: v }))}
+                    options={["CPA", "RevShare", "Hybrid"].map((m) => ({ value: m, label: m }))}
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Valid from")}</label>
+                  <DeusDatePicker value={offerForm.validFrom} onChange={(v) => setOfferForm((prev) => ({ ...prev, validFrom: v }))} />
+                </div>
+                <div className="field">
+                  <label>{t("Valid to")}</label>
+                  <DeusDatePicker value={offerForm.validTo} onChange={(v) => setOfferForm((prev) => ({ ...prev, validTo: v }))} />
+                </div>
+                {offerForm.bulkMode ? (
+                  <div className="field field-wide">
+                    <label>
+                      {t("Bulk paste")}{" "}
+                      <span className="field-pace-hint">{t("One per line: GEO,payout[,baseline] — e.g. BR,15  or  MX,12,500")}</span>
+                    </label>
+                    <textarea
+                      className="bulk-offer-textarea"
+                      rows={8}
+                      placeholder={"BR,15\nMX,12,500\nCO,10\nAR,8"}
+                      value={offerForm.bulkText}
+                      onChange={(e) => setOfferForm((prev) => ({ ...prev, bulkText: e.target.value }))}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="field">
+                      <label>{t("Payout ($)")}</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="15.00"
+                        value={offerForm.payout}
+                        onChange={(e) => setOfferForm((prev) => ({ ...prev, payout: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Baseline")}</label>
+                      <Select
+                        value={offerForm.baselineMode}
+                        onChange={(v) => setOfferForm((prev) => ({ ...prev, baselineMode: v, baseline: v === "none" ? "" : prev.baseline }))}
+                        options={[
+                          { value: "none", label: t("No baseline") },
+                          { value: "amount", label: t("Set amount") },
+                        ]}
+                      />
+                    </div>
+                    {offerForm.baselineMode === "amount" ? (
+                      <div className="field">
+                        <label>{t("Baseline amount ($)")}</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="500"
+                          value={offerForm.baseline}
+                          onChange={(e) => setOfferForm((prev) => ({ ...prev, baseline: e.target.value }))}
+                        />
+                      </div>
+                    ) : null}
+                    <div className="field field-wide">
+                      <label>{t("Geos")} <span className="field-pace-hint">{t("Bulk-select; all share the same payout.")}</span></label>
+                      <CountryDropdownPicker
+                        multiple
+                        values={offerForm.geos}
+                        onToggle={(country) => {
+                          setOfferForm((prev) => {
+                            const set = new Set(prev.geos);
+                            if (set.has(country)) set.delete(country);
+                            else set.add(country);
+                            return { ...prev, geos: Array.from(set) };
+                          });
+                        }}
+                        options={countryOptions}
+                        placeholder={t("Pick countries")}
+                        searchPlaceholder={t("Type to find countries")}
+                        emptyResultsLabel={t("No countries found.")}
+                      />
+                    </div>
+                    <div className="field field-wide">
+                      <label>{t("Notes")}</label>
+                      <input
+                        type="text"
+                        placeholder={t("Optional")}
+                        value={offerForm.notes}
+                        onChange={(e) => setOfferForm((prev) => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="form-actions">
+                  <button className="ghost" type="button" onClick={resetOfferForm}>{t("Reset")}</button>
+                  <button className="action-pill" type="submit">
+                    {offerForm.bulkMode ? t("Save All") : t("Add Offer")}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+
+            <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("Active Offers")}</h3>
+                  <p className="panel-subtitle">{t("Grouped by brand. Click duplicate to roll an offer forward.")}</p>
+                </div>
+              </div>
+              {brands.filter((b) => (b.offers || []).length > 0).length === 0 ? (
+                <div className="empty-state">{t("No offers yet.")}</div>
+              ) : (
+                <div className="offer-list">
+                  {brands
+                    .filter((b) => (b.offers || []).length > 0)
+                    .map((brand) => (
+                      <div key={brand.id} className="offer-group">
+                        <div className="offer-group-head">{brand.name}</div>
+                        {brand.offers.map((offer) => {
+                          const fmtDate = (d) => (d ? String(d) : null);
+                          const validity =
+                            offer.valid_from || offer.valid_to
+                              ? `${fmtDate(offer.valid_from) || "…"} → ${fmtDate(offer.valid_to) || "…"}`
+                              : null;
+                          return (
+                            <div key={offer.id} className="offer-row">
+                              <div className="offer-row-main">
+                                <div className="offer-row-payout">
+                                  <strong>${Number(offer.payout).toFixed(2)}</strong>
+                                  <span className="offer-row-model">{offer.model}</span>
+                                </div>
+                                <div className="offer-row-geos">
+                                  {Array.isArray(offer.geos) && offer.geos.length > 0
+                                    ? offer.geos.join(" · ")
+                                    : t("All geos")}
+                                </div>
+                                {offer.baseline !== null && offer.baseline !== undefined ? (
+                                  <div className="offer-row-baseline">
+                                    {t("Baseline")}: ${Number(offer.baseline).toFixed(2)}
+                                  </div>
+                                ) : null}
+                                {validity ? (
+                                  <div className="offer-row-validity">
+                                    <CalendarIcon size={11} /> {validity}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="offer-row-actions">
+                                <button
+                                  className="icon-btn"
+                                  type="button"
+                                  title={t("Duplicate offer")}
+                                  onClick={() => handleOfferDuplicate(offer)}
+                                >
+                                  <Copy size={14} />
+                                </button>
+                                <button className="icon-btn" type="button" onClick={() => handleOfferDelete(offer.id)}>
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </motion.div>
+          </section>
+        </>
+      ) : null}
+
+      {tab === "campaigns" ? (
+        <section className="panels panels-single">
           <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("Add Offer")}</h3>
-                <p className="panel-subtitle">{t("Set the payout per FTD and the geos it applies to.")}</p>
+                <h3 className="panel-title">{t("Campaign → Brand")}</h3>
+                <p className="panel-subtitle">
+                  {t("Link each Keitaro campaign to a brand for precise ROI attribution. Unlinked campaigns fall back to geo-only matching.")}
+                </p>
               </div>
+              <input
+                type="text"
+                className="log-search"
+                placeholder={t("Search campaign or buyer…")}
+                value={campaignSearch}
+                onChange={(e) => setCampaignSearch(e.target.value)}
+              />
             </div>
-            <form className="form-grid" onSubmit={handleOfferSubmit}>
-              <div className="field">
-                <label>{t("Brand")}</label>
-                <Select
-                  value={offerForm.brandId}
-                  onChange={(v) => setOfferForm((prev) => ({ ...prev, brandId: v }))}
-                  options={brandOptions}
-                  placeholder={t("Select")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Payout ($)")}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="15.00"
-                  value={offerForm.payout}
-                  onChange={(e) => setOfferForm((prev) => ({ ...prev, payout: e.target.value }))}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Model")}</label>
-                <Select
-                  value={offerForm.model}
-                  onChange={(v) => setOfferForm((prev) => ({ ...prev, model: v }))}
-                  options={["CPA", "RevShare", "Hybrid"].map((m) => ({ value: m, label: m }))}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Baseline")}</label>
-                <Select
-                  value={offerForm.baselineMode}
-                  onChange={(v) => setOfferForm((prev) => ({ ...prev, baselineMode: v, baseline: v === "none" ? "" : prev.baseline }))}
-                  options={[
-                    { value: "none", label: t("No baseline") },
-                    { value: "amount", label: t("Set amount") },
-                  ]}
-                />
-              </div>
-              {offerForm.baselineMode === "amount" ? (
-                <div className="field">
-                  <label>{t("Baseline amount ($)")}</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="500"
-                    value={offerForm.baseline}
-                    onChange={(e) => setOfferForm((prev) => ({ ...prev, baseline: e.target.value }))}
-                  />
-                </div>
-              ) : null}
-              <div className="field field-wide">
-                <label>{t("Geos")} <span className="field-pace-hint">{t("Bulk-select; all share the same payout.")}</span></label>
-                <CountryDropdownPicker
-                  multiple
-                  values={offerForm.geos}
-                  onToggle={(country) => {
-                    setOfferForm((prev) => {
-                      const set = new Set(prev.geos);
-                      if (set.has(country)) set.delete(country);
-                      else set.add(country);
-                      return { ...prev, geos: Array.from(set) };
-                    });
-                  }}
-                  options={countryOptions}
-                  placeholder={t("Pick countries")}
-                  searchPlaceholder={t("Type to find countries")}
-                  emptyResultsLabel={t("No countries found.")}
-                />
-              </div>
-              <div className="field field-wide">
-                <label>{t("Notes")}</label>
-                <input
-                  type="text"
-                  placeholder={t("Optional")}
-                  value={offerForm.notes}
-                  onChange={(e) => setOfferForm((prev) => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
-              <div className="form-actions">
-                <button className="action-pill" type="submit">{t("Add Offer")}</button>
-              </div>
-            </form>
-          </motion.div>
-
-          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{t("Active Offers")}</h3>
-                <p className="panel-subtitle">{t("Grouped by brand.")}</p>
-              </div>
-            </div>
-            {brands.filter((b) => (b.offers || []).length > 0).length === 0 ? (
-              <div className="empty-state">{t("No offers yet.")}</div>
-            ) : (
-              <div className="offer-list">
-                {brands
-                  .filter((b) => (b.offers || []).length > 0)
-                  .map((brand) => (
-                    <div key={brand.id} className="offer-group">
-                      <div className="offer-group-head">{brand.name}</div>
-                      {brand.offers.map((offer) => (
-                        <div key={offer.id} className="offer-row">
-                          <div className="offer-row-main">
-                            <div className="offer-row-payout">
-                              <strong>${Number(offer.payout).toFixed(2)}</strong>
-                              <span className="offer-row-model">{offer.model}</span>
-                            </div>
-                            <div className="offer-row-geos">
-                              {Array.isArray(offer.geos) && offer.geos.length > 0
-                                ? offer.geos.join(" · ")
-                                : t("All geos")}
-                            </div>
-                            {offer.baseline !== null && offer.baseline !== undefined ? (
-                              <div className="offer-row-baseline">
-                                {t("Baseline")}: ${Number(offer.baseline).toFixed(2)}
-                              </div>
-                            ) : null}
-                          </div>
-                          <button className="icon-btn" type="button" onClick={() => handleOfferDelete(offer.id)}>
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-              </div>
-            )}
+            {campaigns.length === 0 ? (
+              <div className="empty-state">{t("No campaigns synced from Keitaro yet.")}</div>
+            ) : (() => {
+              const q = campaignSearch.trim().toLowerCase();
+              const filtered = q
+                ? campaigns.filter(
+                    (c) =>
+                      String(c.name || "").toLowerCase().includes(q) ||
+                      String(c.buyer || "").toLowerCase().includes(q)
+                  )
+                : campaigns;
+              const linked = filtered.filter((c) => c.project_id).length;
+              return (
+                <>
+                  <div className="campaign-link-summary">
+                    <strong>{linked}</strong> / {filtered.length} {t("campaigns linked")}
+                  </div>
+                  <div className="table-wrap">
+                    <table className="entries-table">
+                      <thead>
+                        <tr>
+                          <th>{t("Campaign")}</th>
+                          <th>{t("Buyer")}</th>
+                          <th>{t("Country")}</th>
+                          <th>{t("Brand")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((row) => (
+                          <tr key={row.id} className={row.project_id ? "" : "row-unassigned"}>
+                            <td>{row.name || row.keitaro_id || "—"}</td>
+                            <td>{row.buyer || "—"}</td>
+                            <td>{row.country || "—"}</td>
+                            <td>
+                              <select
+                                className={`inline-select project-select${row.project_id ? "" : " is-unassigned"}`}
+                                value={row.project_id || ""}
+                                onChange={(e) => handleCampaignBrandChange(row.id, e.target.value || null)}
+                              >
+                                <option value="">{t("— Unlinked —")}</option>
+                                {brands
+                                  .filter((b) => b.name !== "Unassigned")
+                                  .map((brand) => (
+                                    <option key={brand.id} value={brand.id}>
+                                      {brand.name}
+                                    </option>
+                                  ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </motion.div>
         </section>
       ) : null}

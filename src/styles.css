@@ -9559,6 +9559,7 @@ select option,
 }
 
 .brand-card {
+  position: relative;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.07);
   background:
@@ -9567,7 +9568,239 @@ select option,
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  --brand-accent: #36d07c;
+}
+
+.brand-card-accent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--brand-accent);
+  opacity: 0.75;
+}
+
+.brand-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-card-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.brand-card-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brand-card-logo-fallback {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brand-accent);
+  background: rgba(54, 208, 124, 0.08);
+}
+
+.brand-card-roi {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.brand-card-roi-pct {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.brand-card-roi-pct.positive { color: var(--green); }
+.brand-card-roi-pct.negative { color: #ff8a7a; }
+.brand-card-roi-pct.neutral { color: var(--muted); }
+
+.brand-card-roi-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted-strong, #a9adb7);
+}
+
+.brand-card-roi-stats strong {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.brand-card-meta-row {
+  display: flex;
   gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.brand-directory-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.brand-directory-toolbar .log-search {
+  flex: 1;
+  min-width: 220px;
+}
+
+.brand-status-chips {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+.status-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--muted-strong, #a9adb7);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.status-chip:hover { color: var(--text); }
+.status-chip.is-active {
+  color: var(--green);
+  background: rgba(54, 208, 124, 0.1);
+}
+
+.brand-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-color-row input[type="color"] {
+  width: 44px;
+  height: 38px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  cursor: pointer;
+}
+
+.brand-color-row input[type="text"] {
+  flex: 1;
+}
+
+/* Cross-brand / same-brand geo overlap banner */
+.overlap-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 179, 122, 0.28);
+  background: rgba(255, 179, 122, 0.06);
+  color: #ffb37a;
+  font-size: 12px;
+}
+
+.overlap-banner svg { flex-shrink: 0; margin-top: 2px; }
+.overlap-banner-body { display: flex; flex-direction: column; gap: 4px; }
+.overlap-banner-body strong { color: var(--text); font-weight: 700; }
+
+/* Single/Bulk mode toggle on Offer form */
+.offers-mode-toggle {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted-strong, #a9adb7);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.offers-mode-toggle:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.offers-mode-toggle.is-active {
+  color: var(--green);
+  border-color: rgba(54, 208, 124, 0.42);
+  background: rgba(54, 208, 124, 0.08);
+}
+
+.bulk-offer-textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.bulk-offer-textarea:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.45);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.12);
+}
+
+/* Validity + actions on offer rows */
+.offer-row-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.offer-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.campaign-link-summary {
+  font-size: 12px;
+  color: var(--muted-strong, #a9adb7);
+  margin-bottom: 10px;
+}
+
+.campaign-link-summary strong {
+  color: var(--green);
 }
 
 .brand-card.is-unassigned {

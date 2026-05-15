@@ -491,6 +491,12 @@ const initDb = async () => {
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
+    // Brand visual identity
+    `ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo_url TEXT;`,
+    `ALTER TABLE brands ADD COLUMN IF NOT EXISTS accent_color TEXT;`,
+    // Offer validity window (effective date range for the payout)
+    `ALTER TABLE offers ADD COLUMN IF NOT EXISTS valid_from TEXT;`,
+    `ALTER TABLE offers ADD COLUMN IF NOT EXISTS valid_to TEXT;`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_project_id ON expenses (project_id);`,
     `CREATE INDEX IF NOT EXISTS idx_campaigns_project_id ON campaigns (project_id);`,
 
@@ -4318,12 +4324,13 @@ app.delete("/api/expenses/:id", async (req, res) => {
 // endpoints so the frontend can render the Offers page from a single call.
 app.get("/api/brands", async (req, res) => {
   const brands = await getRows(
-    `SELECT id, name, contact, status, notes, created_at
+    `SELECT id, name, contact, status, notes, logo_url, accent_color, created_at
        FROM brands
       ORDER BY name = 'Unassigned' ASC, name ASC`
   );
   const offers = await getRows(
-    `SELECT id, brand_id, geos, payout, baseline, model, status, notes, created_at
+    `SELECT id, brand_id, geos, payout, baseline, model, status, notes,
+            valid_from, valid_to, created_at
        FROM offers
       ORDER BY created_at DESC, id DESC`
   );
@@ -4360,17 +4367,31 @@ app.post("/api/brands", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  const { name, contact = "", status = "Active", notes = "" } = req.body ?? {};
+  const {
+    name,
+    contact = "",
+    status = "Active",
+    notes = "",
+    logoUrl = "",
+    accentColor = "",
+  } = req.body ?? {};
   const cleanName = String(name || "").trim();
   if (!cleanName) {
     return res.status(400).json({ error: "Name is required." });
   }
   try {
     const { rows } = await query(
-      `INSERT INTO brands (name, contact, status, notes)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO brands (name, contact, status, notes, logo_url, accent_color)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [cleanName, String(contact).trim(), String(status).trim(), String(notes).trim()]
+      [
+        cleanName,
+        String(contact).trim(),
+        String(status).trim(),
+        String(notes).trim(),
+        String(logoUrl || "").trim() || null,
+        String(accentColor || "").trim() || null,
+      ]
     );
     res.status(201).json({ id: rows[0].id });
   } catch (err) {
@@ -4389,7 +4410,14 @@ app.patch("/api/brands/:id", async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid brand id." });
   }
-  const fields = { name: "name", contact: "contact", status: "status", notes: "notes" };
+  const fields = {
+    name: "name",
+    contact: "contact",
+    status: "status",
+    notes: "notes",
+    logoUrl: "logo_url",
+    accentColor: "accent_color",
+  };
   const sets = [];
   const args = [];
   for (const [key, column] of Object.entries(fields)) {
@@ -4434,6 +4462,35 @@ app.delete("/api/brands/:id", async (req, res) => {
 });
 
 // ── Offers ────────────────────────────────────────────────────────────────
+const normalizeDateString = (value) => {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  // Accept YYYY-MM-DD strings; anything else returns null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  return trimmed;
+};
+
+const insertOfferRow = async ({ brandId, geos, payout, baseline, model, status, notes, validFrom, validTo }) => {
+  const { rows } = await query(
+    `INSERT INTO offers (brand_id, geos, payout, baseline, model, status, notes, valid_from, valid_to)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`,
+    [
+      brandId,
+      JSON.stringify(geos),
+      payout,
+      baseline,
+      String(model || "CPA").trim(),
+      String(status || "Active").trim(),
+      String(notes || "").trim(),
+      normalizeDateString(validFrom),
+      normalizeDateString(validTo),
+    ]
+  );
+  return rows[0];
+};
+
 app.post("/api/offers", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -4446,6 +4503,8 @@ app.post("/api/offers", async (req, res) => {
     model = "CPA",
     status = "Active",
     notes = "",
+    validFrom = null,
+    validTo = null,
   } = req.body ?? {};
   const parsedBrandId = Number.parseInt(brandId, 10);
   if (!Number.isFinite(parsedBrandId)) {
@@ -4465,21 +4524,58 @@ app.post("/api/offers", async (req, res) => {
   const cleanGeos = Array.isArray(geos)
     ? geos.map((g) => String(g || "").trim()).filter(Boolean)
     : [];
-  const { rows } = await query(
-    `INSERT INTO offers (brand_id, geos, payout, baseline, model, status, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     RETURNING id`,
-    [
-      parsedBrandId,
-      JSON.stringify(cleanGeos),
-      parsedPayout,
-      parsedBaseline,
-      String(model).trim(),
-      String(status).trim(),
-      String(notes).trim(),
-    ]
-  );
-  res.status(201).json({ id: rows[0].id });
+  const row = await insertOfferRow({
+    brandId: parsedBrandId,
+    geos: cleanGeos,
+    payout: parsedPayout,
+    baseline: parsedBaseline,
+    model,
+    status,
+    notes,
+    validFrom,
+    validTo,
+  });
+  res.status(201).json({ id: row.id });
+});
+
+// Bulk-create offers: accepts an array of {geo,payout,baseline?} entries for a
+// single brand. Each row becomes its own offer with the same brand + model +
+// validity window. Designed for the "paste CSV" entry mode.
+app.post("/api/offers/bulk", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const { brandId, model = "CPA", status = "Active", validFrom = null, validTo = null, rows: bulkRows } = req.body ?? {};
+  const parsedBrandId = Number.parseInt(brandId, 10);
+  if (!Number.isFinite(parsedBrandId)) {
+    return res.status(400).json({ error: "brandId is required." });
+  }
+  if (!Array.isArray(bulkRows) || bulkRows.length === 0) {
+    return res.status(400).json({ error: "rows array is required." });
+  }
+  const inserted = [];
+  for (const item of bulkRows) {
+    const geo = String(item?.geo || "").trim();
+    const payout = Number.parseFloat(item?.payout);
+    if (!geo || !Number.isFinite(payout) || payout < 0) continue;
+    const baseline =
+      item?.baseline === undefined || item?.baseline === null || item?.baseline === ""
+        ? null
+        : Number.parseFloat(item.baseline);
+    const row = await insertOfferRow({
+      brandId: parsedBrandId,
+      geos: [geo],
+      payout,
+      baseline: Number.isFinite(baseline) ? baseline : null,
+      model,
+      status,
+      notes: "",
+      validFrom,
+      validTo,
+    });
+    inserted.push(row.id);
+  }
+  res.status(201).json({ inserted, count: inserted.length });
 });
 
 app.patch("/api/offers/:id", async (req, res) => {
@@ -4520,6 +4616,12 @@ app.patch("/api/offers/:id", async (req, res) => {
     if (req.body?.[field] !== undefined) {
       sets.push(`${field} = $${sets.length + 1}`);
       args.push(String(req.body[field]).trim());
+    }
+  }
+  for (const [bodyKey, column] of [["validFrom", "valid_from"], ["validTo", "valid_to"]]) {
+    if (req.body?.[bodyKey] !== undefined) {
+      sets.push(`${column} = $${sets.length + 1}`);
+      args.push(normalizeDateString(req.body[bodyKey]));
     }
   }
   if (sets.length === 0) {
@@ -4596,9 +4698,54 @@ app.delete("/api/banners/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Campaigns linker (for ROI attribution) ───────────────────────────────
+// Lightweight list endpoint that exposes campaigns + their current brand link
+// so the Offers section can let leadership assign each Keitaro campaign to a
+// real brand. project_id is the brand foreign key (reused column name).
+app.get("/api/campaigns/list", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const rows = await getRows(
+    `SELECT c.id, c.keitaro_id, c.name, c.buyer, c.country, c.project_id,
+            b.name AS project_name
+       FROM campaigns c
+       LEFT JOIN brands b ON b.id = c.project_id
+      ORDER BY c.created_at DESC, c.id DESC
+      LIMIT 500`
+  );
+  res.json(rows);
+});
+
+app.patch("/api/campaigns/:id/brand", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid campaign id." });
+  }
+  const projectId = req.body?.projectId;
+  if (projectId === null || projectId === "" || projectId === undefined) {
+    await query("UPDATE campaigns SET project_id = NULL WHERE id = $1", [id]);
+    return res.json({ ok: true, id, project_id: null });
+  }
+  const parsed = Number.parseInt(projectId, 10);
+  if (!Number.isFinite(parsed)) {
+    return res.status(400).json({ error: "Invalid project id." });
+  }
+  await query("UPDATE campaigns SET project_id = $1 WHERE id = $2", [parsed, id]);
+  res.json({ ok: true, id, project_id: parsed });
+});
+
 // ── Finance ROI by project ────────────────────────────────────────────────
-// Joins media_stats (FTDs by country) with offers (payout by geo per brand)
-// and expenses (tagged to brand) to produce a per-brand P&L summary.
+// Two-pass attribution for accurate per-brand revenue:
+// 1. media_stats rows joined to campaigns via campaign_name → if the campaign
+//    is linked to a brand, FTDs go to that brand directly (the precise path).
+// 2. Remaining FTDs (campaigns not linked to any brand) fall back to geo-based
+//    attribution using the offer table, restricted to offers whose validity
+//    window covers the FTD date.
+// Spend = total tagged expenses for the brand in the window.
 app.get("/api/finance/by-project", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -4608,15 +4755,30 @@ app.get("/api/finance/by-project", async (req, res) => {
 
   const brands = await getRows(`SELECT id, name FROM brands ORDER BY name`);
   const offers = await getRows(
-    `SELECT id, brand_id, geos, payout FROM offers WHERE status = 'Active'`
+    `SELECT id, brand_id, geos, payout, valid_from, valid_to FROM offers WHERE status = 'Active'`
   );
-  // Parse geos JSON; build a lookup of geo -> [offers]
+  const campaigns = await getRows(
+    `SELECT name, project_id FROM campaigns WHERE project_id IS NOT NULL`
+  );
+
+  // Build campaign_name → brand_id map for precise attribution
+  const campaignToBrand = new Map();
+  for (const c of campaigns) {
+    if (c.name) campaignToBrand.set(String(c.name).trim(), c.project_id);
+  }
+
+  // Parse geos JSON and bucket offers by brand
   const offersByBrand = new Map();
   for (const o of offers) {
     let geos = [];
     try { geos = JSON.parse(o.geos || "[]"); } catch { geos = []; }
     const arr = offersByBrand.get(o.brand_id) || [];
-    arr.push({ payout: Number(o.payout) || 0, geos });
+    arr.push({
+      payout: Number(o.payout) || 0,
+      geos,
+      validFrom: o.valid_from || null,
+      validTo: o.valid_to || null,
+    });
     offersByBrand.set(o.brand_id, arr);
   }
 
@@ -4635,37 +4797,89 @@ app.get("/api/finance/by-project", async (req, res) => {
     expenseRows.map((row) => [row.project_id, Number(row.total) || 0])
   );
 
-  // FTDs by country in the window — needed to compute revenue per brand
+  // FTDs joined with campaign_name + country + date so we can attribute
+  // precisely (via campaign linker) or fall back to geo+date.
   const ftdArgs = [];
   let ftdWhere = "WHERE 1=1";
   if (from) { ftdArgs.push(from); ftdWhere += ` AND date >= $${ftdArgs.length}`; }
   if (to)   { ftdArgs.push(to);   ftdWhere += ` AND date <= $${ftdArgs.length}`; }
   const ftdRows = await getRows(
-    `SELECT COALESCE(country, '') AS country, COALESCE(SUM(ftds), 0) AS ftds
+    `SELECT COALESCE(country, '') AS country,
+            COALESCE(campaign_name, '') AS campaign_name,
+            date,
+            COALESCE(SUM(ftds), 0) AS ftds
        FROM media_stats ${ftdWhere}
-      GROUP BY country`,
+      GROUP BY country, campaign_name, date`,
     ftdArgs
   );
 
-  const summary = brands.map((brand) => {
-    const brandOffers = offersByBrand.get(brand.id) || [];
-    let revenue = 0;
-    let attributedFtds = 0;
-    for (const { country, ftds } of ftdRows) {
-      const match = brandOffers.find((o) => o.geos.includes(country));
-      if (match) {
-        revenue += Number(ftds) * match.payout;
-        attributedFtds += Number(ftds);
+  const offerActiveOn = (offer, date) => {
+    if (!date) return true;
+    if (offer.validFrom && String(date) < offer.validFrom) return false;
+    if (offer.validTo && String(date) > offer.validTo) return false;
+    return true;
+  };
+
+  // Aggregate revenue + ftds per brand
+  const brandAgg = new Map();
+  const ensure = (brandId) => {
+    if (!brandAgg.has(brandId)) brandAgg.set(brandId, { revenue: 0, ftds: 0 });
+    return brandAgg.get(brandId);
+  };
+
+  for (const row of ftdRows) {
+    const ftds = Number(row.ftds) || 0;
+    if (!ftds) continue;
+    const campaignName = String(row.campaign_name || "").trim();
+    const linkedBrandId = campaignName ? campaignToBrand.get(campaignName) : null;
+    if (linkedBrandId) {
+      // Precise: campaign linked to brand → pick the brand's best offer for
+      // the geo + date, fall back to brand's first valid offer at any geo.
+      const offersForBrand = offersByBrand.get(linkedBrandId) || [];
+      const match =
+        offersForBrand.find((o) => o.geos.includes(row.country) && offerActiveOn(o, row.date)) ||
+        offersForBrand.find((o) => offerActiveOn(o, row.date)) ||
+        null;
+      const payout = match ? match.payout : 0;
+      const bucket = ensure(linkedBrandId);
+      bucket.revenue += ftds * payout;
+      bucket.ftds += ftds;
+    } else {
+      // Fallback: scan all brands' offers for one matching geo + date window.
+      // First matching brand wins (deterministic by brand iteration order).
+      let attributed = false;
+      for (const [brandId, brandOffers] of offersByBrand) {
+        const match = brandOffers.find((o) => o.geos.includes(row.country) && offerActiveOn(o, row.date));
+        if (match) {
+          const bucket = ensure(brandId);
+          bucket.revenue += ftds * match.payout;
+          bucket.ftds += ftds;
+          attributed = true;
+          break;
+        }
+      }
+      if (!attributed) {
+        // Unattributed FTDs — surface under the Unassigned bucket so the
+        // operator can see how much volume isn't linked yet.
+        const unassigned = brands.find((b) => b.name === "Unassigned");
+        if (unassigned) {
+          const bucket = ensure(unassigned.id);
+          bucket.ftds += ftds;
+        }
       }
     }
+  }
+
+  const summary = brands.map((brand) => {
+    const agg = brandAgg.get(brand.id) || { revenue: 0, ftds: 0 };
     const spend = expensesByBrand.get(brand.id) || 0;
-    const profit = revenue - spend;
+    const profit = agg.revenue - spend;
     const roi = spend > 0 ? (profit / spend) * 100 : null;
     return {
       brand_id: brand.id,
       brand: brand.name,
-      ftds: attributedFtds,
-      revenue,
+      ftds: agg.ftds,
+      revenue: agg.revenue,
       spend,
       profit,
       roi,
