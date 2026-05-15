@@ -16467,7 +16467,12 @@ export default function App() {
   const allowedNavItems = navItems.filter((item) => {
     const perm = viewPermissionMap[item.key];
     if (!perm) return true;
-    return allowedPermissions.includes(perm);
+    if (allowedPermissions.includes(perm)) return true;
+    // Resilience: Offers can also be unlocked by Finances access, so the nav
+    // item works even if a backend revision is behind on adding "offers"
+    // to its allPermissions list.
+    if (item.key === "offers" && allowedPermissions.includes("finances")) return true;
+    return false;
   });
   const navItemMap = React.useMemo(
     () => Object.fromEntries(navItems.map((item) => [item.key, item])),
