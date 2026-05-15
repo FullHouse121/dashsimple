@@ -1118,21 +1118,24 @@ function HomeDashboard({
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
 
+  // Compute the active period range inline (periodRange itself is declared
+  // further down, so we can't reference it here without a TDZ error). The
+  // dependency is on `period` + `customRange`, which are stable props.
   const loadHomeStats = React.useCallback(async () => {
-    const cacheKey = "media-stats:limit=100000&strict=1";
+    const range = getPeriodDateRange(period, customRange);
+    const cacheKey = `media-stats:home:${range.from || "_"}:${range.to || "_"}`;
     const cached = readSwrCache(cacheKey);
-
-    // If we have cached rows, render immediately. The UI feels instant.
     if (cached && Array.isArray(cached)) {
       setHomeRows(cached);
       setHomeState({ loading: false, error: null });
     } else {
       setHomeState({ loading: true, error: null });
     }
-
-    // Always revalidate in the background.
     try {
-      const response = await apiFetch("/api/media-stats?limit=100000&strict=1");
+      const qs = new URLSearchParams({ limit: "100000", strict: "1" });
+      if (range.from) qs.set("from", range.from);
+      if (range.to) qs.set("to", range.to);
+      const response = await apiFetch(`/api/media-stats?${qs.toString()}`);
       if (!response.ok) throw new Error("Failed to load media buyer stats.");
       const data = await response.json();
       const rows = Array.isArray(data) ? data : [];
@@ -1140,13 +1143,11 @@ function HomeDashboard({
       setHomeRows(rows);
       setHomeState({ loading: false, error: null });
     } catch (error) {
-      // Only surface an error if we have nothing cached to show.
       if (!cached) {
         setHomeState({ loading: false, error: error.message || "Failed to load stats." });
       }
-      // Otherwise: keep showing cached data silently.
     }
-  }, []);
+  }, [period, customRange.from, customRange.to]);
 
   React.useEffect(() => {
     loadHomeStats();
