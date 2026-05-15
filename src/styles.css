@@ -9507,6 +9507,13 @@ select option,
 }
 
 /* ── Offers section ───────────────────────────────────────────────────── */
+/* The tabs header is a thin strip — override the global .panel min-height
+   so it doesn't push the actual content (Add Brand / Brand Directory)
+   below the fold. */
+.offers-tabs-panel .panel {
+  min-height: 0;
+}
+
 .offers-tabs {
   display: flex;
   gap: 4px;
