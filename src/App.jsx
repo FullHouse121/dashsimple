@@ -3668,8 +3668,9 @@ function OffersDashboard({ authUser }) {
         body: JSON.stringify(brandForm),
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to save brand.");
+        let detail = "";
+        try { detail = (await response.json())?.error || ""; } catch { /* ignore */ }
+        throw new Error(`Failed to save brand (HTTP ${response.status}${detail ? ` — ${detail}` : ""}).`);
       }
       setBrandForm({ name: "", contact: "", status: "Active", notes: "" });
       await fetchBrands();
@@ -3797,7 +3798,7 @@ function OffersDashboard({ authUser }) {
 
   return (
     <>
-      <section className="panels offers-tabs-panel">
+      <section className="panels panels-single offers-tabs-panel">
         <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
           <div className="panel-head">
             <div>
