@@ -5309,7 +5309,14 @@ function FinancesDashboard({
           </div>
           <form className="form-grid" onSubmit={onEntrySubmit}>
             <div className="field">
-              <label>{t("Project")}</label>
+              <label>
+                {t("Project")}
+                {brandsLoaded && brands.length <= 1 ? (
+                  <span className="field-pace-hint">
+                    {t("No brands yet — add one in Offers first.")}
+                  </span>
+                ) : null}
+              </label>
               <Select
                 value={entry.projectId || ""}
                 onChange={(v) => onEntryValueChange("projectId", v)}
@@ -5394,7 +5401,12 @@ function FinancesDashboard({
               <button className="ghost" type="button" onClick={onEntryReset}>
                 {t("Clear")}
               </button>
-              <button className="action-pill" type="submit">
+              <button
+                className="action-pill"
+                type="submit"
+                disabled={!entry.projectId}
+                title={!entry.projectId ? t("Pick a project to enable save") : undefined}
+              >
                 {t("Save Entry")}
               </button>
             </div>
@@ -5516,10 +5528,16 @@ function FinancesDashboard({
                       <td>
                         {canManageExpenses ? (
                           <select
-                            className={`inline-select project-select${row.project_name === "Unassigned" ? " is-unassigned" : ""}`}
+                            className={`inline-select project-select${(row.project_name === "Unassigned" || !row.project_id) ? " is-unassigned" : ""}`}
                             value={row.project_id || ""}
-                            onChange={(event) => onEntryProjectChange?.(row.id, event.target.value)}
+                            onChange={(event) => {
+                              const v = event.target.value;
+                              if (v) onEntryProjectChange?.(row.id, v);
+                            }}
                           >
+                            <option value="" disabled>
+                              {brands.length === 0 ? t("No brands yet") : t("— Pick a project —")}
+                            </option>
                             {brands.map((brand) => (
                               <option key={brand.id} value={brand.id}>
                                 {brand.name}
@@ -16942,7 +16960,12 @@ export default function App() {
   const handleEntrySubmit = async (event) => {
     event.preventDefault();
     if (!entry.projectId) {
-      setEntryState((prev) => ({ ...prev, error: "Project is required." }));
+      setEntryState((prev) => ({
+        ...prev,
+        error: brandsLoaded && brands.length <= 1
+          ? "Create a brand in the Offers section before saving expenses."
+          : "Pick a project for this expense.",
+      }));
       return;
     }
     try {
@@ -16952,8 +16975,9 @@ export default function App() {
         body: JSON.stringify(entry),
       });
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to save entry.");
+        let detail = "";
+        try { detail = (await response.json())?.error || ""; } catch { /* ignore */ }
+        throw new Error(`Failed to save entry (HTTP ${response.status}${detail ? ` — ${detail}` : ""}).`);
       }
       await fetchEntries();
       resetEntry();
