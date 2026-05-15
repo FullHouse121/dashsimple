@@ -3609,8 +3609,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
 
 function OffersDashboard({ authUser }) {
   const { t } = useLanguage();
-  const role = String(authUser?.role || "").toLowerCase();
-  const isLeadership = role === "admin" || role === "leadership" || role === "owner";
+  const isLeadership = isLeadershipRole(authUser?.role);
   const [tab, setTab] = React.useState("brands"); // "brands" | "offers" | "banners"
   const [brands, setBrands] = React.useState([]);
   const [state, setState] = React.useState({ loading: true, error: "" });
