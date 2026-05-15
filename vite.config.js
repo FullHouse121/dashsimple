@@ -43,8 +43,17 @@ export default defineConfig({
           if (id.includes("react-simple-maps") || id.includes("d3-geo") || id.includes("topojson")) return "maps";
           if (id.includes("framer-motion")) return "motion";
           if (id.includes("lucide-react")) return "icons";
-          if (id.includes("react-dom")) return "react-dom";
-          if (id.includes("react")) return "react";
+          // Keep react + react-dom + scheduler + jsx-runtime together — splitting
+          // them causes "__SECRET_INTERNALS..." errors when chunks load out of order.
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/") ||
+            id.includes("react/jsx-runtime") ||
+            id.includes("react/jsx-dev-runtime")
+          ) {
+            return "react";
+          }
           return "vendor";
         },
       },
