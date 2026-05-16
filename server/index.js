@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import crypto from "crypto";
 import { Pool } from "pg";
 
@@ -758,15 +759,22 @@ const selectMediaStats = async (limit) =>
     [limit]
   );
 
-const selectMediaStatsRaw = async (limit) =>
-  getRows(
+const selectMediaStatsRaw = async (limit, { from = null, to = null } = {}) => {
+  const params = [];
+  let where = "";
+  if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
+  if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  params.push(limit);
+  return getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
             spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
      FROM media_stats
+     ${where}
      ORDER BY date DESC, id DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${params.length}`,
+    params
   );
+};
 
 // Date-range variants — much cheaper than fetching 100k rows and filtering client-side.
 // Falls back to non-range query when both bounds are null.
@@ -2393,12 +2401,19 @@ const selectPostbackLogs = async (limit) =>
     [limit]
   );
 
-const selectInstallTotals = async () =>
-  getRows(
+const selectInstallTotals = async ({ from = null, to = null } = {}) => {
+  const params = [];
+  let where = "";
+  if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
+  if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  return getRows(
     `SELECT date, buyer, country, COUNT(*) as installs
      FROM install_events
-     GROUP BY date, buyer, country`
+     ${where}
+     GROUP BY date, buyer, country`,
+    params
   );
+};
 
 const selectInstallTotalsByExternalId = async () =>
   getRows(
@@ -2409,15 +2424,22 @@ const selectInstallTotalsByExternalId = async () =>
      GROUP BY date, external_id, buyer, country, domain`
   );
 
-const selectConversionTotals = async () =>
-  getRows(
+const selectConversionTotals = async ({ from = null, to = null } = {}) => {
+  const params = [];
+  let where = "";
+  if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
+  if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  return getRows(
     `SELECT date, buyer, country,
       SUM(CASE WHEN event_type = 'ftd' THEN 1 ELSE 0 END) AS ftds,
       SUM(CASE WHEN event_type = 'redeposit' THEN 1 ELSE 0 END) AS redeposits,
       SUM(CASE WHEN event_type = 'registration' THEN 1 ELSE 0 END) AS registers
      FROM conversion_events
-     GROUP BY date, buyer, country`
+     ${where}
+     GROUP BY date, buyer, country`,
+    params
   );
+};
 
 const selectInstallTotalsByDevice = async () =>
   getRows(
@@ -4039,6 +4061,9 @@ const seedUsers = async () => {
 };
 
 const app = express();
+// gzip JSON responses — the big media-stats payloads shrink ~10x, which is
+// the difference between a 15s page load and a sub-5s one over WAN.
+app.use(compression({ threshold: 1024 }));
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -5054,7 +5079,8 @@ app.get("/api/media-stats", async (req, res) => {
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows;
   if (strictMode) {
-    rows = await selectMediaStatsRaw(limit);
+    // Honor date range in strict mode too — Home dashboard always passes both.
+    rows = await selectMediaStatsRaw(limit, { from, to });
   } else if (from || to) {
     rows = await selectMediaStatsRange({ limit, from, to });
   } else {
@@ -5069,8 +5095,12 @@ app.get("/api/media-stats", async (req, res) => {
     return res.json(rows.slice(0, limit));
   }
 
-  let installTotals = await selectInstallTotals();
-  let conversionTotals = await selectConversionTotals();
+  // Run both supplementary aggregations in parallel and filter by the same
+  // date window so we don't scan every install/conversion event ever.
+  let [installTotals, conversionTotals] = await Promise.all([
+    selectInstallTotals({ from, to }),
+    selectConversionTotals({ from, to }),
+  ]);
   if (viewerBuyer) {
     installTotals = installTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
     conversionTotals = conversionTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
