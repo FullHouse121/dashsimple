@@ -4232,67 +4232,124 @@ function OffersDashboard({ authUser }) {
                 return <div className="empty-state">{t("No brands match these filters.")}</div>;
               }
               return (
-                <div className="brand-list">
-                  {filtered.map((brand) => {
-                    const roi = roiByBrand[brand.id];
-                    const accent = brand.accent_color || "#36d07c";
-                    const roiTone = roi?.roi === null || roi?.roi === undefined
-                      ? "neutral"
-                      : roi.roi >= 0 ? "positive" : "negative";
-                    return (
-                      <div
-                        key={brand.id}
-                        className={`brand-card${brand.name === "Unassigned" ? " is-unassigned" : ""}`}
-                        style={{ "--brand-accent": accent }}
-                      >
-                        <div className="brand-card-accent" />
-                        <div className="brand-card-head">
-                          <div className="brand-card-identity">
-                            {brand.logo_url ? (
-                              <div className="brand-card-logo">
-                                <img src={brand.logo_url} alt={brand.name} loading="lazy" />
+                <div className="table-wrap">
+                  <table className="offer-table brand-table">
+                    <thead>
+                      <tr>
+                        <th className="offer-col-offer">{t("Brand")}</th>
+                        <th className="offer-col-categories">{t("Contact")}</th>
+                        <th className="offer-col-metrics">{t("ROI")} <span className="offer-col-metrics-caret">▾</span></th>
+                        <th className="brand-col-attached">{t("Attached")}</th>
+                        <th className="offer-col-targeting">{t("Notes")}</th>
+                        <th className="offer-col-actions">{t("Actions")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((brand) => {
+                        const roi = roiByBrand[brand.id];
+                        const accent = brand.accent_color || "#36d07c";
+                        const tone =
+                          roi?.roi === null || roi?.roi === undefined
+                            ? null
+                            : roi.roi >= 0
+                              ? "good"
+                              : "bad";
+                        const metricLines = [
+                          {
+                            label: "FTDs",
+                            value: roi ? Number(roi.ftds || 0).toLocaleString() : "—",
+                          },
+                          {
+                            label: "ROI",
+                            value:
+                              roi && roi.roi !== null && roi.roi !== undefined
+                                ? `${roi.roi >= 0 ? "+" : ""}${roi.roi.toFixed(0)}%`
+                                : "—",
+                            tone,
+                          },
+                          {
+                            label: "Profit",
+                            value: roi ? `$${Number(roi.profit || 0).toFixed(0)}` : "—",
+                          },
+                        ];
+                        const isUnassigned = brand.name === "Unassigned";
+                        return (
+                          <tr key={brand.id} className={`offer-row-line${isUnassigned ? " is-unassigned-row" : ""}`}>
+                            <td className="offer-col-offer">
+                              <div className="offer-identity">
+                                <div className="offer-logo offer-logo-lg" style={{ "--brand-accent": accent }}>
+                                  {brand.logo_url ? (
+                                    <img src={brand.logo_url} alt={brand.name} loading="lazy" />
+                                  ) : (
+                                    <span className="offer-logo-fallback">{brand.name.slice(0, 1).toUpperCase()}</span>
+                                  )}
+                                  <span className="offer-logo-lock" aria-hidden="true">
+                                    <Lock size={9} />
+                                  </span>
+                                </div>
+                                <div className="offer-identity-text">
+                                  <div className="offer-identity-name">
+                                    {isUnassigned ? <span className="offer-new-pill brand-pill-warning">{t("Legacy")}</span> : null}
+                                    <span className="offer-identity-link">{brand.name}</span>
+                                  </div>
+                                  <div className="offer-identity-sub">
+                                    <span className={`offer-tag offer-tag-status-${(brand.status || "Active").toLowerCase()}`}>
+                                      {t(brand.status || "Active")}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
-                            ) : (
-                              <div className="brand-card-logo brand-card-logo-fallback" aria-hidden="true">
-                                {brand.name.slice(0, 1).toUpperCase()}
+                            </td>
+                            <td className="offer-col-categories">
+                              {brand.contact ? (
+                                <span className="brand-contact">{brand.contact}</span>
+                              ) : (
+                                <span className="offer-muted">{t("No contact")}</span>
+                              )}
+                            </td>
+                            <td className="offer-col-metrics">
+                              <div className="offer-metric-stack">
+                                {metricLines.map((m) => (
+                                  <div key={m.label} className="offer-metric-line">
+                                    <span className="offer-metric-label">{m.label}</span>
+                                    <span className={`offer-metric-value${m.tone ? ` is-${m.tone}` : ""}`}>{m.value}</span>
+                                  </div>
+                                ))}
                               </div>
-                            )}
-                            <div>
-                              <div className="brand-card-title">{brand.name}</div>
-                              <div className="brand-card-sub">
-                                {brand.contact ? brand.contact + " · " : ""}{t(brand.status || "Active")}
+                            </td>
+                            <td className="brand-col-attached">
+                              <div className="brand-attached">
+                                <span className="brand-attached-pill">
+                                  <Tag size={11} /> {(brand.offers?.length || 0)} {t("offers")}
+                                </span>
+                                <span className="brand-attached-pill">
+                                  <ImageIcon size={11} /> {(brand.banners?.length || 0)} {t("banners")}
+                                </span>
                               </div>
-                            </div>
-                          </div>
-                          {brand.name !== "Unassigned" ? (
-                            <button className="icon-btn" type="button" onClick={() => handleBrandDelete(brand.id)}>
-                              <Trash2 size={16} />
-                            </button>
-                          ) : null}
-                        </div>
-                        {roi ? (
-                          <div className="brand-card-roi">
-                            <div className={`brand-card-roi-pct ${roiTone}`}>
-                              {roi.roi === null || roi.roi === undefined
-                                ? "—"
-                                : `${roi.roi >= 0 ? "+" : ""}${roi.roi.toFixed(0)}%`}
-                            </div>
-                            <div className="brand-card-roi-stats">
-                              <span><strong>{formatCurrency(roi.revenue || 0)}</strong> {t("rev")}</span>
-                              <span><strong>{formatCurrency(roi.spend || 0)}</strong> {t("spend")}</span>
-                              <span><strong>{roi.ftds || 0}</strong> {t("FTDs")}</span>
-                            </div>
-                          </div>
-                        ) : null}
-                        <div className="brand-card-meta-row">
-                          <span>{(brand.offers?.length || 0)} {t("offers")}</span>
-                          <span>·</span>
-                          <span>{(brand.banners?.length || 0)} {t("banners")}</span>
-                        </div>
-                        {brand.notes ? <div className="brand-card-notes">{brand.notes}</div> : null}
-                      </div>
-                    );
-                  })}
+                            </td>
+                            <td className="offer-col-targeting">
+                              {brand.notes ? (
+                                <span className="brand-notes" title={brand.notes}>{brand.notes}</span>
+                              ) : (
+                                <span className="offer-muted">—</span>
+                              )}
+                            </td>
+                            <td className="offer-col-actions">
+                              {!isUnassigned ? (
+                                <div className="offer-row-actions">
+                                  <button className="icon-btn" type="button" onClick={() => handleBrandDelete(brand.id)}>
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="offer-muted">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               );
             })()}
