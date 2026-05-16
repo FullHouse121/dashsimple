@@ -4966,6 +4966,8 @@ app.get("/api/finance/by-project", async (req, res) => {
             COALESCE(campaign_name, '') AS campaign_name,
             date,
             COALESCE(SUM(ftds), 0) AS ftds,
+            COALESCE(SUM(registers), 0) AS registers,
+            COALESCE(SUM(redeposits), 0) AS redeposits,
             COALESCE(SUM(redeposit_revenue), 0) AS redeposit_revenue
        FROM media_stats ${ftdWhere}
       GROUP BY country, campaign_name, date`,
@@ -4994,15 +4996,20 @@ app.get("/api/finance/by-project", async (req, res) => {
   const brandAgg = new Map();
   const ensure = (brandId) => {
     if (!brandAgg.has(brandId)) {
-      brandAgg.set(brandId, { revenue: 0, cpaRevenue: 0, rsRevenue: 0, ftds: 0, redepositRevenue: 0 });
+      brandAgg.set(brandId, {
+        revenue: 0, cpaRevenue: 0, rsRevenue: 0,
+        ftds: 0, registers: 0, redeposits: 0, redepositRevenue: 0,
+      });
     }
     return brandAgg.get(brandId);
   };
 
   for (const row of ftdRows) {
     const ftds = Number(row.ftds) || 0;
+    const registers = Number(row.registers) || 0;
+    const redeposits = Number(row.redeposits) || 0;
     const rsRev = Number(row.redeposit_revenue) || 0;
-    if (!ftds && !rsRev) continue;
+    if (!ftds && !rsRev && !registers && !redeposits) continue;
     const campaignName = String(row.campaign_name || "").trim();
     const linkedBrandId = campaignName ? campaignToBrand.get(campaignName) : null;
     if (linkedBrandId) {
@@ -5017,6 +5024,8 @@ app.get("/api/finance/by-project", async (req, res) => {
       bucket.cpaRevenue += cpa;
       bucket.rsRevenue += rs;
       bucket.ftds += ftds;
+      bucket.registers += registers;
+      bucket.redeposits += redeposits;
       bucket.redepositRevenue += rsRev;
     } else {
       let attributed = false;
@@ -5029,6 +5038,8 @@ app.get("/api/finance/by-project", async (req, res) => {
           bucket.cpaRevenue += cpa;
           bucket.rsRevenue += rs;
           bucket.ftds += ftds;
+          bucket.registers += registers;
+          bucket.redeposits += redeposits;
           bucket.redepositRevenue += rsRev;
           attributed = true;
           break;
@@ -5039,6 +5050,8 @@ app.get("/api/finance/by-project", async (req, res) => {
         if (unassigned) {
           const bucket = ensure(unassigned.id);
           bucket.ftds += ftds;
+          bucket.registers += registers;
+          bucket.redeposits += redeposits;
         }
       }
     }
@@ -5046,15 +5059,20 @@ app.get("/api/finance/by-project", async (req, res) => {
 
   const summary = brands.map((brand) => {
     const agg = brandAgg.get(brand.id) || {
-      revenue: 0, cpaRevenue: 0, rsRevenue: 0, ftds: 0, redepositRevenue: 0,
+      revenue: 0, cpaRevenue: 0, rsRevenue: 0,
+      ftds: 0, registers: 0, redeposits: 0, redepositRevenue: 0,
     };
     const spend = expensesByBrand.get(brand.id) || 0;
     const profit = agg.revenue - spend;
     const roi = spend > 0 ? (profit / spend) * 100 : null;
+    const r2d = agg.registers > 0 ? (agg.ftds / agg.registers) * 100 : null;
     return {
       brand_id: brand.id,
       brand: brand.name,
       ftds: agg.ftds,
+      registers: agg.registers,
+      redeposits: agg.redeposits,
+      r2d,
       revenue: agg.revenue,
       cpa_revenue: agg.cpaRevenue,
       rs_revenue: agg.rsRevenue,

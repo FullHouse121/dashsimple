@@ -4904,26 +4904,33 @@ function OfferCatalog({
         <span className="offer-results-count">{totalRows} {t("results")}</span>
       </div>
 
-      {totalRows === 0 ? (
-        <div className="empty-state">{rows.length === 0 ? noDataLabel : emptyLabel}</div>
-      ) : (
-        <div className="table-wrap">
-          <table className="offer-table">
-            <thead>
+      <div className="table-wrap">
+        <table className="offer-table">
+          <thead>
+            <tr>
+              <th className="offer-fav-col"></th>
+              <th className="sortable offer-col-offer" onClick={() => toggleOfferSort("brand_name")}>
+                {t("Offer")} {sortArrow("brand_name")}
+              </th>
+              <th className="offer-col-categories">{t("Categories")}</th>
+              <th className="sortable offer-col-payout" onClick={() => toggleOfferSort("payout")}>
+                {t("Payout")} {sortArrow("payout")}
+              </th>
+              <th className="offer-col-metrics">{t("Metrics")} <span className="offer-col-metrics-caret">▾</span></th>
+              <th className="offer-col-targeting">{t("Targeting")}</th>
+              <th className="offer-col-conversions">{t("Conversions")} <span className="offer-col-metrics-caret">▾</span></th>
+              <th className="offer-col-actions">{t("Actions")}</th>
+            </tr>
+          </thead>
+          {totalRows === 0 ? (
+            <tbody>
               <tr>
-                <th className="offer-fav-col"></th>
-                <th className="sortable offer-col-offer" onClick={() => toggleOfferSort("brand_name")}>
-                  {t("Offer")} {sortArrow("brand_name")}
-                </th>
-                <th className="offer-col-categories">{t("Categories")}</th>
-                <th className="sortable offer-col-payout" onClick={() => toggleOfferSort("payout")}>
-                  {t("Payout")} {sortArrow("payout")}
-                </th>
-                <th className="offer-col-metrics">{t("Metrics")} <span className="offer-col-metrics-caret">▾</span></th>
-                <th className="offer-col-targeting">{t("Targeting")}</th>
-                <th className="offer-col-actions">{t("Actions")}</th>
+                <td colSpan={8} className="offer-empty-cell">
+                  {rows.length === 0 ? noDataLabel : emptyLabel}
+                </td>
               </tr>
-            </thead>
+            </tbody>
+          ) : (
             <tbody>
               {pageRows.map((offer) => {
                 const accent = offer.brand_accent || "#36d07c";
@@ -4942,14 +4949,8 @@ function OfferCatalog({
                     ? `$${Number(offer.baseline).toFixed(2)}`
                     : null;
 
-                // 3-line Metrics column (FTDs / ROI / Profit) — analog of the
-                // AR/CR/EPC column in the reference. Pulled from brand-level
-                // ROI (same value for every offer of a given brand).
+                // Metrics column — financial outcome (ROI / Profit / Spend)
                 const metricLines = [
-                  {
-                    label: "FTDs",
-                    value: roi ? Number(roi.ftds || 0).toLocaleString() : "—",
-                  },
                   {
                     label: "ROI",
                     value:
@@ -4966,6 +4967,29 @@ function OfferCatalog({
                   {
                     label: "Profit",
                     value: roi ? `$${Number(roi.profit || 0).toFixed(0)}` : "—",
+                  },
+                  {
+                    label: "Spend",
+                    value: roi ? `$${Number(roi.spend || 0).toFixed(0)}` : "—",
+                  },
+                ];
+
+                // Conversions column — funnel performance (Reg / FTD / R2D%)
+                const conversionLines = [
+                  {
+                    label: "Reg",
+                    value: roi ? Number(roi.registers || 0).toLocaleString() : "—",
+                  },
+                  {
+                    label: "FTD",
+                    value: roi ? Number(roi.ftds || 0).toLocaleString() : "—",
+                  },
+                  {
+                    label: "R2D",
+                    value:
+                      roi && roi.r2d !== null && roi.r2d !== undefined
+                        ? `${roi.r2d.toFixed(1)}%`
+                        : "—",
                   },
                 ];
 
@@ -5063,6 +5087,16 @@ function OfferCatalog({
                         )}
                       </div>
                     </td>
+                    <td className="offer-col-conversions">
+                      <div className="offer-metric-stack">
+                        {conversionLines.map((m) => (
+                          <div key={m.label} className="offer-metric-line">
+                            <span className="offer-metric-label">{m.label}</span>
+                            <span className="offer-metric-value">{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
                     <td className="offer-col-actions">
                       <div className="offer-row-actions">
                         <button
@@ -5087,9 +5121,9 @@ function OfferCatalog({
                 );
               })}
             </tbody>
-          </table>
-        </div>
-      )}
+          )}
+        </table>
+      </div>
     </>
   );
 }
