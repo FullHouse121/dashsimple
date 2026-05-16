@@ -4269,7 +4269,7 @@ function OffersDashboard({ authUser }) {
                           },
                           {
                             label: "Profit",
-                            value: roi ? `$${Number(roi.profit || 0).toFixed(0)}` : "—",
+                            value: roi ? formatCurrency(roi.profit || 0) : "—",
                           },
                         ];
                         const isUnassigned = brand.name === "Unassigned";
@@ -4293,9 +4293,8 @@ function OffersDashboard({ authUser }) {
                                     <span className="offer-identity-link">{brand.name}</span>
                                   </div>
                                   <div className="offer-identity-sub">
-                                    <span className={`offer-tag offer-tag-status-${(brand.status || "Active").toLowerCase()}`}>
-                                      {t(brand.status || "Active")}
-                                    </span>
+                                    <span className={`brand-status-dot brand-status-${(brand.status || "Active").toLowerCase()}`} aria-hidden="true" />
+                                    <span>{t(brand.status || "Active")}</span>
                                   </div>
                                 </div>
                               </div>
@@ -4966,11 +4965,11 @@ function OfferCatalog({
                   },
                   {
                     label: "Profit",
-                    value: roi ? `$${Number(roi.profit || 0).toFixed(0)}` : "—",
+                    value: roi ? formatCurrency(roi.profit || 0) : "—",
                   },
                   {
                     label: "Spend",
-                    value: roi ? `$${Number(roi.spend || 0).toFixed(0)}` : "—",
+                    value: roi ? formatCurrency(roi.spend || 0) : "—",
                   },
                 ];
 
