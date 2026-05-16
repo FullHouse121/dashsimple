@@ -4464,6 +4464,7 @@ function OffersDashboard({ authUser }) {
               <OfferCatalog
                 rows={buildOfferRows("all")}
                 brands={brands}
+                roiByBrand={roiByBrand}
                 t={t}
                 emptyLabel={t("No offers match these filters.")}
                 noDataLabel={t("No offers yet. Add one in the form above.")}
@@ -4511,6 +4512,7 @@ function OffersDashboard({ authUser }) {
             <OfferCatalog
               rows={buildOfferRows("favorites")}
               brands={brands}
+              roiByBrand={roiByBrand}
               t={t}
               emptyLabel={t("No matches.")}
               noDataLabel={t("No favorites yet — star an offer in All Offers to pin it here.")}
@@ -4704,13 +4706,14 @@ function OffersDashboard({ authUser }) {
   );
 }
 
-// Dense, sortable, filterable, paginated catalog of offers — used by both the
-// "All Offers" tab and "My Offers" tab. Each row: brand logo, brand name +
-// tag pills (model/status/new), payout (CPA/RS), small metric chips,
-// geo flags, and the row actions (favorite / duplicate / delete).
+// Dense, sortable, filterable, paginated catalog of offers — modeled after
+// the lead-generals affiliate catalog (big logo · title link · categories
+// pills · payout column with dotted line · 3-row Metrics column · country
+// flags · actions). Used by both All Offers and My Offers tabs.
 function OfferCatalog({
   rows,
   brands,
+  roiByBrand = {},
   t,
   emptyLabel,
   noDataLabel,
@@ -4815,188 +4818,226 @@ function OfferCatalog({
         <span className="offer-toolbar-count">{totalRows} {t("results")}</span>
       </div>
 
+      {/* Pagination strip lives ABOVE the table (matches the reference);
+          result count sits on the right edge. */}
+      <div className="offer-pagebar">
+        <div className="offer-pagination">
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+            .reduce((acc, n) => {
+              if (acc.length && n - acc[acc.length - 1] > 1) acc.push("…");
+              acc.push(n);
+              return acc;
+            }, [])
+            .map((n, idx) =>
+              n === "…" ? (
+                <span key={`ellipsis-${idx}`} className="offer-pagination-ellipsis">…</span>
+              ) : (
+                <button
+                  key={n}
+                  type="button"
+                  className={`offer-pagination-page${n === page ? " is-active" : ""}`}
+                  onClick={() => setOfferPage(n)}
+                >
+                  {n}
+                </button>
+              )
+            )}
+        </div>
+        <span className="offer-results-count">{totalRows} {t("results")}</span>
+      </div>
+
       {totalRows === 0 ? (
         <div className="empty-state">{rows.length === 0 ? noDataLabel : emptyLabel}</div>
       ) : (
-        <>
-          <div className="table-wrap">
-            <table className="offer-table">
-              <thead>
-                <tr>
-                  <th className="offer-fav-col"></th>
-                  <th className="sortable" onClick={() => toggleOfferSort("brand_name")}>
-                    {t("Offer")} {sortArrow("brand_name")}
-                  </th>
-                  <th>{t("Tags")}</th>
-                  <th className="sortable" onClick={() => toggleOfferSort("payout")}>
-                    {t("Payout")} {sortArrow("payout")}
-                  </th>
-                  <th>{t("Validity")}</th>
-                  <th>{t("Targeting")}</th>
-                  <th>{t("Actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((offer) => {
-                  const accent = offer.brand_accent || "#36d07c";
-                  const validity =
-                    offer.valid_from || offer.valid_to
-                      ? `${offer.valid_from || "…"} → ${offer.valid_to || "…"}`
-                      : null;
-                  return (
-                    <tr key={offer.id} className="offer-row-line">
-                      <td className="offer-fav-col">
-                        <button
-                          type="button"
-                          className={`offer-fav${offer.is_favorite ? " is-on" : ""}`}
-                          title={offer.is_favorite ? t("Unpin") : t("Pin to My Offers")}
-                          onClick={() => onToggleFavorite(offer.id)}
-                        >
-                          ★
-                        </button>
-                      </td>
-                      <td>
-                        <div className="offer-identity">
-                          <div className="offer-logo" style={{ "--brand-accent": accent }}>
-                            {offer.brand_logo ? (
-                              <img src={offer.brand_logo} alt={offer.brand_name} loading="lazy" />
-                            ) : (
-                              <span className="offer-logo-fallback">{offer.brand_name.slice(0, 1).toUpperCase()}</span>
-                            )}
-                          </div>
-                          <div className="offer-identity-text">
-                            <div className="offer-identity-name">
+        <div className="table-wrap">
+          <table className="offer-table">
+            <thead>
+              <tr>
+                <th className="offer-fav-col"></th>
+                <th className="sortable offer-col-offer" onClick={() => toggleOfferSort("brand_name")}>
+                  {t("Offer")} {sortArrow("brand_name")}
+                </th>
+                <th className="offer-col-categories">{t("Categories")}</th>
+                <th className="sortable offer-col-payout" onClick={() => toggleOfferSort("payout")}>
+                  {t("Payout")} {sortArrow("payout")}
+                </th>
+                <th className="offer-col-metrics">{t("Metrics")} <span className="offer-col-metrics-caret">▾</span></th>
+                <th className="offer-col-targeting">{t("Targeting")}</th>
+                <th className="offer-col-actions">{t("Actions")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((offer) => {
+                const accent = offer.brand_accent || "#36d07c";
+                const model = offer.model || "CPA";
+                const validity =
+                  offer.valid_from || offer.valid_to
+                    ? `${offer.valid_from || "…"} → ${offer.valid_to || "…"}`
+                    : null;
+                const isRev = model === "RevShare";
+                const roi = roiByBrand[offer.brand_id] || null;
+                const payoutValue = isRev
+                  ? `${Number(offer.payout).toFixed(1)}%`
+                  : `$${Number(offer.payout).toFixed(2)}`;
+                const baselineValue =
+                  offer.baseline !== null && offer.baseline !== undefined
+                    ? `$${Number(offer.baseline).toFixed(2)}`
+                    : null;
+
+                // 3-line Metrics column (FTDs / ROI / Profit) — analog of the
+                // AR/CR/EPC column in the reference. Pulled from brand-level
+                // ROI (same value for every offer of a given brand).
+                const metricLines = [
+                  {
+                    label: "FTDs",
+                    value: roi ? Number(roi.ftds || 0).toLocaleString() : "—",
+                  },
+                  {
+                    label: "ROI",
+                    value:
+                      roi && roi.roi !== null && roi.roi !== undefined
+                        ? `${roi.roi >= 0 ? "+" : ""}${roi.roi.toFixed(0)}%`
+                        : "—",
+                    tone:
+                      roi && roi.roi !== null && roi.roi !== undefined
+                        ? roi.roi >= 0
+                          ? "good"
+                          : "bad"
+                        : null,
+                  },
+                  {
+                    label: "Profit",
+                    value: roi ? `$${Number(roi.profit || 0).toFixed(0)}` : "—",
+                  },
+                ];
+
+                return (
+                  <tr key={offer.id} className="offer-row-line">
+                    <td className="offer-fav-col">
+                      <button
+                        type="button"
+                        className={`offer-fav${offer.is_favorite ? " is-on" : ""}`}
+                        title={offer.is_favorite ? t("Unpin") : t("Pin to My Offers")}
+                        onClick={() => onToggleFavorite(offer.id)}
+                      >
+                        ★
+                      </button>
+                    </td>
+                    <td className="offer-col-offer">
+                      <div className="offer-identity">
+                        <div className="offer-logo offer-logo-lg" style={{ "--brand-accent": accent }}>
+                          {offer.brand_logo ? (
+                            <img src={offer.brand_logo} alt={offer.brand_name} loading="lazy" />
+                          ) : (
+                            <span className="offer-logo-fallback">{offer.brand_name.slice(0, 1).toUpperCase()}</span>
+                          )}
+                          <span className="offer-logo-lock" aria-hidden="true">
+                            <Lock size={9} />
+                          </span>
+                        </div>
+                        <div className="offer-identity-text">
+                          <div className="offer-identity-name">
+                            {offer.is_new ? <span className="offer-new-pill">{t("New")}</span> : null}
+                            <span className="offer-identity-link">
                               {offer.brand_name}
-                              {offer.is_new ? <span className="offer-new-pill">{t("New")}</span> : null}
-                            </div>
-                            {offer.notes ? (
-                              <div className="offer-identity-sub">{offer.notes}</div>
-                            ) : null}
+                              {Array.isArray(offer.geos) && offer.geos.length > 0
+                                ? ` | ${offer.geos.slice(0, 3).join(" | ")}`
+                                : ""}
+                            </span>
+                          </div>
+                          <div className="offer-identity-sub">
+                            {`(${offer.id})`}
+                            {offer.notes ? <span className="offer-identity-notes"> — {offer.notes}</span> : null}
                           </div>
                         </div>
-                      </td>
-                      <td>
-                        <div className="offer-tag-row">
-                          <span className={`offer-tag offer-tag-model-${(offer.model || "CPA").toLowerCase()}`}>
-                            {offer.model || "CPA"}
-                          </span>
-                          <span className={`offer-tag offer-tag-status-${(offer.status || "Active").toLowerCase()}`}>
-                            {offer.status || "Active"}
-                          </span>
-                          {offer.baseline !== null && offer.baseline !== undefined ? (
-                            <span className="offer-tag offer-tag-baseline">
-                              {t("Baseline")} ${Number(offer.baseline).toFixed(0)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="offer-payout-col">
-                        <div className="offer-payout-row">
-                          <span className="offer-payout-label">{(offer.model || "CPA") === "RevShare" ? "RS" : "CPA"}</span>
-                          <span className="offer-payout-dots" />
-                          <strong>
-                            {(offer.model || "CPA") === "RevShare"
-                              ? `${Number(offer.payout).toFixed(1)}%`
-                              : `$${Number(offer.payout).toFixed(2)}`}
-                          </strong>
-                        </div>
-                      </td>
-                      <td>
+                      </div>
+                    </td>
+                    <td className="offer-col-categories">
+                      <div className="offer-tag-row">
+                        <span className={`offer-tag offer-tag-model-${model.toLowerCase()}`}>{model}</span>
+                        <span className={`offer-tag offer-tag-status-${(offer.status || "Active").toLowerCase()}`}>
+                          {offer.status || "Active"}
+                        </span>
+                        {baselineValue ? (
+                          <span className="offer-tag offer-tag-baseline">{t("Baseline")} {baselineValue}</span>
+                        ) : null}
                         {validity ? (
                           <span className="offer-validity-pill">
-                            <CalendarIcon size={11} /> {validity}
+                            <CalendarIcon size={10} /> {validity}
                           </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="offer-col-payout">
+                      <div className="offer-payout-stack">
+                        <div className="offer-payout-row">
+                          <span className="offer-payout-label">{isRev ? "REG RS" : "DEP CPA"}</span>
+                          <span className="offer-payout-dots" />
+                          <strong>{payoutValue}</strong>
+                        </div>
+                        <div className="offer-payout-row offer-payout-row-muted">
+                          <span className="offer-payout-label">REG</span>
+                          <span className="offer-payout-dots" />
+                          <strong>$0.00</strong>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="offer-col-metrics">
+                      <div className="offer-metric-stack">
+                        {metricLines.map((m) => (
+                          <div key={m.label} className="offer-metric-line">
+                            <span className="offer-metric-label">{m.label}</span>
+                            <span className={`offer-metric-value${m.tone ? ` is-${m.tone}` : ""}`}>{m.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="offer-col-targeting">
+                      <div className="offer-flags-stack">
+                        {Array.isArray(offer.geos) && offer.geos.length > 0 ? (
+                          <>
+                            {offer.geos.slice(0, 3).map((g) => (
+                              <span key={g} className="offer-flag-line" title={g}>
+                                <span className="offer-flag-emoji">{countryFlag(g) || "🌐"}</span>
+                                <span className="offer-flag-name">{g}</span>
+                              </span>
+                            ))}
+                            {offer.geos.length > 3 ? (
+                              <span className="offer-flag-more">+{offer.geos.length - 3}</span>
+                            ) : null}
+                          </>
                         ) : (
-                          <span className="offer-muted">{t("Open-ended")}</span>
+                          <span className="offer-muted">{t("All geos")}</span>
                         )}
-                      </td>
-                      <td>
-                        <div className="offer-flags">
-                          {Array.isArray(offer.geos) && offer.geos.length > 0 ? (
-                            <>
-                              {offer.geos.slice(0, 4).map((g) => (
-                                <span key={g} className="offer-flag" title={g}>
-                                  <span className="offer-flag-emoji">{countryFlag(g) || "🌐"}</span>
-                                  <span className="offer-flag-code">{g}</span>
-                                </span>
-                              ))}
-                              {offer.geos.length > 4 ? (
-                                <span className="offer-flag-more">+{offer.geos.length - 4}</span>
-                              ) : null}
-                            </>
-                          ) : (
-                            <span className="offer-muted">{t("All geos")}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div className="offer-row-actions">
-                          <button
-                            className="icon-btn"
-                            type="button"
-                            title={t("Duplicate offer")}
-                            onClick={() => onDuplicate(offer)}
-                          >
-                            <Copy size={14} />
-                          </button>
-                          <button
-                            className="icon-btn"
-                            type="button"
-                            title={t("Delete offer")}
-                            onClick={() => onDelete(offer.id)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {totalPages > 1 ? (
-            <div className="offer-pagination">
-              <button
-                type="button"
-                className="offer-pagination-arrow"
-                disabled={page <= 1}
-                onClick={() => setOfferPage((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft size={14} />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
-                .reduce((acc, n) => {
-                  if (acc.length && n - acc[acc.length - 1] > 1) acc.push("…");
-                  acc.push(n);
-                  return acc;
-                }, [])
-                .map((n, idx) =>
-                  n === "…" ? (
-                    <span key={`ellipsis-${idx}`} className="offer-pagination-ellipsis">…</span>
-                  ) : (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`offer-pagination-page${n === page ? " is-active" : ""}`}
-                      onClick={() => setOfferPage(n)}
-                    >
-                      {n}
-                    </button>
-                  )
-                )}
-              <button
-                type="button"
-                className="offer-pagination-arrow"
-                disabled={page >= totalPages}
-                onClick={() => setOfferPage((p) => Math.min(totalPages, p + 1))}
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
-          ) : null}
-        </>
+                      </div>
+                    </td>
+                    <td className="offer-col-actions">
+                      <div className="offer-row-actions">
+                        <button
+                          className="icon-btn"
+                          type="button"
+                          title={t("Duplicate offer")}
+                          onClick={() => onDuplicate(offer)}
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
+                          className="icon-btn"
+                          type="button"
+                          title={t("Delete offer")}
+                          onClick={() => onDelete(offer.id)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );

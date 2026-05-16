@@ -10017,6 +10017,12 @@ select option,
   --brand-accent: #36d07c;
 }
 
+.offer-logo-lg {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+
 .offer-logo::before {
   content: "";
   position: absolute;
@@ -10033,26 +10039,50 @@ select option,
   color: var(--brand-accent);
 }
 
+.offer-logo-lg .offer-logo-fallback { font-size: 22px; }
+
+/* Small lock badge in the bottom-right corner of the logo, matching the
+   reference. Visually signals "you have access" — purely decorative for us. */
+.offer-logo-lock {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0b0d10;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .offer-identity-text { min-width: 0; }
 
 .offer-identity-name {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.25;
+  flex-wrap: wrap;
+}
+
+.offer-identity-link {
+  color: #5ec7ff;
   font-weight: 600;
-  color: var(--text);
-  font-size: 13px;
-  line-height: 1.2;
+  cursor: default;
 }
 
 .offer-identity-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  margin-top: 3px;
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.offer-identity-notes {
+  color: var(--muted);
 }
 
 .offer-new-pill {
@@ -10168,12 +10198,102 @@ select option,
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* Pagebar — pagination + results count, sits ABOVE the table */
+.offer-pagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.offer-results-count {
+  font-size: 12px;
+  color: var(--muted-strong, #a9adb7);
+  font-weight: 500;
+}
+
 .offer-pagination {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 4px;
-  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+/* Two-line payout column — matches the DEP / REG layout in the reference */
+.offer-payout-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.offer-payout-row-muted strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* 3-line metrics column — analog of AR / CR / EPC in the reference */
+.offer-metric-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.offer-metric-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.offer-metric-label {
+  color: var(--muted-strong, #a9adb7);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 36px;
+}
+
+.offer-metric-value {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.offer-metric-value.is-good { color: var(--green); }
+.offer-metric-value.is-bad { color: #ff8a7a; }
+
+/* Stacked country flags — matches the reference vertical list */
+.offer-flags-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.offer-flag-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.offer-flag-name { font-weight: 500; }
+
+/* Column-specific widths to keep things lining up nicely */
+.offer-col-offer { width: 30%; min-width: 240px; }
+.offer-col-categories { width: 16%; min-width: 140px; }
+.offer-col-payout { width: 18%; min-width: 170px; }
+.offer-col-metrics { width: 12%; min-width: 110px; }
+.offer-col-targeting { width: 12%; min-width: 110px; }
+.offer-col-actions { width: 90px; }
+
+.offer-col-metrics-caret {
+  color: var(--muted);
+  font-size: 9px;
+  margin-left: 2px;
 }
 
 .offer-pagination-page,
