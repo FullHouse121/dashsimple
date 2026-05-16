@@ -3663,6 +3663,98 @@ function OffersDashboard({ authUser }) {
     imageUrl: "",
   });
 
+  // ── Offer table state (catalog view, used by both All Offers + My Offers)
+  const favKey = `dash-fav-offers:${authUser?.username || authUser?.id || "anon"}`;
+  const [favoriteOffers, setFavoriteOffers] = React.useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(favKey) || "[]");
+      return new Set(Array.isArray(raw) ? raw.map(Number).filter(Number.isFinite) : []);
+    } catch { return new Set(); }
+  });
+  const toggleFavorite = (offerId) => {
+    setFavoriteOffers((prev) => {
+      const next = new Set(prev);
+      if (next.has(offerId)) next.delete(offerId);
+      else next.add(offerId);
+      try { localStorage.setItem(favKey, JSON.stringify(Array.from(next))); } catch { /* quota */ }
+      return next;
+    });
+  };
+
+  // Toolbar filters
+  const [offerSearch, setOfferSearch] = React.useState("");
+  const [offerBrandFilter, setOfferBrandFilter] = React.useState("All");
+  const [offerModelFilter, setOfferModelFilter] = React.useState("All");
+  const [offerStatusFilter, setOfferStatusFilter] = React.useState("Active");
+  const [offerCountryFilter, setOfferCountryFilter] = React.useState("All");
+  const [offerOnlyBaseline, setOfferOnlyBaseline] = React.useState(false);
+  const [offerOnlyNew, setOfferOnlyNew] = React.useState(false);
+  const [offerSort, setOfferSort] = React.useState({ key: "created_at", dir: "desc" });
+  const [offerPage, setOfferPage] = React.useState(1);
+  const OFFERS_PER_PAGE = 25;
+
+  // Country code → emoji flag (no SVG bundles needed)
+  const countryFlag = (code) => {
+    const c = String(code || "").toUpperCase();
+    if (c.length !== 2) return null;
+    return c.replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+  };
+
+  // Flatten all offers with their brand context, then apply filters/sort/pagination.
+  // `scope` is "all" or "favorites".
+  const buildOfferRows = (scope) => {
+    const cutoff = Date.now() - 7 * 86400000; // "New" = created in last 7 days
+    let rows = [];
+    for (const brand of brands) {
+      for (const offer of brand.offers || []) {
+        rows.push({
+          ...offer,
+          brand_name: brand.name,
+          brand_logo: brand.logo_url || null,
+          brand_accent: brand.accent_color || "#36d07c",
+          is_new: offer.created_at ? new Date(offer.created_at).getTime() >= cutoff : false,
+          is_favorite: favoriteOffers.has(offer.id),
+        });
+      }
+    }
+    if (scope === "favorites") {
+      rows = rows.filter((r) => r.is_favorite);
+    }
+    // Filters
+    if (offerSearch.trim()) {
+      const q = offerSearch.trim().toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.brand_name.toLowerCase().includes(q) ||
+          (Array.isArray(r.geos) ? r.geos.join(" ").toLowerCase() : "").includes(q) ||
+          (r.notes || "").toLowerCase().includes(q)
+      );
+    }
+    if (offerBrandFilter !== "All") rows = rows.filter((r) => r.brand_name === offerBrandFilter);
+    if (offerModelFilter !== "All") rows = rows.filter((r) => (r.model || "CPA") === offerModelFilter);
+    if (offerStatusFilter !== "All") rows = rows.filter((r) => (r.status || "Active") === offerStatusFilter);
+    if (offerCountryFilter !== "All") rows = rows.filter((r) => Array.isArray(r.geos) && r.geos.includes(offerCountryFilter));
+    if (offerOnlyBaseline) rows = rows.filter((r) => r.baseline !== null && r.baseline !== undefined);
+    if (offerOnlyNew) rows = rows.filter((r) => r.is_new);
+    // Sort
+    rows.sort((a, b) => {
+      const dir = offerSort.dir === "asc" ? 1 : -1;
+      const key = offerSort.key;
+      const av = a[key];
+      const bv = b[key];
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av || "").localeCompare(String(bv || "")) * dir;
+    });
+    return rows;
+  };
+
+  const toggleOfferSort = (key) => {
+    setOfferSort((prev) => ({
+      key,
+      dir: prev.key === key && prev.dir === "desc" ? "asc" : "desc",
+    }));
+  };
+
   const fetchBrands = React.useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: "" }));
     try {
@@ -3961,7 +4053,8 @@ function OffersDashboard({ authUser }) {
 
   const tabs = [
     { key: "brands", label: t("Brands"), icon: Briefcase },
-    { key: "offers", label: t("Offers"), icon: Tag },
+    { key: "offers", label: t("All Offers"), icon: Tag },
+    { key: "my_offers", label: t("My Offers"), icon: Trophy },
     { key: "campaigns", label: t("Campaigns"), icon: Megaphone },
     { key: "banners", label: t("Banners"), icon: ImageIcon },
   ];
@@ -4367,74 +4460,86 @@ function OffersDashboard({ authUser }) {
               </form>
             </motion.div>
 
-            <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
-              <div className="panel-head">
-                <div>
-                  <h3 className="panel-title">{t("Active Offers")}</h3>
-                  <p className="panel-subtitle">{t("Grouped by brand. Click duplicate to roll an offer forward.")}</p>
-                </div>
-              </div>
-              {brands.filter((b) => (b.offers || []).length > 0).length === 0 ? (
-                <div className="empty-state">{t("No offers yet.")}</div>
-              ) : (
-                <div className="offer-list">
-                  {brands
-                    .filter((b) => (b.offers || []).length > 0)
-                    .map((brand) => (
-                      <div key={brand.id} className="offer-group">
-                        <div className="offer-group-head">{brand.name}</div>
-                        {brand.offers.map((offer) => {
-                          const fmtDate = (d) => (d ? String(d) : null);
-                          const validity =
-                            offer.valid_from || offer.valid_to
-                              ? `${fmtDate(offer.valid_from) || "…"} → ${fmtDate(offer.valid_to) || "…"}`
-                              : null;
-                          return (
-                            <div key={offer.id} className="offer-row">
-                              <div className="offer-row-main">
-                                <div className="offer-row-payout">
-                                  <strong>${Number(offer.payout).toFixed(2)}</strong>
-                                  <span className="offer-row-model">{offer.model}</span>
-                                </div>
-                                <div className="offer-row-geos">
-                                  {Array.isArray(offer.geos) && offer.geos.length > 0
-                                    ? offer.geos.join(" · ")
-                                    : t("All geos")}
-                                </div>
-                                {offer.baseline !== null && offer.baseline !== undefined ? (
-                                  <div className="offer-row-baseline">
-                                    {t("Baseline")}: ${Number(offer.baseline).toFixed(2)}
-                                  </div>
-                                ) : null}
-                                {validity ? (
-                                  <div className="offer-row-validity">
-                                    <CalendarIcon size={11} /> {validity}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <div className="offer-row-actions">
-                                <button
-                                  className="icon-btn"
-                                  type="button"
-                                  title={t("Duplicate offer")}
-                                  onClick={() => handleOfferDuplicate(offer)}
-                                >
-                                  <Copy size={14} />
-                                </button>
-                                <button className="icon-btn" type="button" onClick={() => handleOfferDelete(offer.id)}>
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
-                </div>
-              )}
+            <motion.div className="panel offer-catalog-panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+              <OfferCatalog
+                rows={buildOfferRows("all")}
+                brands={brands}
+                t={t}
+                emptyLabel={t("No offers match these filters.")}
+                noDataLabel={t("No offers yet. Add one in the form above.")}
+                offerSearch={offerSearch}
+                setOfferSearch={setOfferSearch}
+                offerBrandFilter={offerBrandFilter}
+                setOfferBrandFilter={setOfferBrandFilter}
+                offerModelFilter={offerModelFilter}
+                setOfferModelFilter={setOfferModelFilter}
+                offerStatusFilter={offerStatusFilter}
+                setOfferStatusFilter={setOfferStatusFilter}
+                offerCountryFilter={offerCountryFilter}
+                setOfferCountryFilter={setOfferCountryFilter}
+                offerOnlyBaseline={offerOnlyBaseline}
+                setOfferOnlyBaseline={setOfferOnlyBaseline}
+                offerOnlyNew={offerOnlyNew}
+                setOfferOnlyNew={setOfferOnlyNew}
+                offerSort={offerSort}
+                toggleOfferSort={toggleOfferSort}
+                offerPage={offerPage}
+                setOfferPage={setOfferPage}
+                pageSize={OFFERS_PER_PAGE}
+                onDuplicate={handleOfferDuplicate}
+                onDelete={handleOfferDelete}
+                onToggleFavorite={toggleFavorite}
+                countryFlag={countryFlag}
+              />
             </motion.div>
           </section>
         </>
+      ) : null}
+
+      {tab === "my_offers" ? (
+        <section className="panels panels-single">
+          <motion.div className="panel offer-catalog-panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("My Offers")}</h3>
+                <p className="panel-subtitle">{t("Pinned offers you actively work on. Toggle the star on any row to save it here.")}</p>
+              </div>
+              <span className="my-offers-count">
+                {favoriteOffers.size} {favoriteOffers.size === 1 ? t("pinned") : t("pinned")}
+              </span>
+            </div>
+            <OfferCatalog
+              rows={buildOfferRows("favorites")}
+              brands={brands}
+              t={t}
+              emptyLabel={t("No matches.")}
+              noDataLabel={t("No favorites yet — star an offer in All Offers to pin it here.")}
+              offerSearch={offerSearch}
+              setOfferSearch={setOfferSearch}
+              offerBrandFilter={offerBrandFilter}
+              setOfferBrandFilter={setOfferBrandFilter}
+              offerModelFilter={offerModelFilter}
+              setOfferModelFilter={setOfferModelFilter}
+              offerStatusFilter={offerStatusFilter}
+              setOfferStatusFilter={setOfferStatusFilter}
+              offerCountryFilter={offerCountryFilter}
+              setOfferCountryFilter={setOfferCountryFilter}
+              offerOnlyBaseline={offerOnlyBaseline}
+              setOfferOnlyBaseline={setOfferOnlyBaseline}
+              offerOnlyNew={offerOnlyNew}
+              setOfferOnlyNew={setOfferOnlyNew}
+              offerSort={offerSort}
+              toggleOfferSort={toggleOfferSort}
+              offerPage={offerPage}
+              setOfferPage={setOfferPage}
+              pageSize={OFFERS_PER_PAGE}
+              onDuplicate={handleOfferDuplicate}
+              onDelete={handleOfferDelete}
+              onToggleFavorite={toggleFavorite}
+              countryFlag={countryFlag}
+            />
+          </motion.div>
+        </section>
       ) : null}
 
       {tab === "campaigns" ? (
@@ -4595,6 +4700,304 @@ function OffersDashboard({ authUser }) {
           </motion.div>
         </section>
       ) : null}
+    </>
+  );
+}
+
+// Dense, sortable, filterable, paginated catalog of offers — used by both the
+// "All Offers" tab and "My Offers" tab. Each row: brand logo, brand name +
+// tag pills (model/status/new), payout (CPA/RS), small metric chips,
+// geo flags, and the row actions (favorite / duplicate / delete).
+function OfferCatalog({
+  rows,
+  brands,
+  t,
+  emptyLabel,
+  noDataLabel,
+  offerSearch, setOfferSearch,
+  offerBrandFilter, setOfferBrandFilter,
+  offerModelFilter, setOfferModelFilter,
+  offerStatusFilter, setOfferStatusFilter,
+  offerCountryFilter, setOfferCountryFilter,
+  offerOnlyBaseline, setOfferOnlyBaseline,
+  offerOnlyNew, setOfferOnlyNew,
+  offerSort, toggleOfferSort,
+  offerPage, setOfferPage,
+  pageSize,
+  onDuplicate, onDelete, onToggleFavorite,
+  countryFlag,
+}) {
+  // All countries that appear across any current offer — drives the Country filter
+  const allGeos = React.useMemo(() => {
+    const set = new Set();
+    for (const brand of brands) {
+      for (const offer of brand.offers || []) {
+        for (const g of offer.geos || []) set.add(g);
+      }
+    }
+    return Array.from(set).sort();
+  }, [brands]);
+
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const page = Math.min(offerPage, totalPages);
+  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
+  const sortArrow = (key) =>
+    offerSort.key === key ? (offerSort.dir === "asc" ? "▲" : "▼") : "↕";
+
+  return (
+    <>
+      <div className="offer-toolbar">
+        <input
+          type="text"
+          className="log-search offer-search"
+          placeholder={t("Search offer, brand, geo…")}
+          value={offerSearch}
+          onChange={(e) => { setOfferSearch(e.target.value); setOfferPage(1); }}
+        />
+        <select
+          className="offer-filter-select"
+          value={offerBrandFilter}
+          onChange={(e) => { setOfferBrandFilter(e.target.value); setOfferPage(1); }}
+        >
+          <option value="All">{t("All brands")}</option>
+          {brands.filter((b) => b.name !== "Unassigned").map((b) => (
+            <option key={b.id} value={b.name}>{b.name}</option>
+          ))}
+        </select>
+        <select
+          className="offer-filter-select"
+          value={offerModelFilter}
+          onChange={(e) => { setOfferModelFilter(e.target.value); setOfferPage(1); }}
+        >
+          <option value="All">{t("All models")}</option>
+          <option value="CPA">CPA</option>
+          <option value="RevShare">RevShare</option>
+          <option value="Hybrid">Hybrid</option>
+        </select>
+        <select
+          className="offer-filter-select"
+          value={offerStatusFilter}
+          onChange={(e) => { setOfferStatusFilter(e.target.value); setOfferPage(1); }}
+        >
+          <option value="All">{t("Any status")}</option>
+          <option value="Active">{t("Active")}</option>
+          <option value="Paused">{t("Paused")}</option>
+          <option value="Archived">{t("Archived")}</option>
+        </select>
+        <select
+          className="offer-filter-select"
+          value={offerCountryFilter}
+          onChange={(e) => { setOfferCountryFilter(e.target.value); setOfferPage(1); }}
+        >
+          <option value="All">{t("Any country")}</option>
+          {allGeos.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
+        <label className="offer-toggle">
+          <input
+            type="checkbox"
+            checked={offerOnlyNew}
+            onChange={(e) => { setOfferOnlyNew(e.target.checked); setOfferPage(1); }}
+          />
+          {t("New")}
+        </label>
+        <label className="offer-toggle">
+          <input
+            type="checkbox"
+            checked={offerOnlyBaseline}
+            onChange={(e) => { setOfferOnlyBaseline(e.target.checked); setOfferPage(1); }}
+          />
+          {t("Has baseline")}
+        </label>
+        <span className="offer-toolbar-count">{totalRows} {t("results")}</span>
+      </div>
+
+      {totalRows === 0 ? (
+        <div className="empty-state">{rows.length === 0 ? noDataLabel : emptyLabel}</div>
+      ) : (
+        <>
+          <div className="table-wrap">
+            <table className="offer-table">
+              <thead>
+                <tr>
+                  <th className="offer-fav-col"></th>
+                  <th className="sortable" onClick={() => toggleOfferSort("brand_name")}>
+                    {t("Offer")} {sortArrow("brand_name")}
+                  </th>
+                  <th>{t("Tags")}</th>
+                  <th className="sortable" onClick={() => toggleOfferSort("payout")}>
+                    {t("Payout")} {sortArrow("payout")}
+                  </th>
+                  <th>{t("Validity")}</th>
+                  <th>{t("Targeting")}</th>
+                  <th>{t("Actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((offer) => {
+                  const accent = offer.brand_accent || "#36d07c";
+                  const validity =
+                    offer.valid_from || offer.valid_to
+                      ? `${offer.valid_from || "…"} → ${offer.valid_to || "…"}`
+                      : null;
+                  return (
+                    <tr key={offer.id} className="offer-row-line">
+                      <td className="offer-fav-col">
+                        <button
+                          type="button"
+                          className={`offer-fav${offer.is_favorite ? " is-on" : ""}`}
+                          title={offer.is_favorite ? t("Unpin") : t("Pin to My Offers")}
+                          onClick={() => onToggleFavorite(offer.id)}
+                        >
+                          ★
+                        </button>
+                      </td>
+                      <td>
+                        <div className="offer-identity">
+                          <div className="offer-logo" style={{ "--brand-accent": accent }}>
+                            {offer.brand_logo ? (
+                              <img src={offer.brand_logo} alt={offer.brand_name} loading="lazy" />
+                            ) : (
+                              <span className="offer-logo-fallback">{offer.brand_name.slice(0, 1).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="offer-identity-text">
+                            <div className="offer-identity-name">
+                              {offer.brand_name}
+                              {offer.is_new ? <span className="offer-new-pill">{t("New")}</span> : null}
+                            </div>
+                            {offer.notes ? (
+                              <div className="offer-identity-sub">{offer.notes}</div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="offer-tag-row">
+                          <span className={`offer-tag offer-tag-model-${(offer.model || "CPA").toLowerCase()}`}>
+                            {offer.model || "CPA"}
+                          </span>
+                          <span className={`offer-tag offer-tag-status-${(offer.status || "Active").toLowerCase()}`}>
+                            {offer.status || "Active"}
+                          </span>
+                          {offer.baseline !== null && offer.baseline !== undefined ? (
+                            <span className="offer-tag offer-tag-baseline">
+                              {t("Baseline")} ${Number(offer.baseline).toFixed(0)}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="offer-payout-col">
+                        <div className="offer-payout-row">
+                          <span className="offer-payout-label">{(offer.model || "CPA") === "RevShare" ? "RS" : "CPA"}</span>
+                          <span className="offer-payout-dots" />
+                          <strong>
+                            {(offer.model || "CPA") === "RevShare"
+                              ? `${Number(offer.payout).toFixed(1)}%`
+                              : `$${Number(offer.payout).toFixed(2)}`}
+                          </strong>
+                        </div>
+                      </td>
+                      <td>
+                        {validity ? (
+                          <span className="offer-validity-pill">
+                            <CalendarIcon size={11} /> {validity}
+                          </span>
+                        ) : (
+                          <span className="offer-muted">{t("Open-ended")}</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="offer-flags">
+                          {Array.isArray(offer.geos) && offer.geos.length > 0 ? (
+                            <>
+                              {offer.geos.slice(0, 4).map((g) => (
+                                <span key={g} className="offer-flag" title={g}>
+                                  <span className="offer-flag-emoji">{countryFlag(g) || "🌐"}</span>
+                                  <span className="offer-flag-code">{g}</span>
+                                </span>
+                              ))}
+                              {offer.geos.length > 4 ? (
+                                <span className="offer-flag-more">+{offer.geos.length - 4}</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="offer-muted">{t("All geos")}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="offer-row-actions">
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Duplicate offer")}
+                            onClick={() => onDuplicate(offer)}
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Delete offer")}
+                            onClick={() => onDelete(offer.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {totalPages > 1 ? (
+            <div className="offer-pagination">
+              <button
+                type="button"
+                className="offer-pagination-arrow"
+                disabled={page <= 1}
+                onClick={() => setOfferPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+                .reduce((acc, n) => {
+                  if (acc.length && n - acc[acc.length - 1] > 1) acc.push("…");
+                  acc.push(n);
+                  return acc;
+                }, [])
+                .map((n, idx) =>
+                  n === "…" ? (
+                    <span key={`ellipsis-${idx}`} className="offer-pagination-ellipsis">…</span>
+                  ) : (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`offer-pagination-page${n === page ? " is-active" : ""}`}
+                      onClick={() => setOfferPage(n)}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+              <button
+                type="button"
+                className="offer-pagination-arrow"
+                disabled={page >= totalPages}
+                onClick={() => setOfferPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          ) : null}
+        </>
+      )}
     </>
   );
 }
