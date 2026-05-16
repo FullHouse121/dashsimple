@@ -3617,7 +3617,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
 function OffersDashboard({ authUser }) {
   const { t } = useLanguage();
   const isLeadership = isLeadershipRole(authUser?.role);
-  const [tab, setTab] = React.useState("brands"); // brands | offers | banners | campaigns
+  const [tab, setTab] = React.useState("overview"); // overview | brands | offers | banners | campaigns
   const [brands, setBrands] = React.useState([]);
   const [state, setState] = React.useState({ loading: true, error: "" });
 
@@ -3689,6 +3689,7 @@ function OffersDashboard({ authUser }) {
   const [offerCountryFilter, setOfferCountryFilter] = React.useState("All");
   const [offerOnlyBaseline, setOfferOnlyBaseline] = React.useState(false);
   const [offerOnlyNew, setOfferOnlyNew] = React.useState(false);
+  const [offerOnlyFavorites, setOfferOnlyFavorites] = React.useState(false);
   const [offerSort, setOfferSort] = React.useState({ key: "created_at", dir: "desc" });
   const [offerPage, setOfferPage] = React.useState(1);
   const OFFERS_PER_PAGE = 25;
@@ -3717,7 +3718,7 @@ function OffersDashboard({ authUser }) {
         });
       }
     }
-    if (scope === "favorites") {
+    if (scope === "favorites" || offerOnlyFavorites) {
       rows = rows.filter((r) => r.is_favorite);
     }
     // Filters
@@ -4052,11 +4053,11 @@ function OffersDashboard({ authUser }) {
   };
 
   const tabs = [
+    { key: "overview", label: t("Overview"), icon: BarChart3 },
     { key: "brands", label: t("Brands"), icon: Briefcase },
-    { key: "offers", label: t("All Offers"), icon: Tag },
-    { key: "my_offers", label: t("My Offers"), icon: Trophy },
+    { key: "offers", label: t("Offers"), icon: Tag },
+    { key: "banners", label: t("Creatives"), icon: ImageIcon },
     { key: "campaigns", label: t("Campaigns"), icon: Megaphone },
-    { key: "banners", label: t("Banners"), icon: ImageIcon },
   ];
 
   if (!isLeadership) {
@@ -4103,6 +4104,19 @@ function OffersDashboard({ authUser }) {
           {state.error ? <div className="empty-state error">{state.error}</div> : null}
         </motion.div>
       </section>
+
+      {tab === "overview" ? (
+        <OffersOverview
+          t={t}
+          brands={brands}
+          roiByBrand={roiByBrand}
+          campaigns={campaigns}
+          loading={state.loading}
+          onSeeBrands={() => setTab("brands")}
+          onSeeOffers={() => setTab("offers")}
+          onSeeCampaigns={() => setTab("campaigns")}
+        />
+      ) : null}
 
       {tab === "brands" ? (
         <section className="panels">
@@ -4538,6 +4552,8 @@ function OffersDashboard({ authUser }) {
                 setOfferOnlyBaseline={setOfferOnlyBaseline}
                 offerOnlyNew={offerOnlyNew}
                 setOfferOnlyNew={setOfferOnlyNew}
+                offerOnlyFavorites={offerOnlyFavorites}
+                setOfferOnlyFavorites={setOfferOnlyFavorites}
                 offerSort={offerSort}
                 toggleOfferSort={toggleOfferSort}
                 offerPage={offerPage}
@@ -4551,53 +4567,6 @@ function OffersDashboard({ authUser }) {
             </motion.div>
           </section>
         </>
-      ) : null}
-
-      {tab === "my_offers" ? (
-        <section className="panels panels-single">
-          <motion.div className="panel offer-catalog-panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{t("My Offers")}</h3>
-                <p className="panel-subtitle">{t("Pinned offers you actively work on. Toggle the star on any row to save it here.")}</p>
-              </div>
-              <span className="my-offers-count">
-                {favoriteOffers.size} {favoriteOffers.size === 1 ? t("pinned") : t("pinned")}
-              </span>
-            </div>
-            <OfferCatalog
-              rows={buildOfferRows("favorites")}
-              brands={brands}
-              roiByBrand={roiByBrand}
-              t={t}
-              emptyLabel={t("No matches.")}
-              noDataLabel={t("No favorites yet — star an offer in All Offers to pin it here.")}
-              offerSearch={offerSearch}
-              setOfferSearch={setOfferSearch}
-              offerBrandFilter={offerBrandFilter}
-              setOfferBrandFilter={setOfferBrandFilter}
-              offerModelFilter={offerModelFilter}
-              setOfferModelFilter={setOfferModelFilter}
-              offerStatusFilter={offerStatusFilter}
-              setOfferStatusFilter={setOfferStatusFilter}
-              offerCountryFilter={offerCountryFilter}
-              setOfferCountryFilter={setOfferCountryFilter}
-              offerOnlyBaseline={offerOnlyBaseline}
-              setOfferOnlyBaseline={setOfferOnlyBaseline}
-              offerOnlyNew={offerOnlyNew}
-              setOfferOnlyNew={setOfferOnlyNew}
-              offerSort={offerSort}
-              toggleOfferSort={toggleOfferSort}
-              offerPage={offerPage}
-              setOfferPage={setOfferPage}
-              pageSize={OFFERS_PER_PAGE}
-              onDuplicate={handleOfferDuplicate}
-              onDelete={handleOfferDelete}
-              onToggleFavorite={toggleFavorite}
-              countryFlag={countryFlag}
-            />
-          </motion.div>
-        </section>
       ) : null}
 
       {tab === "campaigns" ? (
@@ -4762,6 +4731,254 @@ function OffersDashboard({ authUser }) {
   );
 }
 
+// High-level summary panel for the Offers section — replaces the "what
+// even is this section" feel with a real report: aggregate KPIs, the
+// top-performing brands, and a chronological activity stream. All numbers
+// flow from data we already fetch (brands + roiByBrand + campaigns) so
+// there's no extra network round-trip.
+function OffersOverview({ t, brands, roiByBrand, campaigns, loading, onSeeBrands, onSeeOffers, onSeeCampaigns }) {
+  const realBrands = React.useMemo(
+    () => (brands || []).filter((b) => b.name !== "Unassigned"),
+    [brands]
+  );
+  const totalOffers = React.useMemo(
+    () => (brands || []).reduce((sum, b) => sum + (b.offers?.length || 0), 0),
+    [brands]
+  );
+  const totalBanners = React.useMemo(
+    () => (brands || []).reduce((sum, b) => sum + (b.banners?.length || 0), 0),
+    [brands]
+  );
+  const linkedCampaigns = React.useMemo(
+    () => (campaigns || []).filter((c) => c.project_id).length,
+    [campaigns]
+  );
+
+  // Aggregate ROI across all brands except Unassigned (so a 100% loss on
+  // unattributed expenses doesn't poison the leadership view)
+  const totals = React.useMemo(() => {
+    let revenue = 0;
+    let spend = 0;
+    let ftds = 0;
+    for (const brand of realBrands) {
+      const r = roiByBrand?.[brand.id];
+      if (!r) continue;
+      revenue += Number(r.revenue || 0);
+      spend += Number(r.spend || 0);
+      ftds += Number(r.ftds || 0);
+    }
+    const profit = revenue - spend;
+    const roi = spend > 0 ? (profit / spend) * 100 : null;
+    return { revenue, spend, profit, ftds, roi };
+  }, [realBrands, roiByBrand]);
+
+  const topBrands = React.useMemo(() => {
+    return realBrands
+      .map((b) => ({ ...b, _roi: roiByBrand?.[b.id] || null }))
+      .filter((b) => b._roi && (b._roi.revenue > 0 || b._roi.spend > 0))
+      .sort((a, b) => (Number(b._roi.profit || 0) - Number(a._roi.profit || 0)))
+      .slice(0, 5);
+  }, [realBrands, roiByBrand]);
+
+  // Build a recent-activity feed by merging brands / offers / banners and
+  // sorting by created_at desc. Limited to the 8 most recent events.
+  const recentActivity = React.useMemo(() => {
+    const events = [];
+    for (const brand of brands || []) {
+      if (brand.created_at && brand.name !== "Unassigned") {
+        events.push({
+          type: "brand",
+          when: brand.created_at,
+          label: `${brand.name} ${t("added")}`,
+          accent: brand.accent_color || "#36d07c",
+        });
+      }
+      for (const offer of brand.offers || []) {
+        if (!offer.created_at) continue;
+        const geo = Array.isArray(offer.geos) && offer.geos.length > 0 ? offer.geos.join(", ") : t("all geos");
+        events.push({
+          type: "offer",
+          when: offer.created_at,
+          label: `${t("Offer added")}: ${brand.name} · ${geo} · $${Number(offer.payout).toFixed(0)}`,
+          accent: brand.accent_color || "#36d07c",
+        });
+      }
+      for (const banner of brand.banners || []) {
+        if (!banner.created_at) continue;
+        events.push({
+          type: "banner",
+          when: banner.created_at,
+          label: `${t("Creative added")}: ${brand.name} · ${banner.name}`,
+          accent: brand.accent_color || "#36d07c",
+        });
+      }
+    }
+    return events
+      .sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime())
+      .slice(0, 8);
+  }, [brands, t]);
+
+  const kpis = [
+    {
+      key: "brands",
+      label: t("Brands"),
+      value: realBrands.length,
+      hint: `${realBrands.filter((b) => (b.status || "Active") === "Active").length} ${t("active")}`,
+      icon: Briefcase,
+      onClick: onSeeBrands,
+    },
+    {
+      key: "offers",
+      label: t("Offers"),
+      value: totalOffers,
+      hint: `${totalBanners} ${t("creatives")}`,
+      icon: Tag,
+      onClick: onSeeOffers,
+    },
+    {
+      key: "campaigns",
+      label: t("Campaigns linked"),
+      value: `${linkedCampaigns} / ${(campaigns || []).length}`,
+      hint: t("Keitaro → brand"),
+      icon: Megaphone,
+      onClick: onSeeCampaigns,
+    },
+    {
+      key: "ftds",
+      label: t("FTDs"),
+      value: Number(totals.ftds).toLocaleString(),
+      hint: t("Attributed"),
+      icon: TrendingUp,
+    },
+    {
+      key: "revenue",
+      label: t("Revenue"),
+      value: formatCurrency(totals.revenue),
+      hint: t("Period total"),
+      icon: DollarSign,
+    },
+    {
+      key: "roi",
+      label: t("ROI"),
+      value:
+        totals.roi === null || totals.roi === undefined
+          ? "—"
+          : `${totals.roi >= 0 ? "+" : ""}${totals.roi.toFixed(0)}%`,
+      tone:
+        totals.roi === null || totals.roi === undefined
+          ? "neutral"
+          : totals.roi >= 0 ? "good" : "bad",
+      hint:
+        totals.roi === null || totals.roi === undefined
+          ? t("No spend")
+          : formatCurrency(totals.profit) + " " + t("profit"),
+      icon: Percent,
+    },
+  ];
+
+  return (
+    <>
+      <section className="overview-kpi-grid">
+        {kpis.map((kpi) => (
+          <button
+            type="button"
+            key={kpi.key}
+            className={`overview-kpi-card${kpi.tone ? ` tone-${kpi.tone}` : ""}${kpi.onClick ? " is-clickable" : ""}`}
+            onClick={kpi.onClick || undefined}
+          >
+            <span className="overview-kpi-head">
+              <kpi.icon size={14} />
+              <span>{kpi.label}</span>
+            </span>
+            <span className="overview-kpi-value">{loading ? "…" : kpi.value}</span>
+            <span className="overview-kpi-hint">{kpi.hint}</span>
+          </button>
+        ))}
+      </section>
+
+      <section className="overview-split">
+        <motion.div className="panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Top brands by profit")}</h3>
+              <p className="panel-subtitle">{t("Ranked over the current dashboard period.")}</p>
+            </div>
+            <button type="button" className="ghost overview-see-all" onClick={onSeeBrands}>
+              {t("See all")}
+            </button>
+          </div>
+          {topBrands.length === 0 ? (
+            <div className="empty-state">{t("No brand has earned revenue yet in this period.")}</div>
+          ) : (
+            <div className="overview-leaderboard">
+              {topBrands.map((brand, idx) => {
+                const r = brand._roi;
+                const roi = r?.roi;
+                const tone = roi === null || roi === undefined ? null : roi >= 0 ? "good" : "bad";
+                const max = Math.max(...topBrands.map((b) => Math.abs(b._roi?.profit || 0)));
+                const w = max > 0 ? Math.max(2, Math.round(Math.abs(r?.profit || 0) / max * 100)) : 0;
+                return (
+                  <div key={brand.id} className="leaderboard-row">
+                    <span className="leaderboard-rank">{idx + 1}</span>
+                    <div className="leaderboard-identity">
+                      <div className="leaderboard-name">{brand.name}</div>
+                      <div className="leaderboard-sub">
+                        {Number(r.ftds || 0).toLocaleString()} {t("FTDs")} · {formatCurrency(r.spend || 0)} {t("spend")}
+                      </div>
+                    </div>
+                    <div className="leaderboard-bar-wrap">
+                      <div
+                        className={`leaderboard-bar${tone ? ` tone-${tone}` : ""}`}
+                        style={{ width: `${w}%`, "--brand-accent": brand.accent_color || "#36d07c" }}
+                      />
+                    </div>
+                    <div className={`leaderboard-figures${tone ? ` tone-${tone}` : ""}`}>
+                      <span className="leaderboard-profit">{formatCurrency(r.profit || 0)}</span>
+                      <span className="leaderboard-roi">
+                        {roi === null || roi === undefined ? "—" : `${roi >= 0 ? "+" : ""}${roi.toFixed(0)}%`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div className="panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0, transition: { delay: 0.05 } }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Recent activity")}</h3>
+              <p className="panel-subtitle">{t("Latest brands, offers, and creatives.")}</p>
+            </div>
+          </div>
+          {recentActivity.length === 0 ? (
+            <div className="empty-state">{t("Nothing recent. Start by adding a brand.")}</div>
+          ) : (
+            <ul className="overview-activity">
+              {recentActivity.map((ev, idx) => {
+                const date = ev.when ? new Date(ev.when) : null;
+                const dateStr = date && !Number.isNaN(date.getTime())
+                  ? date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                  : "—";
+                return (
+                  <li key={`${ev.type}-${idx}-${ev.when}`} className={`activity-item activity-${ev.type}`}>
+                    <span className="activity-marker" style={{ "--brand-accent": ev.accent }} />
+                    <div className="activity-text">
+                      <div className="activity-label">{ev.label}</div>
+                      <div className="activity-time">{dateStr}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </motion.div>
+      </section>
+    </>
+  );
+}
+
 // Dense, sortable, filterable, paginated catalog of offers — modeled after
 // the lead-generals affiliate catalog (big logo · title link · categories
 // pills · payout column with dotted line · 3-row Metrics column · country
@@ -4780,6 +4997,7 @@ function OfferCatalog({
   offerCountryFilter, setOfferCountryFilter,
   offerOnlyBaseline, setOfferOnlyBaseline,
   offerOnlyNew, setOfferOnlyNew,
+  offerOnlyFavorites, setOfferOnlyFavorites,
   offerSort, toggleOfferSort,
   offerPage, setOfferPage,
   pageSize,
@@ -4870,6 +5088,15 @@ function OfferCatalog({
             onChange={(e) => { setOfferOnlyBaseline(e.target.checked); setOfferPage(1); }}
           />
           {t("Has baseline")}
+        </label>
+        <label className={`offer-toggle offer-toggle-fav${offerOnlyFavorites ? " is-on" : ""}`}>
+          <input
+            type="checkbox"
+            checked={offerOnlyFavorites}
+            onChange={(e) => { setOfferOnlyFavorites(e.target.checked); setOfferPage(1); }}
+          />
+          <span className="offer-toggle-star">★</span>
+          {t("Favorites")}
         </label>
         <span className="offer-toolbar-count">{totalRows} {t("results")}</span>
       </div>
