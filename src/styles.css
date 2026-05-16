@@ -9954,6 +9954,7 @@ select option,
   border-collapse: separate;
   border-spacing: 0;
   font-size: 12px;
+  table-layout: fixed;
 }
 
 .offer-table thead th {
@@ -9981,9 +9982,18 @@ select option,
 }
 
 .offer-table tbody td {
-  padding: 12px;
+  padding: 18px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   vertical-align: middle;
+}
+
+.offer-table thead th {
+  /* override the default uppercase styling for cleaner header look */
+  text-transform: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 14px 14px;
 }
 
 .offer-fav-col { width: 38px; text-align: center; padding-left: 8px !important; padding-right: 0 !important; }
@@ -10076,13 +10086,24 @@ select option,
 }
 
 .offer-identity-sub {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 4px;
+  flex-wrap: wrap;
 }
 
-.offer-identity-notes {
-  color: var(--muted);
+.offer-identity-id {
+  font-weight: 600;
+  font-feature-settings: "tnum";
+}
+
+.offer-identity-validity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .offer-new-pill {

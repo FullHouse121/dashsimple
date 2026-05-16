@@ -4939,16 +4939,15 @@ function OfferCatalog({
                         <div className="offer-identity-text">
                           <div className="offer-identity-name">
                             {offer.is_new ? <span className="offer-new-pill">{t("New")}</span> : null}
-                            <span className="offer-identity-link">
-                              {offer.brand_name}
-                              {Array.isArray(offer.geos) && offer.geos.length > 0
-                                ? ` | ${offer.geos.slice(0, 3).join(" | ")}`
-                                : ""}
-                            </span>
+                            <span className="offer-identity-link">{offer.brand_name}</span>
                           </div>
                           <div className="offer-identity-sub">
-                            {`(${offer.id})`}
-                            {offer.notes ? <span className="offer-identity-notes"> — {offer.notes}</span> : null}
+                            <span className="offer-identity-id">#{offer.id}</span>
+                            {validity ? (
+                              <span className="offer-identity-validity">
+                                <CalendarIcon size={10} /> {validity}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -4961,11 +4960,6 @@ function OfferCatalog({
                         </span>
                         {baselineValue ? (
                           <span className="offer-tag offer-tag-baseline">{t("Baseline")} {baselineValue}</span>
-                        ) : null}
-                        {validity ? (
-                          <span className="offer-validity-pill">
-                            <CalendarIcon size={10} /> {validity}
-                          </span>
                         ) : null}
                       </div>
                     </td>
