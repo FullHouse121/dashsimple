@@ -5654,6 +5654,31 @@ app.post("/api/media-buyers", async (req, res) => {
   res.status(201).json({ id: info.id });
 });
 
+app.patch("/api/media-buyers/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid media buyer id." });
+  }
+  const fields = ["name", "role", "country", "approach", "game", "email", "contact", "status"];
+  const sets = [];
+  const args = [];
+  for (const f of fields) {
+    if (req.body?.[f] !== undefined) {
+      sets.push(`${f} = $${sets.length + 1}`);
+      args.push(String(req.body[f] ?? "").trim());
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "No fields to update." });
+  }
+  args.push(id);
+  await query(`UPDATE media_buyers SET ${sets.join(", ")} WHERE id = $${args.length}`, args);
+  res.json({ ok: true, id });
+});
+
 app.delete("/api/media-buyers/:id", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });

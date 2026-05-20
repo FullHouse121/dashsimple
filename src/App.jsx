@@ -14848,6 +14848,9 @@ function RolesDashboard({ authUser }) {
   // Forms are hidden behind "+ Add" toggles so the tables stay front-and-center.
   const [showUserForm, setShowUserForm] = React.useState(false);
   const [showTeamForm, setShowTeamForm] = React.useState(false);
+  // Edit mode for media buyers — when set, the form switches into PATCH mode
+  // and the button label changes to "Save Changes" instead of "Add Member".
+  const [editingBuyerId, setEditingBuyerId] = React.useState(null);
   // Per-role expand state — role rows are compact by default, the permission
   // grid only appears when the row is expanded.
   const [expandedRoles, setExpandedRoles] = React.useState(() => new Set());
@@ -15104,8 +15107,11 @@ function RolesDashboard({ authUser }) {
     event.preventDefault();
     if (!isLeadership) return;
     try {
-      const response = await apiFetch("/api/media-buyers", {
-        method: "POST",
+      const isEdit = editingBuyerId !== null;
+      const url = isEdit ? `/api/media-buyers/${editingBuyerId}` : "/api/media-buyers";
+      const method = isEdit ? "PATCH" : "POST";
+      const response = await apiFetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(teamForm),
       });
@@ -15115,9 +15121,39 @@ function RolesDashboard({ authUser }) {
       }
       await fetchBuyers();
       resetTeamForm();
+      setEditingBuyerId(null);
+      setShowTeamForm(false);
     } catch (error) {
       setTeamState({ loading: false, error: error.message || "Failed to save media buyer." });
     }
+  };
+
+  // Pre-fill the form with a buyer's current values and open it for editing.
+  const handleTeamEdit = (buyer) => {
+    if (!isLeadership) return;
+    setTeamForm({
+      name: buyer.name || "",
+      role: buyer.role || "Media Buyer",
+      country: buyer.country || defaultCountryOption,
+      approach: buyer.approach || "Paid Social",
+      game: buyer.game || "",
+      email: buyer.email || "",
+      contact: buyer.contact || "",
+      status: buyer.status || "Active",
+    });
+    setEditingBuyerId(buyer.id);
+    setShowTeamForm(true);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        document.querySelector(".team-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+  };
+
+  const handleTeamCancelEdit = () => {
+    setEditingBuyerId(null);
+    resetTeamForm();
+    setShowTeamForm(false);
   };
 
   const handleTeamDelete = async (id) => {
@@ -15157,7 +15193,7 @@ function RolesDashboard({ authUser }) {
   const subTabs = [
     { key: "roles", label: t("Roles & Permissions"), icon: ShieldCheck },
     { key: "users", label: t("Users"), icon: User },
-    { key: "team", label: t("Team"), icon: Users },
+    { key: "team", label: t("Media Buyers"), icon: Users },
   ];
 
   return (
@@ -15483,7 +15519,7 @@ function RolesDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Team")}</h3>
+              <h3 className="panel-title">{t("Media Buyers")}</h3>
               <p className="panel-subtitle">
                 {t("Buyer profiles with country, channel, contact, and status.")}
               </p>
@@ -15492,9 +15528,16 @@ function RolesDashboard({ authUser }) {
               <button
                 type="button"
                 className={`offers-mode-toggle${showTeamForm ? " is-active" : ""}`}
-                onClick={() => setShowTeamForm((v) => !v)}
+                onClick={() => {
+                  if (editingBuyerId) handleTeamCancelEdit();
+                  else setShowTeamForm((v) => !v);
+                }}
               >
-                {showTeamForm ? t("Close") : "+ " + t("Add Member")}
+                {editingBuyerId
+                  ? t("Cancel edit")
+                  : showTeamForm
+                    ? t("Close")
+                    : "+ " + t("Add Buyer")}
               </button>
             ) : null}
           </div>
@@ -15574,11 +15617,11 @@ function RolesDashboard({ authUser }) {
                 />
               </div>
               <div className="form-actions">
-                <button className="ghost" type="button" onClick={resetTeamForm}>
-                  {t("Reset")}
+                <button className="ghost" type="button" onClick={editingBuyerId ? handleTeamCancelEdit : resetTeamForm}>
+                  {editingBuyerId ? t("Cancel") : t("Reset")}
                 </button>
                 <button className="action-pill" type="submit">
-                  {t("Add Member")}
+                  {editingBuyerId ? t("Save Changes") : t("Add Buyer")}
                 </button>
               </div>
             </form>
@@ -15623,9 +15666,24 @@ function RolesDashboard({ authUser }) {
                       </td>
                       <td>
                         {isLeadership ? (
-                          <button className="icon-btn" type="button" onClick={() => handleTeamDelete(member.id)}>
-                            <Trash2 size={16} />
-                          </button>
+                          <div className="row-actions">
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              title={t("Edit buyer")}
+                              onClick={() => handleTeamEdit(member)}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              title={t("Delete buyer")}
+                              onClick={() => handleTeamDelete(member.id)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         ) : null}
                       </td>
                     </tr>
