@@ -14842,6 +14842,23 @@ function MetaTokenDashboard({ authUser }) {
 
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
+  // Sub-tab navigation inside the section — keeps the page from being one
+  // very long scroll and lets each surface (roles, users, team) breathe.
+  const [rolesTab, setRolesTab] = React.useState("roles"); // roles | users | team
+  // Forms are hidden behind "+ Add" toggles so the tables stay front-and-center.
+  const [showUserForm, setShowUserForm] = React.useState(false);
+  const [showTeamForm, setShowTeamForm] = React.useState(false);
+  // Per-role expand state — role rows are compact by default, the permission
+  // grid only appears when the row is expanded.
+  const [expandedRoles, setExpandedRoles] = React.useState(() => new Set());
+  const toggleRoleExpand = (id) => {
+    setExpandedRoles((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const [roles, setRoles] = React.useState([]);
   const [roleState, setRoleState] = React.useState({ loading: true, error: null });
   const [savingId, setSavingId] = React.useState(null);
@@ -15137,20 +15154,55 @@ function RolesDashboard({ authUser }) {
   };
   const mediaBuyerApproaches = approachOptions.filter((item) => item !== "All");
 
+  const subTabs = [
+    { key: "roles", label: t("Roles & Permissions"), icon: ShieldCheck },
+    { key: "users", label: t("Users"), icon: User },
+    { key: "team", label: t("Team"), icon: Users },
+  ];
+
   return (
     <>
-      <section className="form-section">
+      {/* Sub-tab header — single thin strip; matches the Offers section pattern */}
+      <section className="panels panels-single offers-tabs-panel">
+        <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Access Control")}</h3>
+              <p className="panel-subtitle">
+                {t("Roles define what each member can see. Users link a login to a role. Team holds buyer profiles.")}
+              </p>
+            </div>
+            <div className="offers-tabs">
+              {subTabs.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`offers-tab${rolesTab === item.key ? " is-active" : ""}`}
+                  onClick={() => setRolesTab(item.key)}
+                >
+                  <item.icon size={14} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {rolesTab === "roles" ? (
+      <section className="panels panels-single">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.4 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Roles & Permissions")}</h3>
-              <p className="panel-subtitle">{t("Define what each role can access and edit.")}</p>
+              <h3 className="panel-title">{t("Roles")}</h3>
+              <p className="panel-subtitle">{t("Click a role to expand and edit its permissions.")}</p>
             </div>
+            <span className="roles-count">{roles.length} {t("roles")} · {users.length} {t("users")}</span>
           </div>
 
           {roleState.loading ? (
@@ -15169,11 +15221,8 @@ function RolesDashboard({ authUser }) {
                   value={roleSearch}
                   onChange={(e) => setRoleSearch(e.target.value)}
                 />
-                <span className="roles-count">
-                  {roles.length} {t("roles")} · {users.length} {t("users")}
-                </span>
               </div>
-              <div className="role-grid">
+              <div className="role-rows">
                 {(() => {
                   const q = roleSearch.trim().toLowerCase();
                   const filtered = q
@@ -15186,78 +15235,92 @@ function RolesDashboard({ authUser }) {
                     const isLocked = role.name === "Boss" || role.name === "Team Leader";
                     const canEdit = isLeadership && !isLocked;
                     const userCount = usersByRole.get(role.name) || 0;
+                    const expanded = expandedRoles.has(role.id);
                     return (
-                      <div key={role.id} className="role-card">
-                        <div className="role-card-head">
-                          <div>
-                            <div className="role-name">
-                              {t(role.name)}
-                              {isLocked ? <span className="role-locked-pill" title={t("Built-in role — permissions can't be edited")}>{t("Built-in")}</span> : null}
+                      <div key={role.id} className={`role-row${expanded ? " is-open" : ""}${isLocked ? " is-locked" : ""}`}>
+                        <button
+                          type="button"
+                          className="role-row-summary"
+                          onClick={() => toggleRoleExpand(role.id)}
+                          aria-expanded={expanded}
+                        >
+                          <span className="role-row-chevron">▸</span>
+                          <span className="role-row-identity">
+                            <span className="role-row-name">{t(role.name)}</span>
+                            {isLocked ? <Lock size={11} className="role-row-lock" aria-label={t("Built-in")} /> : null}
+                          </span>
+                          <span className="role-row-stat">{userCount} {userCount === 1 ? t("user") : t("users")}</span>
+                          <span className="role-row-stat role-row-stat-perms">
+                            {role.permissions.length} / {permissionOptions.length} {t("permissions")}
+                          </span>
+                          <span className="role-row-progress">
+                            <span
+                              className="role-row-progress-fill"
+                              style={{ width: `${Math.round((role.permissions.length / permissionOptions.length) * 100)}%` }}
+                            />
+                          </span>
+                        </button>
+                        {expanded ? (
+                          <div className="role-row-body">
+                            <div className="role-permission-groups">
+                              {permissionGroups.map((group) => {
+                                const groupOpts = group.keys
+                                  .map((k) => permissionOptions.find((p) => p.key === k))
+                                  .filter(Boolean);
+                                if (groupOpts.length === 0) return null;
+                                const enabledInGroup = groupOpts.filter((p) => role.permissions.includes(p.key)).length;
+                                const allOn = enabledInGroup === groupOpts.length;
+                                return (
+                                  <div key={group.title} className="role-perm-group">
+                                    <div className="role-perm-group-head">
+                                      <span>{group.title}</span>
+                                      <span className="role-perm-group-count">{enabledInGroup}/{groupOpts.length}</span>
+                                      <button
+                                        type="button"
+                                        className="role-perm-group-bulk"
+                                        disabled={!canEdit}
+                                        onClick={() => setGroupPermissions(role.id, group.keys, !allOn)}
+                                      >
+                                        {allOn ? t("Clear") : t("Select all")}
+                                      </button>
+                                    </div>
+                                    <div className="role-permissions">
+                                      {groupOpts.map((perm) => {
+                                        const checked = role.permissions.includes(perm.key);
+                                        return (
+                                          <label key={perm.key} className={`perm-item${checked ? " is-active" : ""}`}>
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() => togglePermission(role.id, perm.key)}
+                                              disabled={!canEdit}
+                                            />
+                                            <span>{t(perm.label)}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                            <div className="role-sub">
-                              {userCount} {userCount === 1 ? t("user") : t("users")}
-                              {" · "}
-                              {role.permissions.length} / {permissionOptions.length} {t("permissions")}
-                            </div>
-                          </div>
-                          <div className="role-actions">
-                            <button
-                              className="ghost"
-                              type="button"
-                              onClick={() => handleRoleSave(role)}
-                              disabled={savingId === role.id || !canEdit}
-                            >
-                              {savingId === role.id ? t("Saving...") : t("Save Changes")}
-                            </button>
-                            {!isLocked ? (
-                              <button className="icon-btn" type="button" onClick={() => handleRoleDelete(role.id)}>
-                                <Trash2 size={16} />
+                            <div className="role-row-actions">
+                              <button
+                                className="ghost"
+                                type="button"
+                                onClick={() => handleRoleSave(role)}
+                                disabled={savingId === role.id || !canEdit}
+                              >
+                                {savingId === role.id ? t("Saving...") : t("Save Changes")}
                               </button>
-                            ) : null}
+                              {!isLocked ? (
+                                <button className="icon-btn" type="button" onClick={() => handleRoleDelete(role.id)}>
+                                  <Trash2 size={14} />
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
-                        </div>
-                        <div className="role-permission-groups">
-                          {permissionGroups.map((group) => {
-                            const groupOpts = group.keys
-                              .map((k) => permissionOptions.find((p) => p.key === k))
-                              .filter(Boolean);
-                            if (groupOpts.length === 0) return null;
-                            const enabledInGroup = groupOpts.filter((p) => role.permissions.includes(p.key)).length;
-                            const allOn = enabledInGroup === groupOpts.length;
-                            return (
-                              <div key={group.title} className="role-perm-group">
-                                <div className="role-perm-group-head">
-                                  <span>{group.title}</span>
-                                  <span className="role-perm-group-count">{enabledInGroup}/{groupOpts.length}</span>
-                                  <button
-                                    type="button"
-                                    className="role-perm-group-bulk"
-                                    disabled={!canEdit}
-                                    onClick={() => setGroupPermissions(role.id, group.keys, !allOn)}
-                                  >
-                                    {allOn ? t("Clear") : t("Select all")}
-                                  </button>
-                                </div>
-                                <div className="role-permissions">
-                                  {groupOpts.map((perm) => {
-                                    const checked = role.permissions.includes(perm.key);
-                                    return (
-                                      <label key={perm.key} className={`perm-item${checked ? " is-active" : ""}`}>
-                                        <input
-                                          type="checkbox"
-                                          checked={checked}
-                                          onChange={() => togglePermission(role.id, perm.key)}
-                                          disabled={!canEdit}
-                                        />
-                                        <span>{t(perm.label)}</span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        ) : null}
                       </div>
                     );
                   });
@@ -15267,21 +15330,33 @@ function RolesDashboard({ authUser }) {
           )}
         </motion.div>
       </section>
+      ) : null}
 
-      <section className="form-section">
+      {rolesTab === "users" ? (
+      <section className="panels panels-single">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.4 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("User Access")}</h3>
-              <p className="panel-subtitle">{t("Create Login")}</p>
+              <h3 className="panel-title">{t("Users")}</h3>
+              <p className="panel-subtitle">{t("Logins that map to a role and optionally to a media buyer.")}</p>
             </div>
+            {isLeadership ? (
+              <button
+                type="button"
+                className={`offers-mode-toggle${showUserForm ? " is-active" : ""}`}
+                onClick={() => setShowUserForm((v) => !v)}
+              >
+                {showUserForm ? t("Close") : "+ " + t("Add User")}
+              </button>
+            ) : null}
           </div>
 
+          {showUserForm && isLeadership ? (
           <form className="form-grid user-form" onSubmit={handleUserSubmit}>
             <div className="field">
               <label>{t("Username")}</label>
@@ -15333,6 +15408,7 @@ function RolesDashboard({ authUser }) {
               </button>
             </div>
           </form>
+          ) : null}
 
           {userState.loading ? (
             <div className="empty-state">{t("Loading users…")}</div>
@@ -15395,24 +15471,35 @@ function RolesDashboard({ authUser }) {
           )}
         </motion.div>
       </section>
+      ) : null}
 
-      <section className="form-section">
+      {rolesTab === "team" ? (
+      <section className="panels panels-single">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.4 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Media Buyer Directory")}</h3>
+              <h3 className="panel-title">{t("Team")}</h3>
               <p className="panel-subtitle">
-                {t("Identify your team members and keep contact details organized.")}
+                {t("Buyer profiles with country, channel, contact, and status.")}
               </p>
             </div>
+            {isLeadership ? (
+              <button
+                type="button"
+                className={`offers-mode-toggle${showTeamForm ? " is-active" : ""}`}
+                onClick={() => setShowTeamForm((v) => !v)}
+              >
+                {showTeamForm ? t("Close") : "+ " + t("Add Member")}
+              </button>
+            ) : null}
           </div>
 
-          {isLeadership ? (
+          {showTeamForm && isLeadership ? (
             <form className="form-grid team-form" onSubmit={handleTeamSubmit}>
               <div className="field">
                 <label>{t("Name")}</label>
@@ -15495,9 +15582,7 @@ function RolesDashboard({ authUser }) {
                 </button>
               </div>
             </form>
-          ) : (
-            <div className="empty-state">{t("Media buyer management is restricted to leadership.")}</div>
-          )}
+          ) : null}
 
           {teamState.loading ? (
             <div className="empty-state">{t("Loading team…")}</div>
@@ -15551,6 +15636,7 @@ function RolesDashboard({ authUser }) {
           )}
         </motion.div>
       </section>
+      ) : null}
     </>
   );
 }
