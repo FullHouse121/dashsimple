@@ -3398,15 +3398,50 @@ select {
   gap: 10px;
 }
 
+/* Unified field input — matches the .country-select-trigger and native
+   <select> styling so text inputs and dropdowns visually align. */
 .field input,
 .field select {
   flex: 1;
-  background: #1a1c20;
-  border: 1px solid #2b2e35;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 36%),
+    linear-gradient(180deg, #212329fa, #191b20fb),
+    #1b1d21;
   color: var(--text);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.field input::placeholder {
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.field input:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.field input:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.45);
+  box-shadow:
+    0 0 0 3px rgba(54, 208, 124, 0.12),
+    inset 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.field input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .login-field .input-wrap {
@@ -4136,16 +4171,30 @@ select option,
 }
 
 .field textarea {
-  background: #1a1c20;
-  border: 1px solid #2b2e35;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.04), transparent 36%),
+    linear-gradient(180deg, #212329fa, #191b20fb),
+    #1b1d21;
   color: var(--text);
-  border-radius: 10px;
-  padding: 12px 12px;
-  font-size: 12px;
+  font-size: 13px;
   min-height: 150px;
   resize: vertical;
-  font-family: "SFMono-Regular", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.45);
+  box-shadow:
+    0 0 0 3px rgba(54, 208, 124, 0.12),
+    inset 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .field-hint {
