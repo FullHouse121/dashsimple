@@ -179,18 +179,6 @@ const navItems = [
   { key: "profile", label: "Profile", icon: User },
   { key: "meta_token", label: "Meta Token $", icon: CreditCard },
   { key: "api", label: "API", icon: Plug },
-  {
-    key: "segmentation",
-    label: "Segmentation",
-    icon: MousePointerClick,
-    href: "https://visionary-fox-61c06d.netlify.app/",
-  },
-  {
-    key: "calculator",
-    label: "Calculator",
-    icon: SlidersHorizontal,
-    href: "https://mellow-medovik-a46551.netlify.app/",
-  },
 ];
 
 const navSections = [
@@ -200,7 +188,6 @@ const navSections = [
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
-  { title: "Tools", items: ["segmentation", "calculator"] },
 ];
 
 // Static option arrays + country/domain normalizers moved to ./lib/constants.js (Phase 1)
