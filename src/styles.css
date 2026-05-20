@@ -4160,15 +4160,8 @@ select option,
   grid-column: 1 / -1;
 }
 
-.form-grid .field input,
-.form-grid .field select {
-  background: #1a1c20;
-  border: 1px solid #2b2e35;
-  color: var(--text);
-  border-radius: 10px;
-  padding: 12px 12px;
-  font-size: 13px;
-}
+/* form-grid .field input/select inherit the unified .field input + native
+   <select> styling defined above — no extra overrides needed. */
 
 .field textarea {
   width: 100%;
