@@ -14851,6 +14851,8 @@ function RolesDashboard({ authUser }) {
   // Edit mode for media buyers — when set, the form switches into PATCH mode
   // and the button label changes to "Save Changes" instead of "Add Member".
   const [editingBuyerId, setEditingBuyerId] = React.useState(null);
+  // Same idea for users — edit username / role / linked buyer in-place.
+  const [editingUserId, setEditingUserId] = React.useState(null);
   // Per-role expand state — role rows are compact by default, the permission
   // grid only appears when the row is expanded.
   const [expandedRoles, setExpandedRoles] = React.useState(() => new Set());
@@ -15051,20 +15053,53 @@ function RolesDashboard({ authUser }) {
   const handleUserSubmit = async (event) => {
     event.preventDefault();
     try {
-      const response = await apiFetch("/api/users", {
-        method: "POST",
+      const isEdit = editingUserId !== null;
+      // In edit mode we PATCH only the identity fields; password has its own
+      // dedicated endpoint and isn't touched here (avoids accidental resets).
+      const url = isEdit ? `/api/users/${editingUserId}` : "/api/users";
+      const method = isEdit ? "PATCH" : "POST";
+      const body = isEdit
+        ? { username: userForm.username, role: userForm.role, buyerId: userForm.buyerId }
+        : userForm;
+      const response = await apiFetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userForm),
+        body: JSON.stringify(body),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || "Failed to create user.");
+        throw new Error(data?.error || (isEdit ? "Failed to update user." : "Failed to create user."));
       }
       setUserForm({ username: "", password: "", role: roleOptions[0], buyerId: "" });
+      setEditingUserId(null);
+      setShowUserForm(false);
       await fetchUsers();
     } catch (error) {
-      setUserState({ loading: false, error: error.message || "Failed to create user." });
+      setUserState({ loading: false, error: error.message || "Failed to save user." });
     }
+  };
+
+  const handleUserEdit = (user) => {
+    if (!isLeadership) return;
+    setUserForm({
+      username: user.username || "",
+      password: "",
+      role: user.role || roleOptions[0],
+      buyerId: user.buyer_id ? String(user.buyer_id) : "",
+    });
+    setEditingUserId(user.id);
+    setShowUserForm(true);
+    if (typeof window !== "undefined") {
+      requestAnimationFrame(() => {
+        document.querySelector(".user-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+  };
+
+  const handleUserCancelEdit = () => {
+    setEditingUserId(null);
+    setUserForm({ username: "", password: "", role: roleOptions[0], buyerId: "" });
+    setShowUserForm(false);
   };
 
   const handleUserDelete = async (userId) => {
@@ -15385,9 +15420,16 @@ function RolesDashboard({ authUser }) {
               <button
                 type="button"
                 className={`offers-mode-toggle${showUserForm ? " is-active" : ""}`}
-                onClick={() => setShowUserForm((v) => !v)}
+                onClick={() => {
+                  if (editingUserId) handleUserCancelEdit();
+                  else setShowUserForm((v) => !v);
+                }}
               >
-                {showUserForm ? t("Close") : "+ " + t("Add User")}
+                {editingUserId
+                  ? t("Cancel edit")
+                  : showUserForm
+                    ? t("Close")
+                    : "+ " + t("Add User")}
               </button>
             ) : null}
           </div>
@@ -15402,15 +15444,17 @@ function RolesDashboard({ authUser }) {
                 required
               />
             </div>
-            <div className="field">
-              <label>{t("Password")}</label>
-              <input
-                type="password"
-                value={userForm.password}
-                onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
-                required
-              />
-            </div>
+            {editingUserId === null ? (
+              <div className="field">
+                <label>{t("Password")}</label>
+                <input
+                  type="password"
+                  value={userForm.password}
+                  onChange={(event) => setUserForm((prev) => ({ ...prev, password: event.target.value }))}
+                  required
+                />
+              </div>
+            ) : null}
             <div className="field">
               <label>{t("Role")}</label>
               <select
@@ -15439,8 +15483,13 @@ function RolesDashboard({ authUser }) {
               </select>
             </div>
             <div className="form-actions">
+              {editingUserId !== null ? (
+                <button className="ghost" type="button" onClick={handleUserCancelEdit}>
+                  {t("Cancel")}
+                </button>
+              ) : null}
               <button className="action-pill" type="submit">
-                {t("Create Login")}
+                {editingUserId !== null ? t("Save Changes") : t("Create Login")}
               </button>
             </div>
           </form>
@@ -15491,7 +15540,16 @@ function RolesDashboard({ authUser }) {
                               <button
                                 className="icon-btn"
                                 type="button"
+                                onClick={() => handleUserEdit(user)}
+                                title={t("Edit user")}
+                              >
+                                <Pencil size={16} />
+                              </button>
+                              <button
+                                className="icon-btn"
+                                type="button"
                                 onClick={() => handleUserDelete(user.id)}
+                                title={t("Delete user")}
                               >
                                 <Trash2 size={16} />
                               </button>

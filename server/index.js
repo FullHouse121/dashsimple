@@ -7090,6 +7090,56 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
+// Edit username / role / linked media buyer. Password lives on its own
+// endpoint (above) so it can be permissioned separately.
+app.patch("/api/users/:id", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid user id." });
+  }
+  const sets = [];
+  const args = [];
+  if (req.body?.username !== undefined) {
+    const name = String(req.body.username || "").trim();
+    if (!name) return res.status(400).json({ error: "Username cannot be empty." });
+    sets.push(`username = $${sets.length + 1}`);
+    args.push(name);
+  }
+  if (req.body?.role !== undefined) {
+    sets.push(`role = $${sets.length + 1}`);
+    args.push(String(req.body.role || "").trim());
+  }
+  if (req.body?.buyerId !== undefined) {
+    const raw = req.body.buyerId;
+    if (raw === "" || raw === null) {
+      sets.push(`buyer_id = NULL`);
+    } else {
+      const parsed = Number.parseInt(raw, 10);
+      if (!Number.isFinite(parsed)) {
+        return res.status(400).json({ error: "Invalid buyer id." });
+      }
+      sets.push(`buyer_id = $${sets.length + 1}`);
+      args.push(parsed);
+    }
+  }
+  if (sets.length === 0) {
+    return res.status(400).json({ error: "No fields to update." });
+  }
+  args.push(id);
+  try {
+    await query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${args.length}`, args);
+  } catch (err) {
+    if (err?.code === "23505") {
+      return res.status(409).json({ error: "Username already exists." });
+    }
+    throw err;
+  }
+  res.json({ ok: true, id });
+});
+
 app.patch("/api/users/:id/password", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
