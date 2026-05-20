@@ -492,6 +492,7 @@ const initDb = async () => {
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
+    `ALTER TABLE media_buyers ADD COLUMN IF NOT EXISTS tag TEXT;`,
     // Brand visual identity
     `ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo_url TEXT;`,
     `ALTER TABLE brands ADD COLUMN IF NOT EXISTS accent_color TEXT;`,
@@ -942,8 +943,8 @@ const deleteGoal = async (id) =>
 
 const insertMediaBuyer = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status, tag)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       payload.name,
@@ -954,6 +955,7 @@ const insertMediaBuyer = async (payload) => {
       payload.email,
       payload.contact,
       payload.status,
+      payload.tag || null,
     ]
   );
   return rows[0];
@@ -961,7 +963,7 @@ const insertMediaBuyer = async (payload) => {
 
 const selectMediaBuyers = async (limit) =>
   getRows(
-    `SELECT id, name, role, country, approach, game, email, contact, status
+    `SELECT id, name, role, country, approach, game, email, contact, status, tag
      FROM media_buyers
      ORDER BY name ASC, id DESC
      LIMIT $1`,
@@ -5633,6 +5635,7 @@ app.post("/api/media-buyers", async (req, res) => {
     email = "",
     contact = "",
     status,
+    tag = "",
   } = req.body ?? {};
 
   if (!name || !role || !status) {
@@ -5648,6 +5651,7 @@ app.post("/api/media-buyers", async (req, res) => {
     email,
     contact,
     status,
+    tag: String(tag || "").trim().toUpperCase() || null,
   };
 
   const info = await insertMediaBuyer(payload);
@@ -5662,13 +5666,14 @@ app.patch("/api/media-buyers/:id", async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid media buyer id." });
   }
-  const fields = ["name", "role", "country", "approach", "game", "email", "contact", "status"];
+  const fields = ["name", "role", "country", "approach", "game", "email", "contact", "status", "tag"];
   const sets = [];
   const args = [];
   for (const f of fields) {
     if (req.body?.[f] !== undefined) {
       sets.push(`${f} = $${sets.length + 1}`);
-      args.push(String(req.body[f] ?? "").trim());
+      const val = String(req.body[f] ?? "").trim();
+      args.push(f === "tag" ? (val ? val.toUpperCase() : null) : val);
     }
   }
   if (sets.length === 0) {

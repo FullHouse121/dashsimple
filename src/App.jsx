@@ -10216,6 +10216,7 @@ function GoalsDashboard({ authUser }) {
     email: "",
     contact: "",
     status: "Active",
+    tag: "",
   });
   const [teamMembers, setTeamMembers] = React.useState([]);
   const [teamState, setTeamState] = React.useState({ loading: true, error: null });
@@ -10279,6 +10280,7 @@ function GoalsDashboard({ authUser }) {
       email: "",
       contact: "",
       status: "Active",
+      tag: "",
     });
   };
 
@@ -14880,6 +14882,7 @@ function RolesDashboard({ authUser }) {
     email: "",
     contact: "",
     status: "Active",
+    tag: "",
   });
   const [userForm, setUserForm] = React.useState({
     username: "",
@@ -14902,6 +14905,7 @@ function RolesDashboard({ authUser }) {
       email: "",
       contact: "",
       status: "Active",
+      tag: "",
     });
   };
 
@@ -15175,6 +15179,7 @@ function RolesDashboard({ authUser }) {
       email: buyer.email || "",
       contact: buyer.contact || "",
       status: buyer.status || "Active",
+      tag: buyer.tag || "",
     });
     setEditingBuyerId(buyer.id);
     setShowTeamForm(true);
@@ -15219,7 +15224,10 @@ function RolesDashboard({ authUser }) {
     MATHEUS: "MTDMC",
     SARA: "SRDMC",
   };
-  const resolveBuyerTag = (username) => {
+  // Tag now lives on the media_buyers row itself; fall back to the legacy
+  // hardcoded map for usernames that never had a buyer link.
+  const resolveBuyerTag = (username, linkedBuyer = null) => {
+    if (linkedBuyer?.tag) return linkedBuyer.tag;
     if (!username) return null;
     return buyerTagMap[String(username).trim().toUpperCase()] || null;
   };
@@ -15457,30 +15465,24 @@ function RolesDashboard({ authUser }) {
             ) : null}
             <div className="field">
               <label>{t("Role")}</label>
-              <select
+              <Select
                 value={userForm.role}
-                onChange={(event) => setUserForm((prev) => ({ ...prev, role: event.target.value }))}
-              >
-                {roleNameOptions.map((role) => (
-                  <option key={role} value={role}>
-                    {t(role)}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setUserForm((prev) => ({ ...prev, role: v }))}
+                options={roleNameOptions.map((r) => ({ value: r, label: t(r) }))}
+                placeholder={t("Select role")}
+              />
             </div>
             <div className="field">
               <label>{t("Assign Media Buyer")}</label>
-              <select
+              <Select
                 value={userForm.buyerId}
-                onChange={(event) => setUserForm((prev) => ({ ...prev, buyerId: event.target.value }))}
-              >
-                <option value="">{t("Media Buyer")}</option>
-                {buyers.map((buyer) => (
-                  <option key={buyer.id} value={buyer.id}>
-                    {buyer.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setUserForm((prev) => ({ ...prev, buyerId: v }))}
+                options={[
+                  { value: "", label: t("No buyer linked") },
+                  ...buyers.map((b) => ({ value: String(b.id), label: b.tag ? `${b.name} · ${b.tag}` : b.name })),
+                ]}
+                placeholder={t("Select buyer")}
+              />
             </div>
             <div className="form-actions">
               {editingUserId !== null ? (
@@ -15515,7 +15517,8 @@ function RolesDashboard({ authUser }) {
                 <tbody>
                   {users.map((user) => {
                     const buyerName = user.buyer_id ? buyerMap[user.buyer_id] || "" : "";
-                    const buyerTag = resolveBuyerTag(user.username);
+                    const linkedBuyer = user.buyer_id ? buyers.find((b) => b.id === user.buyer_id) : null;
+                    const buyerTag = resolveBuyerTag(user.username, linkedBuyer);
                     return (
                       <tr key={user.id}>
                         <td>{user.username}</td>
@@ -15666,6 +15669,15 @@ function RolesDashboard({ authUser }) {
                 />
               </div>
               <div className="field">
+                <label>{t("Tag")} <span className="field-pace-hint">{t("Short code shown in Users table — e.g. AKDMC")}</span></label>
+                <input
+                  value={teamForm.tag}
+                  onChange={(e) => setTeamForm((prev) => ({ ...prev, tag: e.target.value.toUpperCase() }))}
+                  placeholder="AKDMC"
+                  maxLength={12}
+                />
+              </div>
+              <div className="field">
                 <label>{t("Status")}</label>
                 <Select
                   value={teamForm.status}
@@ -15697,6 +15709,7 @@ function RolesDashboard({ authUser }) {
                 <thead>
                   <tr>
                     <th>{t("Name")}</th>
+                    <th>{t("Tag")}</th>
                     <th>{t("Role")}</th>
                     <th>{t("Country")}</th>
                     <th>{t("Approach")}</th>
@@ -15711,6 +15724,13 @@ function RolesDashboard({ authUser }) {
                   {buyers.map((member) => (
                     <tr key={member.id}>
                       <td>{member.name}</td>
+                      <td>
+                        {member.tag ? (
+                          <span className="tag-pill">{member.tag}</span>
+                        ) : (
+                          <span className="offer-muted">—</span>
+                        )}
+                      </td>
                       <td>{t(member.role)}</td>
                       <td>{member.country || "—"}</td>
                       <td>{member.approach ? t(member.approach) : "—"}</td>
