@@ -1105,12 +1105,20 @@ function HomeDashboard({
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
 
-  // Compute the active period range inline (periodRange itself is declared
+  // Compute the active fetch range inline (periodRange itself is declared
   // further down, so we can't reference it here without a TDZ error). The
-  // dependency is on `period` + `customRange`, which are stable props.
+  // Filters modal also supplies dateFrom/dateTo; we honour the *union* of
+  // both ranges so client-side filters never reference rows that weren't
+  // downloaded — that's what was breaking "filter May shows nothing".
   const loadHomeStats = React.useCallback(async () => {
-    const range = getPeriodDateRange(period, customRange);
-    const cacheKey = `media-stats:home:${range.from || "_"}:${range.to || "_"}`;
+    const periodRangeInline = getPeriodDateRange(period, customRange);
+    const fFrom = filters?.dateFrom || null;
+    const fTo = filters?.dateTo || null;
+    const fetchFrom =
+      [periodRangeInline.from, fFrom].filter(Boolean).sort()[0] || null;
+    const fetchTo =
+      [periodRangeInline.to, fTo].filter(Boolean).sort().slice(-1)[0] || null;
+    const cacheKey = `media-stats:home:${fetchFrom || "_"}:${fetchTo || "_"}`;
     const cached = readSwrCache(cacheKey);
     if (cached && Array.isArray(cached)) {
       setHomeRows(cached);
@@ -1120,8 +1128,8 @@ function HomeDashboard({
     }
     try {
       const qs = new URLSearchParams({ limit: "100000", strict: "1" });
-      if (range.from) qs.set("from", range.from);
-      if (range.to) qs.set("to", range.to);
+      if (fetchFrom) qs.set("from", fetchFrom);
+      if (fetchTo) qs.set("to", fetchTo);
       const response = await apiFetch(`/api/media-stats?${qs.toString()}`);
       if (!response.ok) throw new Error("Failed to load media buyer stats.");
       const data = await response.json();
@@ -1134,7 +1142,7 @@ function HomeDashboard({
         setHomeState({ loading: false, error: error.message || "Failed to load stats." });
       }
     }
-  }, [period, customRange.from, customRange.to]);
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     loadHomeStats();
