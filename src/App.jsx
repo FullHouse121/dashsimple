@@ -11551,7 +11551,7 @@ function DomainsDashboard({ authUser }) {
             <Select
               value={domainForm.platform}
               onChange={(v) => setDomainForm((prev) => ({ ...prev, platform: v }))}
-              options={["PWA Group", "Link Group", "ZM apps"].map((p) => ({ value: p, label: t(p) }))}
+              options={["PWA Group", "Link Group", "ZM apps", "SKAK apps"].map((p) => ({ value: p, label: t(p) }))}
               placeholder={t("Select")}
             />
           </div>
