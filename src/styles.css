@@ -5902,6 +5902,249 @@ select option,
   animation: bindingPulseBurst 0.9s ease;
 }
 
+/* ── n8n-style node graph ─────────────────────────────────────────────── */
+.nn-canvas {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 8px 4px 4px;
+}
+
+/* Trigger chain — horizontal flow of nodes joined by animated wires */
+.nn-flow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.nn-node {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 190px;
+  padding: 13px 16px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(38, 41, 48, 0.95), rgba(26, 29, 35, 0.96));
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+  text-align: left;
+  color: var(--text);
+}
+
+.nn-node-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted-strong, #a9adb7);
+}
+
+.nn-node-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.nn-node-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.nn-node-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+/* Connection ports — small circles on node edges, like n8n */
+.nn-port {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #2a2e36;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  transform: translateY(-50%);
+  z-index: 3;
+}
+
+.nn-port-in { left: -6px; }
+.nn-port-out { right: -6px; }
+
+/* Action node — accent (run trigger) */
+.nn-node-action {
+  cursor: pointer;
+  border-color: rgba(54, 208, 124, 0.45);
+  background: linear-gradient(180deg, rgba(54, 208, 124, 0.16), rgba(54, 208, 124, 0.06));
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.nn-node-action:hover {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.14), 0 8px 22px rgba(0, 0, 0, 0.32);
+  transform: translateY(-1px);
+}
+
+.nn-node-action .nn-node-icon { background: rgba(54, 208, 124, 0.18); color: var(--green); }
+.nn-node-action .nn-node-kicker { color: rgba(54, 208, 124, 0.85); }
+
+/* Wires between nodes */
+.nn-wire {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 40px;
+  position: relative;
+}
+
+.nn-wire:last-child { display: none; }
+
+.nn-wire svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+.nn-wire-path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 2;
+}
+
+.nn-wire-flow {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2;
+  stroke-dasharray: 6 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Flow states color the wires + ports */
+.nn-flow-online .nn-wire-flow {
+  opacity: 1;
+  animation: nnFlow 0.9s linear infinite;
+}
+.nn-flow-online .nn-node .nn-port-out,
+.nn-flow-online .nn-node .nn-port-in { border-color: rgba(54, 208, 124, 0.6); }
+
+.nn-flow-delayed .nn-wire-flow {
+  stroke: #ffb37a;
+  opacity: 1;
+  animation: nnFlow 1.8s linear infinite;
+}
+.nn-flow-delayed .nn-wire-path { stroke: rgba(255, 179, 122, 0.2); }
+
+.nn-flow-offline .nn-wire-path { stroke: rgba(255, 138, 122, 0.28); stroke-dasharray: 4 6; }
+
+@keyframes nnFlow {
+  to { stroke-dashoffset: -16; }
+}
+
+/* Output result nodes */
+.nn-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  position: relative;
+}
+
+/* vertical tee connecting the chain to the results row */
+.nn-results::before {
+  content: "";
+  position: absolute;
+  top: -18px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1) 12%, rgba(255, 255, 255, 0.1) 88%, transparent);
+}
+
+.nn-result {
+  position: relative;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(34, 37, 43, 0.92), rgba(24, 27, 33, 0.94));
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+
+.nn-result .nn-port-in { top: -6px; left: 18px; transform: none; }
+
+.nn-result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.nn-result-head em { font-style: normal; color: var(--muted-strong, #a9adb7); }
+.nn-result-label { color: var(--muted-strong, #a9adb7); }
+
+.nn-result-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.nn-result-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.nn-result-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* Result tones — match getBindingTone(): success | info | warning | danger */
+.nn-result-success { border-color: rgba(54, 208, 124, 0.32); }
+.nn-result-success .nn-result-led { background: var(--green); box-shadow: 0 0 8px rgba(54, 208, 124, 0.6); }
+.nn-result-success .nn-result-status { color: var(--green); }
+.nn-result-success .nn-port-in { border-color: rgba(54, 208, 124, 0.6); }
+
+.nn-result-info { border-color: rgba(106, 214, 255, 0.3); }
+.nn-result-info .nn-result-led { background: #6ad6ff; box-shadow: 0 0 8px rgba(106, 214, 255, 0.5); }
+.nn-result-info .nn-result-status { color: #6ad6ff; }
+.nn-result-info .nn-port-in { border-color: rgba(106, 214, 255, 0.55); }
+
+.nn-result-danger { border-color: rgba(255, 138, 122, 0.3); }
+.nn-result-danger .nn-result-led { background: #ff8a7a; box-shadow: 0 0 8px rgba(255, 138, 122, 0.5); }
+.nn-result-danger .nn-result-status { color: #ff8a7a; }
+
+.nn-result-warning { border-color: rgba(255, 179, 122, 0.3); }
+.nn-result-warning .nn-result-led { background: #ffb37a; box-shadow: 0 0 8px rgba(255, 179, 122, 0.5); }
+.nn-result-warning .nn-result-status { color: #ffb37a; }
+
+@media (max-width: 640px) {
+  .nn-node { min-width: 160px; }
+  .nn-wire { width: 36px; }
+}
+
 .binding-cloud-head {
   position: relative;
   z-index: 2;

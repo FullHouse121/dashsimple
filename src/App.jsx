@@ -15052,44 +15052,75 @@ function MetaTokenDashboard({ authUser }) {
                 <i aria-hidden="true" />
               </div>
             </div>
-            <div className="binding-cloud-canvas">
-              <div className="binding-cloud-grid">
-                <div className="binding-cloud-node buyer">
-                  <span className="binding-cloud-kicker">Buyer</span>
-                  <strong>{selectedBinding?.buyer_name || "Not assigned"}</strong>
-                </div>
-                <span className="binding-cloud-wire" aria-hidden="true" />
-                <div className="binding-cloud-node account">
-                  <span className="binding-cloud-kicker">Account</span>
-                  <strong>{selectedBinding?.account_number || "No account"}</strong>
-                </div>
-                <span className="binding-cloud-wire" aria-hidden="true" />
-                <div className="binding-cloud-node keitaro">
-                  <span className="binding-cloud-kicker">Keitaro</span>
-                  <strong>
-                    {(() => {
-                      const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
-                      return binding === "raspy-star-473e" ? "admin" : binding;
-                    })()}
-                  </strong>
-                </div>
-                <span className="binding-cloud-wire" aria-hidden="true" />
-                <button type="button" className="binding-cloud-node action" onClick={() => handleRunCheck(selectedBinding.id)}>
-                  + Check Integration
-                </button>
+            <div className="nn-canvas">
+              {/* n8n-style trigger chain: Buyer → Account → Keitaro → Check */}
+              <div className={`nn-flow nn-flow-${flowMode}`}>
+                {(() => {
+                  const keitaroVal = (() => {
+                    const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
+                    return binding === "raspy-star-473e" ? "admin" : binding;
+                  })();
+                  const nodes = [
+                    { key: "buyer", kicker: "Buyer", value: selectedBinding?.buyer_name || "Not assigned", Icon: Users },
+                    { key: "account", kicker: "Account", value: selectedBinding?.account_number || "No account", Icon: CreditCard },
+                    { key: "keitaro", kicker: "Keitaro", value: keitaroVal, Icon: Plug },
+                  ];
+                  return (
+                    <>
+                      {nodes.map((node, i) => (
+                        <React.Fragment key={node.key}>
+                          <div className={`nn-node nn-node-${node.key}`}>
+                            <span className="nn-port nn-port-in" aria-hidden="true" />
+                            <span className="nn-node-icon"><node.Icon size={16} /></span>
+                            <span className="nn-node-text">
+                              <span className="nn-node-kicker">{node.kicker}</span>
+                              <strong className="nn-node-value">{node.value}</strong>
+                            </span>
+                            <span className="nn-port nn-port-out" aria-hidden="true" />
+                          </div>
+                          <span className="nn-wire" aria-hidden="true">
+                            <svg viewBox="0 0 64 40" preserveAspectRatio="none">
+                              <path className="nn-wire-path" d="M0,20 C24,20 40,20 64,20" />
+                              <path className="nn-wire-flow" d="M0,20 C24,20 40,20 64,20" />
+                            </svg>
+                          </span>
+                        </React.Fragment>
+                      ))}
+                      <button
+                        type="button"
+                        className="nn-node nn-node-action"
+                        onClick={() => handleRunCheck(selectedBinding.id)}
+                      >
+                        <span className="nn-port nn-port-in" aria-hidden="true" />
+                        <span className="nn-node-icon"><Zap size={16} /></span>
+                        <span className="nn-node-text">
+                          <span className="nn-node-kicker">Run</span>
+                          <strong className="nn-node-value">Check Integration</strong>
+                        </span>
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
-            </div>
-            <div className="binding-metric-grid">
-              {bindingChecks?.checks.map((item, index) => (
-                <article key={item.key} className={`binding-metric-card ${getBindingTone(item)}`}>
-                  <div className="binding-metric-head">
-                    <em>{String(index + 1).padStart(2, "0")}</em>
-                    <span>{item.label}</span>
-                  </div>
-                  <strong>{item.value}</strong>
-                  <small>{item.ok ? "Working" : "Missing"}</small>
-                </article>
-              ))}
+
+              {/* Output nodes — each validation check as an n8n result node */}
+              <div className="nn-results">
+                {bindingChecks?.checks.map((item, index) => {
+                  const tone = getBindingTone(item);
+                  return (
+                    <article key={item.key} className={`nn-result nn-result-${tone}`}>
+                      <span className="nn-port nn-port-in" aria-hidden="true" />
+                      <div className="nn-result-head">
+                        <span className="nn-result-led" aria-hidden="true" />
+                        <em>{String(index + 1).padStart(2, "0")}</em>
+                        <span className="nn-result-label">{item.label}</span>
+                      </div>
+                      <strong className="nn-result-value">{item.value}</strong>
+                      <small className="nn-result-status">{item.ok ? "Working" : "Missing"}</small>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
             <div className="binding-footer">
               <button
