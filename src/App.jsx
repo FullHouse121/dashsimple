@@ -15332,6 +15332,11 @@ function RolesDashboard({ authUser }) {
   const [editingBuyerId, setEditingBuyerId] = React.useState(null);
   // Same idea for users — edit username / role / linked buyer in-place.
   const [editingUserId, setEditingUserId] = React.useState(null);
+  // Password reset modal — replaces the old window.prompt with a real,
+  // validated UI (strength meter, generator, show/hide, copy, confirm).
+  const [pwModal, setPwModal] = React.useState(null); // { user } | null
+  const [pwForm, setPwForm] = React.useState({ next: "", confirm: "", show: false });
+  const [pwState, setPwState] = React.useState({ saving: false, error: null, done: false });
   // Per-role expand state — role rows are compact by default, the permission
   // grid only appears when the row is expanded.
   const [expandedRoles, setExpandedRoles] = React.useState(() => new Set());
@@ -15596,26 +15601,90 @@ function RolesDashboard({ authUser }) {
     }
   };
 
-  const handleUserPasswordReset = async (user) => {
+  // Open / close the password modal
+  const openPwModal = (user) => {
     if (!isLeadership) return;
-    const nextPassword = window.prompt(t("Reset Password"), "");
-    if (nextPassword === null) return;
-    if (!String(nextPassword || "").trim()) {
-      setUserState({ loading: false, error: t("Password is required."), });
+    setPwForm({ next: "", confirm: "", show: false });
+    setPwState({ saving: false, error: null, done: false });
+    setPwModal({ user });
+  };
+  const closePwModal = () => {
+    setPwModal(null);
+    setPwForm({ next: "", confirm: "", show: false });
+    setPwState({ saving: false, error: null, done: false });
+  };
+
+  // Strength scoring → { score 0-4, label, tone }
+  const scorePassword = (pw) => {
+    const v = String(pw || "");
+    if (!v) return { score: 0, label: "", tone: "" };
+    let score = 0;
+    if (v.length >= 8) score += 1;
+    if (v.length >= 12) score += 1;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
+    if (/\d/.test(v)) score += 1;
+    if (/[^A-Za-z0-9]/.test(v)) score += 1;
+    score = Math.min(4, score);
+    const labels = ["Very weak", "Weak", "Fair", "Strong", "Very strong"];
+    const tones = ["danger", "danger", "warning", "success", "success"];
+    return { score, label: labels[score], tone: tones[score] };
+  };
+
+  // Cryptographically-random 16-char password with mixed classes
+  const generatePassword = () => {
+    const sets = [
+      "abcdefghijkmnpqrstuvwxyz",
+      "ABCDEFGHJKLMNPQRSTUVWXYZ",
+      "23456789",
+      "!@#$%^&*-_=+",
+    ];
+    const all = sets.join("");
+    const rand = (n) => {
+      if (window.crypto?.getRandomValues) {
+        const a = new Uint32Array(1);
+        window.crypto.getRandomValues(a);
+        return a[0] % n;
+      }
+      return Math.floor(Math.random() * n);
+    };
+    // Guarantee at least one of each class, then fill to 16
+    let chars = sets.map((s) => s[rand(s.length)]);
+    while (chars.length < 16) chars.push(all[rand(all.length)]);
+    // Shuffle
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = rand(i + 1);
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    const pw = chars.join("");
+    setPwForm({ next: pw, confirm: pw, show: true });
+  };
+
+  const handlePwSubmit = async (event) => {
+    event.preventDefault();
+    if (!pwModal?.user) return;
+    const next = String(pwForm.next || "");
+    if (next.length < 8) {
+      setPwState({ saving: false, error: "Password must be at least 8 characters.", done: false });
       return;
     }
+    if (next !== pwForm.confirm) {
+      setPwState({ saving: false, error: "Passwords do not match.", done: false });
+      return;
+    }
+    setPwState({ saving: true, error: null, done: false });
     try {
-      const response = await apiFetch(`/api/users/${user.id}/password`, {
+      const response = await apiFetch(`/api/users/${pwModal.user.id}/password`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: nextPassword }),
+        body: JSON.stringify({ password: next }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to update password.");
       }
+      setPwState({ saving: false, error: null, done: true });
     } catch (error) {
-      setUserState({ loading: false, error: error.message || "Failed to update password." });
+      setPwState({ saving: false, error: error.message || "Failed to update password.", done: false });
     }
   };
 
@@ -16012,7 +16081,7 @@ function RolesDashboard({ authUser }) {
                               <button
                                 className="icon-btn"
                                 type="button"
-                                onClick={() => handleUserPasswordReset(user)}
+                                onClick={() => openPwModal(user)}
                                 title={t("Reset Password")}
                               >
                                 <Lock size={16} />
@@ -16249,6 +16318,104 @@ function RolesDashboard({ authUser }) {
           )}
         </motion.div>
       </section>
+      ) : null}
+
+      {pwModal ? (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closePwModal(); }}>
+          <div className="modal pw-modal" role="dialog" aria-modal="true">
+            <div className="modal-head pw-modal-head">
+              <div className="pw-modal-title">
+                <span className="pw-modal-icon"><Lock size={18} /></span>
+                <div>
+                  <h2>{t("Reset password")}</h2>
+                  <p className="pw-modal-sub">{pwModal.user?.username}</p>
+                </div>
+              </div>
+              <button className="icon-btn" type="button" onClick={closePwModal}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {pwState.done ? (
+              <div className="pw-done">
+                <div className="pw-done-icon"><CheckCircle size={40} /></div>
+                <h3>{t("Password updated")}</h3>
+                <p>{t("The new password is active immediately.")} {pwModal.user?.username} {t("must use it on next login.")}</p>
+                <div className="pw-done-value">
+                  <code>{pwForm.next}</code>
+                  <button type="button" className="ghost" onClick={() => navigator.clipboard?.writeText(pwForm.next)}>
+                    <Copy size={14} /> {t("Copy")}
+                  </button>
+                </div>
+                <button type="button" className="action-pill" onClick={closePwModal}>{t("Done")}</button>
+              </div>
+            ) : (
+              <form className="pw-form" onSubmit={handlePwSubmit}>
+                <div className="field">
+                  <label>{t("New password")}</label>
+                  <div className="pw-input-wrap">
+                    <input
+                      type={pwForm.show ? "text" : "password"}
+                      value={pwForm.next}
+                      onChange={(e) => setPwForm((p) => ({ ...p, next: e.target.value }))}
+                      placeholder={t("Enter a strong password")}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="pw-eye"
+                      onClick={() => setPwForm((p) => ({ ...p, show: !p.show }))}
+                      title={pwForm.show ? t("Hide") : t("Show")}
+                    >
+                      {pwForm.show ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                  {pwForm.next ? (() => {
+                    const s = scorePassword(pwForm.next);
+                    return (
+                      <div className="pw-strength">
+                        <div className="pw-strength-bars">
+                          {[0, 1, 2, 3].map((i) => (
+                            <span key={i} className={`pw-strength-bar${i < s.score ? ` is-${s.tone}` : ""}`} />
+                          ))}
+                        </div>
+                        <span className={`pw-strength-label tone-${s.tone}`}>{s.label}</span>
+                      </div>
+                    );
+                  })() : null}
+                </div>
+
+                <div className="field">
+                  <label>{t("Confirm password")}</label>
+                  <div className="pw-input-wrap">
+                    <input
+                      type={pwForm.show ? "text" : "password"}
+                      value={pwForm.confirm}
+                      onChange={(e) => setPwForm((p) => ({ ...p, confirm: e.target.value }))}
+                      placeholder={t("Re-enter the password")}
+                    />
+                  </div>
+                  {pwForm.confirm && pwForm.confirm !== pwForm.next ? (
+                    <span className="pw-mismatch">{t("Passwords do not match.")}</span>
+                  ) : null}
+                </div>
+
+                <button type="button" className="pw-generate" onClick={generatePassword}>
+                  <RotateCcw size={13} /> {t("Generate strong password")}
+                </button>
+
+                {pwState.error ? <div className="pw-error">{pwState.error}</div> : null}
+
+                <div className="pw-actions">
+                  <button type="button" className="ghost" onClick={closePwModal}>{t("Cancel")}</button>
+                  <button type="submit" className="action-pill" disabled={pwState.saving}>
+                    {pwState.saving ? t("Saving…") : t("Update password")}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       ) : null}
     </>
   );

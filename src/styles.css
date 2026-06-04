@@ -1915,6 +1915,161 @@ select {
   gap: 16px;
 }
 
+/* ── Password reset modal ─────────────────────────────────────────────── */
+.pw-modal { width: min(460px, 92vw); gap: 20px; }
+
+.pw-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pw-modal-title { display: flex; align-items: center; gap: 12px; }
+
+.pw-modal-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(54, 208, 124, 0.12);
+  border: 1px solid rgba(54, 208, 124, 0.3);
+  color: var(--green);
+  flex-shrink: 0;
+}
+
+.pw-modal-title h2 { margin: 0; font-size: 17px; }
+.pw-modal-sub { margin: 2px 0 0; font-size: 12px; color: var(--muted-strong, #a9adb7); }
+
+.pw-form { display: flex; flex-direction: column; gap: 16px; }
+
+.pw-input-wrap { position: relative; }
+
+.pw-input-wrap input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 42px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.pw-input-wrap input:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
+}
+
+.pw-eye {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.pw-eye:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+
+/* Strength meter */
+.pw-strength { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.pw-strength-bars { display: flex; gap: 4px; flex: 1; }
+.pw-strength-bar {
+  height: 4px;
+  flex: 1;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  transition: background 0.2s ease;
+}
+.pw-strength-bar.is-danger { background: #ff8a7a; }
+.pw-strength-bar.is-warning { background: #ffb37a; }
+.pw-strength-bar.is-success { background: var(--green); }
+
+.pw-strength-label { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pw-strength-label.tone-danger { color: #ff8a7a; }
+.pw-strength-label.tone-warning { color: #ffb37a; }
+.pw-strength-label.tone-success { color: var(--green); }
+
+.pw-mismatch { font-size: 11px; color: #ff8a7a; margin-top: 6px; display: block; }
+
+.pw-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px dashed rgba(54, 208, 124, 0.3);
+  background: transparent;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+.pw-generate:hover { background: rgba(54, 208, 124, 0.06); }
+
+.pw-error {
+  font-size: 12px;
+  color: #ff8a7a;
+  background: rgba(255, 138, 122, 0.08);
+  border: 1px solid rgba(255, 138, 122, 0.25);
+  border-radius: 9px;
+  padding: 9px 12px;
+}
+
+.pw-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+/* Success state */
+.pw-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 6px 4px 4px;
+}
+.pw-done-icon { color: var(--green); }
+.pw-done h3 { margin: 0; font-size: 16px; }
+.pw-done p { margin: 0; font-size: 12px; color: var(--muted-strong, #a9adb7); line-height: 1.5; }
+
+.pw-done-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 4px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+.pw-done-value code {
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: 0.03em;
+}
+
 .dashboard-filters-modal .modal-body {
   gap: 16px 18px;
 }
