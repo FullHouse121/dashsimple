@@ -6597,6 +6597,10 @@ function UtmBuilder() {
   });
   const [copyState, setCopyState] = React.useState("idle");
   const [utmHistory, setUtmHistory] = React.useState([]);
+  const [showAllSubs, setShowAllSubs] = React.useState(false);
+  // Keep the commonly-used params visible; collapse sub7→sub15 behind a toggle
+  // to cut the wall of empty inputs. Auto-expand if any hidden sub is filled.
+  const PRIMARY_SUB_COUNT = 6;
 
   // Each tool injects the Meta pixel param differently:
   //  - PWA Group / Link Group / SKAK apps → fbp={pixel} as the FIRST param
@@ -6695,6 +6699,16 @@ function UtmBuilder() {
   const utmUrl = buildUrl();
   const isValid = utm.domain ? utmUrl.startsWith("http") : true;
 
+  // How many params the link actually carries (pixel + filled subs)
+  const filledSubCount = utm.subs.filter((v) => String(v || "").trim()).length;
+  const paramCount = filledSubCount + (utm.fbp ? 1 : 0);
+  // Any hidden sub (index >= PRIMARY_SUB_COUNT) carries a value?
+  const hasHiddenFilled = utm.subs
+    .slice(PRIMARY_SUB_COUNT)
+    .some((v) => String(v || "").trim());
+  const subsExpanded = showAllSubs || hasHiddenFilled;
+  const visibleSubCount = subsExpanded ? utm.subs.length : PRIMARY_SUB_COUNT;
+
   const storeHistory = () => {
     if (!utmUrl || !isValid) return;
     setUtmHistory((prev) => {
@@ -6783,22 +6797,49 @@ function UtmBuilder() {
                 onChange={updateUtm("fbp")}
               />
             </div>
-            {utm.subs.map((value, index) => (
-              <div className="field" key={`sub-${index}`}>
-                <label>{subFieldAliases[index + 1] || `sub${index + 1}`}</label>
-                <input
-                  type="text"
-                  placeholder={subFieldAliases[index + 1] || `sub${index + 1}`}
-                  value={value}
-                  onChange={updateSub(index)}
-                />
-              </div>
-            ))}
+            {utm.subs.slice(0, visibleSubCount).map((value, index) => {
+              const labelText = subFieldAliases[index + 1] || `sub${index + 1}`;
+              const aliased = Boolean(subFieldAliases[index + 1]);
+              return (
+                <div className={`field${aliased ? " utm-field-aliased" : ""}`} key={`sub-${index}`}>
+                  <label>{labelText}</label>
+                  <input
+                    type="text"
+                    placeholder={labelText}
+                    value={value}
+                    onChange={updateSub(index)}
+                  />
+                </div>
+              );
+            })}
           </div>
 
+          {utm.subs.length > PRIMARY_SUB_COUNT ? (
+            <button
+              type="button"
+              className="utm-subs-toggle"
+              onClick={() => setShowAllSubs((v) => !v)}
+              disabled={hasHiddenFilled}
+              title={hasHiddenFilled ? "Some of these parameters have values" : undefined}
+            >
+              {hasHiddenFilled
+                ? `Extra parameters in use (sub7–sub${utm.subs.length})`
+                : subsExpanded
+                  ? "Hide extra parameters"
+                  : `Show all parameters (+${utm.subs.length - PRIMARY_SUB_COUNT})`}
+            </button>
+          ) : null}
+
           <div className="utm-preview">
-            <div>
-              <p className="summary-label">Generated URL</p>
+            <div className="utm-preview-body">
+              <div className="utm-preview-head">
+                <p className="summary-label">Generated URL</p>
+                {paramCount > 0 ? (
+                  <span className="utm-param-count">
+                    {paramCount} {paramCount === 1 ? "param" : "params"}
+                  </span>
+                ) : null}
+              </div>
               <p className={`utm-url ${utmUrl ? "" : "is-empty"} ${isValid ? "" : "is-invalid"}`}>
                 {utmUrl || "Add a domain to generate a link."}
               </p>
