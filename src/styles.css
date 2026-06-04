@@ -4147,11 +4147,48 @@ select option,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.utm-tool-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(54, 208, 124, 0.15);
+  background: rgba(54, 208, 124, 0.04);
+}
+
+.utm-tool-field {
+  min-width: 220px;
+  max-width: 280px;
+}
+
+.utm-tool-hint {
+  flex: 1;
+  min-width: 240px;
+  font-size: 12px;
+  color: var(--muted-strong, #a9adb7);
+  line-height: 1.5;
+  margin: 0 0 6px;
+}
+
+.utm-tool-hint code {
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--green);
+}
+
+.utm-tool-hint strong { color: var(--text); }
+
 .utm-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px 18px;
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .utm-grid .field:first-child {

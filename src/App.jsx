@@ -6590,12 +6590,20 @@ function UtmBuilder() {
     []
   );
   const [utm, setUtm] = React.useState({
+    tool: "PWA Group",
     domain: "",
     fbp: "",
     subs: Array.from({ length: 15 }, () => ""),
   });
   const [copyState, setCopyState] = React.useState("idle");
   const [utmHistory, setUtmHistory] = React.useState([]);
+
+  // Each tool injects the Meta pixel param differently:
+  //  - PWA Group / Link Group / SKAK apps → fbp={pixel} as the FIRST param
+  //  - ZM apps                            → pixel_fb={pixel} as the LAST param
+  const UTM_TOOLS = ["PWA Group", "Link Group", "SKAK apps", "ZM apps"];
+  const isZmTool = utm.tool === "ZM apps";
+  const pixelParamKey = isZmTool ? "pixel_fb" : "fbp";
 
   const updateUtm = (key) => (event) => {
     setUtm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -6611,11 +6619,12 @@ function UtmBuilder() {
   };
 
   const resetUtm = () => {
-    setUtm({
+    setUtm((prev) => ({
+      tool: prev.tool,
       domain: "",
       fbp: "",
       subs: Array.from({ length: 15 }, () => ""),
-    });
+    }));
     setCopyState("idle");
   };
 
@@ -6625,20 +6634,38 @@ function UtmBuilder() {
   };
 
   const buildQueryString = (url) => {
-    const params = [];
+    // Params already present on the pasted domain URL
+    const urlParams = [];
     url.searchParams.forEach((value, key) => {
-      params.push(`${encodeURIComponent(key)}=${encodeParamValue(value)}`);
+      urlParams.push(`${encodeURIComponent(key)}=${encodeParamValue(value)}`);
     });
-    if (utm.fbp) {
-      params.push(`fbp=${encodeParamValue(utm.fbp)}`);
-    }
+
+    // Sub params
+    const subParams = [];
     utm.subs.forEach((value, index) => {
       if (value) {
         const paramKey = subFieldAliases[index + 1] || `sub${index + 1}`;
-        params.push(`${encodeURIComponent(paramKey)}=${encodeParamValue(value)}`);
+        subParams.push(`${encodeURIComponent(paramKey)}=${encodeParamValue(value)}`);
       }
     });
-    return params.join("&");
+
+    // The Meta pixel param — key + position depend on the selected tool.
+    const pixelEntry = utm.fbp
+      ? `${pixelParamKey}=${encodeParamValue(utm.fbp)}`
+      : null;
+
+    let ordered;
+    if (isZmTool) {
+      // ZM apps: pixel_fb must be the LAST parameter
+      ordered = [...urlParams, ...subParams];
+      if (pixelEntry) ordered.push(pixelEntry);
+    } else {
+      // PWA / Link / SKAK: fbp must be the FIRST parameter
+      ordered = [];
+      if (pixelEntry) ordered.push(pixelEntry);
+      ordered = [...ordered, ...urlParams, ...subParams];
+    }
+    return ordered.join("&");
   };
 
   const buildUrl = () => {
@@ -6720,6 +6747,23 @@ function UtmBuilder() {
             </div>
           </div>
 
+          <div className="utm-tool-bar">
+            <div className="field utm-tool-field">
+              <label>Tool</label>
+              <Select
+                value={utm.tool}
+                onChange={(v) => setUtm((prev) => ({ ...prev, tool: v }))}
+                options={UTM_TOOLS.map((tool) => ({ value: tool, label: tool }))}
+                placeholder="Select tool"
+              />
+            </div>
+            <p className="utm-tool-hint">
+              {isZmTool
+                ? <>ZM apps — the pixel is appended as <code>pixel_fb={"{meta_pixel}"}</code> at the <strong>end</strong> of the URL.</>
+                : <>{utm.tool} — the pixel is placed as <code>fbp={"{meta_pixel}"}</code> at the <strong>start</strong> of the parameters.</>}
+            </p>
+          </div>
+
           <div className="utm-grid">
             <div className="field">
               <label>Domain</label>
@@ -6731,10 +6775,10 @@ function UtmBuilder() {
               />
             </div>
             <div className="field">
-              <label>fbp</label>
+              <label>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
               <input
                 type="text"
-                placeholder="facebook_pixel_id"
+                placeholder="{meta_pixel} or pixel id"
                 value={utm.fbp}
                 onChange={updateUtm("fbp")}
               />
