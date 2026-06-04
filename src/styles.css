@@ -4148,6 +4148,10 @@ select option,
 }
 
 .utm-tool-bar {
+  position: relative;
+  /* Sit above the .utm-grid sibling so the open Tool dropdown isn't
+     painted over by the form fields below it. */
+  z-index: 50;
   display: flex;
   align-items: flex-end;
   gap: 16px;
