@@ -6613,6 +6613,8 @@ function UtmBuilder() {
   // Keep the commonly-used params visible; collapse sub7→sub15 behind a toggle
   // to cut the wall of empty inputs. Auto-expand if any hidden sub is filled.
   const PRIMARY_SUB_COUNT = 6;
+  // sub9 is the GEO slot — auto-filled from the selected country (e.g. MX).
+  const GEO_SUB_INDEX = 8;
 
   // Each tool injects the Meta pixel param differently:
   //  - PWA Group / Link Group / SKAK apps → fbp={pixel} as the FIRST param
@@ -6621,8 +6623,59 @@ function UtmBuilder() {
   const isZmTool = utm.tool === "ZM apps";
   const pixelParamKey = isZmTool ? "pixel_fb" : "fbp";
 
+  // Common Meta / Keitaro macros — quick-insert into the focused field.
+  const UTM_MACROS = [
+    "{{campaign.name}}", "{{campaign.id}}", "{{adset.name}}", "{{adset.id}}",
+    "{{ad.name}}", "{{ad.id}}", "{{placement}}", "{{site_source_name}}", "{meta_pixel}",
+  ];
+  // Which field is focused, so macro chips know where to insert.
+  const [focusedField, setFocusedField] = React.useState(null);
+
+  // Registered domains for the picker (paste OR choose).
+  const [domainOptions, setDomainOptions] = React.useState([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch("/api/domains?limit=300");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const names = (Array.isArray(data) ? data : [])
+          .map((d) => String(d.domain || d.name || "").trim())
+          .filter(Boolean);
+        setDomainOptions(Array.from(new Set(names)));
+      } catch { /* soft-fail */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Presets — save/load the full param structure, persisted to localStorage.
+  const UTM_PRESETS_KEY = "dash-utm-presets";
+  const [presets, setPresets] = React.useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(UTM_PRESETS_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch { return []; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(UTM_PRESETS_KEY, JSON.stringify(presets)); } catch { /* quota */ }
+  }, [presets]);
+
+  const [historySearch, setHistorySearch] = React.useState("");
+
   const updateUtm = (key) => (event) => {
     setUtm((prev) => ({ ...prev, [key]: event.target.value }));
+  };
+
+  // Selecting a country auto-fills the GEO sub (sub9) with the ISO code.
+  const handleCountryChange = (country) => {
+    const iso = (resolveCountryIso(country) || "").toUpperCase();
+    setUtm((prev) => {
+      const nextSubs = [...prev.subs];
+      if (iso) nextSubs[GEO_SUB_INDEX] = iso;
+      return { ...prev, country, subs: nextSubs };
+    });
   };
 
   const updateSub = (index) => (event) => {
@@ -6632,6 +6685,49 @@ function UtmBuilder() {
       nextSubs[index] = value;
       return { ...prev, subs: nextSubs };
     });
+  };
+
+  // Insert a macro into whichever field is focused (appends to its value).
+  const insertMacro = (macro) => {
+    if (!focusedField) return;
+    if (focusedField === "fbp" || focusedField === "domain") {
+      setUtm((prev) => ({ ...prev, [focusedField]: `${prev[focusedField] || ""}${macro}` }));
+      return;
+    }
+    if (focusedField.startsWith("sub-")) {
+      const idx = Number(focusedField.slice(4));
+      if (!Number.isFinite(idx)) return;
+      setUtm((prev) => {
+        const nextSubs = [...prev.subs];
+        nextSubs[idx] = `${nextSubs[idx] || ""}${macro}`;
+        return { ...prev, subs: nextSubs };
+      });
+    }
+  };
+
+  const savePreset = () => {
+    const name = window.prompt("Preset name", "");
+    if (!name || !name.trim()) return;
+    const snapshot = {
+      name: name.trim(),
+      tool: utm.tool,
+      fbp: utm.fbp,
+      subs: [...utm.subs],
+    };
+    setPresets((prev) => [snapshot, ...prev.filter((p) => p.name !== snapshot.name)].slice(0, 12));
+  };
+
+  const loadPreset = (preset) => {
+    setUtm((prev) => ({
+      ...prev,
+      tool: preset.tool || prev.tool,
+      fbp: preset.fbp || "",
+      subs: Array.from({ length: 15 }, (_, i) => preset.subs?.[i] ?? ""),
+    }));
+  };
+
+  const deletePreset = (name) => {
+    setPresets((prev) => prev.filter((p) => p.name !== name));
   };
 
   const resetUtm = () => {
@@ -6722,6 +6818,35 @@ function UtmBuilder() {
   const subsExpanded = showAllSubs || hasHiddenFilled;
   const visibleSubCount = subsExpanded ? utm.subs.length : PRIMARY_SUB_COUNT;
 
+  // Soft validation hints — never block, just flag likely mistakes.
+  const utmWarnings = React.useMemo(() => {
+    const warnings = [];
+    if (utm.domain && !/^https?:\/\//i.test(utm.domain.trim())) {
+      warnings.push("Domain has no http(s):// — it'll be assumed https.");
+    }
+    if (!utm.fbp) {
+      warnings.push(`No Meta pixel set — ${pixelParamKey} won't be added.`);
+    }
+    if (utm.country && !utm.subs[GEO_SUB_INDEX]) {
+      warnings.push("Country selected but sub9 (geo) is empty.");
+    }
+    return warnings;
+  }, [utm.domain, utm.fbp, utm.country, utm.subs, pixelParamKey]);
+
+  // Split the generated URL so the pixel param can be highlighted — lets the
+  // operator verify placement (first for fbp, last for pixel_fb) at a glance.
+  const renderHighlightedUrl = () => {
+    if (!utmUrl) return null;
+    const re = new RegExp(`(${pixelParamKey}=[^&#]*)`);
+    const parts = utmUrl.split(re);
+    if (parts.length === 1) return utmUrl;
+    return parts.map((part, i) =>
+      re.test(part) && part.startsWith(`${pixelParamKey}=`)
+        ? <mark key={i} className="utm-url-pixel">{part}</mark>
+        : <React.Fragment key={i}>{part}</React.Fragment>
+    );
+  };
+
   const storeHistory = () => {
     if (!utmUrl || !isValid) return;
     // Snapshot the param keys actually used (pixel + filled subs) so the
@@ -6799,10 +6924,10 @@ function UtmBuilder() {
               />
             </div>
             <div className="field utm-tool-field">
-              <label>Country</label>
+              <label>Country <span className="field-pace-hint">→ sub9</span></label>
               <CountryDropdownPicker
                 value={utm.country}
-                onChange={(country) => setUtm((prev) => ({ ...prev, country }))}
+                onChange={handleCountryChange}
                 options={countryOptions}
                 placeholder="Select country"
                 searchPlaceholder="Type to find countries"
@@ -6816,15 +6941,41 @@ function UtmBuilder() {
             </p>
           </div>
 
+          {/* Macro quick-insert — inserts into the last focused field */}
+          <div className="utm-macros">
+            <span className="utm-macros-label">Insert macro</span>
+            <div className="utm-macros-chips">
+              {UTM_MACROS.map((macro) => (
+                <button
+                  key={macro}
+                  type="button"
+                  className="utm-macro-chip"
+                  disabled={!focusedField}
+                  title={focusedField ? `Insert into ${focusedField === "fbp" ? "Meta Pixel" : focusedField === "domain" ? "Domain" : focusedField.replace("sub-", "sub")}` : "Focus a field first"}
+                  onMouseDown={(e) => { e.preventDefault(); insertMacro(macro); }}
+                >
+                  {macro}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="utm-grid">
             <div className="field">
               <label>Domain</label>
               <input
                 type="url"
-                placeholder="https://example.com"
+                list="utm-domain-options"
+                placeholder="https://example.com — paste or pick"
                 value={utm.domain}
                 onChange={updateUtm("domain")}
+                onFocus={() => setFocusedField("domain")}
               />
+              <datalist id="utm-domain-options">
+                {domainOptions.map((d) => (
+                  <option key={d} value={d.startsWith("http") ? d : `https://${d}`} />
+                ))}
+              </datalist>
             </div>
             <div className="field">
               <label>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
@@ -6833,19 +6984,25 @@ function UtmBuilder() {
                 placeholder="{meta_pixel} or pixel id"
                 value={utm.fbp}
                 onChange={updateUtm("fbp")}
+                onFocus={() => setFocusedField("fbp")}
               />
             </div>
             {utm.subs.slice(0, visibleSubCount).map((value, index) => {
               const labelText = subFieldAliases[index + 1] || `sub${index + 1}`;
               const aliased = Boolean(subFieldAliases[index + 1]);
+              const isGeo = index === GEO_SUB_INDEX;
               return (
                 <div className={`field${aliased ? " utm-field-aliased" : ""}`} key={`sub-${index}`}>
-                  <label>{labelText}</label>
+                  <label>
+                    {labelText}
+                    {isGeo ? <span className="field-pace-hint">geo</span> : null}
+                  </label>
                   <input
                     type="text"
                     placeholder={labelText}
                     value={value}
                     onChange={updateSub(index)}
+                    onFocus={() => setFocusedField(`sub-${index}`)}
                   />
                 </div>
               );
@@ -6868,6 +7025,29 @@ function UtmBuilder() {
             </button>
           ) : null}
 
+          {/* Presets — save the current param structure, reload it later */}
+          <div className="utm-presets">
+            <button type="button" className="utm-preset-save" onClick={savePreset}>
+              <Plus size={13} /> Save preset
+            </button>
+            {presets.length ? (
+              <div className="utm-preset-chips">
+                {presets.map((p) => (
+                  <span key={p.name} className="utm-preset-chip">
+                    <button type="button" className="utm-preset-load" onClick={() => loadPreset(p)} title="Load preset">
+                      {p.name}
+                    </button>
+                    <button type="button" className="utm-preset-del" onClick={() => deletePreset(p.name)} title="Delete preset">
+                      <X size={11} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="utm-presets-empty">No saved presets yet.</span>
+            )}
+          </div>
+
           <div className="utm-preview">
             <div className="utm-preview-body">
               <div className="utm-preview-head">
@@ -6879,8 +7059,15 @@ function UtmBuilder() {
                 ) : null}
               </div>
               <p className={`utm-url ${utmUrl ? "" : "is-empty"} ${isValid ? "" : "is-invalid"}`}>
-                {utmUrl || "Add a domain to generate a link."}
+                {utmUrl ? renderHighlightedUrl() : "Add a domain to generate a link."}
               </p>
+              {utmWarnings.length ? (
+                <ul className="utm-warnings">
+                  {utmWarnings.map((w) => (
+                    <li key={w}><AlertTriangle size={11} /> {w}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <div className="utm-actions">
               <button className="ghost" type="button" onClick={resetUtm}>
@@ -6914,15 +7101,62 @@ function UtmBuilder() {
           <div className="utm-history">
             <div className="custom-head">
               <p>Recent UTM links</p>
-              <button className="ghost" type="button" onClick={() => setUtmHistory([])}>
-                Clear list
-              </button>
+              <div className="utm-history-head-actions">
+                {utmHistory.length ? (
+                  <input
+                    type="text"
+                    className="utm-history-search"
+                    placeholder="Search links…"
+                    value={historySearch}
+                    onChange={(e) => setHistorySearch(e.target.value)}
+                  />
+                ) : null}
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => {
+                    const rows = utmHistory.map((it) => (typeof it === "string" ? { url: it } : it));
+                    const csv = ["tool,country,params,created_at,url"]
+                      .concat(rows.map((r) =>
+                        [r.tool || "", r.country || "", (r.params || []).join(" "), r.createdAt || "", `"${(r.url || "").replace(/"/g, '""')}"`].join(",")
+                      ))
+                      .join("\n");
+                    const blob = new Blob([csv], { type: "text/csv" });
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = "utm-links.csv";
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                  disabled={!utmHistory.length}
+                >
+                  <Download size={14} /> Export
+                </button>
+                <button className="ghost" type="button" onClick={() => setUtmHistory([])}>
+                  Clear list
+                </button>
+              </div>
             </div>
             {utmHistory.length === 0 ? (
               <p className="empty-state">No generated links yet.</p>
-            ) : (
+            ) : (() => {
+              const q = historySearch.trim().toLowerCase();
+              const filtered = q
+                ? utmHistory.filter((it) => {
+                    const r = typeof it === "string" ? { url: it } : it;
+                    return (
+                      (r.url || "").toLowerCase().includes(q) ||
+                      (r.tool || "").toLowerCase().includes(q) ||
+                      (r.country || "").toLowerCase().includes(q)
+                    );
+                  })
+                : utmHistory;
+              if (filtered.length === 0) {
+                return <p className="empty-state">No links match.</p>;
+              }
+              return (
               <ul className="utm-history-list">
-                {utmHistory.map((item, idx) => {
+                {filtered.map((item, idx) => {
                   // Back-compat: older entries were plain URL strings.
                   const record = typeof item === "string" ? { url: item } : item;
                   const when = record.createdAt ? new Date(record.createdAt) : null;
@@ -6968,7 +7202,8 @@ function UtmBuilder() {
                   );
                 })}
               </ul>
-            )}
+              );
+            })()}
           </div>
         </motion.div>
       </section>
