@@ -18035,7 +18035,15 @@ export default function App() {
   const fetchEntries = React.useCallback(async () => {
     try {
       setEntryState({ loading: true, error: null });
-      const response = await apiFetch("/api/expenses?limit=200");
+      // Scope the fetch to the active Finance period so every in-range expense
+      // is loaded (the old flat limit=200 silently dropped older entries once
+      // the table grew past 200 total). Widen the window slightly so the
+      // Expense Log still shows a little context around the period.
+      const range = getPeriodDateRange(period, customRange);
+      const qs = new URLSearchParams({ limit: "5000" });
+      if (range.from) qs.set("from", range.from);
+      if (range.to) qs.set("to", range.to);
+      const response = await apiFetch(`/api/expenses?${qs.toString()}`);
       if (!response.ok) {
         throw new Error("Failed to load expenses.");
       }
@@ -18045,7 +18053,7 @@ export default function App() {
     } catch (error) {
       setEntryState({ loading: false, error: error.message || "Failed to load expenses." });
     }
-  }, []);
+  }, [period, customRange.from, customRange.to]);
 
   const fetchBrandsForFinance = React.useCallback(async () => {
     try {

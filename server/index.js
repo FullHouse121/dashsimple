@@ -660,17 +660,24 @@ const insertExpense = async (payload) => {
   return rows[0];
 };
 
-const selectExpenses = async (limit) =>
-  getRows(
+const selectExpenses = async (limit, { from = null, to = null } = {}) => {
+  const params = [];
+  let where = "";
+  if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}e.date >= $${params.length}`; }
+  if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}e.date <= $${params.length}`; }
+  params.push(limit);
+  return getRows(
     `SELECT e.id, e.date, e.country, e.category, e.reference, e.billing_type,
             e.crypto_network, e.crypto_hash, e.amount, e.status, e.project_id,
             b.name AS project_name
      FROM expenses e
      LEFT JOIN brands b ON b.id = e.project_id
+     ${where}
      ORDER BY e.date DESC, e.id DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${params.length}`,
+    params
   );
+};
 
 const insertMediaStat = async (payload) => {
   const { rows } = await query(
@@ -4287,8 +4294,14 @@ app.get("/api/expenses", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  const rows = await selectExpenses(limit);
+  // Allow a larger ceiling when a date window is supplied — date-scoped reads
+  // are cheap and the Finance dashboard needs every in-range expense to compute
+  // period totals correctly (was silently capped at the latest 200 before).
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+  const maxLimit = from || to ? 5000 : 500;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  const rows = await selectExpenses(limit, { from, to });
   res.json(rows);
 });
 
