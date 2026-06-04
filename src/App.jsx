@@ -10042,6 +10042,7 @@ function AccountsDashboard({ authUser }) {
   const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
   const [form, setForm] = React.useState({
     accountNumber: "",
+    nickname: "",
     status: "Active",
     pixelIds: [],
     countries: [],
@@ -10055,6 +10056,7 @@ function AccountsDashboard({ authUser }) {
     saving: false,
     form: {
       accountNumber: "",
+      nickname: "",
       status: "Active",
       pixelIds: [],
       countries: [],
@@ -10184,6 +10186,7 @@ function AccountsDashboard({ authUser }) {
   const resetForm = React.useCallback(() => {
     setForm({
       accountNumber: "",
+      nickname: "",
       status: "Active",
       pixelIds: [],
       countries: [],
@@ -10620,6 +10623,7 @@ function AccountsDashboard({ authUser }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accountNumber: form.accountNumber,
+          nickname: form.nickname,
           status: form.status,
           pixelIds: form.pixelIds,
           pixelId: form.pixelIds[0] || null,
@@ -10665,6 +10669,7 @@ function AccountsDashboard({ authUser }) {
       saving: false,
       form: {
         accountNumber: String(row?.account_number || ""),
+        nickname: String(row?.nickname || ""),
         status: String(row?.status || "Active"),
         pixelIds: resolvePixelIds(row),
         countries: normalizeCountryList(row?.countries),
@@ -10806,6 +10811,7 @@ function AccountsDashboard({ authUser }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accountNumber: editModal.form.accountNumber,
+          nickname: editModal.form.nickname,
           status: editModal.form.status,
           pixelIds: editModal.form.pixelIds,
           pixelId: editModal.form.pixelIds[0] || null,
@@ -11193,6 +11199,10 @@ function AccountsDashboard({ authUser }) {
                   <input value={editModal.form.accountNumber} onChange={updateEditForm("accountNumber")} required />
                 </div>
                 <div className="field">
+                  <label>{t("Nickname")}</label>
+                  <input value={editModal.form.nickname} onChange={updateEditForm("nickname")} placeholder={t("e.g. Main BR account")} maxLength={60} />
+                </div>
+                <div className="field">
                   <label>{t("Status")}</label>
                   <Select
                     value={editModal.form.status}
@@ -11213,37 +11223,6 @@ function AccountsDashboard({ authUser }) {
                     />
                   </div>
                 ) : null}
-                <div className="field">
-                  <label>{t("Pixels")}</label>
-                  {renderPixelPicker({
-                    pixelPool: availableEditPixels,
-                    selectedPixelIds: editModal.form.pixelIds,
-                    onToggle: toggleEditPixel,
-                    emptyLabel: pixelState.loading ? t("Loading...") : t("No pixels selected"),
-                    pixelQuery: editPixelQuery,
-                    onPixelQueryChange: setEditPixelQuery,
-                  })}
-                </div>
-                <div className="field field-span-3">
-                  <label>{t("Countries")}</label>
-                  {renderCountryPicker({
-                    selectedCountries: editModal.form.countries,
-                    onToggle: toggleEditCountry,
-                    emptyLabel: t("No countries selected"),
-                    countryQuery: editCountryQuery,
-                    onCountryQueryChange: setEditCountryQuery,
-                  })}
-                </div>
-                <div className="field field-span-3">
-                  <label>{t("Domains under account")}</label>
-                  {renderDomainPicker({
-                    domainPool: availableEditDomains,
-                    selectedDomainIds: editModal.form.domainIds,
-                    onToggle: toggleEditDomain,
-                    emptyLabel: t("No domains selected"),
-                    ownerLabel: editOwnerName,
-                  })}
-                </div>
                 <div className="field field-span-3">
                   <label>{t("Comment")}</label>
                   <textarea
@@ -11277,7 +11256,7 @@ function AccountsDashboard({ authUser }) {
           <div>
             <h3 className="panel-title">{t("Accounts Registry")}</h3>
             <p className="panel-subtitle">
-              {t("Register account numbers, manage status, and assign countries, pixels, and domains in one view.")}
+              {t("Register account numbers with a nickname, owner, and status in one clean view.")}
             </p>
           </div>
           <button className="action-pill" type="button" onClick={() => setShowForm((value) => !value)}>
@@ -11311,6 +11290,10 @@ function AccountsDashboard({ authUser }) {
               <input value={form.accountNumber} onChange={updateForm("accountNumber")} placeholder="804123612647228" required />
             </div>
             <div className="field">
+              <label>{t("Nickname")} <span className="field-pace-hint">{t("optional label")}</span></label>
+              <input value={form.nickname} onChange={updateForm("nickname")} placeholder={t("e.g. Main BR account")} maxLength={60} />
+            </div>
+            <div className="field">
               <label>{t("Status")}</label>
               <Select
                 value={form.status}
@@ -11318,38 +11301,6 @@ function AccountsDashboard({ authUser }) {
                 options={accountStatusOptions.map((s) => ({ value: s, label: t(s) }))}
                 placeholder={t("Select")}
               />
-            </div>
-            <div className="field">
-              <label>{t("Pixels")}</label>
-              {renderPixelPicker({
-                pixelPool: availableFormPixels,
-                selectedPixelIds: form.pixelIds,
-                onToggle: toggleFormPixel,
-                emptyLabel: pixelState.loading ? t("Loading...") : t("No pixels selected"),
-                pixelQuery: formPixelQuery,
-                onPixelQueryChange: setFormPixelQuery,
-              })}
-            </div>
-            <div className="field">
-              <label>{t("Countries")}</label>
-              {renderCountryPicker({
-                selectedCountries: form.countries,
-                onToggle: toggleFormCountry,
-                emptyLabel: t("No countries selected"),
-                countryQuery: formCountryQuery,
-                onCountryQueryChange: setFormCountryQuery,
-              })}
-            </div>
-            <div className="field field-span-2 accounts-domains-field">
-              <label>{t("Domains under account")}</label>
-              {renderDomainPicker({
-                domainPool: availableFormDomains,
-                selectedDomainIds: form.domainIds,
-                onToggle: toggleFormDomain,
-                emptyLabel: t("No domains selected"),
-                ownerLabel: formOwnerName,
-              })}
-              <span className="field-hint">{formDomainScopeHint}</span>
             </div>
             {isLeadership ? (
               <div className="field accounts-owner-field">
@@ -11445,8 +11396,7 @@ function AccountsDashboard({ authUser }) {
               <thead>
                 <tr>
                   <th>{t("Account")}</th>
-                  <th>{t("Pixels")}</th>
-                  <th>{t("GEO")}</th>
+                  <th>{t("Nickname")}</th>
                   <th>{t("Status")}</th>
                   <th>{t("Comment")}</th>
                   <th>{t("Integration")}</th>
@@ -11462,8 +11412,9 @@ function AccountsDashboard({ authUser }) {
                   return (
                     <tr key={row.id} className={`accounts-row status-${String(row.status || "").toLowerCase()}`}>
                       <td className="accounts-account-number">{row.account_number}</td>
-                      <td className="accounts-pixel-cell">{resolvePixelLabel(row)}</td>
-                      <td className="accounts-country-cell">{resolveCountriesLabel(row)}</td>
+                      <td className="accounts-nickname-cell">
+                        {row.nickname ? row.nickname : <span className="offer-muted">—</span>}
+                      </td>
                       <td>
                         <select
                           className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}

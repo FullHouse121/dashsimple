@@ -328,6 +328,7 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS notes TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS nickname TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS event_type TEXT;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS severity TEXT;`,
@@ -1983,6 +1984,7 @@ const selectAccountRegistry = async (limit) => {
   const rows = await getRows(
     `SELECT a.id,
             a.account_number,
+            a.nickname,
             a.status,
             a.pixel_id,
             a.pixel_ids,
@@ -2067,6 +2069,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
   const rows = await getRows(
     `SELECT a.id,
             a.account_number,
+            a.nickname,
             a.status,
             a.pixel_id,
             a.pixel_ids,
@@ -2152,6 +2155,7 @@ const selectAccountRegistryById = async (id) => {
   const row = await getRow(
     `SELECT a.id,
             a.account_number,
+            a.nickname,
             a.status,
             a.pixel_id,
             a.pixel_ids,
@@ -2255,6 +2259,7 @@ const insertAccountRegistry = async (payload) => {
   const { rows } = await query(
     `INSERT INTO accounts_registry (
       account_number,
+      nickname,
       status,
       pixel_id,
       pixel_ids,
@@ -2266,10 +2271,11 @@ const insertAccountRegistry = async (payload) => {
       owner_id,
       updated_at
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
      RETURNING id`,
     [
       payload.account_number,
+      payload.nickname || null,
       payload.status,
       payload.pixel_id,
       payload.pixel_ids,
@@ -5866,6 +5872,7 @@ app.get("/api/accounts", async (req, res) => {
 app.post("/api/accounts", async (req, res) => {
   const {
     accountNumber,
+    nickname = "",
     status = "Active",
     pixelId = null,
     pixelIds,
@@ -5986,6 +5993,7 @@ app.post("/api/accounts", async (req, res) => {
 
     const payload = {
       account_number: normalizedAccountNumber,
+      nickname: String(nickname || "").trim() || null,
       status: resolvedAccountStatus,
       pixel_id: resolvedPixelId,
       pixel_ids: serializeNumericIds(normalizedPixelIds),
@@ -6148,23 +6156,27 @@ app.patch("/api/accounts/:id", async (req, res) => {
 
   const nextNotes =
     body.notes !== undefined ? String(body.notes || "").trim() || null : String(current.notes || "").trim() || null;
+  const nextNickname =
+    body.nickname !== undefined ? String(body.nickname || "").trim() || null : String(current.nickname || "").trim() || null;
 
   await query(
     `UPDATE accounts_registry
      SET account_number = $1,
-         status = $2,
-         pixel_id = $3,
-         pixel_ids = $4,
-         meta_integration_id = $5,
-         countries = $6,
-         domain_ids = $7,
-         notes = $8,
-         owner_role = $9,
-         owner_id = $10,
+         nickname = $2,
+         status = $3,
+         pixel_id = $4,
+         pixel_ids = $5,
+         meta_integration_id = $6,
+         countries = $7,
+         domain_ids = $8,
+         notes = $9,
+         owner_role = $10,
+         owner_id = $11,
          updated_at = NOW()
-     WHERE id = $11`,
+     WHERE id = $12`,
     [
       nextAccountNumber,
+      nextNickname,
       nextStatus,
       nextPixelId,
       serializeNumericIds(nextPixelIds),
