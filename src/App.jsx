@@ -11265,22 +11265,27 @@ function AccountsDashboard({ authUser }) {
         </div>
 
         <div className="accounts-summary-strip">
-          <div className="accounts-summary-item">
-            <span>{t("Registered Accounts")}</span>
-            <strong>{accountSummary.total}</strong>
-          </div>
-          <div className="accounts-summary-item">
-            <span>{t("Active")}</span>
-            <strong>{accountSummary.active}</strong>
-          </div>
-          <div className="accounts-summary-item">
-            <span>{t("Need Attention")}</span>
-            <strong>{accountSummary.attention}</strong>
-          </div>
-          <div className="accounts-summary-item">
-            <span>{t("Blocked")}</span>
-            <strong>{accountSummary.blocked}</strong>
-          </div>
+          {[
+            { key: "total", tone: "neutral", label: t("Registered Accounts"), value: accountSummary.total, Icon: UserPlus, pct: null },
+            { key: "active", tone: "success", label: t("Active"), value: accountSummary.active, Icon: CheckCircle, pct: accountSummary.total ? Math.round((accountSummary.active / accountSummary.total) * 100) : 0 },
+            { key: "attention", tone: "warning", label: t("Need Attention"), value: accountSummary.attention, Icon: AlertTriangle, pct: accountSummary.total ? Math.round((accountSummary.attention / accountSummary.total) * 100) : 0 },
+            { key: "blocked", tone: "danger", label: t("Blocked"), value: accountSummary.blocked, Icon: Lock, pct: accountSummary.total ? Math.round((accountSummary.blocked / accountSummary.total) * 100) : 0 },
+          ].map((kpi) => (
+            <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+              <div className="accounts-summary-top">
+                <span className="accounts-summary-icon"><kpi.Icon size={15} /></span>
+                <span className="accounts-summary-label">{kpi.label}</span>
+              </div>
+              <strong>{kpi.value}</strong>
+              {kpi.pct !== null ? (
+                <div className="accounts-summary-bar">
+                  <span style={{ width: `${Math.min(100, kpi.pct)}%` }} />
+                </div>
+              ) : (
+                <span className="accounts-summary-sub">{t("on record")}</span>
+              )}
+            </div>
+          ))}
         </div>
 
         {showForm ? (

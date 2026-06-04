@@ -5878,44 +5878,91 @@ select option,
 .accounts-summary-item {
   position: relative;
   overflow: hidden;
-  padding: 14px 16px;
-  min-height: 98px;
+  padding: 16px 18px;
   border-radius: 16px;
-  border: 1px solid rgba(76, 88, 104, 0.46);
-  background:
-    radial-gradient(120% 140% at 0% 0%, rgba(62, 79, 104, 0.24), rgba(14, 19, 30, 0) 54%),
-    linear-gradient(160deg, rgba(15, 21, 34, 0.96), rgba(9, 13, 24, 0.97));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -1px 0 rgba(12, 18, 29, 0.6),
-    0 10px 24px rgba(3, 8, 18, 0.45);
-  display: grid;
-  align-content: center;
-  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(160deg, rgba(30, 32, 37, 0.9), rgba(20, 22, 26, 0.92));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  --kpi-accent: #6b7080;
+  transition: border-color 0.18s ease, transform 0.18s ease;
 }
 
+.accounts-summary-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--kpi-accent) 40%, transparent);
+}
+
+/* left accent edge in the metric's tone */
 .accounts-summary-item::before {
   content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(95deg, rgba(50, 89, 144, 0.12), rgba(50, 89, 144, 0));
-  opacity: 0.6;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--kpi-accent);
+  opacity: 0.85;
 }
 
-.accounts-summary-item span {
-  font-size: 12px;
-  letter-spacing: 0.08em;
+.accounts-summary-item.tone-neutral { --kpi-accent: #6ad6ff; }
+.accounts-summary-item.tone-success { --kpi-accent: var(--green); }
+.accounts-summary-item.tone-warning { --kpi-accent: #ffb37a; }
+.accounts-summary-item.tone-danger  { --kpi-accent: #ff8a7a; }
+
+.accounts-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accounts-summary-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--kpi-accent);
+  background: color-mix(in srgb, var(--kpi-accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--kpi-accent) 28%, transparent);
+}
+
+.accounts-summary-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9ca9bc;
+  color: var(--muted-strong, #a9adb7);
+  font-weight: 600;
 }
 
 .accounts-summary-item strong {
-  font-size: 40px;
+  font-size: 34px;
   letter-spacing: -0.02em;
-  color: #f4f7fb;
-  line-height: 1.15;
+  color: var(--text);
+  line-height: 1;
   font-weight: 700;
+  font-feature-settings: "tnum";
+}
+
+.accounts-summary-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.accounts-summary-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--kpi-accent);
+  transition: width 0.3s ease;
+}
+
+.accounts-summary-sub {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .registry-dashboard-panel .form-actions {
