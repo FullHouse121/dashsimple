@@ -121,6 +121,7 @@ import {
   countryOptions,
   accountRegistryCountryOptions,
   defaultCountryOption,
+  resolveCountryIso,
   normalizeCountryValueKey,
   supportedCountryValueMap,
   normalizeCountryListValue,
@@ -191,6 +192,21 @@ const navSections = [
 ];
 
 // Static option arrays + country/domain normalizers moved to ./lib/constants.js (Phase 1)
+
+// Renders a flag-icons SVG flag for a country label or ISO geo code.
+// Returns null when the value doesn't resolve to a country (so it's safe to
+// drop into generic Selects that also hold roles/models/etc.).
+function CountryFlag({ value, size, className = "" }) {
+  const iso = resolveCountryIso(value);
+  if (!iso) return null;
+  return (
+    <span
+      className={`fi fi-${iso} deus-flag${className ? ` ${className}` : ""}`}
+      style={size ? { fontSize: size } : undefined}
+      aria-hidden="true"
+    />
+  );
+}
 
 function CountryDropdownPicker({
   value,
@@ -280,6 +296,7 @@ function CountryDropdownPicker({
               <>
                 {selectedOptions.slice(0, maxVisibleChips).map((item) => (
                   <span key={`country-chip-${item.value}`} className="country-select-chip">
+                    <CountryFlag value={item.value} />
                     {item.label}
                   </span>
                 ))}
@@ -295,6 +312,7 @@ function CountryDropdownPicker({
           </span>
         ) : (
           <span className={`country-select-value${hasSelection ? "" : " is-placeholder"}`}>
+            {hasSelection ? <CountryFlag value={normalizedValue} /> : null}
             {displayLabel || placeholder}
           </span>
         )}
@@ -352,7 +370,10 @@ function CountryDropdownPicker({
                     }
                   }}
                 >
-                  <span className="country-select-name">{item.label}</span>
+                  <span className="country-select-name">
+                    <CountryFlag value={item.value} />
+                    {item.label}
+                  </span>
                   <span className="country-select-check">{selected ? "✓" : ""}</span>
                 </button>
               );
@@ -5295,7 +5316,9 @@ function OfferCatalog({
                           <>
                             {offer.geos.slice(0, 3).map((g) => (
                               <span key={g} className="offer-flag-line" title={g}>
-                                <span className="offer-flag-emoji">{countryFlag(g) || "🌐"}</span>
+                                {resolveCountryIso(g)
+                                  ? <CountryFlag value={g} />
+                                  : <span className="offer-flag-emoji">🌐</span>}
                                 <span className="offer-flag-name">{g}</span>
                               </span>
                             ))}

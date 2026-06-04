@@ -14,6 +14,55 @@ export const countryOptions = [...supportedCountryOptions];
 export const accountRegistryCountryOptions = [...supportedCountryOptions];
 export const defaultCountryOption = supportedCountryOptions[0] || "";
 
+// Country name → ISO 3166-1 alpha-2 code, used to render flag-icons SVGs.
+// Lowercased keys; includes common aliases/spellings. Geo codes already in
+// ISO-2 (e.g. "BR", "MX") are detected directly by resolveCountryIso below.
+const COUNTRY_NAME_TO_ISO = {
+  australia: "au", france: "fr", germany: "de", "new zealand": "nz",
+  egypt: "eg", estonia: "ee", japan: "jp", india: "in", vietnam: "vn",
+  "viet nam": "vn", chile: "cl", argentina: "ar", peru: "pe",
+  venezuela: "ve", colombia: "co", "costa rica": "cr", bolivia: "bo",
+  brazil: "br", brasil: "br", mexico: "mx", méxico: "mx", russia: "ru",
+  "russian federation": "ru", nigeria: "ng", ukraine: "ua", poland: "pl",
+  ecuador: "ec", paraguay: "py", romania: "ro", albania: "al",
+  norway: "no", morocco: "ma", algeria: "dz", tunisia: "tn",
+  "south korea": "kr", "korea, republic of": "kr", korea: "kr",
+  switzerland: "ch", sweden: "se", canada: "ca", iran: "ir",
+  iraq: "iq", azerbaijan: "az",
+  // Extra common geos that show up in offers/stats
+  "united states": "us", usa: "us", "united kingdom": "gb", uk: "gb",
+  spain: "es", italy: "it", portugal: "pt", netherlands: "nl",
+  belgium: "be", austria: "at", ireland: "ie", denmark: "dk",
+  finland: "fi", greece: "gr", turkey: "tr", türkiye: "tr",
+  "south africa": "za", kenya: "ke", ghana: "gh", pakistan: "pk",
+  bangladesh: "bd", indonesia: "id", philippines: "ph", thailand: "th",
+  malaysia: "my", singapore: "sg", china: "cn", "hong kong": "hk",
+  taiwan: "tw", "saudi arabia": "sa", "united arab emirates": "ae",
+  uae: "ae", qatar: "qa", kuwait: "kw", israel: "il", jordan: "jo",
+  lebanon: "lb", uruguay: "uy", panama: "pa", guatemala: "gt",
+  honduras: "hn", "dominican republic": "do", "el salvador": "sv",
+  nicaragua: "ni", "czech republic": "cz", czechia: "cz", hungary: "hu",
+  bulgaria: "bg", croatia: "hr", serbia: "rs", slovakia: "sk",
+  slovenia: "si", lithuania: "lt", latvia: "lv", iceland: "is",
+};
+
+// Resolve any country label or geo code to an ISO-2 code (lowercase) for
+// flag rendering. Returns null when nothing matches (so non-country options
+// like roles/models render without a flag).
+export const resolveCountryIso = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  // Already a 2-letter ISO code? (offer geos like "BR", "MX")
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toLowerCase();
+  const key = String(raw)
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  return COUNTRY_NAME_TO_ISO[key] || COUNTRY_NAME_TO_ISO[String(raw).toLowerCase()] || null;
+};
+
 export const normalizeCountryValueKey = (value) =>
   String(value || "")
     .normalize("NFD")

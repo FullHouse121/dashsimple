@@ -7476,7 +7476,29 @@ select option,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
+
+/* flag-icons SVG flags — consistent size + subtle rounding across the app.
+   flag-icons sizes via font-size (1.333em wide, 1em tall). */
+.deus-flag {
+  font-size: 14px;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.country-select-value,
+.country-select-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.offer-flag-line .deus-flag { font-size: 15px; }
 
 .country-select-option.is-selected .country-select-name {
   font-weight: 600;
