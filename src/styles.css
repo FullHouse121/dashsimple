@@ -4164,8 +4164,30 @@ select option,
 }
 
 .utm-tool-field {
-  min-width: 220px;
-  max-width: 280px;
+  min-width: 180px;
+  max-width: 230px;
+}
+
+/* Compact triggers in the tool bar — the full 48px universal control is
+   too chunky for this filter strip. Scoped so other dropdowns are untouched. */
+.utm-tool-field label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.utm-tool-field .country-select-trigger {
+  min-height: 38px;
+  padding: 7px 12px;
+  border-radius: 9px;
+}
+
+.utm-tool-field .country-select-value,
+.utm-tool-field .country-select-value.is-placeholder {
+  font-size: 13px;
+}
+
+.utm-tool-field .country-select-arrow {
+  font-size: 11px;
 }
 
 .utm-tool-hint {
