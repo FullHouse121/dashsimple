@@ -6929,31 +6929,40 @@ function UtmBuilder() {
                   const whenStr = when && !Number.isNaN(when.getTime())
                     ? when.toLocaleDateString(undefined, { month: "short", day: "numeric" })
                     : null;
+                  const metaBits = [];
+                  if (Array.isArray(record.params) && record.params.length) {
+                    metaBits.push(`${record.params.length} params`);
+                  }
+                  if (whenStr) metaBits.push(whenStr);
                   return (
                     <li key={`${record.url}-${idx}`} className="utm-history-item">
                       <div className="utm-history-main">
                         <div className="utm-history-meta">
-                          {record.tool ? <span className="utm-history-tag">{record.tool}</span> : null}
+                          {record.tool ? (
+                            <span className="utm-history-tool">
+                              <span className="utm-history-dot" />
+                              {record.tool}
+                            </span>
+                          ) : null}
                           {record.country ? (
                             <span className="utm-history-country">
                               <CountryFlag value={record.country} />
                               {record.country}
                             </span>
                           ) : null}
-                          {Array.isArray(record.params) && record.params.length ? (
-                            <span className="utm-history-paramcount">{record.params.length} params</span>
+                          {metaBits.length ? (
+                            <span className="utm-history-sub">{metaBits.join(" · ")}</span>
                           ) : null}
-                          {whenStr ? <span className="utm-history-date">{whenStr}</span> : null}
                         </div>
-                        <span className="utm-history-url">{record.url}</span>
+                        <span className="utm-history-url" title={record.url}>{record.url}</span>
                       </div>
                       <button
-                        className="ghost"
+                        className="utm-history-copy"
                         type="button"
                         onClick={() => navigator.clipboard?.writeText(record.url)}
+                        title="Copy link"
                       >
                         <Copy size={14} />
-                        Copy
                       </button>
                     </li>
                   );

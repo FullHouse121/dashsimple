@@ -5234,13 +5234,25 @@ select option,
   word-break: break-all;
 }
 
-/* Rich history record — metadata row above the URL */
-.utm-history-item { align-items: flex-start !important; }
+/* Soft history record — one quiet metadata line + a truncated URL.
+   No competing bordered pills; just a colored dot, muted text, and
+   dot separators. */
+.utm-history-item {
+  align-items: center !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.015) !important;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.utm-history-item:hover {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
 
 .utm-history-main {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -5248,49 +5260,70 @@ select option,
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--muted-strong, #a9adb7);
 }
 
-.utm-history-tag {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--green);
-  background: rgba(54, 208, 124, 0.1);
-  border: 1px solid rgba(54, 208, 124, 0.28);
-  border-radius: 999px;
-  padding: 2px 9px;
+.utm-history-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.utm-history-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
 }
 
 .utm-history-country {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
   font-weight: 500;
-  color: var(--text);
-}
-
-.utm-history-paramcount,
-.utm-history-date {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
   color: var(--muted-strong, #a9adb7);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 999px;
-  padding: 2px 8px;
 }
 
-.utm-history-date { text-transform: uppercase; }
+.utm-history-sub {
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
 
 .utm-history-url {
   font-size: 12px;
-  color: var(--muted-strong, #a9adb7) !important;
-  word-break: break-all;
+  color: var(--muted) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
   line-height: 1.4;
+}
+
+/* Quiet icon-only copy button — replaces the loud ghost "Copy" */
+.utm-history-copy {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.utm-history-copy:hover {
+  color: var(--green);
+  background: rgba(54, 208, 124, 0.08);
+  border-color: rgba(54, 208, 124, 0.25);
 }
 
 .utm-history .empty-state {
