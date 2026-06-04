@@ -6591,12 +6591,24 @@ function UtmBuilder() {
   );
   const [utm, setUtm] = React.useState({
     tool: "PWA Group",
+    country: "",
     domain: "",
     fbp: "",
     subs: Array.from({ length: 15 }, () => ""),
   });
   const [copyState, setCopyState] = React.useState("idle");
-  const [utmHistory, setUtmHistory] = React.useState([]);
+  // History records persist to localStorage and carry their metadata
+  // (tool, country, the param keys used) so a saved link is self-describing.
+  const UTM_HISTORY_KEY = "dash-utm-history";
+  const [utmHistory, setUtmHistory] = React.useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(UTM_HISTORY_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch { return []; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(UTM_HISTORY_KEY, JSON.stringify(utmHistory)); } catch { /* quota */ }
+  }, [utmHistory]);
   const [showAllSubs, setShowAllSubs] = React.useState(false);
   // Keep the commonly-used params visible; collapse sub7→sub15 behind a toggle
   // to cut the wall of empty inputs. Auto-expand if any hidden sub is filled.
@@ -6625,6 +6637,7 @@ function UtmBuilder() {
   const resetUtm = () => {
     setUtm((prev) => ({
       tool: prev.tool,
+      country: "",
       domain: "",
       fbp: "",
       subs: Array.from({ length: 15 }, () => ""),
@@ -6711,9 +6724,23 @@ function UtmBuilder() {
 
   const storeHistory = () => {
     if (!utmUrl || !isValid) return;
+    // Snapshot the param keys actually used (pixel + filled subs) so the
+    // saved record is self-describing without re-parsing the URL.
+    const usedParams = [];
+    if (utm.fbp) usedParams.push(pixelParamKey);
+    utm.subs.forEach((value, index) => {
+      if (String(value || "").trim()) usedParams.push(subFieldAliases[index + 1] || `sub${index + 1}`);
+    });
+    const record = {
+      url: utmUrl,
+      tool: utm.tool,
+      country: utm.country || "",
+      params: usedParams,
+      createdAt: new Date().toISOString(),
+    };
     setUtmHistory((prev) => {
-      const next = [utmUrl, ...prev.filter((item) => item !== utmUrl)];
-      return next.slice(0, 8);
+      const next = [record, ...prev.filter((item) => (item.url || item) !== utmUrl)];
+      return next.slice(0, 12);
     });
   };
 
@@ -6769,6 +6796,17 @@ function UtmBuilder() {
                 onChange={(v) => setUtm((prev) => ({ ...prev, tool: v }))}
                 options={UTM_TOOLS.map((tool) => ({ value: tool, label: tool }))}
                 placeholder="Select tool"
+              />
+            </div>
+            <div className="field utm-tool-field">
+              <label>Country</label>
+              <CountryDropdownPicker
+                value={utm.country}
+                onChange={(country) => setUtm((prev) => ({ ...prev, country }))}
+                options={countryOptions}
+                placeholder="Select country"
+                searchPlaceholder="Type to find countries"
+                emptyResultsLabel="No countries found."
               />
             </div>
             <p className="utm-tool-hint">
@@ -6884,15 +6922,42 @@ function UtmBuilder() {
               <p className="empty-state">No generated links yet.</p>
             ) : (
               <ul className="utm-history-list">
-                {utmHistory.map((item) => (
-                  <li key={item}>
-                    <span>{item}</span>
-                    <button className="ghost" type="button" onClick={() => navigator.clipboard?.writeText(item)}>
-                      <Copy size={14} />
-                      Copy
-                    </button>
-                  </li>
-                ))}
+                {utmHistory.map((item, idx) => {
+                  // Back-compat: older entries were plain URL strings.
+                  const record = typeof item === "string" ? { url: item } : item;
+                  const when = record.createdAt ? new Date(record.createdAt) : null;
+                  const whenStr = when && !Number.isNaN(when.getTime())
+                    ? when.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                    : null;
+                  return (
+                    <li key={`${record.url}-${idx}`} className="utm-history-item">
+                      <div className="utm-history-main">
+                        <div className="utm-history-meta">
+                          {record.tool ? <span className="utm-history-tag">{record.tool}</span> : null}
+                          {record.country ? (
+                            <span className="utm-history-country">
+                              <CountryFlag value={record.country} />
+                              {record.country}
+                            </span>
+                          ) : null}
+                          {Array.isArray(record.params) && record.params.length ? (
+                            <span className="utm-history-paramcount">{record.params.length} params</span>
+                          ) : null}
+                          {whenStr ? <span className="utm-history-date">{whenStr}</span> : null}
+                        </div>
+                        <span className="utm-history-url">{record.url}</span>
+                      </div>
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => navigator.clipboard?.writeText(record.url)}
+                      >
+                        <Copy size={14} />
+                        Copy
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
