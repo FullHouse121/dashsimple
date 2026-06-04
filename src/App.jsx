@@ -220,6 +220,9 @@ function CountryDropdownPicker({
   values = [],
   onToggle = null,
   maxVisibleChips = 2,
+  // Combobox mode: when true, a non-matching search query can be committed
+  // as a custom value (used by the UTM domain field for pasted URLs).
+  allowCustom = false,
 }) {
   const [query, setQuery] = React.useState("");
   const normalizedValue = String(value ?? "");
@@ -378,9 +381,25 @@ function CountryDropdownPicker({
                 </button>
               );
             })
-          ) : (
+          ) : allowCustom && query.trim() ? null : (
             <div className="country-select-empty-results">{emptyResultsLabel}</div>
           )}
+          {allowCustom && query.trim() &&
+          !optionList.some((o) => o.value.toLowerCase() === query.trim().toLowerCase()) ? (
+            <button
+              type="button"
+              className="country-select-option country-select-custom"
+              onClick={(event) => {
+                onChange(query.trim());
+                setQuery("");
+                const details = event.currentTarget.closest("details");
+                if (details) details.open = false;
+              }}
+            >
+              <span className="country-select-name">Use “{query.trim()}”</span>
+              <span className="country-select-check">↵</span>
+            </button>
+          ) : null}
         </div>
       </div>
     </details>
@@ -6962,20 +6981,19 @@ function UtmBuilder() {
 
           <div className="utm-grid">
             <div className="field">
-              <label>Domain</label>
-              <input
-                type="url"
-                list="utm-domain-options"
-                placeholder="https://example.com — paste or pick"
+              <label>Domain <span className="field-pace-hint">pick a registered domain or type a URL</span></label>
+              <CountryDropdownPicker
                 value={utm.domain}
-                onChange={updateUtm("domain")}
-                onFocus={() => setFocusedField("domain")}
+                onChange={(v) => setUtm((prev) => ({ ...prev, domain: v }))}
+                options={domainOptions.map((d) => {
+                  const url = d.startsWith("http") ? d : `https://${d}`;
+                  return { value: url, label: d };
+                })}
+                placeholder="https://example.com"
+                searchPlaceholder="Search or paste a URL…"
+                emptyResultsLabel="No registered domains."
+                allowCustom
               />
-              <datalist id="utm-domain-options">
-                {domainOptions.map((d) => (
-                  <option key={d} value={d.startsWith("http") ? d : `https://${d}`} />
-                ))}
-              </datalist>
             </div>
             <div className="field">
               <label>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>

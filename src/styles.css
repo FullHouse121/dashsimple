@@ -4290,6 +4290,17 @@ select option,
 
 .utm-macro-chip:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Combobox "Use <typed value>" row in the universal picker */
+.country-select-custom {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--green);
+}
+
+.country-select-custom .country-select-name {
+  font-style: italic;
+  color: var(--green);
+}
+
 /* Highlighted pixel segment in the generated URL */
 .utm-url-pixel {
   background: rgba(54, 208, 124, 0.16);
