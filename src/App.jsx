@@ -7117,8 +7117,11 @@ function UtmBuilder() {
           </div>
 
           <div className="utm-history">
-            <div className="custom-head">
-              <p>Recent UTM links</p>
+            <div className="custom-head utm-history-head">
+              <p className="utm-history-title">
+                Recent UTM links
+                {utmHistory.length ? <span className="utm-history-count">{utmHistory.length}</span> : null}
+              </p>
               <div className="utm-history-head-actions">
                 {utmHistory.length ? (
                   <input

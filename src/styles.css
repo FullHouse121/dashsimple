@@ -4402,11 +4402,36 @@ select option,
   flex-wrap: wrap;
 }
 
+/* Search input — carries the soft universal field style (this isn't inside
+   a .field, so it needs the look applied directly). */
 .utm-history-search {
-  width: 160px;
-  min-height: 34px !important;
-  padding: 6px 12px !important;
-  font-size: 12px !important;
+  width: 200px;
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.utm-history-search::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.utm-history-search:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.utm-history-search:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
 }
 
 .utm-grid .field:first-child {
@@ -5362,9 +5387,30 @@ select option,
 }
 
 .utm-history {
-  margin-top: 16px;
+  margin-top: 22px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.utm-history-head { align-items: center; }
+
+.utm-history-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.utm-history-count {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--muted-strong, #a9adb7);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 1px 8px;
 }
 
 .utm-history-list {
@@ -5380,7 +5426,7 @@ select option,
   grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(16, 18, 22, 0.6);
