@@ -4190,6 +4190,23 @@ select option,
   font-size: 11px;
 }
 
+/* Domain picker (full-width, first cell of the grid) — match the compact
+   trigger height so it sits in line with the tool-bar dropdowns. */
+.utm-grid .field:first-child .country-select-trigger {
+  min-height: 38px;
+  padding: 7px 12px;
+  border-radius: 9px;
+}
+
+.utm-grid .field:first-child .country-select-value,
+.utm-grid .field:first-child .country-select-value.is-placeholder {
+  font-size: 13px;
+}
+
+.utm-grid .field:first-child .country-select-arrow {
+  font-size: 11px;
+}
+
 .utm-tool-hint {
   flex: 1;
   min-width: 240px;
@@ -4213,8 +4230,21 @@ select option,
 .utm-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px 18px;
+  gap: 14px 18px;
   margin-top: 16px;
+}
+
+/* Compact the grid inputs to match the slimmer domain + tool-bar controls */
+.utm-grid .field input {
+  min-height: 38px;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.utm-grid .field label {
+  font-size: 11px;
+  margin-bottom: 4px;
 }
 
 /* Aliased sub fields (e.g. adset_id) get a subtle green tint so the
