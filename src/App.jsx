@@ -9203,6 +9203,16 @@ function PixelsDashboard({ authUser }) {
     pixel: null,
     value: "",
   });
+  // Full pixel edit modal (pixel ID, EAAG token, flow, geos)
+  const [pixelEdit, setPixelEdit] = React.useState({
+    open: false,
+    pixel: null,
+    saving: false,
+    error: null,
+    showToken: false,
+    form: { pixelId: "", tokenEaag: "", flow: "", geos: [] },
+  });
+  const [pixelEditGeoQuery, setPixelEditGeoQuery] = React.useState("");
   const copyToastTimeoutRef = React.useRef(null);
   const normalizeRole = React.useCallback((value) => String(value || "").trim().toLowerCase(), []);
   const pixelStatusValues = React.useMemo(() => ["Active", "Pending", "Paused", "Expired", "Blocked"], []);
@@ -9400,6 +9410,72 @@ function PixelsDashboard({ authUser }) {
 
   const closeCommentModal = () => {
     setCommentModal({ open: false, pixel: null, value: "" });
+  };
+
+  const openPixelEdit = (pixel) => {
+    if (!pixel?.id) return;
+    setPixelEditGeoQuery("");
+    setPixelEdit({
+      open: true,
+      pixel,
+      saving: false,
+      error: null,
+      showToken: false,
+      form: {
+        pixelId: String(pixel.pixel_id || ""),
+        tokenEaag: String(pixel.token_eaag || ""),
+        flow: String(pixel.flows || ""),
+        geos: normalizeCountryList(pixel.geo),
+      },
+    });
+  };
+
+  const closePixelEdit = () => {
+    setPixelEdit({ open: false, pixel: null, saving: false, error: null, showToken: false, form: { pixelId: "", tokenEaag: "", flow: "", geos: [] } });
+  };
+
+  const togglePixelEditGeo = (country) => {
+    const normalized = normalizeCountryListValue(country);
+    setPixelEdit((prev) => {
+      const set = new Set(prev.form.geos);
+      if (set.has(normalized)) set.delete(normalized);
+      else set.add(normalized);
+      return { ...prev, form: { ...prev.form, geos: Array.from(set) } };
+    });
+  };
+
+  const handlePixelEditSave = async () => {
+    if (!pixelEdit.pixel?.id) return;
+    const f = pixelEdit.form;
+    if (!String(f.pixelId).trim() || !String(f.tokenEaag).trim()) {
+      setPixelEdit((prev) => ({ ...prev, error: "Pixel ID and token are required." }));
+      return;
+    }
+    if (!f.geos.length) {
+      setPixelEdit((prev) => ({ ...prev, error: "Select at least one geo." }));
+      return;
+    }
+    setPixelEdit((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const response = await apiFetch(`/api/pixels/${pixelEdit.pixel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pixelId: f.pixelId,
+          tokenEaag: f.tokenEaag,
+          flow: f.flow,
+          geos: f.geos,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail?.error || "Failed to update pixel.");
+      }
+      await fetchPixels();
+      closePixelEdit();
+    } catch (error) {
+      setPixelEdit((prev) => ({ ...prev, saving: false, error: error.message || "Failed to update pixel." }));
+    }
   };
 
   const handleCommentSave = async () => {
@@ -9719,6 +9795,93 @@ function PixelsDashboard({ authUser }) {
             </motion.div>
           </motion.div>
         ) : null}
+
+        {pixelEdit.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closePixelEdit}
+          >
+            <motion.div
+              className="modal pixel-edit-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Edit Pixel")}</p>
+                  <h2>{pixelEdit.form.pixelId || t("Pixel")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closePixelEdit}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body pixel-edit-body">
+                <div className="field">
+                  <label>{t("Pixel ID")}</label>
+                  <input
+                    value={pixelEdit.form.pixelId}
+                    onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, pixelId: e.target.value } }))}
+                    placeholder="123456789012345"
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Flow")}</label>
+                  <input
+                    value={pixelEdit.form.flow}
+                    onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, flow: e.target.value } }))}
+                    placeholder={t("e.g. Casino, Crash")}
+                  />
+                </div>
+                <div className="field field-span-2">
+                  <label>{t("EAAG Token")} <span className="field-pace-hint">{t("rotate when it expires")}</span></label>
+                  <div className="pw-input-wrap">
+                    <input
+                      type={pixelEdit.showToken ? "text" : "password"}
+                      value={pixelEdit.form.tokenEaag}
+                      onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, tokenEaag: e.target.value } }))}
+                      placeholder="EAAG…"
+                    />
+                    <button
+                      type="button"
+                      className="pw-eye"
+                      onClick={() => setPixelEdit((prev) => ({ ...prev, showToken: !prev.showToken }))}
+                      title={pixelEdit.showToken ? t("Hide") : t("Show")}
+                    >
+                      {pixelEdit.showToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="field field-span-2">
+                  <label>{t("Geos")}</label>
+                  <CountryDropdownPicker
+                    multiple
+                    values={pixelEdit.form.geos}
+                    onToggle={togglePixelEditGeo}
+                    options={countryOptions}
+                    placeholder={t("Pick countries")}
+                    searchPlaceholder={t("Type to find countries")}
+                    emptyResultsLabel={t("No countries found.")}
+                  />
+                </div>
+                {pixelEdit.error ? <div className="field field-span-2"><div className="pw-error">{pixelEdit.error}</div></div> : null}
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={closePixelEdit}>
+                  {t("Cancel")}
+                </button>
+                <button className="action-pill" type="button" onClick={handlePixelEditSave} disabled={pixelEdit.saving}>
+                  {pixelEdit.saving ? t("Saving…") : t("Save Changes")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       <motion.div
@@ -9975,14 +10138,35 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td>{ownerLabel}</td>
                     <td>
-                      {canManagePixels ? (
-                        <button
-                          className="icon-btn danger"
-                          type="button"
-                          onClick={() => handlePixelDelete(pixel.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                      {(canManagePixels || pixel.owner_id === authUser?.id) ? (
+                        <div className="accounts-action-group">
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Edit pixel")}
+                            onClick={() => openPixelEdit(pixel)}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Edit comment")}
+                            onClick={() => handleCommentEdit(pixel)}
+                          >
+                            <MessageSquare size={15} />
+                          </button>
+                          {canManagePixels ? (
+                            <button
+                              className="icon-btn icon-btn-danger"
+                              type="button"
+                              title={t("Remove")}
+                              onClick={() => handlePixelDelete(pixel.id)}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </td>
                   </tr>

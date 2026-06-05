@@ -6349,8 +6349,35 @@ app.patch("/api/pixels/:id", async (req, res) => {
     params.push(normalizedComment || null);
   }
 
+  // Full-edit fields (pixel ID, EAAG token rotation, geos, flow)
+  if (body.pixelId !== undefined) {
+    const v = String(body.pixelId || "").trim();
+    if (!v) return res.status(400).json({ error: "Pixel ID cannot be empty." });
+    updates.push(`pixel_id = $${updates.length + 1}`);
+    params.push(v);
+  }
+  if (body.tokenEaag !== undefined) {
+    const v = String(body.tokenEaag || "").trim();
+    if (!v) return res.status(400).json({ error: "Token cannot be empty." });
+    updates.push(`token_eaag = $${updates.length + 1}`);
+    params.push(v);
+  }
+  if (body.flow !== undefined || body.flows !== undefined) {
+    const v = String(body.flow ?? body.flows ?? "").trim();
+    updates.push(`flows = $${updates.length + 1}`);
+    params.push(v || null);
+  }
+  if (body.geos !== undefined || body.geo !== undefined) {
+    const normalizedGeosResult = normalizeAccountCountries(body.geos !== undefined ? body.geos : body.geo);
+    if (normalizedGeosResult.error) {
+      return res.status(400).json({ error: normalizedGeosResult.error });
+    }
+    updates.push(`geo = $${updates.length + 1}`);
+    params.push(serializeStringList(normalizedGeosResult.value));
+  }
+
   if (!updates.length) {
-    return res.status(400).json({ error: "Status or comment is required." });
+    return res.status(400).json({ error: "Nothing to update." });
   }
 
   params.push(id);
