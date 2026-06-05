@@ -9856,8 +9856,8 @@ function PixelsDashboard({ authUser }) {
                   <label>{t("EAAG Token")} <span className="field-pace-hint">{t("rotate when it expires")}</span></label>
                   <div className="token-input-wrap">
                     <input
-                      className="token-input"
-                      type={pixelEdit.showToken ? "text" : "password"}
+                      className={`token-input${pixelEdit.showToken ? "" : " is-masked"}`}
+                      type="text"
                       value={pixelEdit.form.tokenEaag}
                       onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, tokenEaag: e.target.value } }))}
                       placeholder="EAAG…"

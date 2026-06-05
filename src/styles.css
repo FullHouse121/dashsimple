@@ -1970,7 +1970,12 @@ select {
   box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
 }
 
-/* hide browser-native password reveal icons (Edge/IE) so there's only one eye */
+/* Masked via CSS on a TEXT input — no native password reveal/clear icons
+   can appear (those only exist on type=password). The eye toggles .is-masked. */
+.token-input.is-masked {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
 .token-input::-ms-reveal,
 .token-input::-ms-clear { display: none; }
 
