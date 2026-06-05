@@ -11423,14 +11423,14 @@ function AccountsDashboard({ authUser }) {
                       <td>
                         {rowCanManage ? (
                           <Select
-                            className={`accounts-status-select status-${(row.status || "inactive").toLowerCase()}`}
+                            className={`accounts-status-select acc-st-${(row.status || "inactive").toLowerCase()}`}
                             value={row.status || "Active"}
                             onChange={(v) => handleStatusChange(row, v)}
                             options={accountStatusOptions.map((status) => ({ value: status, label: t(status) }))}
                             placeholder={t("Status")}
                           />
                         ) : (
-                          <span className={`accounts-status-pill status-${(row.status || "inactive").toLowerCase()}`}>
+                          <span className={`accounts-status-pill acc-st-${(row.status || "inactive").toLowerCase()}`}>
                             {t(row.status || "Active")}
                           </span>
                         )}
@@ -11449,40 +11449,40 @@ function AccountsDashboard({ authUser }) {
                         <div className="accounts-actions-cell">
                           <div className="accounts-action-group">
                             <button
-                              className="accounts-action-icon"
+                              className="icon-btn"
                               type="button"
                               onClick={() => openEditModal(row)}
                               title={t("Edit")}
                               disabled={!rowCanManage}
                             >
-                              <Pencil size={16} />
+                              <Pencil size={15} />
                             </button>
                             <button
-                              className="accounts-action-icon"
+                              className="icon-btn"
                               type="button"
                               onClick={() => openEditModal(row)}
                               title={t("Comment")}
                               disabled={!rowCanManage}
                             >
-                              <MessageSquare size={16} />
+                              <MessageSquare size={15} />
                             </button>
                             <button
-                              className="accounts-action-icon is-check"
+                              className="icon-btn icon-btn-check"
                               type="button"
                               onClick={() => handleCheckIntegration(row)}
                               title={t("Check integration")}
                               disabled={!rowCanManage || checkingIntegrationId === row.id || !row.meta_integration_id}
                             >
-                              <CheckCircle size={16} />
+                              <CheckCircle size={15} />
                             </button>
                             <button
-                              className="accounts-action-icon danger"
+                              className="icon-btn icon-btn-danger"
                               type="button"
                               onClick={() => handleDelete(row)}
                               title={t("Remove")}
                               disabled={!rowCanManage}
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={15} />
                             </button>
                           </div>
                           {checkResult ? (
