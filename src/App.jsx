@@ -9839,30 +9839,49 @@ function PixelsDashboard({ authUser }) {
                   />
                 </div>
                 <div className="field">
-                  <label>{t("Flow")}</label>
-                  <input
+                  <label>{t("Flow")} <span className="field-pace-hint">{t("registered domain")}</span></label>
+                  <Select
                     value={pixelEdit.form.flow}
-                    onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, flow: e.target.value } }))}
-                    placeholder={t("e.g. Casino, Crash")}
+                    onChange={(v) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, flow: v } }))}
+                    options={domains
+                      .map((d) => String(d?.domain || "").trim())
+                      .filter(Boolean)
+                      .map((name) => ({ value: name, label: name }))}
+                    placeholder={domains.length ? t("Select a domain") : t("No domains")}
+                    searchPlaceholder={t("Find domain")}
+                    emptyResultsLabel={t("No domains found.")}
                   />
                 </div>
                 <div className="field field-span-2">
                   <label>{t("EAAG Token")} <span className="field-pace-hint">{t("rotate when it expires")}</span></label>
-                  <div className="pw-input-wrap">
+                  <div className="token-input-wrap">
                     <input
+                      className="token-input"
                       type={pixelEdit.showToken ? "text" : "password"}
                       value={pixelEdit.form.tokenEaag}
                       onChange={(e) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, tokenEaag: e.target.value } }))}
                       placeholder="EAAG…"
+                      autoComplete="off"
+                      spellCheck={false}
                     />
-                    <button
-                      type="button"
-                      className="pw-eye"
-                      onClick={() => setPixelEdit((prev) => ({ ...prev, showToken: !prev.showToken }))}
-                      title={pixelEdit.showToken ? t("Hide") : t("Show")}
-                    >
-                      {pixelEdit.showToken ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
+                    <div className="token-input-actions">
+                      <button
+                        type="button"
+                        className="token-action-btn"
+                        onClick={() => setPixelEdit((prev) => ({ ...prev, showToken: !prev.showToken }))}
+                        title={pixelEdit.showToken ? t("Hide") : t("Show")}
+                      >
+                        {pixelEdit.showToken ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                      <button
+                        type="button"
+                        className="token-action-btn"
+                        onClick={() => navigator.clipboard?.writeText(pixelEdit.form.tokenEaag || "")}
+                        title={t("Copy token")}
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="field field-span-2">

@@ -1945,6 +1945,59 @@ select {
 
 .pw-form { display: flex; flex-direction: column; gap: 16px; }
 
+/* Token input — reveal + copy buttons, native reveal suppressed */
+.token-input-wrap { position: relative; }
+
+.token-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 76px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 13px;
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
+}
+
+/* hide browser-native password reveal icons (Edge/IE) so there's only one eye */
+.token-input::-ms-reveal,
+.token-input::-ms-clear { display: none; }
+
+.token-input-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  gap: 2px;
+}
+
+.token-action-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.token-action-btn:hover { color: var(--green); background: rgba(54, 208, 124, 0.08); }
+
 .pw-input-wrap { position: relative; }
 
 .pw-input-wrap input {
