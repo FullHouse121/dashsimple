@@ -9425,7 +9425,9 @@ function PixelsDashboard({ authUser }) {
         pixelId: String(pixel.pixel_id || ""),
         tokenEaag: String(pixel.token_eaag || ""),
         flow: String(pixel.flows || ""),
-        geos: normalizeCountryList(pixel.geo),
+        geos: normalizeCountryListValue(
+          Array.isArray(pixel?.geos) && pixel.geos.length ? pixel.geos : pixel?.geo
+        ),
       },
     });
   };
@@ -9434,13 +9436,19 @@ function PixelsDashboard({ authUser }) {
     setPixelEdit({ open: false, pixel: null, saving: false, error: null, showToken: false, form: { pixelId: "", tokenEaag: "", flow: "", geos: [] } });
   };
 
-  const togglePixelEditGeo = (country) => {
-    const normalized = normalizeCountryListValue(country);
+  const togglePixelEditGeo = (geo) => {
+    const normalized = String(geo || "").trim();
+    if (!normalized) return;
     setPixelEdit((prev) => {
-      const set = new Set(prev.form.geos);
-      if (set.has(normalized)) set.delete(normalized);
-      else set.add(normalized);
-      return { ...prev, form: { ...prev.form, geos: Array.from(set) } };
+      const current = prev.form.geos || [];
+      const has = current.includes(normalized);
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          geos: has ? current.filter((item) => item !== normalized) : [...current, normalized],
+        },
+      };
     });
   };
 
