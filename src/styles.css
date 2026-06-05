@@ -7469,45 +7469,43 @@ select option,
 
 .accounts-integration-pill {
   border-radius: 999px;
-  border: 1px solid rgba(88, 103, 130, 0.36);
-  color: #9eb1d2;
-  background: linear-gradient(180deg, rgba(24, 35, 58, 0.86), rgba(18, 28, 46, 0.9));
-  padding: 6px 14px;
-  font-size: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted-strong, #a9adb7);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 5px 12px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  min-height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .accounts-integration-pill.is-working {
-  border-color: rgba(52, 224, 141, 0.34);
-  color: #31e093;
-  background: linear-gradient(180deg, rgba(10, 66, 47, 0.78), rgba(8, 52, 38, 0.84));
+  border-color: rgba(54, 208, 124, 0.4);
+  color: var(--green);
+  background: rgba(54, 208, 124, 0.08);
 }
 
 .accounts-integration-pill.is-down {
-  border-color: rgba(249, 93, 93, 0.36);
-  color: #ff8d8d;
-  background: linear-gradient(180deg, rgba(72, 24, 29, 0.78), rgba(56, 19, 23, 0.84));
+  border-color: rgba(255, 138, 122, 0.4);
+  color: #ff8a7a;
+  background: rgba(255, 138, 122, 0.08);
 }
 
 .accounts-integration-pill.is-pending {
-  border-color: rgba(109, 155, 244, 0.34);
-  color: #9ebeff;
-  background: linear-gradient(180deg, rgba(24, 47, 92, 0.8), rgba(20, 40, 78, 0.86));
+  border-color: rgba(106, 214, 255, 0.4);
+  color: #6ad6ff;
+  background: rgba(106, 214, 255, 0.08);
 }
 
 .accounts-integration-pill.is-not-wired {
-  border-color: rgba(144, 154, 170, 0.68);
-  color: #bcc4d2;
-  background: linear-gradient(180deg, rgba(40, 45, 56, 0.74), rgba(28, 32, 42, 0.82));
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--muted-strong, #a9adb7);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .accounts-integration-caption {
@@ -7535,59 +7533,106 @@ select option,
 .accounts-action-group {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
+/* Quiet icon buttons matching the dashboard icon-btn language: transparent
+   by default, subtle border, tone only appears on hover. */
 .accounts-action-icon {
   appearance: none;
-  width: 42px;
-  height: 42px;
-  border-radius: 13px;
-  border: 1px solid rgba(91, 104, 124, 0.48);
-  background: linear-gradient(180deg, rgba(37, 42, 52, 0.72), rgba(25, 29, 38, 0.82));
-  color: #d3dbe8;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted-strong, #a9adb7);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .accounts-action-icon:hover {
-  border-color: rgba(128, 146, 174, 0.62);
-  background: linear-gradient(180deg, rgba(45, 51, 63, 0.76), rgba(31, 36, 46, 0.86));
-  color: #eff4ff;
-  transform: translateY(-1px);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
-}
-
-.accounts-action-icon.is-check {
-  border-color: rgba(58, 129, 236, 0.52);
-  color: #9dcbff;
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .accounts-action-icon.is-check:hover {
-  border-color: rgba(103, 168, 255, 0.72);
-  color: #cfe6ff;
-}
-
-.accounts-action-icon.danger {
-  border-color: rgba(232, 90, 90, 0.58);
-  color: #ff9f9f;
-  background: linear-gradient(180deg, rgba(58, 24, 30, 0.68), rgba(40, 18, 22, 0.82));
+  color: #6ad6ff;
+  border-color: rgba(106, 214, 255, 0.4);
+  background: rgba(106, 214, 255, 0.08);
 }
 
 .accounts-action-icon.danger:hover {
-  border-color: rgba(245, 112, 112, 0.74);
-  color: #ffbcbc;
-  background: linear-gradient(180deg, rgba(74, 30, 38, 0.74), rgba(50, 22, 28, 0.86));
+  color: #ff8a7a;
+  border-color: rgba(255, 138, 122, 0.4);
+  background: rgba(255, 138, 122, 0.08);
 }
 
 .accounts-action-icon:disabled {
-  opacity: 0.42;
+  opacity: 0.35;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
 }
+
+/* Status Select rendered as a compact colored pill (the trigger itself) */
+.accounts-status-select .country-select-trigger {
+  min-height: 30px;
+  padding: 5px 30px 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  width: auto;
+  min-width: 104px;
+}
+
+.accounts-status-select .country-select-value { font-size: 11px; font-weight: 700; }
+.accounts-status-select .country-select-arrow { font-size: 9px; right: 10px; }
+
+.accounts-status-select.status-active .country-select-trigger {
+  color: var(--green);
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.08);
+}
+.accounts-status-select.status-pending .country-select-trigger {
+  color: #ffc94d;
+  border-color: rgba(255, 201, 77, 0.4);
+  background: rgba(255, 201, 77, 0.08);
+}
+.accounts-status-select.status-paused .country-select-trigger {
+  color: #ffb37a;
+  border-color: rgba(255, 179, 122, 0.4);
+  background: rgba(255, 179, 122, 0.08);
+}
+.accounts-status-select.status-expired .country-select-trigger {
+  color: var(--muted-strong, #a9adb7);
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+.accounts-status-select.status-blocked .country-select-trigger {
+  color: #ff8a7a;
+  border-color: rgba(255, 138, 122, 0.4);
+  background: rgba(255, 138, 122, 0.08);
+}
+
+/* Read-only status pill (non-managers) */
+.accounts-status-pill {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--muted-strong, #a9adb7);
+}
+.accounts-status-pill.status-active { color: var(--green); border-color: rgba(54, 208, 124, 0.4); background: rgba(54, 208, 124, 0.08); }
+.accounts-status-pill.status-pending { color: #ffc94d; border-color: rgba(255, 201, 77, 0.4); background: rgba(255, 201, 77, 0.08); }
+.accounts-status-pill.status-blocked { color: #ff8a7a; border-color: rgba(255, 138, 122, 0.4); background: rgba(255, 138, 122, 0.08); }
 
 .accounts-action-feedback {
   font-size: 11px;
@@ -8908,22 +8953,28 @@ select option,
   text-align: center;
 }
 
-.accounts-table .accounts-row:nth-child(even) td {
-  background: rgba(18, 20, 25, 0.58);
+.accounts-table .accounts-row td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.14s ease;
 }
 
-.accounts-table .accounts-row.status-blocked td {
-  background:
-    linear-gradient(90deg, rgba(63, 18, 24, 0.2), rgba(16, 18, 23, 0)),
-    rgba(18, 20, 25, 0.58);
+.accounts-table .accounts-row:hover td {
+  background: rgba(255, 255, 255, 0.025);
 }
 
-.accounts-table .accounts-row.status-pending td,
-.accounts-table .accounts-row.status-paused td,
-.accounts-table .accounts-row.status-expired td {
-  background:
-    linear-gradient(90deg, rgba(79, 56, 17, 0.16), rgba(16, 18, 23, 0)),
-    rgba(18, 20, 25, 0.58);
+/* Subtle status tint only on the first cell's left edge, not the whole row */
+.accounts-table .accounts-row.status-blocked td:first-child {
+  box-shadow: inset 3px 0 0 rgba(255, 138, 122, 0.6);
+}
+.accounts-table .accounts-row.status-pending td:first-child,
+.accounts-table .accounts-row.status-paused td:first-child {
+  box-shadow: inset 3px 0 0 rgba(255, 201, 77, 0.55);
+}
+.accounts-table .accounts-row.status-expired td:first-child {
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.18);
+}
+.accounts-table .accounts-row.status-active td:first-child {
+  box-shadow: inset 3px 0 0 rgba(54, 208, 124, 0.5);
 }
 
 .status-requested {

@@ -11421,18 +11421,19 @@ function AccountsDashboard({ authUser }) {
                         {row.nickname ? row.nickname : <span className="offer-muted">—</span>}
                       </td>
                       <td>
-                        <select
-                          className={`inline-select status-select status-${(row.status || "inactive").toLowerCase()}`}
-                          value={row.status || "Active"}
-                          onChange={(event) => handleStatusChange(row, event.target.value)}
-                          disabled={!rowCanManage}
-                        >
-                          {accountStatusOptions.map((status) => (
-                            <option key={status} value={status}>
-                              {t(status)}
-                            </option>
-                          ))}
-                        </select>
+                        {rowCanManage ? (
+                          <Select
+                            className={`accounts-status-select status-${(row.status || "inactive").toLowerCase()}`}
+                            value={row.status || "Active"}
+                            onChange={(v) => handleStatusChange(row, v)}
+                            options={accountStatusOptions.map((status) => ({ value: status, label: t(status) }))}
+                            placeholder={t("Status")}
+                          />
+                        ) : (
+                          <span className={`accounts-status-pill status-${(row.status || "inactive").toLowerCase()}`}>
+                            {t(row.status || "Active")}
+                          </span>
+                        )}
                       </td>
                       <td className="accounts-comment-cell">{row.notes || "—"}</td>
                       <td className="accounts-integration-cell">
