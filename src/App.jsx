@@ -8970,6 +8970,10 @@ function DomainsDashboard({ authUser }) {
             <h3 className="panel-title">{t("Domains Registry")}</h3>
             <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
           </div>
+          <span className="roles-count">
+            {visibleDomains.length} {t("domains")}
+            {filteredDomainRows.length !== visibleDomains.length ? ` · ${filteredDomainRows.length} ${t("shown")}` : ""}
+          </span>
         </div>
 
         <form className="form-grid domain-form" onSubmit={handleDomainSubmit}>
