@@ -7597,7 +7597,41 @@ select option,
 .accounts-action-group {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+
+/* Give the actions column breathing room so the buttons aren't jammed
+   against the table edge. */
+.accounts-table td:last-child,
+.pixel-table td:last-child,
+.entries-table td:last-child {
+  padding-right: 16px;
+}
+
+/* Owner pill — dark rounded chip with a green status dot + name */
+.owner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.owner-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 2px rgba(54, 208, 124, 0.18);
+  flex-shrink: 0;
 }
 
 /* Reuse the canonical .icon-btn; just add tone-on-hover for check + delete */

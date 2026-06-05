@@ -9137,7 +9137,7 @@ function DomainsDashboard({ authUser }) {
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
                     <td>{countries.length ? countries.join(", ") : "—"}</td>
-                    <td>{ownerLabel}</td>
+                    <td>{ownerLabel && ownerLabel !== "—" ? (<span className="owner-pill"><span className="owner-pill-dot" />{ownerLabel}</span>) : (<span className="offer-muted">—</span>)}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
                         <Select
@@ -10167,7 +10167,16 @@ function PixelsDashboard({ authUser }) {
                         </button>
                       )}
                     </td>
-                    <td>{ownerLabel}</td>
+                    <td>
+                      {ownerLabel && ownerLabel !== "—" ? (
+                        <span className="owner-pill">
+                          <span className="owner-pill-dot" />
+                          {ownerLabel}
+                        </span>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
                     <td>
                       {(canManagePixels || pixel.owner_id === authUser?.id) ? (
                         <div className="accounts-action-group">
@@ -11640,7 +11649,7 @@ function AccountsDashboard({ authUser }) {
                           <span className="accounts-integration-caption">{row.integration_account_number}</span>
                         ) : null}
                       </td>
-                      <td>{ownerLabel}</td>
+                      <td>{ownerLabel && ownerLabel !== "—" ? (<span className="owner-pill"><span className="owner-pill-dot" />{ownerLabel}</span>) : (<span className="offer-muted">—</span>)}</td>
                       <td>
                         <div className="accounts-actions-cell">
                           <div className="accounts-action-group">
