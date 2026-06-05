@@ -5717,7 +5717,9 @@ app.delete("/api/media-buyers/:id", async (req, res) => {
 
 app.get("/api/domains", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  // Domains are lightweight rows; allow a high ceiling so leadership's full
+  // list (which can exceed 200) is never silently truncated.
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 5000) : 200;
   if (isLeadership(req.user)) {
     const rows = await selectDomains(limit);
     return res.json(rows);

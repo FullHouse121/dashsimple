@@ -3702,7 +3702,7 @@ function UtmBuilder() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch("/api/domains?limit=300");
+        const res = await apiFetch("/api/domains?limit=5000");
         if (!res.ok) return;
         const data = await res.json();
         if (cancelled) return;
@@ -5997,7 +5997,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       setCampaignState({ loading: true, error: null });
       const [statsResponse, domainsResponse, mappingsResponse] = await Promise.all([
         apiFetch("/api/media-stats?limit=100000"),
-        apiFetch("/api/domains?limit=500"),
+        apiFetch("/api/domains?limit=5000"),
         apiFetch("/api/campaigns?limit=500"),
       ]);
 
@@ -8682,7 +8682,7 @@ function DomainsDashboard({ authUser }) {
   const fetchDomains = React.useCallback(async () => {
     try {
       setDomainState({ loading: true, error: null });
-      const response = await apiFetch("/api/domains?limit=200");
+      const response = await apiFetch("/api/domains?limit=5000");
       if (!response.ok) {
         throw new Error("Failed to load domains.");
       }
@@ -9263,7 +9263,7 @@ function PixelsDashboard({ authUser }) {
   const fetchDomains = React.useCallback(async () => {
     try {
       setDomainState({ loading: true, error: null });
-      const response = await apiFetch("/api/domains?limit=200");
+      const response = await apiFetch("/api/domains?limit=5000");
       if (!response.ok) {
         throw new Error("Failed to load domains.");
       }
@@ -10436,7 +10436,7 @@ function AccountsDashboard({ authUser }) {
   const fetchDomains = React.useCallback(async () => {
     try {
       setDomainState({ loading: true, error: null });
-      const response = await apiFetch("/api/domains?limit=500");
+      const response = await apiFetch("/api/domains?limit=5000");
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to load domains.");
