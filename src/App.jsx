@@ -4951,15 +4951,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
               <p className="panel-subtitle">Calculated funnel metrics per entry.</p>
             </div>
             {isLeadership ? (
-              <select
-                className="select"
+              <Select
                 value={buyerFilter}
-                onChange={(e) => setBuyerFilter(e.target.value)}
-              >
-                {buyers.map((buyer) => (
-                  <option key={buyer}>{buyer}</option>
-                ))}
-              </select>
+                onChange={(v) => setBuyerFilter(v)}
+                options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
+                placeholder={t("Select buyer")}
+                searchPlaceholder={t("Find buyer")}
+              />
             ) : (
               <div className="select select-static">{effectiveBuyer}</div>
             )}
@@ -5642,17 +5640,16 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
               <p className="panel-subtitle">{t("Clicks and registers grouped by sub_id_1 placement.")}</p>
             </div>
             <div className="panel-actions">
-              <select
-                className="inline-select"
+              <Select
                 value={placementFilter}
-                onChange={(event) => setPlacementFilter(event.target.value)}
-              >
-                {placementOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option === "All placements" ? t(option) : option}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setPlacementFilter(v)}
+                options={placementOptions.map((option) => ({
+                  value: option,
+                  label: option === "All placements" ? t(option) : option,
+                }))}
+                placeholder={t("All placements")}
+                searchPlaceholder={t("Find placement")}
+              />
               <PeriodSelect
                 value={period}
                 onChange={setPeriod}
@@ -7044,17 +7041,13 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("Search external ID or campaign")}
               />
-              <select
-                className="inline-select"
+              <Select
                 value={behaviorFilter}
-                onChange={(event) => setBehaviorFilter(event.target.value)}
-              >
-                {behaviorFilterOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {t(option)}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setBehaviorFilter(v)}
+                options={behaviorFilterOptions.map((option) => ({ value: option, label: t(option) }))}
+                placeholder={t("Filter")}
+                searchPlaceholder={t("Find")}
+              />
               <PeriodSelect
                 value={period}
                 onChange={setPeriod}
@@ -9143,21 +9136,15 @@ function DomainsDashboard({ authUser }) {
                     <td>{ownerLabel}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
-                        <select
-                          className={`inline-select status-select status-${(domain.status || "inactive").toLowerCase()}`}
-                          value={domain.status}
-                          onChange={(event) =>
-                            handleDomainStatusChange(domain.id, event.target.value)
-                          }
-                        >
-                          {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
-                            <option key={status} value={status}>
-                              {t(status)}
-                            </option>
-                          ))}
-                        </select>
+                        <Select
+                          className={`accounts-status-select acc-st-${(domain.status || "active").toLowerCase()}`}
+                          value={domain.status || "Active"}
+                          onChange={(v) => handleDomainStatusChange(domain.id, v)}
+                          options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+                          placeholder={t("Status")}
+                        />
                       ) : (
-                        <span className={`status-pill status-${domain.status?.toLowerCase() || "inactive"}`}>
+                        <span className={`accounts-status-pill acc-st-${domain.status?.toLowerCase() || "active"}`}>
                           {t(domain.status)}
                         </span>
                       )}
@@ -9958,21 +9945,15 @@ function PixelsDashboard({ authUser }) {
                     <td>{pixel.flows || "—"}</td>
                     <td>
                       {canManagePixels || pixel.owner_id === authUser?.id ? (
-                        <select
-                          className={`inline-select status-select status-${(pixel.status || "inactive").toLowerCase()}`}
+                        <Select
+                          className={`accounts-status-select acc-st-${(pixel.status || "active").toLowerCase()}`}
                           value={pixel.status || "Active"}
-                          onChange={(event) =>
-                            handlePixelStatusChange(pixel.id, event.target.value)
-                          }
-                        >
-                          {["Active", "Pending", "Paused", "Expired", "Blocked"].map((status) => (
-                            <option key={status} value={status}>
-                              {t(status)}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={(v) => handlePixelStatusChange(pixel.id, v)}
+                          options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+                          placeholder={t("Status")}
+                        />
                       ) : (
-                        <span className={`status-pill status-${pixel.status?.toLowerCase() || "inactive"}`}>
+                        <span className={`accounts-status-pill acc-st-${pixel.status?.toLowerCase() || "active"}`}>
                           {t(pixel.status || "Active")}
                         </span>
                       )}
