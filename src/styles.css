@@ -1985,7 +1985,13 @@ select {
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
+  align-items: center;
   gap: 2px;
+  padding-left: 14px;
+  /* Opaque fade so the masked dots visibly stop before the buttons instead
+     of running under the eye. The gradient blends from the field background. */
+  background: linear-gradient(90deg, rgba(34, 37, 43, 0), rgba(34, 37, 43, 0.95) 40%);
+  border-radius: 8px;
 }
 
 .token-action-btn {
