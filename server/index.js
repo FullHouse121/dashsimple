@@ -5820,18 +5820,56 @@ app.patch("/api/domains/:id", async (req, res) => {
   if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  const { status } = req.body ?? {};
-  if (!status) {
-    return res.status(400).json({ error: "Status is required." });
+  const body = req.body ?? {};
+  const updates = [];
+  const params = [];
+
+  if (body.status !== undefined && body.status !== null && body.status !== "") {
+    updates.push(`status = $${updates.length + 1}`);
+    params.push(String(body.status));
   }
-  await query(`UPDATE domains SET status = $1 WHERE id = $2`, [status, id]);
-  if (String(domain.status || "").trim() !== String(status || "").trim()) {
+  if (body.domain !== undefined) {
+    const v = normalizeDomainBatchValues(body.domain)[0];
+    if (!v) return res.status(400).json({ error: "Domain cannot be empty." });
+    updates.push(`domain = $${updates.length + 1}`);
+    params.push(v);
+  }
+  if (body.game !== undefined) {
+    updates.push(`game = $${updates.length + 1}`);
+    params.push(String(body.game || "").trim());
+  }
+  if (body.platform !== undefined) {
+    updates.push(`platform = $${updates.length + 1}`);
+    params.push(String(body.platform || "").trim());
+  }
+  if (body.countries !== undefined || body.country !== undefined) {
+    const result = normalizeAccountCountries(body.countries !== undefined ? body.countries : body.country);
+    if (result.error) return res.status(400).json({ error: result.error });
+    updates.push(`country = $${updates.length + 1}`);
+    params.push(serializeStringList(result.value));
+  }
+  if (isLeadership(req.user) && body.ownerId !== undefined && body.ownerId !== null && body.ownerId !== "") {
+    const parsedOwner = Number(body.ownerId);
+    if (!Number.isFinite(parsedOwner)) {
+      return res.status(400).json({ error: "Invalid owner id." });
+    }
+    updates.push(`owner_id = $${updates.length + 1}`);
+    params.push(parsedOwner);
+  }
+
+  if (!updates.length) {
+    return res.status(400).json({ error: "Nothing to update." });
+  }
+
+  params.push(id);
+  await query(`UPDATE domains SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+  if (body.status !== undefined && String(domain.status || "").trim() !== String(body.status || "").trim()) {
     await createResourceUpdatedNotification({
       req,
       entityType: "domain",
       entityId: id,
       title: "Domain status updated",
-      message: `${req.user?.username || "User"} changed ${domain.domain || `domain #${id}`} from ${domain.status || "Unknown"} to ${status}.`,
+      message: `${req.user?.username || "User"} changed ${domain.domain || `domain #${id}`} from ${domain.status || "Unknown"} to ${body.status}.`,
     });
   }
   res.json({ ok: true });

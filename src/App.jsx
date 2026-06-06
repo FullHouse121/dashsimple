@@ -8679,6 +8679,93 @@ function DomainsDashboard({ authUser }) {
     setDomainForm((prev) => ({ ...prev, ownerRole }));
   }, [ownerRole]);
 
+  // Full domain edit modal (domain, game, platform, geos, owner)
+  const [domainEdit, setDomainEdit] = React.useState({
+    open: false,
+    domain: null,
+    saving: false,
+    error: null,
+    form: { domain: "", game: "", platform: "PWA Group", countries: [], ownerId: "" },
+  });
+
+  const openDomainEdit = (domain) => {
+    if (!domain?.id) return;
+    setDomainEdit({
+      open: true,
+      domain,
+      saving: false,
+      error: null,
+      form: {
+        domain: String(domain.domain || ""),
+        game: String(domain.game || ""),
+        platform: String(domain.platform || "PWA Group"),
+        countries: normalizeCountryListValue(
+          Array.isArray(domain?.countries) && domain.countries.length ? domain.countries : domain?.country
+        ),
+        ownerId: domain.owner_id ? String(domain.owner_id) : "",
+      },
+    });
+  };
+
+  const closeDomainEdit = () => {
+    setDomainEdit({ open: false, domain: null, saving: false, error: null, form: { domain: "", game: "", platform: "PWA Group", countries: [], ownerId: "" } });
+  };
+
+  const toggleDomainEditCountry = (country) => {
+    const normalized = String(country || "").trim();
+    if (!normalized) return;
+    setDomainEdit((prev) => {
+      const current = prev.form.countries || [];
+      const has = current.includes(normalized);
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          countries: has ? current.filter((i) => i !== normalized) : [...current, normalized],
+        },
+      };
+    });
+  };
+
+  const handleDomainEditSave = async () => {
+    if (!domainEdit.domain?.id) return;
+    const f = domainEdit.form;
+    if (!String(f.domain).trim()) {
+      setDomainEdit((prev) => ({ ...prev, error: "Domain is required." }));
+      return;
+    }
+    if (!String(f.game).trim() || !String(f.platform).trim()) {
+      setDomainEdit((prev) => ({ ...prev, error: "Game and platform are required." }));
+      return;
+    }
+    if (!f.countries.length) {
+      setDomainEdit((prev) => ({ ...prev, error: "Select at least one country." }));
+      return;
+    }
+    setDomainEdit((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const response = await apiFetch(`/api/domains/${domainEdit.domain.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          domain: f.domain,
+          game: f.game,
+          platform: f.platform,
+          countries: f.countries,
+          ...(canManageDomains && f.ownerId ? { ownerId: f.ownerId } : {}),
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail?.error || "Failed to update domain.");
+      }
+      await fetchDomains();
+      closeDomainEdit();
+    } catch (error) {
+      setDomainEdit((prev) => ({ ...prev, saving: false, error: error.message || "Failed to update domain." }));
+    }
+  };
+
   const fetchDomains = React.useCallback(async () => {
     try {
       setDomainState({ loading: true, error: null });
@@ -9154,9 +9241,26 @@ function DomainsDashboard({ authUser }) {
                       )}
                     </td>
                     <td>
-                      <button className="icon-btn" type="button" onClick={() => handleDomainDelete(domain.id)}>
-                        <Trash2 size={16} />
-                      </button>
+                      {(canManageDomains || domain.owner_id === authUser?.id) ? (
+                        <div className="accounts-action-group">
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Edit domain")}
+                            onClick={() => openDomainEdit(domain)}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            className="icon-btn icon-btn-danger"
+                            type="button"
+                            title={t("Remove")}
+                            onClick={() => handleDomainDelete(domain.id)}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -9168,6 +9272,97 @@ function DomainsDashboard({ authUser }) {
           </div>
         )}
       </motion.div>
+
+      <AnimatePresence>
+        {domainEdit.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeDomainEdit}
+          >
+            <motion.div
+              className="modal pixel-edit-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Edit Domain")}</p>
+                  <h2>{domainEdit.form.domain || t("Domain")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closeDomainEdit}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body pixel-edit-body">
+                <div className="field field-span-2">
+                  <label>{t("Domain")}</label>
+                  <input
+                    value={domainEdit.form.domain}
+                    onChange={(e) => setDomainEdit((prev) => ({ ...prev, form: { ...prev.form, domain: e.target.value } }))}
+                    placeholder="landing.yourdomain.com"
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Game")}</label>
+                  <input
+                    value={domainEdit.form.game}
+                    onChange={(e) => setDomainEdit((prev) => ({ ...prev, form: { ...prev.form, game: e.target.value } }))}
+                    placeholder={t("e.g. Crash, Roulette")}
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Platform")}</label>
+                  <Select
+                    value={domainEdit.form.platform}
+                    onChange={(v) => setDomainEdit((prev) => ({ ...prev, form: { ...prev.form, platform: v } }))}
+                    options={["PWA Group", "Link Group", "ZM apps", "SKAK apps"].map((p) => ({ value: p, label: t(p) }))}
+                    placeholder={t("Select")}
+                  />
+                </div>
+                {canManageDomains ? (
+                  <div className="field field-span-2">
+                    <label>{t("Owner")}</label>
+                    <Select
+                      value={domainEdit.form.ownerId || ""}
+                      onChange={(v) => setDomainEdit((prev) => ({ ...prev, form: { ...prev.form, ownerId: v } }))}
+                      options={users.map((u) => ({ value: String(u.id), label: `${u.username} · ${t(u.role)}` }))}
+                      placeholder={userState.loading ? t("Loading...") : t("Select")}
+                      searchPlaceholder={t("Find owner")}
+                    />
+                  </div>
+                ) : null}
+                <div className="field field-span-2">
+                  <label>{t("Target Countries")}</label>
+                  <CountryDropdownPicker
+                    multiple
+                    values={domainEdit.form.countries}
+                    onToggle={toggleDomainEditCountry}
+                    options={countryOptions}
+                    placeholder={t("No countries selected")}
+                    searchPlaceholder={t("Type to find countries")}
+                    emptyResultsLabel={t("No countries found.")}
+                  />
+                </div>
+                {domainEdit.error ? <div className="field field-span-2"><div className="pw-error">{domainEdit.error}</div></div> : null}
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={closeDomainEdit}>
+                  {t("Cancel")}
+                </button>
+                <button className="action-pill" type="button" onClick={handleDomainEditSave} disabled={domainEdit.saving}>
+                  {domainEdit.saving ? t("Saving…") : t("Save Changes")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }
