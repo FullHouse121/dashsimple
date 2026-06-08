@@ -5839,6 +5839,13 @@ select option,
   overflow-x: auto;
 }
 
+/* While any dropdown inside the table (filter toolbar OR a status cell) is
+   open, let the wrap overflow so the menu isn't clipped by the horizontal
+   scroll container. Covers single- and multi-select pickers alike. */
+.table-wrap:has(.country-select-picker[open]) {
+  overflow: visible;
+}
+
 .entries-table {
   width: 100%;
   border-collapse: collapse;
