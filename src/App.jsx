@@ -191,6 +191,18 @@ const navSections = [
 
 // Static option arrays + country/domain normalizers moved to ./lib/constants.js (Phase 1)
 
+// Status → dot colour, for the flat status dropdowns (pixels/domains/accounts).
+const STATUS_DOT_COLOR = {
+  active: "#36d07c",
+  pending: "#ffc94d",
+  paused: "#ffb37a",
+  expired: "#8a93a3",
+  blocked: "#ff8a7a",
+};
+const STATUS_VALUES = ["Active", "Pending", "Paused", "Expired", "Blocked"];
+const buildStatusOptions = (t) =>
+  STATUS_VALUES.map((s) => ({ value: s, label: t(s), dot: STATUS_DOT_COLOR[s.toLowerCase()] || "#8a93a3" }));
+
 // Renders a flag-icons SVG flag for a country label or ISO geo code.
 // Returns null when the value doesn't resolve to a country (so it's safe to
 // drop into generic Selects that also hold roles/models/etc.).
@@ -249,7 +261,7 @@ function CountryDropdownPicker({
             if (!optionValue) return null;
             const optionLabel = String(item.label ?? optionValue);
             const optionSearch = String(item.search ?? `${optionLabel} ${optionValue}`);
-            return { value: optionValue, label: optionLabel, search: optionSearch };
+            return { value: optionValue, label: optionLabel, search: optionSearch, dot: item.dot || null };
           }
           const raw = String(item ?? "");
           if (!raw) return null;
@@ -313,7 +325,9 @@ function CountryDropdownPicker({
           </span>
         ) : (
           <span className={`country-select-value${hasSelection ? "" : " is-placeholder"}`}>
-            {hasSelection ? <CountryFlag value={normalizedValue} /> : null}
+            {hasSelection && selectedOption?.dot ? (
+              <span className="cs-dot" style={{ background: selectedOption.dot }} />
+            ) : hasSelection ? <CountryFlag value={normalizedValue} /> : null}
             {displayLabel || placeholder}
           </span>
         )}
@@ -372,7 +386,11 @@ function CountryDropdownPicker({
                   }}
                 >
                   <span className="country-select-name">
-                    <CountryFlag value={item.value} />
+                    {item.dot ? (
+                      <span className="cs-dot" style={{ background: item.dot }} />
+                    ) : (
+                      <CountryFlag value={item.value} />
+                    )}
                     {item.label}
                   </span>
                   <span className="country-select-check">{selected ? "✓" : ""}</span>
@@ -9078,7 +9096,7 @@ function DomainsDashboard({ authUser }) {
             <Select
               value={domainForm.status}
               onChange={(v) => setDomainForm((prev) => ({ ...prev, status: v }))}
-              options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+              options={buildStatusOptions(t)}
               placeholder={t("Select")}
             />
           </div>
@@ -9231,7 +9249,7 @@ function DomainsDashboard({ authUser }) {
                           className={`accounts-status-select acc-st-${(domain.status || "active").toLowerCase()}`}
                           value={domain.status || "Active"}
                           onChange={(v) => handleDomainStatusChange(domain.id, v)}
-                          options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+                          options={buildStatusOptions(t)}
                           placeholder={t("Status")}
                         />
                       ) : (
@@ -10338,7 +10356,7 @@ function PixelsDashboard({ authUser }) {
                           className={`accounts-status-select acc-st-${(pixel.status || "active").toLowerCase()}`}
                           value={pixel.status || "Active"}
                           onChange={(v) => handlePixelStatusChange(pixel.id, v)}
-                          options={["Active", "Pending", "Paused", "Expired", "Blocked"].map((s) => ({ value: s, label: t(s) }))}
+                          options={buildStatusOptions(t)}
                           placeholder={t("Status")}
                         />
                       ) : (
@@ -11826,7 +11844,7 @@ function AccountsDashboard({ authUser }) {
                             className={`accounts-status-select acc-st-${(row.status || "inactive").toLowerCase()}`}
                             value={row.status || "Active"}
                             onChange={(v) => handleStatusChange(row, v)}
-                            options={accountStatusOptions.map((status) => ({ value: status, label: t(status) }))}
+                            options={accountStatusOptions.map((status) => ({ value: status, label: t(status), dot: STATUS_DOT_COLOR[status.toLowerCase()] || "#8a93a3" }))}
                             placeholder={t("Status")}
                           />
                         ) : (

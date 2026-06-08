@@ -7651,24 +7651,36 @@ select option,
 /* Status Select rendered as a compact, FLAT colour-coded pill.
    Uses acc-st-* (not status-*) so it never collides with the global
    .status-active pill rules. Higher specificity + flat fills only. */
+/* Flat status trigger — dark pill with a thin border + colour DOT (the dot
+   carries the status colour, the chip stays neutral). Matches the reference. */
 .accounts-status-select .country-select-trigger {
-  min-height: 30px;
-  padding: 5px 28px 5px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  min-height: 32px;
+  padding: 6px 28px 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   width: auto;
-  min-width: 100px;
+  min-width: 132px;
   background-image: none;
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text);
 }
 
-.accounts-status-select .country-select-value { font-size: 11px; font-weight: 700; }
+.accounts-status-select .country-select-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.accounts-status-select .country-select-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
 .accounts-status-select .country-select-arrow { font-size: 9px; right: 10px; }
 
-/* The pill trigger is compact, but the dropdown menu must stay wide enough
-   to show full option labels — otherwise "Active/Pending/…" get clipped. */
 .accounts-status-select .country-select-menu {
   min-width: 170px;
   right: auto;
@@ -7679,49 +7691,40 @@ select option,
   text-overflow: clip;
 }
 
-.accounts-status-select.acc-st-active .country-select-trigger {
-  color: var(--green);
-  border-color: rgba(54, 208, 124, 0.35);
-  background: rgba(54, 208, 124, 0.07);
-}
-.accounts-status-select.acc-st-pending .country-select-trigger {
-  color: #ffc94d;
-  border-color: rgba(255, 201, 77, 0.35);
-  background: rgba(255, 201, 77, 0.07);
-}
-.accounts-status-select.acc-st-paused .country-select-trigger {
-  color: #ffb37a;
-  border-color: rgba(255, 179, 122, 0.35);
-  background: rgba(255, 179, 122, 0.07);
-}
-.accounts-status-select.acc-st-expired .country-select-trigger {
-  color: var(--muted-strong, #a9adb7);
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
-}
-.accounts-status-select.acc-st-blocked .country-select-trigger {
-  color: #ff8a7a;
-  border-color: rgba(255, 138, 122, 0.35);
-  background: rgba(255, 138, 122, 0.07);
-}
-.accounts-status-select .country-select-value { color: inherit; }
-
-/* Read-only status pill (non-managers) */
-.accounts-status-pill {
+/* Status dot (in both trigger and option rows) */
+.cs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
   display: inline-block;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--muted-strong, #a9adb7);
 }
-.accounts-status-pill.acc-st-active { color: var(--green); border-color: rgba(54, 208, 124, 0.35); background: rgba(54, 208, 124, 0.07); }
-.accounts-status-pill.acc-st-pending { color: #ffc94d; border-color: rgba(255, 201, 77, 0.35); background: rgba(255, 201, 77, 0.07); }
-.accounts-status-pill.acc-st-paused { color: #ffb37a; border-color: rgba(255, 179, 122, 0.35); background: rgba(255, 179, 122, 0.07); }
-.accounts-status-pill.acc-st-blocked { color: #ff8a7a; border-color: rgba(255, 138, 122, 0.35); background: rgba(255, 138, 122, 0.07); }
+
+/* Read-only status pill (non-managers) — same flat dark look + dot */
+.accounts-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+}
+.accounts-status-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8a93a3;
+}
+.accounts-status-pill.acc-st-active::before { background: #36d07c; }
+.accounts-status-pill.acc-st-pending::before { background: #ffc94d; }
+.accounts-status-pill.acc-st-paused::before { background: #ffb37a; }
+.accounts-status-pill.acc-st-expired::before { background: #8a93a3; }
+.accounts-status-pill.acc-st-blocked::before { background: #ff8a7a; }
 
 .accounts-action-feedback {
   font-size: 11px;
