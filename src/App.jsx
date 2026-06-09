@@ -293,11 +293,19 @@ function CountryDropdownPicker({
     String(item.search ?? item.label).toLowerCase().includes(normalizedQuery)
   );
 
+  const [dropUp, setDropUp] = React.useState(false);
+
   return (
     <details
-      className="country-select-picker"
+      className={`country-select-picker${dropUp ? " drop-up" : ""}`}
       onToggle={(event) => {
-        if (!event.currentTarget.open && query) {
+        const el = event.currentTarget;
+        if (el.open) {
+          // Flip the menu upward when there isn't room below (e.g. last table rows).
+          const rect = el.getBoundingClientRect();
+          const spaceBelow = window.innerHeight - rect.bottom;
+          setDropUp(spaceBelow < 300 && rect.top > spaceBelow);
+        } else if (query) {
           setQuery("");
         }
       }}
@@ -10367,7 +10375,14 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td>
                       {pixel.comment ? (
-                        <span className="accounts-comment-cell">{pixel.comment}</span>
+                        <button
+                          className="comment-text-btn"
+                          type="button"
+                          onClick={() => handleCommentEdit(pixel)}
+                          title={t("Edit comment")}
+                        >
+                          {pixel.comment}
+                        </button>
                       ) : (
                         <button
                           className="icon-btn"
@@ -10400,14 +10415,6 @@ function PixelsDashboard({ authUser }) {
                             onClick={() => openPixelEdit(pixel)}
                           >
                             <Pencil size={15} />
-                          </button>
-                          <button
-                            className="icon-btn"
-                            type="button"
-                            title={t("Edit comment")}
-                            onClick={() => handleCommentEdit(pixel)}
-                          >
-                            <MessageSquare size={15} />
                           </button>
                           {canManagePixels ? (
                             <button
