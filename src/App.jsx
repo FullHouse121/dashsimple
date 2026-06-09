@@ -12981,8 +12981,10 @@ function RolesDashboard({ authUser }) {
         body: JSON.stringify(body),
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data?.error || (isEdit ? "Failed to update user." : "Failed to create user."));
+        let detail = "";
+        try { detail = (await response.json())?.error || ""; } catch { /* ignore */ }
+        const base = isEdit ? "Failed to update user" : "Failed to create user";
+        throw new Error(`${base} (HTTP ${response.status}${detail ? ` — ${detail}` : ""}).`);
       }
       setUserForm({ username: "", password: "", role: roleOptions[0], buyerId: "" });
       setEditingUserId(null);
