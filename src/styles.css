@@ -8852,31 +8852,8 @@ select option,
   letter-spacing: 0.3px;
 }
 
-.comment-btn {
-  background: rgba(8, 12, 10, 0.6);
-  border: 2px solid rgba(54, 208, 124, 0.95);
-  color: #36d07c;
-  width: 36px;
-  height: 36px;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 10px 18px rgba(54, 208, 124, 0.12);
-}
-
-.comment-btn:hover {
-  background: rgba(54, 208, 124, 0.15);
-  border-color: rgba(54, 208, 124, 0.85);
-  box-shadow: 0 10px 20px rgba(54, 208, 124, 0.08);
-}
-
-.comment-btn svg {
-  display: block;
-  width: 18px;
-  height: 18px;
-}
+/* .comment-btn removed — the comment-add control now uses the standard
+   .icon-btn (quiet rounded square), consistent with all row actions. */
 
 .comment-modal .modal-body {
   grid-template-columns: 1fr;
