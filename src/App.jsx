@@ -301,6 +301,12 @@ function CountryDropdownPicker({
       onToggle={(event) => {
         const el = event.currentTarget;
         if (el.open) {
+          // Only one dropdown open at a time — close every other open picker.
+          if (typeof document !== "undefined") {
+            document.querySelectorAll("details.country-select-picker[open]").forEach((other) => {
+              if (other !== el) other.open = false;
+            });
+          }
           // Flip the menu upward when there isn't room below (e.g. last table rows).
           const rect = el.getBoundingClientRect();
           const spaceBelow = window.innerHeight - rect.bottom;
