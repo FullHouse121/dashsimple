@@ -10367,16 +10367,16 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td>
                       {pixel.comment ? (
-                        pixel.comment
+                        <span className="accounts-comment-cell">{pixel.comment}</span>
                       ) : (
                         <button
-                          className="comment-btn"
+                          className="icon-btn"
                           type="button"
                           onClick={() => handleCommentEdit(pixel)}
                           aria-label={t("Add comment")}
                           title={t("Add comment")}
                         >
-                          <Plus size={18} />
+                          <MessageSquare size={15} />
                         </button>
                       )}
                     </td>
