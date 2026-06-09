@@ -13457,13 +13457,13 @@ function RolesDashboard({ authUser }) {
             <div className="field">
               <label>{t("Assign Media Buyer")}</label>
               <Select
-                value={userForm.buyerId}
+                value={buyers.some((b) => String(b.id) === String(userForm.buyerId)) ? userForm.buyerId : ""}
                 onChange={(v) => setUserForm((prev) => ({ ...prev, buyerId: v }))}
                 options={[
                   { value: "", label: t("No buyer linked") },
                   ...buyers.map((b) => ({ value: String(b.id), label: b.tag ? `${b.name} · ${b.tag}` : b.name })),
                 ]}
-                placeholder={t("Select buyer")}
+                placeholder={buyers.length ? t("Select buyer") : t("No media buyers yet — add one in Media Buyers")}
               />
             </div>
             <div className="form-actions">
