@@ -10095,6 +10095,46 @@ select option,
   color: var(--muted);
 }
 
+/* Campaign-naming format check results */
+.format-check {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.format-check-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.format-check-stat {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 12px;
+  color: var(--muted-strong, #a9adb7);
+}
+
+.format-check-stat strong {
+  color: var(--text);
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+.format-check-stat.ok {
+  border-color: rgba(54, 208, 124, 0.3);
+}
+
+.format-check-stat.warn {
+  border-color: rgba(255, 179, 122, 0.4);
+}
+
+.format-check-stat.warn strong {
+  color: #ffb37a;
+}
+
 .code-input {
   font-size: 12px;
   line-height: 1.5;

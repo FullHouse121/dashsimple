@@ -14119,6 +14119,7 @@ function KeitaroApiView() {
   const [testState, setTestState] = React.useState({ loading: false, ok: null, message: "" });
   const [syncState, setSyncState] = React.useState({ loading: false, ok: null, message: "" });
   const [syncResult, setSyncResult] = React.useState(null);
+  const [formatCheck, setFormatCheck] = React.useState({ loading: false, error: "", data: null });
   const [showMapping, setShowMapping] = React.useState(true);
   const previousSyncTargetRef = React.useRef(initialSyncTarget);
   const [campaigns, setCampaigns] = React.useState([]);
@@ -14371,6 +14372,20 @@ function KeitaroApiView() {
       setTestState({ loading: false, ok: true, message: "Connection verified." });
     } catch (error) {
       setTestState({ loading: false, ok: false, message: error.message || "Connection failed." });
+    }
+  };
+
+  const handleFormatCheck = async () => {
+    setFormatCheck({ loading: true, error: "", data: null });
+    try {
+      const response = await apiFetch("/api/keitaro/campaign-format-check");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Campaign check failed.");
+      }
+      setFormatCheck({ loading: false, error: "", data });
+    } catch (error) {
+      setFormatCheck({ loading: false, error: error.message || "Campaign check failed.", data: null });
     }
   };
 
@@ -14656,10 +14671,73 @@ function KeitaroApiView() {
                 {testState.message}
               </div>
             )}
+            <button
+              className="ghost"
+              type="button"
+              onClick={handleFormatCheck}
+              disabled={formatCheck.loading}
+            >
+              {formatCheck.loading ? t("Checking...") : t("Check Campaign Naming")}
+            </button>
             <button className="ghost" type="button" onClick={handleTest} disabled={testState.loading}>
               {testState.loading ? t("Testing...") : t("Test Connection")}
             </button>
           </div>
+
+          {(formatCheck.error || formatCheck.data) && (
+            <div className="format-check">
+              {formatCheck.error ? (
+                <div className="api-status error">{formatCheck.error}</div>
+              ) : (
+                <>
+                  <div className="format-check-summary">
+                    <span className="format-check-stat">
+                      <strong>{formatCheck.data.total}</strong> {t("campaigns")}
+                    </span>
+                    <span className="format-check-stat ok">
+                      <strong>{formatCheck.data.formatted}</strong> {t("formatted")}
+                    </span>
+                    <span
+                      className={`format-check-stat ${formatCheck.data.unformattedCount ? "warn" : "ok"}`}
+                    >
+                      <strong>{formatCheck.data.unformattedCount}</strong> {t("off-format")}
+                    </span>
+                  </div>
+                  {formatCheck.data.unformattedCount === 0 ? (
+                    <div className="api-status success">
+                      {t("All campaigns follow Buyer | Tool | Game | Geo | Brand.")}
+                    </div>
+                  ) : (
+                    <div className="table-wrap">
+                      <table className="entries-table">
+                        <thead>
+                          <tr>
+                            <th>{t("Campaign")}</th>
+                            <th>{t("Segments")}</th>
+                            <th>{t("Issues")}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {formatCheck.data.unformatted.map((c) => (
+                            <tr key={c.id ?? c.name}>
+                              <td>{c.name}</td>
+                              <td>{c.segmentCount}/5</td>
+                              <td>{c.issues.join("; ")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {formatCheck.data.buyers?.length ? (
+                    <p className="panel-subtitle">
+                      {t("Buyers detected")}: {formatCheck.data.buyers.join(", ")}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
         </motion.div>
 
         <motion.div

@@ -90,6 +90,11 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS campaign_name TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS adset_name TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS ad_name TEXT;`,
+    // Parsed from the "Buyer | Tool | Game | Geo | Brand" campaign name.
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS tool TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS game TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS geo TEXT;`,
+    `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS brand TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS buyer TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS campaign TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS country TEXT;`,
@@ -693,6 +698,10 @@ const insertMediaStat = async (payload) => {
       campaign_name,
       adset_name,
       ad_name,
+      tool,
+      game,
+      geo,
+      brand,
       spend,
       revenue,
       ftd_revenue,
@@ -703,7 +712,7 @@ const insertMediaStat = async (payload) => {
       ftds,
       redeposits
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
      RETURNING id`,
     [
       payload.date,
@@ -716,6 +725,10 @@ const insertMediaStat = async (payload) => {
       payload.campaign_name,
       payload.adset_name,
       payload.ad_name,
+      payload.tool,
+      payload.game,
+      payload.geo,
+      payload.brand,
       payload.spend,
       payload.revenue,
       payload.ftd_revenue,
@@ -2978,14 +2991,22 @@ const readFirstUsefulValue = (row, candidates) => {
   return "";
 };
 
-const resolveSyncBuyer = (row, map = {}) => {
-  const value = readFirstUsefulValue(row, [
+// Read the raw campaign-name field that holds "Buyer | Tool | Game | Geo | Brand".
+const readSyncCampaignName = (row, map = {}) =>
+  readFirstUsefulValue(row, [
     map.buyerField || defaultKeitaroMapping.buyerField,
     map.campaignField || defaultKeitaroMapping.campaignField,
     "campaign",
     "campaign_group",
   ]);
-  return value || "Keitaro";
+
+const resolveSyncBuyer = (row, map = {}) => {
+  const value = readSyncCampaignName(row, map);
+  if (!value) return "Keitaro";
+  // Segment 0 (alias-resolved) is the buyer, e.g.
+  // "Leticia | PWA | Sweet Bonanza | TR | BAYSPIN" → "Leticia",
+  // "Leo | ..." → "Leomarketing".
+  return parseCampaignName(value).buyer || "Keitaro";
 };
 
 const resolvePostbackContext = async (payload) => {
@@ -3049,7 +3070,9 @@ const resolvePostbackContext = async (payload) => {
     buyer = domainOwner.owner_name;
   }
 
-  const buyerInput = String(buyer || "").trim();
+  // Buyer may arrive as a full "Buyer | Tool | … " campaign name → take
+  // segment 0 and resolve aliases (Leo → Leomarketing, Karen → KarenFarias).
+  const buyerInput = parseCampaignName(String(buyer || "").trim()).buyer;
   const canonicalBuyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
   const finalBuyer = String(
     canonicalBuyerMatch?.username || buyerInput || mapped?.buyer || campaignId || domainOwner?.owner_name || "Unknown"
@@ -3434,6 +3457,64 @@ const parseBooleanEnv = (value, fallback) => {
   if (["1", "true", "yes", "y"].includes(text)) return true;
   if (["0", "false", "no", "n"].includes(text)) return false;
   return fallback;
+};
+
+// ── Keitaro campaign-name parser ────────────────────────────────────
+// Campaigns follow a fixed 5-segment convention:
+//   Buyer | Tool | Game | Geo | Brand
+// Segment 0 is the media buyer; "-" marks an intentionally empty slot.
+const CAMPAIGN_SEGMENT_KEYS = ["buyer", "tool", "game", "geo", "brand"];
+
+// Short buyer name (as written in the campaign) → canonical buyer.
+// Overridable via KEITARO_BUYER_ALIASES env (JSON, e.g. {"leo":"Leomarketing"}).
+const DEFAULT_BUYER_ALIASES = { leo: "Leomarketing", karen: "KarenFarias" };
+const buyerAliasMap = (() => {
+  const map = new Map();
+  const apply = (obj) => {
+    if (!obj || typeof obj !== "object") return;
+    for (const [k, v] of Object.entries(obj)) {
+      const key = String(k || "").trim().toLowerCase();
+      const val = String(v || "").trim();
+      if (key && val) map.set(key, val);
+    }
+  };
+  apply(DEFAULT_BUYER_ALIASES);
+  apply(parseJsonEnv(process.env.KEITARO_BUYER_ALIASES, null));
+  return map;
+})();
+
+const resolveBuyerAlias = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return raw;
+  return buyerAliasMap.get(raw.toLowerCase()) || raw;
+};
+
+// Parse a campaign name into its segments. Resilient to old/unformatted
+// names: when there's no " | " delimiter, segment 0 is treated as the buyer
+// so legacy attribution keeps working.
+const parseCampaignName = (name) => {
+  const raw = String(name || "").trim();
+  const segments = raw ? raw.split("|").map((p) => p.trim()) : [];
+  const segmentCount = segments.length;
+  const isFormatted =
+    segmentCount === CAMPAIGN_SEGMENT_KEYS.length && segments.every((s) => s.length > 0);
+  // "-" is a deliberate placeholder → treat as empty for the typed fields.
+  const slot = (i) => {
+    const v = segments[i] ? segments[i].trim() : "";
+    return v === "-" ? "" : v;
+  };
+  const rawBuyer = (segments[0] ? segments[0].trim() : raw) || "";
+  return {
+    raw,
+    isFormatted,
+    segmentCount,
+    rawBuyer,
+    buyer: resolveBuyerAlias(rawBuyer),
+    tool: slot(1),
+    game: slot(2),
+    geo: slot(3),
+    brand: slot(4),
+  };
 };
 
 const DEFAULT_KEITARO_TIMEZONE = "Asia/Dubai";
@@ -8163,6 +8244,8 @@ const runKeitaroSync = async ({
       });
     } else {
       const installs = numberFromValue(readRowValue(row, map.installsField));
+      // Break the "Buyer | Tool | Game | Geo | Brand" campaign name into columns.
+      const parsedCampaign = parseCampaignName(readSyncCampaignName(row, map));
 
       await insertMediaStat({
         date,
@@ -8175,6 +8258,10 @@ const runKeitaroSync = async ({
         campaign_name: campaignName || null,
         adset_name: adsetName || null,
         ad_name: adName || null,
+        tool: parsedCampaign.tool || null,
+        game: parsedCampaign.game || null,
+        geo: parsedCampaign.geo || null,
+        brand: parsedCampaign.brand || null,
         spend,
         revenue,
         ftd_revenue: ftdRevenue,
@@ -8234,6 +8321,93 @@ app.post("/api/keitaro/test", async (req, res) => {
       entityType: "keitaro",
     });
     res.status(500).json({ error: error.message || "Connection failed." });
+  }
+});
+
+// Audit every Keitaro campaign name against the
+// "Buyer | Tool | Game | Geo | Brand" convention and report what's off-format.
+// Reuses the server's stored credentials — no API key in the request.
+app.get("/api/keitaro/campaign-format-check", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const baseUrl = process.env.KEITARO_BASE_URL;
+  const apiKey = process.env.KEITARO_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return res
+      .status(400)
+      .json({ error: "KEITARO_BASE_URL and KEITARO_API_KEY must be configured on the server." });
+  }
+
+  const endpoint = `${normalizeBaseUrl(baseUrl)}/admin_api/v1/campaigns`;
+  try {
+    const response = await fetch(endpoint, { headers: { ...buildAuthHeaders(apiKey) } });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: data?.error || data?.message || "Failed to load campaigns from Keitaro.",
+      });
+    }
+
+    const list = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.campaigns)
+        ? data.campaigns
+        : [];
+
+    const isValidGeo = (geo) => {
+      if (!geo) return true; // "-" placeholder is allowed
+      const g = String(geo).trim().toUpperCase();
+      return g === "GLOBAL" || /^[A-Z]{2}$/.test(g);
+    };
+
+    const evaluated = list
+      .map((c) => ({
+        id: c.id ?? c.campaign_id ?? null,
+        name: String(c.name || c.title || "").trim(),
+        state: c.state || c.status || null,
+      }))
+      .filter((c) => c.name)
+      .map((c) => {
+        const parsed = parseCampaignName(c.name);
+        const issues = [];
+        if (parsed.segmentCount !== CAMPAIGN_SEGMENT_KEYS.length) {
+          issues.push(`Expected 5 segments, found ${parsed.segmentCount}`);
+        }
+        if (!parsed.rawBuyer) issues.push("Missing buyer (segment 1)");
+        if (parsed.segmentCount === CAMPAIGN_SEGMENT_KEYS.length && !isValidGeo(parsed.geo)) {
+          issues.push(`Geo "${parsed.geo}" is not ISO-2 or GLOBAL`);
+        }
+        return { ...c, ...parsed, issues };
+      });
+
+    const unformatted = evaluated.filter((c) => c.issues.length);
+    const buyers = [
+      ...new Set(evaluated.filter((c) => !c.issues.length).map((c) => c.buyer)),
+    ].sort();
+
+    res.json({
+      total: evaluated.length,
+      formatted: evaluated.length - unformatted.length,
+      unformattedCount: unformatted.length,
+      buyers,
+      unformatted: unformatted.map((c) => ({
+        id: c.id,
+        name: c.name,
+        state: c.state,
+        segmentCount: c.segmentCount,
+        issues: c.issues,
+      })),
+    });
+  } catch (error) {
+    await createUnexpectedNotification({
+      req,
+      source: "keitaro_campaign_format_check",
+      error,
+      severity: "warning",
+      entityType: "keitaro",
+    });
+    res.status(502).json({ error: error.message || "Could not reach Keitaro." });
   }
 });
 
