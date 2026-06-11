@@ -8417,6 +8417,11 @@ app.all("/api/keitaro/cron", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized." });
   }
 
+  // Lightweight status probe for orchestrating chunked backfills.
+  if (String(req.query.status || "") === "1") {
+    return res.json({ running: { ...keitaroSyncState } });
+  }
+
   const targetParam = String(req.query.target || "").toLowerCase();
   const targetEnv = String(process.env.KEITARO_TARGET || "").toLowerCase();
   const target = targetParam || targetEnv || "overall";
@@ -8484,6 +8489,31 @@ app.all("/api/keitaro/cron", async (req, res) => {
     payload = toKeitaroCustomRangePayload(payload);
   }
 
+  // Per-request range/replace overrides (cron-secret protected) for one-off
+  // historical backfills, e.g.:
+  //   /api/keitaro/cron?secret=…&from=2026-01-01&to=2026-01-31&replace=1&skip_user=1
+  const overrideFrom = String(req.query.from || "").trim();
+  const overrideTo = String(req.query.to || "").trim();
+  const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (overrideFrom || overrideTo) {
+    if (!isIsoDate(overrideFrom) || !isIsoDate(overrideTo)) {
+      return res.status(400).json({ error: "from/to must both be YYYY-MM-DD." });
+    }
+    const baseRange =
+      payload.range && typeof payload.range === "object" ? payload.range : {};
+    payload = {
+      ...payload,
+      range: { ...baseRange, interval: "custom", from: overrideFrom, to: overrideTo },
+    };
+  }
+  const replaceRaw = String(req.query.replace || "").toLowerCase().trim();
+  const replaceExistingFinal = replaceRaw
+    ? ["1", "true", "yes", "on"].includes(replaceRaw)
+    : replaceExisting;
+  const skipUserSecondary = ["1", "true", "yes", "on"].includes(
+    String(req.query.skip_user || "").toLowerCase().trim()
+  );
+
   const runSync = async () => {
     if (keitaroSyncState[target]) {
       const alreadyRunningError = new Error(`Sync already running for target: ${target}`);
@@ -8498,12 +8528,13 @@ app.all("/api/keitaro/cron", async (req, res) => {
         reportPath,
         payload,
         mapping,
-        replaceExisting,
+        replaceExisting: replaceExistingFinal,
         target,
       });
 
       // Keep user behavior fresh even when cron target is overall.
-      if (target === "overall" && process.env.KEITARO_USER_REPORT_PAYLOAD) {
+      // Skipped during backfills (skip_user=1) so we don't re-run it per chunk.
+      if (!skipUserSecondary && target === "overall" && process.env.KEITARO_USER_REPORT_PAYLOAD) {
         let userPayload = applyKeitaroRange(parseJsonEnv(process.env.KEITARO_USER_REPORT_PAYLOAD));
         if (userPayload) {
           userPayload = toKeitaroCustomRangePayload(userPayload);
