@@ -6065,7 +6065,12 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
   if (!targetUrl) {
     return res.status(400).json({ error: "Domain has no valid host." });
   }
-  const debuggerUrl = `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(targetUrl)}`;
+  // Facebook's debugger expects the bare host in ?q= (e.g. ?q=santafeklanmx.click).
+  const bareHost = String(domain.domain || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  const debuggerUrl = `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(bareHost)}`;
   const token = await pickMetaToken(domain.owner_id);
   if (!token) {
     return res.status(400).json({

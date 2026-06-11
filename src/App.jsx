@@ -8761,8 +8761,9 @@ function DomainsDashboard({ authUser }) {
       .trim()
       .replace(/^https?:\/\//i, "")
       .replace(/\/+$/, "");
+    // Facebook's debugger expects the bare host in ?q= (e.g. ?q=santafeklanmx.click).
     return host
-      ? `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(`https://${host}/`)}`
+      ? `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(host)}`
       : null;
   };
 
