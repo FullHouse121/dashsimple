@@ -6038,17 +6038,17 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
   const rescrape = ["1", "true", "yes", "on"].includes(
     String(req.query.scrape || "").toLowerCase()
   );
+  // The nested `og_object{…}` edge is deprecated (Graph error #12). Instead we
+  // POST a scrape, which returns the Open Graph data at the top level, and pull
+  // engagement as a field on the same call.
   const endpoint = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/`);
   endpoint.searchParams.set("id", targetUrl);
-  endpoint.searchParams.set(
-    "fields",
-    "og_object{id,type,title,description,image,url,updated_time},engagement"
-  );
-  if (rescrape) endpoint.searchParams.set("scrape", "true");
+  endpoint.searchParams.set("scrape", "true");
+  endpoint.searchParams.set("fields", "engagement");
   endpoint.searchParams.set("access_token", token);
 
   try {
-    const response = await fetch(endpoint, { method: rescrape ? "POST" : "GET" });
+    const response = await fetch(endpoint, { method: "POST" });
     const data = await response.json().catch(() => null);
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 502 : response.status).json({
@@ -6056,7 +6056,15 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
         debuggerUrl,
       });
     }
-    const og = data?.og_object || {};
+    // Scrape response: OG fields are top-level; engagement is nested.
+    const og = {
+      url: data?.url || data?.id || targetUrl,
+      type: data?.type || "",
+      title: data?.title || "",
+      description: data?.description || "",
+      image: data?.image,
+      updated_time: data?.updated_time || null,
+    };
     const engagement = data?.engagement || {};
     const canonicalUrl = og.url || targetUrl;
     const ogImage = normalizeOgImage(og.image);
