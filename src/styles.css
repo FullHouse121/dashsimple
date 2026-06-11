@@ -5986,8 +5986,6 @@ select option,
 }
 
 .table-wrap {
-  position: relative;
-  z-index: 0;
   margin-top: 12px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.06);
