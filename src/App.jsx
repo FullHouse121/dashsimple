@@ -13295,6 +13295,11 @@ function RolesDashboard({ authUser }) {
                   return filtered.map((role) => {
                     const isLocked = role.name === "Boss" || role.name === "Team Leader";
                     const canEdit = isLeadership && !isLocked;
+                    // Boss / Team Leader always have full access — show every
+                    // permission as enabled regardless of what's stored.
+                    const effectivePermissions = isLocked
+                      ? permissionOptions.map((p) => p.key)
+                      : role.permissions;
                     const userCount = usersByRole.get(role.name) || 0;
                     const expanded = expandedRoles.has(role.id);
                     return (
@@ -13312,12 +13317,12 @@ function RolesDashboard({ authUser }) {
                           </span>
                           <span className="role-row-stat">{userCount} {userCount === 1 ? t("user") : t("users")}</span>
                           <span className="role-row-stat role-row-stat-perms">
-                            {role.permissions.length} / {permissionOptions.length} {t("permissions")}
+                            {effectivePermissions.length} / {permissionOptions.length} {t("permissions")}
                           </span>
                           <span className="role-row-progress">
                             <span
                               className="role-row-progress-fill"
-                              style={{ width: `${Math.round((role.permissions.length / permissionOptions.length) * 100)}%` }}
+                              style={{ width: `${Math.round((effectivePermissions.length / permissionOptions.length) * 100)}%` }}
                             />
                           </span>
                         </button>
@@ -13329,7 +13334,7 @@ function RolesDashboard({ authUser }) {
                                   .map((k) => permissionOptions.find((p) => p.key === k))
                                   .filter(Boolean);
                                 if (groupOpts.length === 0) return null;
-                                const enabledInGroup = groupOpts.filter((p) => role.permissions.includes(p.key)).length;
+                                const enabledInGroup = groupOpts.filter((p) => effectivePermissions.includes(p.key)).length;
                                 const allOn = enabledInGroup === groupOpts.length;
                                 return (
                                   <div key={group.title} className="role-perm-group">
@@ -13347,7 +13352,7 @@ function RolesDashboard({ authUser }) {
                                     </div>
                                     <div className="role-permissions">
                                       {groupOpts.map((perm) => {
-                                        const checked = role.permissions.includes(perm.key);
+                                        const checked = effectivePermissions.includes(perm.key);
                                         return (
                                           <label key={perm.key} className={`perm-item${checked ? " is-active" : ""}`}>
                                             <input
@@ -15637,6 +15642,11 @@ export default function App() {
   }, [authUser]);
 
   const allowedPermissions = React.useMemo(() => {
+    // Leadership (Boss, Team Leader) always have full access to every section,
+    // regardless of the permission list stored on their role.
+    if (isLeadershipRole(authUser?.role)) {
+      return permissionOptions.map((perm) => perm.key);
+    }
     const basePermissions = rolePermissions?.length
       ? rolePermissions
       : permissionOptions.map((perm) => perm.key);
