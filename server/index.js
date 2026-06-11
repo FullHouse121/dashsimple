@@ -6001,6 +6001,13 @@ const followRedirectChain = async (startUrl, maxHops = 8) => {
         },
       });
     } catch (error) {
+      // Many landers are http-only — if https is unreachable on the first hop,
+      // retry over http (this is the URL Facebook ends up fetching too).
+      if (chain.length === 0 && /^https:\/\//i.test(current)) {
+        current = current.replace(/^https:\/\//i, "http://");
+        i -= 1;
+        continue;
+      }
       chain.push({ url: current, status: null, error: error.message });
       break;
     }
