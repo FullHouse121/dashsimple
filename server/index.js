@@ -6197,6 +6197,80 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
   }
 });
 
+// Scrape every domain on demand to snapshot the whole list's canonical history.
+// Leadership-only; records a history point per domain when something changed.
+app.post("/api/domains/og-debug/scrape-all", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const domains = await getRows(
+    `SELECT id, domain, owner_id FROM domains ORDER BY id`
+  ).catch(() => []);
+
+  let scanned = 0;
+  let changed = 0;
+  let failed = 0;
+  let noToken = 0;
+
+  for (const d of domains) {
+    scanned += 1;
+    try {
+      const targetUrl = buildDomainUrl(d.domain);
+      if (!targetUrl) {
+        failed += 1;
+        continue;
+      }
+      const token = await pickMetaToken(d.owner_id);
+      if (!token) {
+        noToken += 1;
+        failed += 1;
+        continue;
+      }
+      const redirect = await followRedirectChain(targetUrl);
+      const scrapeUrl = redirect.finalUrl || targetUrl;
+      const endpoint = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/`);
+      endpoint.searchParams.set("id", scrapeUrl);
+      endpoint.searchParams.set("scrape", "true");
+      endpoint.searchParams.set("fields", "engagement");
+      endpoint.searchParams.set("access_token", token);
+
+      const response = await fetch(endpoint, { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.error) {
+        failed += 1;
+        continue;
+      }
+      const canonicalUrl = data?.url || data?.id || scrapeUrl;
+      const title = data?.title || "";
+      const responseCode = redirect.finalStatus || 200;
+      const hasImage = normalizeOgImage(data?.image) ? 1 : 0;
+
+      const last = await getRow(
+        `SELECT canonical_url, og_title, response_code FROM og_debug_history
+         WHERE domain_id = $1 ORDER BY scraped_at DESC LIMIT 1`,
+        [d.id]
+      );
+      const didChange =
+        !last ||
+        last.canonical_url !== canonicalUrl ||
+        (last.og_title || "") !== title ||
+        last.response_code !== responseCode;
+      if (didChange) {
+        await query(
+          `INSERT INTO og_debug_history (domain_id, url, canonical_url, response_code, og_title, has_image)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [d.id, targetUrl, canonicalUrl, responseCode, title || null, hasImage]
+        );
+        changed += 1;
+      }
+    } catch (error) {
+      failed += 1;
+    }
+  }
+
+  res.json({ total: domains.length, scanned, changed, failed, noToken });
+});
+
 app.delete("/api/domains/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {

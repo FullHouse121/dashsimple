@@ -8754,6 +8754,25 @@ function DomainsDashboard({ authUser }) {
     data: null,
   });
   const [ogHistoryOpen, setOgHistoryOpen] = React.useState(false);
+  const [scrapeAll, setScrapeAll] = React.useState({ loading: false, message: "", error: false });
+
+  const handleScrapeAll = async () => {
+    setScrapeAll({ loading: true, message: "", error: false });
+    try {
+      const response = await apiFetch("/api/domains/og-debug/scrape-all", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Scrape failed.");
+      setScrapeAll({
+        loading: false,
+        error: false,
+        message: `Scanned ${data.scanned}, ${data.changed} updated, ${data.failed} failed${
+          data.noToken ? ` · ${data.noToken} missing token` : ""
+        }.`,
+      });
+    } catch (error) {
+      setScrapeAll({ loading: false, error: true, message: error.message || "Scrape failed." });
+    }
+  };
 
   // Always-available deep link to Facebook's own Sharing Debugger, built from
   // the domain client-side so it works even when our backend/token can't help.
@@ -9237,6 +9256,25 @@ function DomainsDashboard({ authUser }) {
             </button>
           </div>
         </form>
+
+        {canManageDomains ? (
+          <div className="domains-batch-bar">
+            <button
+              className="ghost"
+              type="button"
+              onClick={handleScrapeAll}
+              disabled={scrapeAll.loading}
+            >
+              <RotateCcw size={14} />{" "}
+              {scrapeAll.loading ? t("Scraping all…") : t("Scrape all (refresh history)")}
+            </button>
+            {scrapeAll.message ? (
+              <span className={`domains-batch-msg${scrapeAll.error ? " error" : ""}`}>
+                {scrapeAll.message}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {domainState.loading ? (
           <div className="empty-state">{t("Loading domains…")}</div>
