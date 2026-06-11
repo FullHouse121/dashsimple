@@ -5956,6 +5956,127 @@ app.patch("/api/domains/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Domain Open Graph / Sharing Debugger ─────────────────────────────
+// Mirrors Facebook's Sharing Debugger (developers.facebook.com/tools/debug)
+// for a registered domain, using a stored Meta token.
+const FB_GRAPH_VERSION = process.env.FB_GRAPH_VERSION || "v19.0";
+
+const buildDomainUrl = (host) => {
+  const raw = String(host || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  return raw ? `https://${raw}/` : "";
+};
+
+// Prefer a Meta token owned by the domain owner; otherwise any active token.
+const pickMetaToken = async (ownerId) => {
+  const row = await getRow(
+    `SELECT meta_token FROM meta_token_integrations
+     WHERE meta_token IS NOT NULL AND meta_token <> ''
+     ORDER BY (owner_id = $1) DESC, last_checked_at DESC NULLS LAST, id DESC
+     LIMIT 1`,
+    [Number.isFinite(ownerId) ? ownerId : 0]
+  );
+  return (
+    row?.meta_token ||
+    process.env.META_APP_TOKEN ||
+    process.env.FB_APP_ACCESS_TOKEN ||
+    ""
+  );
+};
+
+const normalizeOgImage = (image) => {
+  if (!image) return "";
+  if (typeof image === "string") return image;
+  if (Array.isArray(image)) {
+    const first = image.find((item) => item && (item.url || typeof item === "string"));
+    return first ? first.url || first : "";
+  }
+  if (typeof image === "object") return image.url || image.src || "";
+  return "";
+};
+
+app.get("/api/domains/:id/og-debug", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    return res.status(400).json({ error: "Invalid domain id." });
+  }
+  const domain = await selectDomainById(id);
+  if (!domain) {
+    return res.status(404).json({ error: "Domain not found." });
+  }
+  if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const targetUrl = buildDomainUrl(domain.domain);
+  if (!targetUrl) {
+    return res.status(400).json({ error: "Domain has no valid host." });
+  }
+  const debuggerUrl = `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(targetUrl)}`;
+  const token = await pickMetaToken(domain.owner_id);
+  if (!token) {
+    return res.status(400).json({
+      error: "No Meta token available — add one in the Meta Token section first.",
+      debuggerUrl,
+    });
+  }
+
+  const rescrape = ["1", "true", "yes", "on"].includes(
+    String(req.query.scrape || "").toLowerCase()
+  );
+  const endpoint = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/`);
+  endpoint.searchParams.set("id", targetUrl);
+  endpoint.searchParams.set(
+    "fields",
+    "og_object{id,type,title,description,image,url,updated_time},engagement"
+  );
+  if (rescrape) endpoint.searchParams.set("scrape", "true");
+  endpoint.searchParams.set("access_token", token);
+
+  try {
+    const response = await fetch(endpoint, { method: rescrape ? "POST" : "GET" });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.error) {
+      return res.status(response.ok ? 502 : response.status).json({
+        error: data?.error?.message || "Facebook could not scrape this URL.",
+        debuggerUrl,
+      });
+    }
+    const og = data?.og_object || {};
+    const engagement = data?.engagement || {};
+    res.json({
+      url: targetUrl,
+      fetchedUrl: og.url || targetUrl,
+      canonicalUrl: og.url || targetUrl,
+      responseCode: 200,
+      scrapeTime: og.updated_time || null,
+      og: {
+        url: og.url || targetUrl,
+        type: og.type || "",
+        title: og.title || "",
+        description: og.description || "",
+        image: normalizeOgImage(og.image),
+      },
+      engagement: {
+        reaction_count: engagement.reaction_count ?? null,
+        comment_count: engagement.comment_count ?? null,
+        share_count: engagement.share_count ?? null,
+      },
+      warnings: og.title
+        ? []
+        : ["No Open Graph title found — the page may be missing OG tags or wasn't reachable."],
+      debuggerUrl,
+      scraped: rescrape,
+    });
+  } catch (error) {
+    res.status(502).json({
+      error: error.message || "Could not reach the Facebook Graph API.",
+      debuggerUrl,
+    });
+  }
+});
+
 app.delete("/api/domains/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) {

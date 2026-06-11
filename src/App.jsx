@@ -70,6 +70,8 @@ import {
   Image as ImageIcon,
   Briefcase,
   AlertTriangle,
+  Settings,
+  ExternalLink,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
@@ -8743,6 +8745,50 @@ function DomainsDashboard({ authUser }) {
     setDomainEdit({ open: false, domain: null, saving: false, error: null, form: { domain: "", game: "", platform: "PWA Group", countries: [], ownerId: "" } });
   };
 
+  // Open Graph / Sharing Debugger modal (Meta domain verification preview)
+  const [ogDebug, setOgDebug] = React.useState({
+    open: false,
+    domain: null,
+    loading: false,
+    error: null,
+    data: null,
+  });
+
+  const openOgDebug = (domain, rescrape = false) => {
+    if (!domain?.id) return;
+    setOgDebug((prev) => ({
+      open: true,
+      domain,
+      loading: true,
+      error: null,
+      data: rescrape ? prev.data : null,
+    }));
+    (async () => {
+      try {
+        const response = await apiFetch(
+          `/api/domains/${domain.id}/og-debug${rescrape ? "?scrape=1" : ""}`
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const err = new Error(data?.error || "Failed to load debug info.");
+          err.debuggerUrl = data?.debuggerUrl;
+          throw err;
+        }
+        setOgDebug({ open: true, domain, loading: false, error: null, data });
+      } catch (error) {
+        setOgDebug((prev) => ({
+          ...prev,
+          loading: false,
+          error: error.message || "Failed to load debug info.",
+          data: error.debuggerUrl ? { debuggerUrl: error.debuggerUrl } : prev.data,
+        }));
+      }
+    })();
+  };
+
+  const closeOgDebug = () =>
+    setOgDebug({ open: false, domain: null, loading: false, error: null, data: null });
+
   const toggleDomainEditCountry = (country) => {
     const normalized = String(country || "").trim();
     if (!normalized) return;
@@ -9278,6 +9324,14 @@ function DomainsDashboard({ authUser }) {
                           <button
                             className="icon-btn"
                             type="button"
+                            title={t("Sharing debugger")}
+                            onClick={() => openOgDebug(domain)}
+                          >
+                            <Settings size={15} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            type="button"
                             title={t("Edit domain")}
                             onClick={() => openDomainEdit(domain)}
                           >
@@ -9390,6 +9444,154 @@ function DomainsDashboard({ authUser }) {
                 <button className="action-pill" type="button" onClick={handleDomainEditSave} disabled={domainEdit.saving}>
                   {domainEdit.saving ? t("Saving…") : t("Save Changes")}
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {ogDebug.open ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeOgDebug}
+          >
+            <motion.div
+              className="modal og-debug-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Sharing Debugger")}</p>
+                  <h2>{ogDebug.domain?.domain || t("Domain")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={closeOgDebug}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body og-debug-body">
+                {ogDebug.loading ? (
+                  <div className="og-debug-loading">{t("Scraping the URL…")}</div>
+                ) : ogDebug.error ? (
+                  <div className="og-debug-errorwrap">
+                    <div className="api-status error">{ogDebug.error}</div>
+                    {ogDebug.data?.debuggerUrl ? (
+                      <a
+                        className="ghost og-debug-ext"
+                        href={ogDebug.data.debuggerUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink size={14} /> {t("Open in Facebook Debugger")}
+                      </a>
+                    ) : null}
+                  </div>
+                ) : ogDebug.data ? (
+                  <>
+                    <div className="og-debug-statusbar">
+                      <span className="og-chip ok">{ogDebug.data.responseCode || 200} OK</span>
+                      <span className="og-debug-scraped">
+                        {t("Last scraped")}:{" "}
+                        {ogDebug.data.scrapeTime
+                          ? new Date(ogDebug.data.scrapeTime).toLocaleString()
+                          : t("Unknown")}
+                      </span>
+                      <button
+                        className="ghost og-rescrape"
+                        type="button"
+                        onClick={() => openOgDebug(ogDebug.domain, true)}
+                      >
+                        <RotateCcw size={13} /> {t("Scrape Again")}
+                      </button>
+                    </div>
+
+                    {ogDebug.data.warnings?.length ? (
+                      <div className="og-debug-warn">
+                        {ogDebug.data.warnings.map((w, i) => (
+                          <div key={i} className="og-warn-row">
+                            <AlertTriangle size={13} /> {w}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <div className="og-preview">
+                      <div className="og-preview-media">
+                        {ogDebug.data.og.image ? (
+                          <img src={ogDebug.data.og.image} alt={ogDebug.data.og.title || ""} />
+                        ) : (
+                          <div className="og-preview-noimg">
+                            <ImageIcon size={22} /> {t("No image")}
+                          </div>
+                        )}
+                      </div>
+                      <div className="og-preview-meta">
+                        <span className="og-preview-host">
+                          {(() => {
+                            try {
+                              return new URL(ogDebug.data.fetchedUrl).host.toUpperCase();
+                            } catch (e) {
+                              return ogDebug.data.fetchedUrl;
+                            }
+                          })()}
+                        </span>
+                        <span className="og-preview-title">
+                          {ogDebug.data.og.title || t("No title")}
+                        </span>
+                        <span className="og-preview-desc">{ogDebug.data.og.description || ""}</span>
+                      </div>
+                    </div>
+
+                    <div className="og-props">
+                      {[
+                        ["og:url", ogDebug.data.og.url],
+                        ["og:title", ogDebug.data.og.title],
+                        ["og:description", ogDebug.data.og.description],
+                        ["og:type", ogDebug.data.og.type],
+                        ["og:image", ogDebug.data.og.image],
+                      ].map(([key, value]) => (
+                        <div className="og-prop" key={key}>
+                          <span className="og-prop-key">{key}</span>
+                          <span className={`og-prop-val${key === "og:image" ? " og-prop-mono" : ""}`}>
+                            {value || "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="og-engagement">
+                      <span>
+                        {t("Shares")}: <strong>{ogDebug.data.engagement.share_count ?? 0}</strong>
+                      </span>
+                      <span>
+                        {t("Comments")}:{" "}
+                        <strong>{ogDebug.data.engagement.comment_count ?? 0}</strong>
+                      </span>
+                      <span>
+                        {t("Reactions")}:{" "}
+                        <strong>{ogDebug.data.engagement.reaction_count ?? 0}</strong>
+                      </span>
+                    </div>
+
+                    {ogDebug.data.debuggerUrl ? (
+                      <a
+                        className="ghost og-debug-ext"
+                        href={ogDebug.data.debuggerUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink size={14} /> {t("Open in Facebook Debugger")}
+                      </a>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             </motion.div>
           </motion.div>
