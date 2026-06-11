@@ -95,6 +95,19 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS geo TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS brand TEXT;`,
+    // Open Graph / Sharing Debugger scrape history per domain.
+    `CREATE TABLE IF NOT EXISTS og_debug_history (
+      id SERIAL PRIMARY KEY,
+      domain_id INTEGER,
+      url TEXT,
+      canonical_url TEXT,
+      response_code INTEGER,
+      og_title TEXT,
+      has_image INTEGER,
+      scraped_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_og_debug_history_domain
+       ON og_debug_history (domain_id, scraped_at DESC);`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS buyer TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS campaign TEXT;`,
     `ALTER TABLE user_behavior ADD COLUMN IF NOT EXISTS country TEXT;`,
@@ -6045,18 +6058,52 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
     }
     const og = data?.og_object || {};
     const engagement = data?.engagement || {};
+    const canonicalUrl = og.url || targetUrl;
+    const ogImage = normalizeOgImage(og.image);
+
+    // Record a history point only when something changed vs the last scrape,
+    // so the timeline reads like Facebook's canonical-URL history.
+    try {
+      const last = await getRow(
+        `SELECT canonical_url, og_title, response_code FROM og_debug_history
+         WHERE domain_id = $1 ORDER BY scraped_at DESC LIMIT 1`,
+        [id]
+      );
+      const changed =
+        !last ||
+        last.canonical_url !== canonicalUrl ||
+        (last.og_title || "") !== (og.title || "") ||
+        last.response_code !== 200;
+      if (changed) {
+        await query(
+          `INSERT INTO og_debug_history (domain_id, url, canonical_url, response_code, og_title, has_image)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, targetUrl, canonicalUrl, 200, og.title || null, ogImage ? 1 : 0]
+        );
+      }
+    } catch (historyError) {
+      // History is best-effort; never fail the scrape because of it.
+    }
+
+    const history = await getRows(
+      `SELECT canonical_url, og_title, response_code, has_image, scraped_at
+       FROM og_debug_history
+       WHERE domain_id = $1 ORDER BY scraped_at DESC LIMIT 20`,
+      [id]
+    ).catch(() => []);
+
     res.json({
       url: targetUrl,
-      fetchedUrl: og.url || targetUrl,
-      canonicalUrl: og.url || targetUrl,
+      fetchedUrl: canonicalUrl,
+      canonicalUrl,
       responseCode: 200,
-      scrapeTime: og.updated_time || null,
+      scrapeTime: og.updated_time || new Date().toISOString(),
       og: {
-        url: og.url || targetUrl,
+        url: canonicalUrl,
         type: og.type || "",
         title: og.title || "",
         description: og.description || "",
-        image: normalizeOgImage(og.image),
+        image: ogImage,
       },
       engagement: {
         reaction_count: engagement.reaction_count ?? null,
@@ -6066,6 +6113,13 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
       warnings: og.title
         ? []
         : ["No Open Graph title found — the page may be missing OG tags or wasn't reachable."],
+      history: history.map((h) => ({
+        canonicalUrl: h.canonical_url,
+        title: h.og_title,
+        responseCode: h.response_code,
+        hasImage: !!h.has_image,
+        scrapedAt: h.scraped_at,
+      })),
       debuggerUrl,
       scraped: rescrape,
     });

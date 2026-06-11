@@ -9602,6 +9602,36 @@ function DomainsDashboard({ authUser }) {
                       </span>
                     </div>
 
+                    {ogDebug.data.history?.length ? (
+                      <div className="og-history">
+                        <div className="og-history-head">
+                          <Clock size={13} /> {t("Scrape history")}
+                        </div>
+                        <div className="og-history-list">
+                          {ogDebug.data.history.map((h, i) => (
+                            <div className="og-history-row" key={`${h.scrapedAt}-${i}`}>
+                              <span className="og-history-when">
+                                {new Date(h.scrapedAt).toLocaleString()}
+                              </span>
+                              <span className="og-history-url" title={h.canonicalUrl}>
+                                {h.canonicalUrl}
+                              </span>
+                              <span className="og-history-meta">
+                                <span className={`og-history-code${h.responseCode === 200 ? " ok" : ""}`}>
+                                  {h.responseCode || "—"}
+                                </span>
+                                {h.title ? (
+                                  <span className="og-history-title">{h.title}</span>
+                                ) : (
+                                  <span className="og-history-title muted">{t("no title")}</span>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {ogDebug.data.debuggerUrl ? (
                       <a
                         className="ghost og-debug-ext"
