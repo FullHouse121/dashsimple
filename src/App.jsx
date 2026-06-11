@@ -8753,6 +8753,7 @@ function DomainsDashboard({ authUser }) {
     error: null,
     data: null,
   });
+  const [ogHistoryOpen, setOgHistoryOpen] = React.useState(false);
 
   // Always-available deep link to Facebook's own Sharing Debugger, built from
   // the domain client-side so it works even when our backend/token can't help.
@@ -8769,6 +8770,7 @@ function DomainsDashboard({ authUser }) {
 
   const openOgDebug = (domain, rescrape = false) => {
     if (!domain?.id) return;
+    if (!rescrape) setOgHistoryOpen(false);
     setOgDebug((prev) => ({
       open: true,
       domain,
@@ -8809,8 +8811,10 @@ function DomainsDashboard({ authUser }) {
     })();
   };
 
-  const closeOgDebug = () =>
+  const closeOgDebug = () => {
+    setOgHistoryOpen(false);
     setOgDebug({ open: false, domain: null, loading: false, error: null, data: null });
+  };
 
   const toggleDomainEditCountry = (country) => {
     const normalized = String(country || "").trim();
@@ -9556,7 +9560,18 @@ function DomainsDashboard({ authUser }) {
                       </div>
                       <div className="og-prop">
                         <span className="og-prop-key">{t("Canonical URL")}</span>
-                        <span className="og-prop-val og-prop-mono">{ogDebug.data.canonicalUrl}</span>
+                        <span className="og-prop-val og-prop-mono">
+                          {ogDebug.data.canonicalUrl}
+                          {ogDebug.data.history?.length ? (
+                            <button
+                              type="button"
+                              className="og-see-history"
+                              onClick={() => setOgHistoryOpen((v) => !v)}
+                            >
+                              {ogHistoryOpen ? t("(Hide History)") : t("(See History)")}
+                            </button>
+                          ) : null}
+                        </span>
                       </div>
                     </div>
 
@@ -9642,10 +9657,10 @@ function DomainsDashboard({ authUser }) {
                       </span>
                     </div>
 
-                    {ogDebug.data.history?.length ? (
+                    {ogDebug.data.history?.length && ogHistoryOpen ? (
                       <div className="og-history">
                         <div className="og-history-head">
-                          <Clock size={13} /> {t("Scrape history")}
+                          <Clock size={13} /> {t("Canonical URL history")}
                         </div>
                         <div className="og-history-list">
                           {ogDebug.data.history.map((h, i) => (

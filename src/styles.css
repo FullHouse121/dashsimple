@@ -3774,6 +3774,20 @@ select {
   font-size: 11px;
   color: var(--muted-strong, #a9adb7);
 }
+.og-see-history {
+  margin-left: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.og-see-history:hover {
+  text-decoration: underline;
+}
 .og-engagement {
   display: flex;
   gap: 16px;
