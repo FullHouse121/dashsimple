@@ -9599,15 +9599,32 @@ function DomainsDashboard({ authUser }) {
                       <div className="og-prop">
                         <span className="og-prop-key">{t("Canonical URL")}</span>
                         <span className="og-prop-val og-prop-mono">
-                          {ogDebug.data.canonicalUrl}
-                          {ogDebug.data.history?.length ? (
-                            <button
-                              type="button"
-                              className="og-see-history"
-                              onClick={() => setOgHistoryOpen((v) => !v)}
-                            >
-                              {ogHistoryOpen ? t("(Hide History)") : t("(See History)")}
-                            </button>
+                          <span className="og-canonical-line">
+                            {ogDebug.data.canonicalUrl}
+                            {ogDebug.data.history?.length ? (
+                              <button
+                                type="button"
+                                className="og-see-history"
+                                onClick={() => setOgHistoryOpen((v) => !v)}
+                              >
+                                {ogHistoryOpen ? t("(Hide History)") : t("(See History)")}
+                              </button>
+                            ) : null}
+                          </span>
+                          {ogHistoryOpen && ogDebug.data.history?.length ? (
+                            <span className="og-canonical-history">
+                              {ogDebug.data.history.map((h, i) => (
+                                <span
+                                  className="og-canonical-history-row"
+                                  key={`${h.scrapedAt}-${i}`}
+                                >
+                                  {h.canonicalUrl}{" "}
+                                  <span className="og-canonical-history-date">
+                                    ({new Date(h.scrapedAt).toLocaleString()})
+                                  </span>
+                                </span>
+                              ))}
+                            </span>
                           ) : null}
                         </span>
                       </div>
@@ -9694,36 +9711,6 @@ function DomainsDashboard({ authUser }) {
                         <strong>{ogDebug.data.engagement.reaction_count ?? 0}</strong>
                       </span>
                     </div>
-
-                    {ogDebug.data.history?.length && ogHistoryOpen ? (
-                      <div className="og-history">
-                        <div className="og-history-head">
-                          <Clock size={13} /> {t("Canonical URL history")}
-                        </div>
-                        <div className="og-history-list">
-                          {ogDebug.data.history.map((h, i) => (
-                            <div className="og-history-row" key={`${h.scrapedAt}-${i}`}>
-                              <span className="og-history-when">
-                                {new Date(h.scrapedAt).toLocaleString()}
-                              </span>
-                              <span className="og-history-url" title={h.canonicalUrl}>
-                                {h.canonicalUrl}
-                              </span>
-                              <span className="og-history-meta">
-                                <span className={`og-history-code${h.responseCode === 200 ? " ok" : ""}`}>
-                                  {h.responseCode || "—"}
-                                </span>
-                                {h.title ? (
-                                  <span className="og-history-title">{h.title}</span>
-                                ) : (
-                                  <span className="og-history-title muted">{t("no title")}</span>
-                                )}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
 
                     {ogDebug.data.debuggerUrl ? (
                       <a
