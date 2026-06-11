@@ -5982,6 +5982,45 @@ const buildDomainUrl = (host) => {
   return raw ? `https://${raw}/` : "";
 };
 
+// Follow the redirect chain like Facebook's scraper does. Many landing domains
+// 302 to the real page and only serve OG tags to the facebookexternalhit UA,
+// so we mimic it. Returns the hop chain, final URL, and final status code.
+const followRedirectChain = async (startUrl, maxHops = 8) => {
+  const chain = [];
+  let current = startUrl;
+  let finalStatus = null;
+  for (let i = 0; i < maxHops; i += 1) {
+    let resp;
+    try {
+      resp = await fetch(current, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+          Accept: "text/html,*/*",
+        },
+      });
+    } catch (error) {
+      chain.push({ url: current, status: null, error: error.message });
+      break;
+    }
+    finalStatus = resp.status;
+    chain.push({ url: current, status: resp.status });
+    if (resp.status >= 300 && resp.status < 400) {
+      const loc = resp.headers.get("location");
+      if (!loc) break;
+      try {
+        current = new URL(loc, current).toString();
+      } catch (error) {
+        break;
+      }
+      continue;
+    }
+    break; // not a redirect → final destination
+  }
+  return { chain, finalUrl: current, finalStatus };
+};
+
 // Prefer a Meta token owned by the domain owner; otherwise any active token.
 const pickMetaToken = async (ownerId) => {
   const row = await getRow(
@@ -6038,16 +6077,21 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
   const rescrape = ["1", "true", "yes", "on"].includes(
     String(req.query.scrape || "").toLowerCase()
   );
-  // The nested `og_object{…}` edge is deprecated (Graph error #12). Instead we
-  // POST a scrape, which returns the Open Graph data at the top level, and pull
-  // engagement as a field on the same call.
-  const endpoint = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/`);
-  endpoint.searchParams.set("id", targetUrl);
-  endpoint.searchParams.set("scrape", "true");
-  endpoint.searchParams.set("fields", "engagement");
-  endpoint.searchParams.set("access_token", token);
 
   try {
+    // 1. Resolve the redirect chain ourselves so we scrape the real destination
+    //    (and capture the path + response code like Facebook shows).
+    const redirect = await followRedirectChain(targetUrl);
+    const scrapeUrl = redirect.finalUrl || targetUrl;
+
+    // 2. The nested `og_object{…}` edge is deprecated (Graph error #12). POST a
+    //    scrape of the FINAL url, which returns OG data at the top level.
+    const endpoint = new URL(`https://graph.facebook.com/${FB_GRAPH_VERSION}/`);
+    endpoint.searchParams.set("id", scrapeUrl);
+    endpoint.searchParams.set("scrape", "true");
+    endpoint.searchParams.set("fields", "engagement");
+    endpoint.searchParams.set("access_token", token);
+
     const response = await fetch(endpoint, { method: "POST" });
     const data = await response.json().catch(() => null);
     if (!response.ok || data?.error) {
@@ -6058,7 +6102,7 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
     }
     // Scrape response: OG fields are top-level; engagement is nested.
     const og = {
-      url: data?.url || data?.id || targetUrl,
+      url: data?.url || data?.id || scrapeUrl,
       type: data?.type || "",
       title: data?.title || "",
       description: data?.description || "",
@@ -6066,8 +6110,9 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
       updated_time: data?.updated_time || null,
     };
     const engagement = data?.engagement || {};
-    const canonicalUrl = og.url || targetUrl;
+    const canonicalUrl = og.url || scrapeUrl;
     const ogImage = normalizeOgImage(og.image);
+    const responseCode = redirect.finalStatus || 200;
 
     // Record a history point only when something changed vs the last scrape,
     // so the timeline reads like Facebook's canonical-URL history.
@@ -6081,12 +6126,12 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
         !last ||
         last.canonical_url !== canonicalUrl ||
         (last.og_title || "") !== (og.title || "") ||
-        last.response_code !== 200;
+        last.response_code !== responseCode;
       if (changed) {
         await query(
           `INSERT INTO og_debug_history (domain_id, url, canonical_url, response_code, og_title, has_image)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, targetUrl, canonicalUrl, 200, og.title || null, ogImage ? 1 : 0]
+          [id, targetUrl, canonicalUrl, responseCode, og.title || null, ogImage ? 1 : 0]
         );
       }
     } catch (historyError) {
@@ -6102,9 +6147,10 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
 
     res.json({
       url: targetUrl,
-      fetchedUrl: canonicalUrl,
+      fetchedUrl: targetUrl,
       canonicalUrl,
-      responseCode: 200,
+      responseCode,
+      redirectPath: redirect.chain,
       scrapeTime: og.updated_time || new Date().toISOString(),
       og: {
         url: canonicalUrl,

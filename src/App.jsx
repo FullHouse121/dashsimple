@@ -9518,7 +9518,11 @@ function DomainsDashboard({ authUser }) {
                 ) : ogDebug.data ? (
                   <>
                     <div className="og-debug-statusbar">
-                      <span className="og-chip ok">{ogDebug.data.responseCode || 200} OK</span>
+                      <span
+                        className={`og-chip${(ogDebug.data.responseCode || 200) < 400 ? " ok" : " bad"}`}
+                      >
+                        HTTP {ogDebug.data.responseCode || 200}
+                      </span>
                       <span className="og-debug-scraped">
                         {t("Last scraped")}:{" "}
                         {ogDebug.data.scrapeTime
@@ -9541,6 +9545,41 @@ function DomainsDashboard({ authUser }) {
                             <AlertTriangle size={13} /> {w}
                           </div>
                         ))}
+                      </div>
+                    ) : null}
+
+                    <div className="og-props">
+                      <div className="og-prop">
+                        <span className="og-prop-key">{t("Fetched URL")}</span>
+                        <span className="og-prop-val og-prop-mono">{ogDebug.data.fetchedUrl}</span>
+                      </div>
+                      <div className="og-prop">
+                        <span className="og-prop-key">{t("Canonical URL")}</span>
+                        <span className="og-prop-val og-prop-mono">{ogDebug.data.canonicalUrl}</span>
+                      </div>
+                    </div>
+
+                    {ogDebug.data.redirectPath?.length > 1 ? (
+                      <div className="og-redirects">
+                        <div className="og-history-head">
+                          <ArrowRight size={13} /> {t("Redirect path")}
+                        </div>
+                        <div className="og-redirect-list">
+                          {ogDebug.data.redirectPath.map((hop, i) => (
+                            <div className="og-redirect-hop" key={`${hop.url}-${i}`}>
+                              {hop.status ? (
+                                <span
+                                  className={`og-history-code${hop.status < 400 ? " ok" : ""}`}
+                                >
+                                  {hop.status}
+                                </span>
+                              ) : (
+                                <span className="og-history-code">×</span>
+                              )}
+                              <span className="og-redirect-url">{hop.url}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
 
