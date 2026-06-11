@@ -8754,6 +8754,18 @@ function DomainsDashboard({ authUser }) {
     data: null,
   });
 
+  // Always-available deep link to Facebook's own Sharing Debugger, built from
+  // the domain client-side so it works even when our backend/token can't help.
+  const fbDebuggerLink = (domain) => {
+    const host = String(domain?.domain || "")
+      .trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "");
+    return host
+      ? `https://developers.facebook.com/tools/debug/?q=${encodeURIComponent(`https://${host}/`)}`
+      : null;
+  };
+
   const openOgDebug = (domain, rescrape = false) => {
     if (!domain?.id) return;
     setOgDebug((prev) => ({
@@ -8764,23 +8776,33 @@ function DomainsDashboard({ authUser }) {
       data: rescrape ? prev.data : null,
     }));
     (async () => {
+      const fallbackLink = fbDebuggerLink(domain);
       try {
         const response = await apiFetch(
           `/api/domains/${domain.id}/og-debug${rescrape ? "?scrape=1" : ""}`
         );
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const err = new Error(data?.error || "Failed to load debug info.");
-          err.debuggerUrl = data?.debuggerUrl;
+          const err = new Error(
+            data?.error ||
+              `Couldn't load debug info (HTTP ${response.status}) — the backend may need a redeploy or the Meta token is invalid.`
+          );
+          err.debuggerUrl = data?.debuggerUrl || fallbackLink;
           throw err;
         }
-        setOgDebug({ open: true, domain, loading: false, error: null, data });
+        setOgDebug({
+          open: true,
+          domain,
+          loading: false,
+          error: null,
+          data: { ...data, debuggerUrl: data.debuggerUrl || fallbackLink },
+        });
       } catch (error) {
         setOgDebug((prev) => ({
           ...prev,
           loading: false,
           error: error.message || "Failed to load debug info.",
-          data: error.debuggerUrl ? { debuggerUrl: error.debuggerUrl } : prev.data,
+          data: { debuggerUrl: error.debuggerUrl || fallbackLink },
         }));
       }
     })();
