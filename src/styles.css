@@ -10197,21 +10197,6 @@ select option,
   gap: 12px;
 }
 
-.api-step {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #0f1f12;
-  background: rgba(54, 208, 124, 0.9);
-  margin-bottom: 6px;
-}
-
 .api-banner {
   background: rgba(12, 14, 18, 0.8);
   border: 1px solid rgba(54, 208, 124, 0.15);
@@ -10358,6 +10343,37 @@ select option,
 
 .postback-card .postback-section {
   margin-top: auto;
+}
+
+/* Example request collapsed behind a quiet toggle */
+.postback-example-toggle {
+  margin-top: auto;
+}
+
+.postback-example-toggle summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.14s ease;
+}
+.postback-example-toggle summary::-webkit-details-marker { display: none; }
+.postback-example-toggle summary::before {
+  content: "▸";
+  font-size: 10px;
+  transition: transform 0.16s ease;
+}
+.postback-example-toggle[open] summary::before { transform: rotate(90deg); }
+.postback-example-toggle summary:hover { color: var(--text); }
+.postback-example-toggle .postback-example {
+  display: block;
+  margin-top: 8px;
 }
 
 .postback-logs {

@@ -14588,7 +14588,9 @@ function KeitaroApiView() {
   const [syncState, setSyncState] = React.useState({ loading: false, ok: null, message: "" });
   const [syncResult, setSyncResult] = React.useState(null);
   const [formatCheck, setFormatCheck] = React.useState({ loading: false, error: "", data: null });
-  const [showMapping, setShowMapping] = React.useState(true);
+  // Mapping is a 26-input wall — keep it collapsed until explicitly opened.
+  const [showMapping, setShowMapping] = React.useState(false);
+  const [apiTab, setApiTab] = React.useState("connection"); // connection | postbacks | sync | campaigns
   const previousSyncTargetRef = React.useRef(initialSyncTarget);
   const [campaigns, setCampaigns] = React.useState([]);
   const [campaignState, setCampaignState] = React.useState({ loading: true, error: null });
@@ -15068,18 +15070,51 @@ function KeitaroApiView() {
     [postbackLogs]
   );
 
+  const apiTabs = [
+    { key: "connection", label: t("Connection"), icon: Plug },
+    { key: "postbacks", label: t("Postbacks"), icon: Link2 },
+    { key: "sync", label: t("Report Sync"), icon: Download },
+    { key: "campaigns", label: t("Campaign Linker"), icon: Megaphone },
+  ];
+
   return (
     <>
+      <section className="panels panels-single offers-tabs-panel">
+        <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Keitaro API")}</h3>
+              <p className="panel-subtitle">
+                {t("Connect the tracker, receive postbacks, sync reports, and link campaigns.")}
+              </p>
+            </div>
+            <div className="offers-tabs">
+              {apiTabs.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`offers-tab${apiTab === item.key ? " is-active" : ""}`}
+                  onClick={() => setApiTab(item.key)}
+                >
+                  <item.icon size={14} />
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {apiTab === "connection" ? (
       <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.45 }}
         >
           <div className="panel-head api-head">
             <div>
-              <span className="api-step">{t("Step 1")}</span>
               <h3 className="panel-title">{t("Keitaro Connection")}</h3>
               <p className="panel-subtitle">{t("Connect your tracker and validate the Admin API key.")}</p>
             </div>
@@ -15207,16 +15242,19 @@ function KeitaroApiView() {
             </div>
           )}
         </motion.div>
+      </section>
+      ) : null}
 
+      {apiTab === "postbacks" ? (
+      <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.05 }}
+          transition={{ duration: 0.45 }}
         >
           <div className="panel-head api-head">
             <div>
-              <span className="api-step">{t("Step 2")}</span>
               <h3 className="panel-title">{t("Postback Receivers")}</h3>
               <p className="panel-subtitle">
                 {t("Use these endpoints to attach events to Keitaro campaigns.")}
@@ -15250,10 +15288,10 @@ function KeitaroApiView() {
                   </button>
                 </div>
                 {item.example ? (
-                  <div className="postback-section">
-                    <span className="panel-mini">{t("Example request")}</span>
+                  <details className="postback-example-toggle">
+                    <summary>{t("Example request")}</summary>
                     <code className="postback-example">{item.example}</code>
-                  </div>
+                  </details>
                 ) : null}
               </div>
             ))}
@@ -15317,16 +15355,19 @@ function KeitaroApiView() {
             )}
           </div>
         </motion.div>
+      </section>
+      ) : null}
 
+      {apiTab === "sync" ? (
+      <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: 0.45 }}
         >
           <div className="panel-head api-head">
             <div>
-              <span className="api-step">{t("Step 3")}</span>
               <h3 className="panel-title">{t("Report Sync")}</h3>
               <p className="panel-subtitle">
                 {t("Paste a Keitaro report payload and map fields into your statistics table.")}
@@ -15589,21 +15630,7 @@ function KeitaroApiView() {
                 type="button"
                 onClick={() => setPayloadText(defaultKeitaroPayloadByTarget[syncTarget] || defaultKeitaroPayload)}
               >
-                {t("Load Example")}
-              </button>
-              <button
-                className="ghost"
-                type="button"
-                onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.overall)}
-              >
-                {t("Load Overall Example")}
-              </button>
-              <button
-                className="ghost"
-                type="button"
-                onClick={() => setPayloadText(defaultKeitaroPayloadByTarget.device)}
-              >
-                {t("Load Device Example")}
+                {t("Load Example Payload")}
               </button>
             </div>
             <button className="action-pill" type="button" onClick={handleSync} disabled={syncState.loading}>
@@ -15612,13 +15639,15 @@ function KeitaroApiView() {
           </div>
         </motion.div>
       </section>
+      ) : null}
 
+      {apiTab === "campaigns" ? (
       <section className="panels api-stack">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.45 }}
         >
           <div className="panel-head">
             <div>
@@ -15713,6 +15742,7 @@ function KeitaroApiView() {
           )}
         </motion.div>
       </section>
+      ) : null}
     </>
   );
 }
