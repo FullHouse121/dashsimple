@@ -524,6 +524,8 @@ const initDb = async () => {
     `CREATE INDEX IF NOT EXISTS idx_media_stats_date ON media_stats (date);`,
     `CREATE INDEX IF NOT EXISTS idx_media_stats_date_buyer_country ON media_stats (date, buyer, country);`,
     `CREATE INDEX IF NOT EXISTS idx_media_stats_campaign_name ON media_stats (campaign_name);`,
+    `CREATE INDEX IF NOT EXISTS idx_media_stats_domain_lower
+       ON media_stats ((LOWER(TRIM(COALESCE(domain, '')))));`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses (date);`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses (status);`,
 
@@ -1073,27 +1075,47 @@ const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]
 const sqlNormalizeBuyerToken = (expression) =>
   `REGEXP_REPLACE(LOWER(COALESCE(${expression}, '')), '[^a-z0-9]+', '', 'g')`;
 
-const integrationReceivedSpendSql = (alias) => `COALESCE(
+// One-pass spend aggregates for the integration list. media_stats is scanned
+// once per query (grouped by raw buyer/domain, then normalized over the few
+// distinct values) instead of twice per integration row with per-row regex.
+const metaSpendCtesSql = `WITH buyer_spend AS (
+       SELECT ${sqlNormalizeBuyerToken("g.buyer")} AS tok, SUM(g.spend) AS spend
+       FROM (SELECT buyer, SUM(spend) AS spend FROM media_stats GROUP BY buyer) g
+       GROUP BY 1
+     ),
+     domain_spend AS (
+       SELECT LOWER(TRIM(g.domain)) AS dom, SUM(g.spend) AS spend
+       FROM (
+         SELECT domain, SUM(spend) AS spend
+         FROM media_stats
+         WHERE TRIM(COALESCE(domain, '')) <> ''
+         GROUP BY domain
+       ) g
+       GROUP BY 1
+     )`;
+
+// Correlated lookups against the tiny aggregates above. `pixelAlias` must be
+// the pixels join alias of the surrounding query.
+const integrationReceivedSpendSql = (alias, pixelAlias = "p") => `COALESCE(
               (
-                SELECT SUM(ms_flow.spend)
-                FROM media_stats ms_flow
-                LEFT JOIN pixels px_flow ON px_flow.id = ${alias}.pixel_id
-                WHERE TRIM(COALESCE(px_flow.flows, '')) <> ''
-                  AND LOWER(TRIM(COALESCE(ms_flow.domain, ''))) = LOWER(TRIM(COALESCE(px_flow.flows, '')))
+                SELECT ds.spend
+                FROM domain_spend ds
+                WHERE TRIM(COALESCE(${pixelAlias}.flows, '')) <> ''
+                  AND ds.dom = LOWER(TRIM(${pixelAlias}.flows))
               ),
               (
-                SELECT SUM(ms_buyer.spend)
-                FROM media_stats ms_buyer
+                SELECT SUM(bs.spend)
+                FROM buyer_spend bs
                 WHERE ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} <> ''
-                  AND ${sqlNormalizeBuyerToken("ms_buyer.buyer")}
-                      LIKE '%' || ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} || '%'
+                  AND bs.tok LIKE '%' || ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} || '%'
               ),
               0
             )`;
 
 const selectMetaTokenIntegrations = async (limit) =>
   getRows(
-    `SELECT m.id,
+    `${metaSpendCtesSql}
+     SELECT m.id,
             m.account_number,
             m.meta_token,
             m.keitaro_token,
@@ -1123,7 +1145,8 @@ const selectMetaTokenIntegrations = async (limit) =>
 
 const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
   getRows(
-    `SELECT m.id,
+    `${metaSpendCtesSql}
+     SELECT m.id,
             m.account_number,
             m.meta_token,
             m.keitaro_token,
@@ -1154,7 +1177,8 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
 
 const selectMetaTokenIntegrationById = async (id) =>
   getRow(
-    `SELECT m.id,
+    `${metaSpendCtesSql}
+     SELECT m.id,
             m.account_number,
             m.meta_token,
             m.keitaro_token,
@@ -1187,7 +1211,8 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
   const parsedOwnerId = Number.parseInt(String(ownerId ?? ""), 10);
   const normalizedOwnerId = Number.isFinite(parsedOwnerId) && parsedOwnerId > 0 ? parsedOwnerId : 0;
   return getRow(
-    `SELECT ranked.id,
+    `${metaSpendCtesSql}
+     SELECT ranked.id,
             ranked.account_number,
             ranked.meta_token,
             ranked.buyer_name,
@@ -2008,7 +2033,8 @@ const mapAccountRegistryRow = (row) => {
 
 const selectAccountRegistry = async (limit) => {
   const rows = await getRows(
-    `SELECT a.id,
+    `${metaSpendCtesSql}
+     SELECT a.id,
             a.account_number,
             a.nickname,
             a.status,
@@ -2058,8 +2084,9 @@ const selectAccountRegistry = async (limit) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                ${integrationReceivedSpendSql("mi")} AS received_spend
+                ${integrationReceivedSpendSql("mi", "px")} AS received_spend
          FROM meta_token_integrations mi
+         LEFT JOIN pixels px ON px.id = mi.pixel_id
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
@@ -2093,7 +2120,8 @@ const selectAccountRegistry = async (limit) => {
 
 const selectAccountRegistryByOwner = async (ownerId, limit) => {
   const rows = await getRows(
-    `SELECT a.id,
+    `${metaSpendCtesSql}
+     SELECT a.id,
             a.account_number,
             a.nickname,
             a.status,
@@ -2143,8 +2171,9 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                ${integrationReceivedSpendSql("mi")} AS received_spend
+                ${integrationReceivedSpendSql("mi", "px")} AS received_spend
          FROM meta_token_integrations mi
+         LEFT JOIN pixels px ON px.id = mi.pixel_id
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
@@ -2179,7 +2208,8 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
 
 const selectAccountRegistryById = async (id) => {
   const row = await getRow(
-    `SELECT a.id,
+    `${metaSpendCtesSql}
+     SELECT a.id,
             a.account_number,
             a.nickname,
             a.status,
@@ -2229,8 +2259,9 @@ const selectAccountRegistryById = async (id) => {
                 mi.last_checked_at,
                 mi.created_at,
                 mi.owner_id,
-                ${integrationReceivedSpendSql("mi")} AS received_spend
+                ${integrationReceivedSpendSql("mi", "px")} AS received_spend
          FROM meta_token_integrations mi
+         LEFT JOIN pixels px ON px.id = mi.pixel_id
          WHERE TRIM(COALESCE(mi.account_number, '')) = TRIM(COALESCE(a.account_number, ''))
             OR (a.meta_integration_id IS NOT NULL AND mi.id = a.meta_integration_id)
        ) ranked
@@ -4022,10 +4053,12 @@ const normalizeAdsetMacro = (value) => {
 const selectReceivedSpendForBuyer = async (buyerName) => {
   const normalized = normalizeBuyerName(buyerName);
   if (!normalized) return 0;
+  // Group by raw buyer first so the regex runs on the few distinct buyer
+  // labels instead of every media_stats row.
   const row = await getRow(
-    `SELECT COALESCE(SUM(spend), 0) AS spend
-     FROM media_stats
-     WHERE REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g')
+    `SELECT COALESCE(SUM(g.spend), 0) AS spend
+     FROM (SELECT buyer, SUM(spend) AS spend FROM media_stats GROUP BY buyer) g
+     WHERE REGEXP_REPLACE(LOWER(COALESCE(g.buyer, '')), '[^a-z0-9]+', '', 'g')
            LIKE '%' || $1 || '%'`,
     [normalized]
   );
