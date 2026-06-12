@@ -72,6 +72,8 @@ import {
   AlertTriangle,
   Settings,
   ExternalLink,
+  Minus,
+  Maximize2,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 
@@ -12292,6 +12294,7 @@ function MetaTokenDashboard({ authUser }) {
   });
   const previousCostRef = React.useRef(null);
   const [costBurst, setCostBurst] = React.useState(false);
+  const [bfZoom, setBfZoom] = React.useState(1);
   const [form, setForm] = React.useState({
     accountNumber: "",
     token: "",
@@ -12834,86 +12837,184 @@ function MetaTokenDashboard({ authUser }) {
                 <i aria-hidden="true" />
               </div>
             </div>
-            <div className="nn-canvas">
-              {/* n8n-style trigger chain: Buyer → Account → Keitaro → Check */}
-              <div className={`nn-flow nn-flow-${flowMode}`}>
-                {(() => {
-                  const keitaroVal = (() => {
-                    const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
-                    return binding === "raspy-star-473e" ? "admin" : binding;
-                  })();
-                  // DEUS Finance flow palette: green → blue → purple per hop
-                  const nodes = [
-                    { key: "buyer", kicker: "Buyer", value: selectedBinding?.buyer_name || "Not assigned", Icon: Users, accent: "#36d07c" },
-                    { key: "account", kicker: "Account", value: selectedBinding?.account_number || "No account", Icon: CreditCard, accent: "#64b8ff" },
-                    { key: "keitaro", kicker: "Keitaro", value: keitaroVal, Icon: Plug, accent: "#a15bff" },
-                  ];
-                  return (
-                    <>
-                      {nodes.map((node, i) => (
-                        <React.Fragment key={node.key}>
-                          <div
-                            className={`nn-node nn-node-${node.key}`}
-                            style={{ "--nn-accent": node.accent }}
+            {/* Budget Flow–style node canvas: source → checks fan-out → trigger */}
+            <div className="bf-canvas">
+              <div className="bf-viewport">
+                <div className="bf-scroll" style={{ width: 1060 * bfZoom, height: 584 * bfZoom }}>
+                  <div className="bf-stage" style={{ transform: `scale(${bfZoom})` }}>
+                    {(() => {
+                      const keitaroVal = (() => {
+                        const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
+                        return binding === "raspy-star-473e" ? "admin" : binding;
+                      })();
+                      // DEUS Finance category palette: green / pink / purple / blue
+                      const accents = { meta: "#36d07c", account: "#ff7da3", buyer: "#a15bff", cost: "#64b8ff" };
+                      const subs = {
+                        meta: maskToken(selectedBinding?.meta_token),
+                        account: "Meta ad account",
+                        buyer: "assigned media buyer",
+                        cost: "received from Keitaro",
+                      };
+                      const foots = {
+                        meta: "token attached",
+                        account: "registered in Accounts",
+                        buyer: "media buyer routing",
+                        cost: `checked ${lastCheckedAgoLabel}`,
+                      };
+                      const checks = (bindingChecks?.checks || []).map((item, i) => ({
+                        ...item,
+                        accent: accents[item.key] || "#8b8f98",
+                        sub: subs[item.key] || "",
+                        foot: foots[item.key] || "",
+                        x: 430,
+                        y: [12, 152, 292, 432][i] ?? 12 + i * 140,
+                      }));
+                      const srcOut = { x: 284, y: 282 };
+                      const actIn = { x: 812, y: 300 };
+                      // Rounded elbow path, like React Flow's smoothstep edges
+                      const elbow = (x1, y1, x2, y2, midX) => {
+                        const r = 8;
+                        if (Math.abs(y2 - y1) < 2) return `M${x1},${y1} L${x2},${y2}`;
+                        const d = y2 > y1 ? 1 : -1;
+                        return `M${x1},${y1} L${midX - r},${y1} Q${midX},${y1} ${midX},${y1 + r * d} L${midX},${y2 - r * d} Q${midX},${y2} ${midX + r},${y2} L${x2},${y2}`;
+                      };
+                      const okCount = checks.filter((c) => c.ok).length;
+                      const receivedSpend = Number(selectedBinding?.received_spend || 0);
+                      const pct = checks.length ? Math.round((okCount / checks.length) * 100) : 0;
+                      const modeColor = flowMode === "online" ? "#36d07c" : flowMode === "delayed" ? "#f7c625" : "#ff7d88";
+                      const modeLabel = flowMode === "online" ? "Online" : flowMode === "delayed" ? "Delayed" : "Offline";
+                      return (
+                        <>
+                          <svg
+                            className={`bf-edges${flowMode === "online" ? " is-live" : ""}`}
+                            width="1060"
+                            height="584"
+                            viewBox="0 0 1060 584"
+                            aria-hidden="true"
                           >
-                            <span className="nn-port nn-port-in" aria-hidden="true" />
-                            <span className="nn-node-icon"><node.Icon size={17} strokeWidth={2} /></span>
-                            <span className="nn-node-text">
-                              <span className="nn-node-kicker">{node.kicker}</span>
-                              <strong className="nn-node-value">{node.value}</strong>
-                            </span>
-                            <span className="nn-port nn-port-out" aria-hidden="true" />
+                            {checks.map((c) => (
+                              <g key={`edge-${c.key}`}>
+                                <path
+                                  className="bf-edge"
+                                  style={{ stroke: c.accent }}
+                                  d={elbow(srcOut.x, srcOut.y, c.x, c.y + 62, 357)}
+                                />
+                                <path
+                                  className="bf-edge bf-edge-soft"
+                                  style={{ stroke: c.accent }}
+                                  d={elbow(c.x + 230, c.y + 62, actIn.x, actIn.y, 736)}
+                                />
+                              </g>
+                            ))}
+                            <text className="bf-edge-label" x="365" y="392" style={{ fill: accents.cost }}>
+                              {formatCurrency(receivedSpend)}
+                            </text>
+                          </svg>
+
+                          {/* Source node — integration summary */}
+                          <div className="bf-node bf-source" style={{ left: 24, top: 192, width: 260, "--bf-accent": "#36d07c" }}>
+                            <span className="bf-port bf-port-out" style={{ top: 90 }} aria-hidden="true" />
+                            <div className="bf-node-head">
+                              <span className="bf-icon-tile"><DollarSign size={18} strokeWidth={2} /></span>
+                              <span className="bf-head-text">
+                                <span className="bf-kicker">Integration</span>
+                                <span className="bf-subkicker" style={{ color: modeColor }}>{modeLabel}</span>
+                              </span>
+                            </div>
+                            <div className="bf-amount">
+                              {formatCurrency(receivedSpend)}
+                              <span className="bf-amount-unit">USD</span>
+                            </div>
+                            <div className="bf-meta-row">
+                              <span>Buyer: <strong>{selectedBinding?.buyer_name || "—"}</strong></span>
+                              <span style={{ color: modeColor, fontWeight: 600 }}>{keitaroVal}</span>
+                            </div>
+                            <div className="bf-bar">
+                              <i style={{ width: `${pct}%`, background: modeColor, boxShadow: `0 0 8px ${modeColor}80` }} />
+                            </div>
+                            <div className="bf-foot">{okCount}/{checks.length} checks passing</div>
                           </div>
-                          <span className="nn-wire" aria-hidden="true">
-                            <svg viewBox="0 0 64 40" preserveAspectRatio="none">
-                              <path className="nn-wire-path" d="M0,20 C24,20 40,20 58,20" />
-                              <path className="nn-wire-flow" d="M0,20 C24,20 40,20 58,20" />
-                              <polygon className="nn-wire-arrow" points="57,15.5 64,20 57,24.5" />
-                            </svg>
-                          </span>
-                        </React.Fragment>
-                      ))}
-                      <button
-                        type="button"
-                        className="nn-node nn-node-action"
-                        onClick={() => handleRunCheck(selectedBinding.id)}
-                      >
-                        <span className="nn-port nn-port-in" aria-hidden="true" />
-                        <span className="nn-node-icon"><Zap size={17} strokeWidth={2} /></span>
-                        <span className="nn-node-text">
-                          <span className="nn-node-kicker">Run</span>
-                          <strong className="nn-node-value">Check Integration</strong>
-                        </span>
-                      </button>
-                    </>
-                  );
-                })()}
+
+                          {/* Check nodes — category style */}
+                          {checks.map((c) => (
+                            <div
+                              key={c.key}
+                              className="bf-node bf-check"
+                              style={{ left: c.x, top: c.y, width: 230, "--bf-accent": c.accent }}
+                            >
+                              <span className="bf-port bf-port-in" style={{ top: 62 }} aria-hidden="true" />
+                              <span className="bf-port bf-port-out" style={{ top: 62 }} aria-hidden="true" />
+                              <div className="bf-check-head">
+                                <span className="bf-dot" aria-hidden="true" />
+                                <span className="bf-check-name">{c.label}</span>
+                                {c.ok ? (
+                                  <CheckCircle size={13} strokeWidth={2} className="bf-state-icon ok" />
+                                ) : (
+                                  <AlertTriangle size={13} strokeWidth={2} className="bf-state-icon warn" />
+                                )}
+                              </div>
+                              <div className="bf-check-value">{c.value}</div>
+                              <div className="bf-check-sub">{c.sub}</div>
+                              <div className="bf-bar">
+                                <i
+                                  style={{
+                                    width: c.ok ? "100%" : "6%",
+                                    background: c.ok ? c.accent : "#ff7d88",
+                                    boxShadow: `0 0 6px ${c.ok ? c.accent : "#ff7d88"}80`,
+                                  }}
+                                />
+                              </div>
+                              <div className="bf-check-foot">{c.foot}</div>
+                            </div>
+                          ))}
+
+                          {/* Trigger node */}
+                          <button
+                            type="button"
+                            className="bf-node bf-action"
+                            style={{ left: 812, top: 240, width: 224, "--bf-accent": "#36d07c" }}
+                            onClick={() => handleRunCheck(selectedBinding.id)}
+                          >
+                            <span className="bf-port bf-port-in" style={{ top: 60 }} aria-hidden="true" />
+                            <div className="bf-node-head">
+                              <span className="bf-icon-tile"><Zap size={18} strokeWidth={2} /></span>
+                              <span className="bf-head-text">
+                                <span className="bf-kicker">Run</span>
+                                <span className="bf-subkicker" style={{ color: "#36d07c" }}>Trigger</span>
+                              </span>
+                            </div>
+                            <div className="bf-action-value">Check Integration</div>
+                            <div className="bf-foot">Last check: {lastCheckedAgoLabel}</div>
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
               </div>
 
-              {/* Output nodes — each validation check as an n8n result node */}
-              <div className="nn-results">
-                {bindingChecks?.checks.map((item, index) => {
-                  const tone = getBindingTone(item);
-                  return (
-                    <article key={item.key} className={`nn-result nn-result-${tone}`}>
-                      <span className="nn-port nn-port-in" aria-hidden="true" />
-                      <div className="nn-result-head">
-                        <span className="nn-result-led" aria-hidden="true" />
-                        <em>{String(index + 1).padStart(2, "0")}</em>
-                        <span className="nn-result-label">{item.label}</span>
-                      </div>
-                      <strong className="nn-result-value">{item.value}</strong>
-                      <small className="nn-result-status">
-                        {item.ok ? (
-                          <CheckCircle size={10} strokeWidth={2.5} />
-                        ) : (
-                          <AlertTriangle size={10} strokeWidth={2.5} />
-                        )}
-                        {item.ok ? "Working" : "Missing"}
-                      </small>
-                    </article>
-                  );
-                })}
+              {/* Canvas chrome — zoom controls + minimap, like React Flow */}
+              <div className="bf-controls">
+                <button type="button" aria-label="Zoom in" onClick={() => setBfZoom((z) => Math.min(1.3, +(z + 0.1).toFixed(2)))}>
+                  <Plus size={14} />
+                </button>
+                <button type="button" aria-label="Zoom out" onClick={() => setBfZoom((z) => Math.max(0.6, +(z - 0.1).toFixed(2)))}>
+                  <Minus size={14} />
+                </button>
+                <button type="button" aria-label="Fit view" onClick={() => setBfZoom(1)}>
+                  <Maximize2 size={13} />
+                </button>
+                <button type="button" aria-label="Locked" className="is-static">
+                  <Lock size={13} />
+                </button>
+              </div>
+              <div className="bf-minimap" aria-hidden="true">
+                <span className="bf-mm-src" />
+                <span className="bf-mm-node" style={{ top: 10, background: "#36d07c" }} />
+                <span className="bf-mm-node" style={{ top: 28, background: "#ff7da3" }} />
+                <span className="bf-mm-node" style={{ top: 46, background: "#a15bff" }} />
+                <span className="bf-mm-node" style={{ top: 64, background: "#64b8ff" }} />
+                <span className="bf-mm-act" />
               </div>
             </div>
             <div className="binding-footer">

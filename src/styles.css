@@ -6489,80 +6489,125 @@ select option,
   animation: bindingPulseBurst 0.9s ease;
 }
 
-/* ── n8n-style node graph ─────────────────────────────────────────────── */
-.nn-canvas {
+/* ── Budget Flow canvas — DEUS Finance n8n node map ───────────────────── */
+.bf-canvas {
   position: relative;
   z-index: 2;
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-  padding: 8px 4px 4px;
 }
 
-/* Trigger chain — horizontal flow of nodes joined by animated wires */
-.nn-flow {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding-bottom: 6px;
+.bf-viewport {
+  overflow: auto;
+  border-radius: 14px;
   scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
-/* Node card — DEUS Finance Budget Flow language: gradient body, accent
-   border + glow, blurred corner blob. Accent comes from --nn-accent. */
-.nn-node {
-  --nn-accent: #8b8f98;
+.bf-stage {
   position: relative;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 196px;
-  padding: 14px 18px;
+  width: 1060px;
+  height: 584px;
+  transform-origin: 0 0;
+}
+
+/* Edge layer — dashed smoothstep elbows, accent-colored per target */
+.bf-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bf-edge {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.75;
+}
+
+.bf-edge-soft { opacity: 0.32; }
+
+.bf-edges.is-live .bf-edge {
+  animation: nnFlow 1.1s linear infinite;
+}
+
+.bf-edge-label {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  paint-order: stroke;
+  stroke: rgba(5, 7, 10, 0.9);
+  stroke-width: 3px;
+}
+
+/* Node base — gradient card, accent border + corner glow blob */
+.bf-node {
+  --bf-accent: #8b8f98;
+  position: absolute;
   border-radius: 16px;
-  border: 1.5px solid color-mix(in srgb, var(--nn-accent) 38%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--bf-accent) 38%, transparent);
   background: linear-gradient(160deg, #1e2128, #16181e);
   box-shadow:
-    0 0 24px color-mix(in srgb, var(--nn-accent) 10%, transparent),
+    0 0 24px color-mix(in srgb, var(--bf-accent) 9%, transparent),
     0 16px 32px rgba(0, 0, 0, 0.36);
-  text-align: left;
+  padding: 16px 18px;
   color: var(--text);
+  text-align: left;
   overflow: hidden;
 }
 
-/* blurred accent blob in the corner, like every DEUS Finance node */
-.nn-node::before {
+.bf-node::before {
   content: "";
   position: absolute;
   top: -30px;
   left: -10px;
-  width: 110px;
-  height: 110px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  background: var(--nn-accent);
-  filter: blur(55px);
+  background: var(--bf-accent);
+  filter: blur(60px);
   opacity: 0.1;
   pointer-events: none;
 }
 
-.nn-node-icon {
+/* Ports — React Flow handles: accent fill, dark ring */
+.bf-port {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bf-accent);
+  border: 2px solid #121315;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--bf-accent) 55%, transparent);
+  transform: translateY(-50%);
+  z-index: 3;
+}
+.bf-port-in { left: -7px; }
+.bf-port-out { right: -7px; }
+
+/* Head: icon tile + kicker */
+.bf-node-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.bf-icon-tile {
   width: 36px;
   height: 36px;
   border-radius: 10px;
+  background: color-mix(in srgb, var(--bf-accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bf-accent) 30%, transparent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--bf-accent);
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--nn-accent) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--nn-accent) 30%, transparent);
-  color: var(--nn-accent);
 }
 
-.nn-node-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bf-head-text { display: flex; flex-direction: column; gap: 1px; }
 
-.nn-node-kicker {
+.bf-kicker {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.1em;
@@ -6570,211 +6615,202 @@ select option,
   color: var(--muted);
 }
 
-.nn-node-value {
-  font-size: 14px;
-  font-weight: 700;
+.bf-subkicker { font-size: 11px; font-weight: 600; }
+
+/* Source node internals */
+.bf-amount {
+  font-size: 1.7rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.bf-amount-unit { font-size: 0.8rem; color: var(--muted); margin-left: 6px; font-weight: 600; }
+
+.bf-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.bf-meta-row strong { color: var(--text); font-weight: 600; }
+
+.bf-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.bf-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.bf-foot { font-size: 10.5px; color: var(--muted); margin-top: 8px; }
+
+/* Check nodes — category style */
+.bf-check { height: 128px; padding: 14px 16px; }
+
+.bf-check-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.bf-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bf-accent);
+  box-shadow: 0 0 8px var(--bf-accent);
+  flex-shrink: 0;
+}
+
+.bf-check-name { font-size: 12.5px; font-weight: 700; color: var(--text); }
+
+.bf-state-icon { margin-left: auto; flex-shrink: 0; }
+.bf-state-icon.ok { color: #36d07c; opacity: 0.55; }
+.bf-state-icon.warn { color: #ff7d88; }
+
+.bf-check-value {
+  font-size: 1.15rem;
+  font-weight: 800;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
+  margin-bottom: 2px;
 }
 
-/* Connection ports — accent-filled circles with a dark ring, like the
-   React Flow handles in DEUS Finance (background accent, 2px #121315 ring) */
-.nn-port {
-  position: absolute;
-  top: 50%;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--nn-accent, #8b8f98);
-  border: 2px solid #121315;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--nn-accent, #8b8f98) 50%, transparent);
-  transform: translateY(-50%);
-  z-index: 3;
+.bf-check-sub {
+  font-size: 10.5px;
+  color: var(--muted);
+  margin-bottom: 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.nn-port-in { left: -6px; }
-.nn-port-out { right: -6px; }
+.bf-check-foot {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
 
-/* Action node — green source node (run trigger) */
-.nn-node-action {
-  --nn-accent: var(--green);
+/* Trigger node */
+.bf-action {
   cursor: pointer;
+  height: 120px;
   border-color: rgba(54, 208, 124, 0.45);
-  box-shadow:
-    0 0 40px rgba(54, 208, 124, 0.12),
-    0 16px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 40px rgba(54, 208, 124, 0.12), 0 16px 32px rgba(0, 0, 0, 0.4);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  font-family: inherit;
 }
-
-.nn-node-action:hover {
+.bf-action:hover {
   border-color: var(--green);
-  box-shadow:
-    0 0 0 3px rgba(54, 208, 124, 0.14),
-    0 0 40px rgba(54, 208, 124, 0.18),
-    0 16px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.14), 0 0 40px rgba(54, 208, 124, 0.2), 0 16px 32px rgba(0, 0, 0, 0.4);
   transform: translateY(-1px);
 }
-
-.nn-node-action .nn-node-kicker { color: rgba(54, 208, 124, 0.85); }
-
-/* Wires between nodes */
-.nn-wire {
-  flex: 0 0 auto;
-  width: 56px;
-  height: 40px;
-  position: relative;
+.bf-action .bf-node-head { margin-bottom: 8px; }
+.bf-action-value {
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
 }
 
-.nn-wire:last-child { display: none; }
+/* Zoom controls — bottom-left, React Flow style */
+.bf-controls {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #1a1c22f2, #121419f6);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 4;
+}
+.bf-controls button {
+  width: 32px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: var(--muted-strong, #a9adb7);
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease;
+}
+.bf-controls button:last-child { border-bottom: 0; }
+.bf-controls button:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.bf-controls button.is-static { cursor: default; color: var(--muted); }
 
-.nn-wire svg { width: 100%; height: 100%; display: block; overflow: visible; }
-
-/* DEUS Finance edge style: dashed 5 4 strokes, arrow tip at the target */
-.nn-wire-path {
-  fill: none;
-  stroke: #3a3e47;
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
+/* Minimap — bottom-right */
+.bf-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 150px;
+  height: 92px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #101216f6, #0a0c10f8);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+}
+.bf-mm-src {
+  position: absolute;
+  left: 12px;
+  top: 36px;
+  width: 26px;
+  height: 18px;
+  border-radius: 3px;
+  background: rgba(54, 208, 124, 0.65);
+}
+.bf-mm-node {
+  position: absolute;
+  left: 68px;
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+.bf-mm-act {
+  position: absolute;
+  right: 12px;
+  top: 38px;
+  width: 20px;
+  height: 14px;
+  border-radius: 3px;
+  background: rgba(54, 208, 124, 0.4);
+  border: 1px solid rgba(54, 208, 124, 0.6);
 }
 
-.nn-wire-flow {
-  fill: none;
-  stroke: var(--green);
-  stroke-width: 1.8;
-  stroke-dasharray: 5 4;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+@media (max-width: 640px) {
+  .bf-minimap { display: none; }
 }
 
-.nn-wire-arrow {
-  fill: #3a3e47;
-  transition: fill 0.2s ease;
-}
-
-/* Flow states color the wires + arrows */
-.nn-flow-online .nn-wire-flow {
-  opacity: 1;
-  animation: nnFlow 0.9s linear infinite;
-}
-.nn-flow-online .nn-wire-arrow { fill: var(--green); }
-
-.nn-flow-delayed .nn-wire-flow {
-  stroke: #f7c625;
-  opacity: 1;
-  animation: nnFlow 1.8s linear infinite;
-}
-.nn-flow-delayed .nn-wire-path { stroke: rgba(247, 198, 37, 0.2); }
-.nn-flow-delayed .nn-wire-arrow { fill: #f7c625; }
-
-.nn-flow-offline .nn-wire-path { stroke: rgba(255, 125, 136, 0.32); }
-.nn-flow-offline .nn-wire-arrow { fill: rgba(255, 125, 136, 0.5); }
 
 @keyframes nnFlow {
   to { stroke-dashoffset: -18; }
 }
 
-/* Output result nodes */
-.nn-results {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
-  position: relative;
-}
-
-/* vertical tee connecting the chain to the results row */
-.nn-results::before {
-  content: "";
-  position: absolute;
-  top: -18px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1) 12%, rgba(255, 255, 255, 0.1) 88%, transparent);
-}
-
-/* Result card — DEUS Finance PaymentNode language: thin accent border,
-   3px solid accent left edge, accent glow, status chip. */
-.nn-result {
-  --nn-accent: #8b8f98;
-  position: relative;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--nn-accent) 20%, transparent);
-  border-left: 3px solid var(--nn-accent);
-  background: linear-gradient(160deg, #191c22, #111318);
-  padding: 13px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  box-shadow:
-    0 0 16px color-mix(in srgb, var(--nn-accent) 6%, transparent),
-    0 10px 24px rgba(0, 0, 0, 0.35);
-}
-
-.nn-result .nn-port-in { top: -6px; left: 18px; transform: none; width: 10px; height: 10px; }
-
-.nn-result-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.nn-result-head em { font-style: normal; color: var(--muted-strong, #a9adb7); }
-.nn-result-label { color: var(--muted-strong, #a9adb7); }
-
-.nn-result-led {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--nn-accent);
-  box-shadow: 0 0 8px var(--nn-accent);
-  flex-shrink: 0;
-}
-
-.nn-result-value {
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-  word-break: break-word;
-}
-
-/* Status chip — {color}18 bg, {color}40 border, tiny bold label */
-.nn-result-status {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--nn-accent) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--nn-accent) 25%, transparent);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--nn-accent);
-}
-
-/* Result tones — DEUS palette: green / blue / yellow / red */
-.nn-result-success { --nn-accent: #36d07c; }
-.nn-result-info    { --nn-accent: #64b8ff; }
-.nn-result-warning { --nn-accent: #f7c625; }
-.nn-result-danger  { --nn-accent: #ff7d88; }
-
-@media (max-width: 640px) {
-  .nn-node { min-width: 160px; }
-  .nn-wire { width: 36px; }
-}
 
 .binding-cloud-head {
   position: relative;
