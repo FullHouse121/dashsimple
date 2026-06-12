@@ -6951,7 +6951,7 @@ app.post("/api/meta-tokens", async (req, res) => {
     metaBinding = "admin",
   } = req.body ?? {};
 
-  if (!accountNumber || !token || !buyerName) {
+  if (!accountNumber || !token || (!buyerName && isLeadership(req.user))) {
     return res.status(400).json({ error: "Account number, token, and buyer are required." });
   }
   try {
@@ -6967,12 +6967,16 @@ app.post("/api/meta-tokens", async (req, res) => {
       return res.status(403).json({ error: "Forbidden." });
     }
 
-    const buyerInput = String(buyerName || "").trim();
+    // Non-leadership integrations are always attributed to the requester —
+    // the submitted buyer name/id is ignored.
+    const buyerInput = isLeadership(req.user)
+      ? String(buyerName || "").trim()
+      : String(req.user.username || "").trim();
     const buyerMatch = buyerInput ? await selectUserByUsernameLoose(buyerInput) : null;
     const parsedBuyerId = Number.parseInt(buyerId, 10);
     let resolvedBuyerId = Number.isFinite(parsedBuyerId) ? parsedBuyerId : buyerMatch?.id || null;
     if (!isLeadership(req.user) && resolvedBuyerId && resolvedBuyerId !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden." });
+      resolvedBuyerId = req.user.id;
     }
     if (!resolvedBuyerId && !isLeadership(req.user)) {
       resolvedBuyerId = req.user.id;

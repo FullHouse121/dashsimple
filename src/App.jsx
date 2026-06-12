@@ -12467,6 +12467,14 @@ function MetaTokenDashboard({ authUser }) {
     [buyerOptions]
   );
 
+  // Non-leadership users can't pick a buyer — the integration is attributed
+  // to their own linked media buyer profile (or their username as fallback).
+  const autoBuyerName = React.useMemo(() => {
+    if (canManage) return "";
+    const linked = buyers.find((b) => String(b?.id) === String(authUser?.buyerId || ""));
+    return String(linked?.name || authUser?.username || "").trim();
+  }, [canManage, buyers, authUser?.buyerId, authUser?.username]);
+
   const accountDropdownOptions = React.useMemo(
     () =>
       accountOptions
@@ -12509,9 +12517,15 @@ function MetaTokenDashboard({ authUser }) {
     event.preventDefault();
     const accountNumber = String(form.accountNumber || "").trim();
     const token = String(form.token || "").trim();
-    const buyerName = String(form.buyerName || "").trim();
+    // Leadership picks the buyer; everyone else is auto-attributed to themselves.
+    const buyerName = canManage ? String(form.buyerName || "").trim() : autoBuyerName;
     if (!accountNumber || !token || !buyerName) {
-      setIntegrationState({ loading: false, error: "Account, token, and buyer are required." });
+      setIntegrationState({
+        loading: false,
+        error: canManage
+          ? "Account, token, and buyer are required."
+          : "Account and token are required.",
+      });
       return;
     }
     try {
@@ -12949,27 +12963,29 @@ function MetaTokenDashboard({ authUser }) {
               emptyResultsLabel="No accounts found."
             />
           </div>
-          <div className="field">
+          <div className={`field${canManage ? "" : " field-span-2"}`}>
             <label>Token</label>
             <input value={form.token} onChange={updateForm("token")} placeholder="Meta for developers token" required />
           </div>
-          <div className="field">
-            <label>Buyer</label>
-            <CountryDropdownPicker
-              value={form.buyerName}
-              onChange={(buyerName) => setForm((prev) => ({ ...prev, buyerName }))}
-              options={buyerDropdownOptions}
-              placeholder={
-                buyerState.loading
-                  ? "Loading buyers..."
-                  : buyerDropdownOptions.length
-                    ? "Select buyer"
-                    : "No buyers available"
-              }
-              searchPlaceholder="Type to find buyers"
-              emptyResultsLabel="No buyers found."
-            />
-          </div>
+          {canManage ? (
+            <div className="field">
+              <label>Buyer</label>
+              <CountryDropdownPicker
+                value={form.buyerName}
+                onChange={(buyerName) => setForm((prev) => ({ ...prev, buyerName }))}
+                options={buyerDropdownOptions}
+                placeholder={
+                  buyerState.loading
+                    ? "Loading buyers..."
+                    : buyerDropdownOptions.length
+                      ? "Select buyer"
+                      : "No buyers available"
+                }
+                searchPlaceholder="Type to find buyers"
+                emptyResultsLabel="No buyers found."
+              />
+            </div>
+          ) : null}
           <div className="field">
             <label>Pixel (optional)</label>
             <Select
