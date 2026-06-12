@@ -6471,15 +6471,17 @@ select option,
   pointer-events: none;
 }
 
+/* DEUS Finance canvas grid: 42px green-tinted lines over a deep backdrop */
 .binding-grid-bg {
   position: absolute;
   inset: 0;
   border-radius: 14px;
   background:
-    radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(54, 208, 124, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(54, 208, 124, 0.04) 1px, transparent 1px),
+    radial-gradient(900px 400px at 8% -10%, rgba(54, 208, 124, 0.06), transparent 60%),
     linear-gradient(180deg, rgba(7, 10, 14, 0.86), rgba(4, 6, 9, 0.9));
-  background-size: 24px 24px, 100% 100%;
-  opacity: 0.22;
+  background-size: 42px 42px, 42px 42px, 100% 100%, 100% 100%;
   pointer-events: none;
 }
 
@@ -6508,48 +6510,71 @@ select option,
   scrollbar-width: thin;
 }
 
+/* Node card — DEUS Finance Budget Flow language: gradient body, accent
+   border + glow, blurred corner blob. Accent comes from --nn-accent. */
 .nn-node {
+  --nn-accent: #8b8f98;
   position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 11px;
-  min-width: 190px;
-  padding: 13px 16px;
-  border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background:
-    linear-gradient(180deg, rgba(38, 41, 48, 0.95), rgba(26, 29, 35, 0.96));
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+  gap: 12px;
+  min-width: 196px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1.5px solid color-mix(in srgb, var(--nn-accent) 38%, transparent);
+  background: linear-gradient(160deg, #1e2128, #16181e);
+  box-shadow:
+    0 0 24px color-mix(in srgb, var(--nn-accent) 10%, transparent),
+    0 16px 32px rgba(0, 0, 0, 0.36);
   text-align: left;
   color: var(--text);
+  overflow: hidden;
+}
+
+/* blurred accent blob in the corner, like every DEUS Finance node */
+.nn-node::before {
+  content: "";
+  position: absolute;
+  top: -30px;
+  left: -10px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: var(--nn-accent);
+  filter: blur(55px);
+  opacity: 0.1;
+  pointer-events: none;
 }
 
 .nn-node-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--muted-strong, #a9adb7);
+  background: color-mix(in srgb, var(--nn-accent) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nn-accent) 30%, transparent);
+  color: var(--nn-accent);
 }
 
 .nn-node-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 
 .nn-node-kicker {
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 .nn-node-value {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -6557,15 +6582,17 @@ select option,
   max-width: 180px;
 }
 
-/* Connection ports — small circles on node edges, like n8n */
+/* Connection ports — accent-filled circles with a dark ring, like the
+   React Flow handles in DEUS Finance (background accent, 2px #121315 ring) */
 .nn-port {
   position: absolute;
   top: 50%;
-  width: 11px;
-  height: 11px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: #2a2e36;
-  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: var(--nn-accent, #8b8f98);
+  border: 2px solid #121315;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--nn-accent, #8b8f98) 50%, transparent);
   transform: translateY(-50%);
   z-index: 3;
 }
@@ -6573,21 +6600,26 @@ select option,
 .nn-port-in { left: -6px; }
 .nn-port-out { right: -6px; }
 
-/* Action node — accent (run trigger) */
+/* Action node — green source node (run trigger) */
 .nn-node-action {
+  --nn-accent: var(--green);
   cursor: pointer;
   border-color: rgba(54, 208, 124, 0.45);
-  background: linear-gradient(180deg, rgba(54, 208, 124, 0.16), rgba(54, 208, 124, 0.06));
+  box-shadow:
+    0 0 40px rgba(54, 208, 124, 0.12),
+    0 16px 32px rgba(0, 0, 0, 0.4);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .nn-node-action:hover {
   border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.14), 0 8px 22px rgba(0, 0, 0, 0.32);
+  box-shadow:
+    0 0 0 3px rgba(54, 208, 124, 0.14),
+    0 0 40px rgba(54, 208, 124, 0.18),
+    0 16px 32px rgba(0, 0, 0, 0.4);
   transform: translateY(-1px);
 }
 
-.nn-node-action .nn-node-icon { background: rgba(54, 208, 124, 0.18); color: var(--green); }
 .nn-node-action .nn-node-kicker { color: rgba(54, 208, 124, 0.85); }
 
 /* Wires between nodes */
@@ -6602,40 +6634,48 @@ select option,
 
 .nn-wire svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
+/* DEUS Finance edge style: dashed 5 4 strokes, arrow tip at the target */
 .nn-wire-path {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 2;
+  stroke: #3a3e47;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
 }
 
 .nn-wire-flow {
   fill: none;
   stroke: var(--green);
-  stroke-width: 2;
-  stroke-dasharray: 6 10;
+  stroke-width: 1.8;
+  stroke-dasharray: 5 4;
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-/* Flow states color the wires + ports */
+.nn-wire-arrow {
+  fill: #3a3e47;
+  transition: fill 0.2s ease;
+}
+
+/* Flow states color the wires + arrows */
 .nn-flow-online .nn-wire-flow {
   opacity: 1;
   animation: nnFlow 0.9s linear infinite;
 }
-.nn-flow-online .nn-node .nn-port-out,
-.nn-flow-online .nn-node .nn-port-in { border-color: rgba(54, 208, 124, 0.6); }
+.nn-flow-online .nn-wire-arrow { fill: var(--green); }
 
 .nn-flow-delayed .nn-wire-flow {
-  stroke: #ffb37a;
+  stroke: #f7c625;
   opacity: 1;
   animation: nnFlow 1.8s linear infinite;
 }
-.nn-flow-delayed .nn-wire-path { stroke: rgba(255, 179, 122, 0.2); }
+.nn-flow-delayed .nn-wire-path { stroke: rgba(247, 198, 37, 0.2); }
+.nn-flow-delayed .nn-wire-arrow { fill: #f7c625; }
 
-.nn-flow-offline .nn-wire-path { stroke: rgba(255, 138, 122, 0.28); stroke-dasharray: 4 6; }
+.nn-flow-offline .nn-wire-path { stroke: rgba(255, 125, 136, 0.32); }
+.nn-flow-offline .nn-wire-arrow { fill: rgba(255, 125, 136, 0.5); }
 
 @keyframes nnFlow {
-  to { stroke-dashoffset: -16; }
+  to { stroke-dashoffset: -18; }
 }
 
 /* Output result nodes */
@@ -6657,27 +6697,33 @@ select option,
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1) 12%, rgba(255, 255, 255, 0.1) 88%, transparent);
 }
 
+/* Result card — DEUS Finance PaymentNode language: thin accent border,
+   3px solid accent left edge, accent glow, status chip. */
 .nn-result {
+  --nn-accent: #8b8f98;
   position: relative;
-  border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: linear-gradient(180deg, rgba(34, 37, 43, 0.92), rgba(24, 27, 33, 0.94));
-  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--nn-accent) 20%, transparent);
+  border-left: 3px solid var(--nn-accent);
+  background: linear-gradient(160deg, #191c22, #111318);
+  padding: 13px 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  gap: 7px;
+  box-shadow:
+    0 0 16px color-mix(in srgb, var(--nn-accent) 6%, transparent),
+    0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
-.nn-result .nn-port-in { top: -6px; left: 18px; transform: none; }
+.nn-result .nn-port-in { top: -6px; left: 18px; transform: none; width: 10px; height: 10px; }
 
 .nn-result-head {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -6686,44 +6732,44 @@ select option,
 .nn-result-label { color: var(--muted-strong, #a9adb7); }
 
 .nn-result-led {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--nn-accent);
+  box-shadow: 0 0 8px var(--nn-accent);
   flex-shrink: 0;
 }
 
 .nn-result-value {
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
   word-break: break-word;
 }
 
+/* Status chip — {color}18 bg, {color}40 border, tiny bold label */
 .nn-result-status {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nn-accent) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nn-accent) 25%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--nn-accent);
 }
 
-/* Result tones — match getBindingTone(): success | info | warning | danger */
-.nn-result-success { border-color: rgba(54, 208, 124, 0.32); }
-.nn-result-success .nn-result-led { background: var(--green); box-shadow: 0 0 8px rgba(54, 208, 124, 0.6); }
-.nn-result-success .nn-result-status { color: var(--green); }
-.nn-result-success .nn-port-in { border-color: rgba(54, 208, 124, 0.6); }
-
-.nn-result-info { border-color: rgba(106, 214, 255, 0.3); }
-.nn-result-info .nn-result-led { background: #6ad6ff; box-shadow: 0 0 8px rgba(106, 214, 255, 0.5); }
-.nn-result-info .nn-result-status { color: #6ad6ff; }
-.nn-result-info .nn-port-in { border-color: rgba(106, 214, 255, 0.55); }
-
-.nn-result-danger { border-color: rgba(255, 138, 122, 0.3); }
-.nn-result-danger .nn-result-led { background: #ff8a7a; box-shadow: 0 0 8px rgba(255, 138, 122, 0.5); }
-.nn-result-danger .nn-result-status { color: #ff8a7a; }
-
-.nn-result-warning { border-color: rgba(255, 179, 122, 0.3); }
-.nn-result-warning .nn-result-led { background: #ffb37a; box-shadow: 0 0 8px rgba(255, 179, 122, 0.5); }
-.nn-result-warning .nn-result-status { color: #ffb37a; }
+/* Result tones — DEUS palette: green / blue / yellow / red */
+.nn-result-success { --nn-accent: #36d07c; }
+.nn-result-info    { --nn-accent: #64b8ff; }
+.nn-result-warning { --nn-accent: #f7c625; }
+.nn-result-danger  { --nn-accent: #ff7d88; }
 
 @media (max-width: 640px) {
   .nn-node { min-width: 160px; }

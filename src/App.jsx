@@ -12842,18 +12842,22 @@ function MetaTokenDashboard({ authUser }) {
                     const binding = selectedBinding?.meta_binding || selectedBinding?.keitaro_token || "admin";
                     return binding === "raspy-star-473e" ? "admin" : binding;
                   })();
+                  // DEUS Finance flow palette: green → blue → purple per hop
                   const nodes = [
-                    { key: "buyer", kicker: "Buyer", value: selectedBinding?.buyer_name || "Not assigned", Icon: Users },
-                    { key: "account", kicker: "Account", value: selectedBinding?.account_number || "No account", Icon: CreditCard },
-                    { key: "keitaro", kicker: "Keitaro", value: keitaroVal, Icon: Plug },
+                    { key: "buyer", kicker: "Buyer", value: selectedBinding?.buyer_name || "Not assigned", Icon: Users, accent: "#36d07c" },
+                    { key: "account", kicker: "Account", value: selectedBinding?.account_number || "No account", Icon: CreditCard, accent: "#64b8ff" },
+                    { key: "keitaro", kicker: "Keitaro", value: keitaroVal, Icon: Plug, accent: "#a15bff" },
                   ];
                   return (
                     <>
                       {nodes.map((node, i) => (
                         <React.Fragment key={node.key}>
-                          <div className={`nn-node nn-node-${node.key}`}>
+                          <div
+                            className={`nn-node nn-node-${node.key}`}
+                            style={{ "--nn-accent": node.accent }}
+                          >
                             <span className="nn-port nn-port-in" aria-hidden="true" />
-                            <span className="nn-node-icon"><node.Icon size={16} /></span>
+                            <span className="nn-node-icon"><node.Icon size={17} strokeWidth={2} /></span>
                             <span className="nn-node-text">
                               <span className="nn-node-kicker">{node.kicker}</span>
                               <strong className="nn-node-value">{node.value}</strong>
@@ -12862,8 +12866,9 @@ function MetaTokenDashboard({ authUser }) {
                           </div>
                           <span className="nn-wire" aria-hidden="true">
                             <svg viewBox="0 0 64 40" preserveAspectRatio="none">
-                              <path className="nn-wire-path" d="M0,20 C24,20 40,20 64,20" />
-                              <path className="nn-wire-flow" d="M0,20 C24,20 40,20 64,20" />
+                              <path className="nn-wire-path" d="M0,20 C24,20 40,20 58,20" />
+                              <path className="nn-wire-flow" d="M0,20 C24,20 40,20 58,20" />
+                              <polygon className="nn-wire-arrow" points="57,15.5 64,20 57,24.5" />
                             </svg>
                           </span>
                         </React.Fragment>
@@ -12874,7 +12879,7 @@ function MetaTokenDashboard({ authUser }) {
                         onClick={() => handleRunCheck(selectedBinding.id)}
                       >
                         <span className="nn-port nn-port-in" aria-hidden="true" />
-                        <span className="nn-node-icon"><Zap size={16} /></span>
+                        <span className="nn-node-icon"><Zap size={17} strokeWidth={2} /></span>
                         <span className="nn-node-text">
                           <span className="nn-node-kicker">Run</span>
                           <strong className="nn-node-value">Check Integration</strong>
@@ -12898,7 +12903,14 @@ function MetaTokenDashboard({ authUser }) {
                         <span className="nn-result-label">{item.label}</span>
                       </div>
                       <strong className="nn-result-value">{item.value}</strong>
-                      <small className="nn-result-status">{item.ok ? "Working" : "Missing"}</small>
+                      <small className="nn-result-status">
+                        {item.ok ? (
+                          <CheckCircle size={10} strokeWidth={2.5} />
+                        ) : (
+                          <AlertTriangle size={10} strokeWidth={2.5} />
+                        )}
+                        {item.ok ? "Working" : "Missing"}
+                      </small>
                     </article>
                   );
                 })}
