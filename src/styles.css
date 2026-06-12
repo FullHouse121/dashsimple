@@ -453,6 +453,22 @@ select {
   transition: background-color 9999s ease-out, color 9999s ease-out;
 }
 
+/* Chrome autofill paints its own pale-blue fill — neutralize it on every
+   themed input (e.g. the Keitaro API key), matching the panel input color */
+.field input:-webkit-autofill,
+.field input:-webkit-autofill:hover,
+.field input:-webkit-autofill:focus,
+.field input:-webkit-autofill:active,
+.code-input:-webkit-autofill,
+.code-input:-webkit-autofill:hover,
+.code-input:-webkit-autofill:focus,
+.code-input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px #1e2126 inset;
+  caret-color: var(--text);
+  transition: background-color 9999s ease-out, color 9999s ease-out;
+}
+
 .login-remember {
   display: flex;
   align-items: center;
