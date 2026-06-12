@@ -5064,10 +5064,36 @@ select option,
   gap: 8px;
   font-size: 13px;
   color: var(--text);
+  cursor: pointer;
 }
 
 .checkbox input {
   accent-color: var(--green);
+}
+
+/* Checkboxes must not inherit the unified text-input chrome
+   (.field input sets width:100%/min-height:48px → giant detached square) */
+.field input[type="checkbox"],
+.checkbox input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+
+/* Checkbox captions are control labels, not field headers — keep them
+   sentence-case even inside form grids that uppercase field labels */
+.form-grid .field label.checkbox {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
 }
 
 .goals-form {
