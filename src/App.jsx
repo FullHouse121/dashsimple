@@ -4991,8 +4991,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                 value={buyerFilter}
                 onChange={(v) => setBuyerFilter(v)}
                 options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
-                placeholder={t("Select buyer")}
-                searchPlaceholder={t("Find buyer")}
+                placeholder="Select buyer"
+                searchPlaceholder="Find buyer"
               />
             ) : (
               <div className="select select-static">{effectiveBuyer}</div>
