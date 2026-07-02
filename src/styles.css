@@ -6195,9 +6195,23 @@ select option,
 
 /* While any dropdown inside the table (filter toolbar OR a status cell) is
    open, let the wrap overflow so the menu isn't clipped by the horizontal
-   scroll container. Covers single- and multi-select pickers alike. */
+   scroll container — and lift the whole wrap above sibling cards (forms,
+   batch bars) so drop-up menus never paint behind them. Overrides the
+   low z-index some registry panels put on their table-wrap. */
 .table-wrap:has(.country-select-picker[open]) {
   overflow: visible;
+  position: relative;
+  z-index: 1600;
+}
+
+/* Panel-head right side: count chip + primary toggle, standard across
+   the registry sections (Domains / Pixels / Accounts). */
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .entries-table {

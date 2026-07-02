@@ -8715,6 +8715,9 @@ function DomainsDashboard({ authUser }) {
     setDomainForm((prev) => ({ ...prev, ownerRole }));
   }, [ownerRole]);
 
+  // Standard SaaS registry: creation form collapsed behind "+ Add" by default.
+  const [showForm, setShowForm] = React.useState(false);
+
   // Full domain edit modal (domain, game, platform, geos, owner)
   const [domainEdit, setDomainEdit] = React.useState({
     open: false,
@@ -9183,12 +9186,22 @@ function DomainsDashboard({ authUser }) {
             <h3 className="panel-title">{t("Domains Registry")}</h3>
             <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
           </div>
-          <span className="roles-count">
-            {visibleDomains.length} {t("domains")}
-            {filteredDomainRows.length !== visibleDomains.length ? ` · ${filteredDomainRows.length} ${t("shown")}` : ""}
-          </span>
+          <div className="panel-head-actions">
+            <span className="roles-count">
+              {visibleDomains.length} {t("domains")}
+              {filteredDomainRows.length !== visibleDomains.length ? ` · ${filteredDomainRows.length} ${t("shown")}` : ""}
+            </span>
+            <button
+              type="button"
+              className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
+              onClick={() => setShowForm((v) => !v)}
+            >
+              {showForm ? t("Close") : "+ " + t("Add Domain")}
+            </button>
+          </div>
         </div>
 
+        {showForm ? (
         <form className="form-grid domain-form" onSubmit={handleDomainSubmit}>
           <div className="field">
             <label>{t("Domain")}</label>
@@ -9258,6 +9271,7 @@ function DomainsDashboard({ authUser }) {
             </button>
           </div>
         </form>
+        ) : null}
 
         {canManageDomains ? (
           <div className="domains-batch-bar">
@@ -9744,7 +9758,7 @@ function PixelsDashboard({ authUser }) {
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
-  const [showForm, setShowForm] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
   const [tableBuyerFilter, setTableBuyerFilter] = React.useState("all");
   const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
   const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
@@ -10489,9 +10503,18 @@ function PixelsDashboard({ authUser }) {
             <h3 className="panel-title">{t("Pixels")}</h3>
             <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
           </div>
-          <button className="action-pill" type="button" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? t("Hide Form") : t("Create")}
-          </button>
+          <div className="panel-head-actions">
+            <span className="roles-count">
+              {visiblePixels.length} {t("pixels")}
+            </span>
+            <button
+              type="button"
+              className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
+              onClick={() => setShowForm((v) => !v)}
+            >
+              {showForm ? t("Close") : "+ " + t("Add Pixel")}
+            </button>
+          </div>
         </div>
 
         <AnimatePresence>
@@ -10796,7 +10819,7 @@ function AccountsDashboard({ authUser }) {
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
-  const [showForm, setShowForm] = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
   const [formCountryQuery, setFormCountryQuery] = React.useState("");
   const [editCountryQuery, setEditCountryQuery] = React.useState("");
   const [formPixelQuery, setFormPixelQuery] = React.useState("");
@@ -12026,8 +12049,12 @@ function AccountsDashboard({ authUser }) {
               {t("Register account numbers with a nickname, owner, and status in one clean view.")}
             </p>
           </div>
-          <button className="action-pill" type="button" onClick={() => setShowForm((value) => !value)}>
-            {showForm ? t("Hide Form") : t("Create")}
+          <button
+            type="button"
+            className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
+            onClick={() => setShowForm((value) => !value)}
+          >
+            {showForm ? t("Close") : "+ " + t("Add Account")}
           </button>
         </div>
 
