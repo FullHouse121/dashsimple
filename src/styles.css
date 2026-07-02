@@ -7815,6 +7815,31 @@ select option,
   font-size: 11px;
 }
 
+/* Clear-filters chip — sits at the end of the toolbar row, aligned to the
+   dropdown baseline, only shown when a filter is active */
+.filter-clear-btn {
+  align-self: end;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 138, 122, 0.3);
+  background: rgba(255, 138, 122, 0.08);
+  color: #ff8a7a;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+.filter-clear-btn:hover {
+  background: rgba(255, 138, 122, 0.14);
+  border-color: rgba(255, 138, 122, 0.45);
+}
+
 @media (max-width: 720px) {
   .pixel-table-wrap .pixel-table-toolbar {
     padding: 12px 10px 8px;

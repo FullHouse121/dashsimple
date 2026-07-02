@@ -8676,6 +8676,7 @@ function DomainsDashboard({ authUser }) {
   const [tablePlatformFilter, setTablePlatformFilter] = React.useState("all");
   const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
   const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
+  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
 
   const updateDomainForm = (key) => (event) => {
     setDomainForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -9120,6 +9121,23 @@ function DomainsDashboard({ authUser }) {
       .map((value) => ({ value, label: value, search: value }));
   }, [domainTableRows]);
 
+  const statusFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    domainTableRows.forEach((row) => {
+      const value = String(row.domain?.status || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({
+        value,
+        label: t(value),
+        search: value,
+        dot: STATUS_DOT_COLOR[value.toLowerCase()] || "#8a93a3",
+      }));
+  }, [domainTableRows, t]);
+
   React.useEffect(() => {
     if (tableDomainFilter !== "all" && !domainFilterOptions.some((option) => option.value === tableDomainFilter)) {
       setTableDomainFilter("all");
@@ -9139,18 +9157,40 @@ function DomainsDashboard({ authUser }) {
     if (tableOwnerFilter !== "all" && !ownerFilterOptions.some((option) => option.value === tableOwnerFilter)) {
       setTableOwnerFilter("all");
     }
+    if (tableStatusFilter !== "all" && !statusFilterOptions.some((option) => option.value === tableStatusFilter)) {
+      setTableStatusFilter("all");
+    }
   }, [
     tableDomainFilter,
     tableGameFilter,
     tablePlatformFilter,
     tableGeoFilter,
     tableOwnerFilter,
+    tableStatusFilter,
     domainFilterOptions,
     gameFilterOptions,
     platformFilterOptions,
     geoFilterOptions,
     ownerFilterOptions,
+    statusFilterOptions,
   ]);
+
+  const domainFiltersActive =
+    tableDomainFilter !== "all" ||
+    tableGameFilter !== "all" ||
+    tablePlatformFilter !== "all" ||
+    tableGeoFilter !== "all" ||
+    tableOwnerFilter !== "all" ||
+    tableStatusFilter !== "all";
+
+  const clearDomainFilters = () => {
+    setTableDomainFilter("all");
+    setTableGameFilter("all");
+    setTablePlatformFilter("all");
+    setTableGeoFilter("all");
+    setTableOwnerFilter("all");
+    setTableStatusFilter("all");
+  };
 
   const filteredDomainRows = React.useMemo(
     () =>
@@ -9160,6 +9200,7 @@ function DomainsDashboard({ authUser }) {
         if (tablePlatformFilter !== "all" && String(row.domain?.platform || "") !== tablePlatformFilter) return false;
         if (tableGeoFilter !== "all" && !row.countries.includes(tableGeoFilter)) return false;
         if (canManageDomains && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
+        if (tableStatusFilter !== "all" && String(row.domain?.status || "") !== tableStatusFilter) return false;
         return true;
       }),
     [
@@ -9169,6 +9210,7 @@ function DomainsDashboard({ authUser }) {
       tablePlatformFilter,
       tableGeoFilter,
       tableOwnerFilter,
+      tableStatusFilter,
       canManageDomains,
     ]
   );
@@ -9349,6 +9391,18 @@ function DomainsDashboard({ authUser }) {
                   emptyResultsLabel={t("No countries found.")}
                 />
               </div>
+              <div className="field">
+                <label>{t("Status")}</label>
+                <CountryDropdownPicker
+                  value={tableStatusFilter}
+                  onChange={setTableStatusFilter}
+                  options={statusFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find status")}
+                  emptyResultsLabel={t("No status found.")}
+                />
+              </div>
               {canManageDomains ? (
                 <div className="field">
                   <label>{t("Owner")}</label>
@@ -9362,6 +9416,11 @@ function DomainsDashboard({ authUser }) {
                     emptyResultsLabel={t("No owners found.")}
                   />
                 </div>
+              ) : null}
+              {domainFiltersActive ? (
+                <button type="button" className="filter-clear-btn" onClick={clearDomainFilters}>
+                  <X size={13} /> {t("Clear filters")}
+                </button>
               ) : null}
             </div>
             <table className="entries-table domain-table">
