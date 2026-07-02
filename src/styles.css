@@ -11618,27 +11618,57 @@ select option,
 .overlap-banner-body strong { color: var(--text); font-weight: 700; }
 
 /* Single/Bulk mode toggle on Offer form */
+/* Primary panel action ("+ Add X") — DEUS green CTA pill. When the form is
+   open it flips to a quiet neutral "Close" with a red hover. */
 .offers-mode-toggle {
-  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--muted-strong, #a9adb7);
-  font-size: 11px;
-  font-weight: 600;
+  border: 1px solid rgba(54, 208, 124, 0.45);
+  background: linear-gradient(180deg, rgba(54, 208, 124, 0.16), rgba(54, 208, 124, 0.07));
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family: inherit;
   cursor: pointer;
-  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
 }
 
 .offers-mode-toggle:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(54, 208, 124, 0.7);
+  background: linear-gradient(180deg, rgba(54, 208, 124, 0.24), rgba(54, 208, 124, 0.1));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 14px rgba(54, 208, 124, 0.22);
+  transform: translateY(-1px);
+}
+
+.offers-mode-toggle:active {
+  transform: translateY(0);
 }
 
 .offers-mode-toggle.is-active {
-  color: var(--green);
-  border-color: rgba(54, 208, 124, 0.42);
-  background: rgba(54, 208, 124, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong, #a9adb7);
+  box-shadow: none;
+}
+
+.offers-mode-toggle.is-active:hover {
+  border-color: rgba(255, 138, 122, 0.4);
+  background: rgba(255, 138, 122, 0.08);
+  color: #ff8a7a;
+  box-shadow: none;
+  transform: none;
 }
 
 .bulk-offer-textarea {

@@ -9238,7 +9238,7 @@ function DomainsDashboard({ authUser }) {
               className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
               onClick={() => setShowForm((v) => !v)}
             >
-              {showForm ? t("Close") : "+ " + t("Add Domain")}
+              {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Domain")}</>)}
             </button>
           </div>
         </div>
@@ -10571,7 +10571,7 @@ function PixelsDashboard({ authUser }) {
               className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
               onClick={() => setShowForm((v) => !v)}
             >
-              {showForm ? t("Close") : "+ " + t("Add Pixel")}
+              {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Pixel")}</>)}
             </button>
           </div>
         </div>
@@ -12113,7 +12113,7 @@ function AccountsDashboard({ authUser }) {
             className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
             onClick={() => setShowForm((value) => !value)}
           >
-            {showForm ? t("Close") : "+ " + t("Add Account")}
+            {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Account")}</>)}
           </button>
         </div>
 
@@ -13973,7 +13973,7 @@ function RolesDashboard({ authUser }) {
                   ? t("Cancel edit")
                   : showUserForm
                     ? t("Close")
-                    : "+ " + t("Add User")}
+                    : (<><Plus size={13} strokeWidth={2.5} /> {t("Add User")}</>)}
               </button>
             ) : null}
           </div>
@@ -14134,7 +14134,7 @@ function RolesDashboard({ authUser }) {
                   ? t("Cancel edit")
                   : showTeamForm
                     ? t("Close")
-                    : "+ " + t("Add Buyer")}
+                    : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Buyer")}</>)}
               </button>
             ) : null}
           </div>
