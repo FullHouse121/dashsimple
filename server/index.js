@@ -1098,10 +1098,11 @@ const metaSpendCtesSql = `WITH buyer_spend AS (
 // the pixels join alias of the surrounding query.
 const integrationReceivedSpendSql = (alias, pixelAlias = "p") => `COALESCE(
               (
-                SELECT ds.spend
+                SELECT SUM(ds.spend)
                 FROM domain_spend ds
                 WHERE TRIM(COALESCE(${pixelAlias}.flows, '')) <> ''
-                  AND ds.dom = LOWER(TRIM(${pixelAlias}.flows))
+                  AND ds.dom = ANY(string_to_array(
+                        REPLACE(LOWER(COALESCE(${pixelAlias}.flows, '')), ' ', ''), ','))
               ),
               (
                 SELECT SUM(bs.spend)
@@ -2907,6 +2908,18 @@ const normalizeDomainValue = (value) => {
   return hostCandidate.toLowerCase();
 };
 
+// Pixels can be attached to multiple flows/domains. Accepts an array or a
+// comma/space-separated string; returns deduped normalized hosts.
+const normalizeFlowList = (value) => {
+  const source = Array.isArray(value) ? value : String(value || "").split(/[\s,;]+/);
+  const out = [];
+  for (const item of source) {
+    const v = normalizeDomainValue(item);
+    if (v && !out.includes(v)) out.push(v);
+  }
+  return out;
+};
+
 const normalizeDomainBatchValues = (value) => {
   if (value === null || value === undefined || value === "") return [];
   if (Array.isArray(value)) {
@@ -4066,29 +4079,27 @@ const selectReceivedSpendForBuyer = async (buyerName) => {
 };
 
 const selectReceivedSpendForIntegration = async ({ buyerName, pixelId, pixelFlow }) => {
-  const flow = normalizeDomainValue(pixelFlow);
-  if (flow) {
+  const sumSpendForFlows = async (flowList) => {
     const row = await getRow(
       `SELECT COALESCE(SUM(spend), 0) AS spend
        FROM media_stats
-       WHERE LOWER(TRIM(COALESCE(domain, ''))) = LOWER($1)`,
-      [flow]
+       WHERE LOWER(TRIM(COALESCE(domain, ''))) = ANY($1)`,
+      [flowList]
     );
     return Number(row?.spend || 0);
+  };
+
+  const flows = normalizeFlowList(pixelFlow);
+  if (flows.length) {
+    return sumSpendForFlows(flows);
   }
 
   const parsedPixelId = Number.parseInt(String(pixelId ?? ""), 10);
   if (Number.isFinite(parsedPixelId) && parsedPixelId > 0) {
     const pixelRow = await getRow(`SELECT flows FROM pixels WHERE id = $1`, [parsedPixelId]);
-    const flowFromPixel = normalizeDomainValue(pixelRow?.flows);
-    if (flowFromPixel) {
-      const row = await getRow(
-        `SELECT COALESCE(SUM(spend), 0) AS spend
-         FROM media_stats
-         WHERE LOWER(TRIM(COALESCE(domain, ''))) = LOWER($1)`,
-        [flowFromPixel]
-      );
-      return Number(row?.spend || 0);
+    const flowsFromPixel = normalizeFlowList(pixelRow?.flows);
+    if (flowsFromPixel.length) {
+      return sumSpendForFlows(flowsFromPixel);
     }
   }
 
@@ -6740,8 +6751,9 @@ app.post("/api/pixels", async (req, res) => {
     return res.status(400).json({ error: normalizedGeosResult.error });
   }
   const normalizedGeos = normalizedGeosResult.value;
-  if (!pixelId || !tokenEaag || !normalizedGeos.length || !(flow || flows)) {
-    return res.status(400).json({ error: "Pixel ID, token, GEO, and Flow are required." });
+  const normalizedFlows = normalizeFlowList(flows || flow);
+  if (!pixelId || !tokenEaag || !normalizedGeos.length || !normalizedFlows.length) {
+    return res.status(400).json({ error: "Pixel ID, token, GEO, and Domain are required." });
   }
   try {
     let resolvedOwnerId = req.user.id;
@@ -6761,7 +6773,7 @@ app.post("/api/pixels", async (req, res) => {
     const payload = {
       pixel_id: String(pixelId).trim(),
       token_eaag: String(tokenEaag).trim(),
-      flows: flow ? String(flow).trim() : flows ? String(flows).trim() : null,
+      flows: normalizedFlows.join(", ") || null,
       geo: serializeStringList(normalizedGeos),
       status: String(status || "Active").trim(),
       comment: comment ? String(comment).trim() : null,
@@ -6832,9 +6844,9 @@ app.patch("/api/pixels/:id", async (req, res) => {
     params.push(v);
   }
   if (body.flow !== undefined || body.flows !== undefined) {
-    const v = String(body.flow ?? body.flows ?? "").trim();
+    const list = normalizeFlowList(body.flows !== undefined ? body.flows : body.flow);
     updates.push(`flows = $${updates.length + 1}`);
-    params.push(v || null);
+    params.push(list.length ? list.join(", ") : null);
   }
   if (body.geos !== undefined || body.geo !== undefined) {
     const normalizedGeosResult = normalizeAccountCountries(body.geos !== undefined ? body.geos : body.geo);

@@ -9892,7 +9892,7 @@ function PixelsDashboard({ authUser }) {
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
-    flow: "",
+    flows: [],
     geos: [],
     status: "Active",
     comment: "",
@@ -9910,14 +9910,14 @@ function PixelsDashboard({ authUser }) {
     pixel: null,
     value: "",
   });
-  // Full pixel edit modal (pixel ID, EAAG token, flow, geos)
+  // Full pixel edit modal (pixel ID, EAAG token, domains, geos)
   const [pixelEdit, setPixelEdit] = React.useState({
     open: false,
     pixel: null,
     saving: false,
     error: null,
     showToken: false,
-    form: { pixelId: "", tokenEaag: "", flow: "", geos: [] },
+    form: { pixelId: "", tokenEaag: "", flows: [], geos: [] },
   });
   const [pixelEditGeoQuery, setPixelEditGeoQuery] = React.useState("");
   const copyToastTimeoutRef = React.useRef(null);
@@ -9932,12 +9932,25 @@ function PixelsDashboard({ authUser }) {
     setPixelForm({
       pixelId: "",
       tokenEaag: "",
-      flow: "",
+      flows: [],
       geos: [],
       status: "Active",
       comment: "",
     });
   };
+
+  const togglePixelFlow = React.useCallback((domain) => {
+    const normalized = String(domain || "").trim().toLowerCase();
+    if (!normalized) return;
+    setPixelForm((prev) => {
+      const current = Array.isArray(prev.flows) ? prev.flows : [];
+      const has = current.includes(normalized);
+      return {
+        ...prev,
+        flows: has ? current.filter((item) => item !== normalized) : [...current, normalized],
+      };
+    });
+  }, []);
 
   const togglePixelGeo = React.useCallback((geo) => {
     const normalized = String(geo || "").trim();
@@ -10042,10 +10055,10 @@ function PixelsDashboard({ authUser }) {
 
   const handlePixelSubmit = async (event) => {
     event.preventDefault();
-    const flow = String(pixelForm.flow || "").trim();
+    const normalizedFlows = normalizeDomainInputList(pixelForm.flows);
     const normalizedGeos = normalizeCountryListValue(pixelForm.geos);
-    if (!flow) {
-      setPixelState({ loading: false, error: "Flow is required." });
+    if (!normalizedFlows.length) {
+      setPixelState({ loading: false, error: "At least one domain is required." });
       return;
     }
     if (!normalizedGeos.length) {
@@ -10059,7 +10072,7 @@ function PixelsDashboard({ authUser }) {
         body: JSON.stringify({
           pixelId: pixelForm.pixelId,
           tokenEaag: pixelForm.tokenEaag,
-          flow,
+          flows: normalizedFlows,
           geos: normalizedGeos,
           status: pixelForm.status,
           comment: pixelForm.comment,
@@ -10131,7 +10144,7 @@ function PixelsDashboard({ authUser }) {
       form: {
         pixelId: String(pixel.pixel_id || ""),
         tokenEaag: String(pixel.token_eaag || ""),
-        flow: String(pixel.flows || ""),
+        flows: normalizeDomainInputList(pixel.flows),
         geos: normalizeCountryListValue(
           Array.isArray(pixel?.geos) && pixel.geos.length ? pixel.geos : pixel?.geo
         ),
@@ -10140,7 +10153,23 @@ function PixelsDashboard({ authUser }) {
   };
 
   const closePixelEdit = () => {
-    setPixelEdit({ open: false, pixel: null, saving: false, error: null, showToken: false, form: { pixelId: "", tokenEaag: "", flow: "", geos: [] } });
+    setPixelEdit({ open: false, pixel: null, saving: false, error: null, showToken: false, form: { pixelId: "", tokenEaag: "", flows: [], geos: [] } });
+  };
+
+  const togglePixelEditFlow = (domain) => {
+    const normalized = String(domain || "").trim().toLowerCase();
+    if (!normalized) return;
+    setPixelEdit((prev) => {
+      const current = prev.form.flows || [];
+      const has = current.includes(normalized);
+      return {
+        ...prev,
+        form: {
+          ...prev.form,
+          flows: has ? current.filter((item) => item !== normalized) : [...current, normalized],
+        },
+      };
+    });
   };
 
   const togglePixelEditGeo = (geo) => {
@@ -10178,7 +10207,7 @@ function PixelsDashboard({ authUser }) {
         body: JSON.stringify({
           pixelId: f.pixelId,
           tokenEaag: f.tokenEaag,
-          flow: f.flow,
+          flows: f.flows,
           geos: f.geos,
         }),
       });
@@ -10371,15 +10400,19 @@ function PixelsDashboard({ authUser }) {
 
   const pixelTableRows = React.useMemo(
     () =>
-      visiblePixels.map((pixel) => ({
-        pixel,
-        buyerLabel: domainOwnerByFlow.get(String(pixel?.flows || "").trim().toLowerCase()) || "—",
-        geos: normalizeCountryListValue(
-          Array.isArray(pixel?.geos) && pixel.geos.length ? pixel.geos : pixel?.geo
-        ),
-        statusLabel: normalizeStatusValue(pixel?.status),
-        ownerLabel: resolveOwnerLabel(pixel),
-      })),
+      visiblePixels.map((pixel) => {
+        const flows = normalizeDomainInputList(pixel?.flows);
+        return {
+          pixel,
+          flows,
+          buyerLabel: flows.length ? domainOwnerByFlow.get(flows[0]) || "—" : "—",
+          geos: normalizeCountryListValue(
+            Array.isArray(pixel?.geos) && pixel.geos.length ? pixel.geos : pixel?.geo
+          ),
+          statusLabel: normalizeStatusValue(pixel?.status),
+          ownerLabel: resolveOwnerLabel(pixel),
+        };
+      }),
     [visiblePixels, domainOwnerByFlow, normalizeStatusValue, authUser?.id, authUser?.username, ownerLookup, t]
   );
 
@@ -10439,13 +10472,11 @@ function PixelsDashboard({ authUser }) {
   }, [pixelTableRows]);
 
   const pixelFlowFilterOptions = React.useMemo(() => {
-    const unique = new Map();
+    const unique = new Set();
     pixelTableRows.forEach((row) => {
-      const value = String(row.pixel?.flows || "").trim();
-      if (!value) return;
-      unique.set(value.toLowerCase(), value);
+      row.flows.forEach((flow) => unique.add(flow));
     });
-    return Array.from(unique.values())
+    return Array.from(unique)
       .sort((first, second) => first.localeCompare(second))
       .map((value) => ({ value, label: value, search: value }));
   }, [pixelTableRows]);
@@ -10509,7 +10540,7 @@ function PixelsDashboard({ authUser }) {
   const filteredPixelTableRows = React.useMemo(() => {
     return pixelTableRows.filter((row) => {
       if (tablePixelIdFilter !== "all" && String(row.pixel?.pixel_id || "") !== tablePixelIdFilter) return false;
-      if (tableFlowFilter !== "all" && String(row.pixel?.flows || "") !== tableFlowFilter) return false;
+      if (tableFlowFilter !== "all" && !row.flows.includes(tableFlowFilter)) return false;
       if (tableBuyerFilter !== "all" && row.buyerLabel !== tableBuyerFilter) return false;
       if (tableGeoFilter !== "all" && !row.geos.includes(tableGeoFilter)) return false;
       if (tableStatusFilter !== "all" && row.statusLabel !== tableStatusFilter) return false;
@@ -10630,15 +10661,16 @@ function PixelsDashboard({ authUser }) {
                   />
                 </div>
                 <div className="field">
-                  <label>{t("Flow")} <span className="field-pace-hint">{t("registered domain")}</span></label>
-                  <Select
-                    value={pixelEdit.form.flow}
-                    onChange={(v) => setPixelEdit((prev) => ({ ...prev, form: { ...prev.form, flow: v } }))}
+                  <label>{t("Domains")} <span className="field-pace-hint">{t("registered domains")}</span></label>
+                  <CountryDropdownPicker
+                    multiple
+                    values={pixelEdit.form.flows}
+                    onToggle={togglePixelEditFlow}
                     options={domains
                       .map((d) => String(d?.domain || "").trim())
                       .filter(Boolean)
                       .map((name) => ({ value: name, label: name }))}
-                    placeholder={domains.length ? t("Select a domain") : t("No domains")}
+                    placeholder={domains.length ? t("No domains selected") : t("No domains")}
                     searchPlaceholder={t("Find domain")}
                     emptyResultsLabel={t("No domains found.")}
                   />
@@ -10792,20 +10824,21 @@ function PixelsDashboard({ authUser }) {
               />
             </div>
             <div className="field">
-              <label>{t("Flow")}</label>
+              <label>{t("Domains")} <span className="field-pace-hint">{t("one pixel, many domains")}</span></label>
               <CountryDropdownPicker
-                value={pixelForm.flow}
-                onChange={(flow) => setPixelForm((prev) => ({ ...prev, flow }))}
+                multiple
+                values={pixelForm.flows}
+                onToggle={togglePixelFlow}
                 options={flowDropdownOptions}
                 placeholder={
                   domainState.loading
                     ? t("Loading...")
                     : flowDropdownOptions.length
-                      ? t("Select")
-                      : t("No flows")
+                      ? t("No domains selected")
+                      : t("No domains")
                 }
-                searchPlaceholder={t("Type to find flows")}
-                emptyResultsLabel={t("No flows")}
+                searchPlaceholder={t("Type to find domains")}
+                emptyResultsLabel={t("No domains")}
               />
             </div>
             <div className="field">
@@ -10885,15 +10918,15 @@ function PixelsDashboard({ authUser }) {
                 />
               </div>
               <div className="field">
-                <label>{t("Flow")}</label>
+                <label>{t("Domain")}</label>
                 <CountryDropdownPicker
                   value={tableFlowFilter}
                   onChange={setTableFlowFilter}
                   options={pixelFlowFilterOptions}
                   allOption={{ value: "all", label: t("All") }}
                   placeholder={t("Select")}
-                  searchPlaceholder={t("Type to find flows")}
-                  emptyResultsLabel={t("No flows found.")}
+                  searchPlaceholder={t("Type to find domains")}
+                  emptyResultsLabel={t("No domains found.")}
                 />
               </div>
               <div className="field">
@@ -10947,7 +10980,7 @@ function PixelsDashboard({ authUser }) {
                   <th>{t("Pixel ID")}</th>
                   <th>{t("Token EAAG")}</th>
                   <th>{t("GEO")}</th>
-                  <th>{t("Flow")}</th>
+                  <th>{t("Domain")}</th>
                   <th>{t("Status")}</th>
                   <th>{t("Comment")}</th>
                   <th>{t("Owner")}</th>
@@ -10955,7 +10988,7 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredPixelTableRows.map(({ pixel, ownerLabel, geos }) => (
+                {filteredPixelTableRows.map(({ pixel, ownerLabel, geos, flows }) => (
                   <tr key={pixel.id}>
                     <td className="mono row-index-cell">{pixel.id}</td>
                     <td className="copy-cell">
@@ -11007,11 +11040,20 @@ function PixelsDashboard({ authUser }) {
                       )}
                     </td>
                     <td>
-                      {pixel.flows ? (
-                        <span className="flow-pill" title={pixel.flows}>
-                          <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
-                          {pixel.flows}
-                        </span>
+                      {flows.length ? (
+                        <div className="geo-chip-row">
+                          {flows.slice(0, 2).map((flow) => (
+                            <span className="flow-pill" key={flow} title={flow}>
+                              <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
+                              {flow}
+                            </span>
+                          ))}
+                          {flows.length > 2 ? (
+                            <span className="geo-chip geo-chip-more" title={flows.slice(2).join(", ")}>
+                              +{flows.length - 2}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="offer-muted">—</span>
                       )}
@@ -11124,14 +11166,18 @@ function AccountsDashboard({ authUser }) {
   const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
   const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
 
+  const [tableBmFilter, setTableBmFilter] = React.useState("all");
+
   const accountFiltersActive =
     tableAccountFilter !== "all" ||
+    tableBmFilter !== "all" ||
     tableGeoFilter !== "all" ||
     tableStatusFilter !== "all" ||
     tableOwnerFilter !== "all";
 
   const clearAccountFilters = () => {
     setTableAccountFilter("all");
+    setTableBmFilter("all");
     setTableGeoFilter("all");
     setTableStatusFilter("all");
     setTableOwnerFilter("all");
@@ -11606,6 +11652,18 @@ function AccountsDashboard({ authUser }) {
       .map((value) => ({ value, label: value, search: value }));
   }, [accountTableRows]);
 
+  const accountBmFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    accountTableRows.forEach(({ row }) => {
+      const value = String(row?.nickname || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [accountTableRows]);
+
   const accountStatusFilterOptions = React.useMemo(
     () => accountStatusOptions.map((status) => ({ value: status, label: t(status), search: status })),
     [accountStatusOptions, t]
@@ -11627,6 +11685,9 @@ function AccountsDashboard({ authUser }) {
     if (tableAccountFilter !== "all" && !accountFilterOptions.some((option) => option.value === tableAccountFilter)) {
       setTableAccountFilter("all");
     }
+    if (tableBmFilter !== "all" && !accountBmFilterOptions.some((option) => option.value === tableBmFilter)) {
+      setTableBmFilter("all");
+    }
     if (tableGeoFilter !== "all" && !accountGeoFilterOptions.some((option) => option.value === tableGeoFilter)) {
       setTableGeoFilter("all");
     }
@@ -11644,10 +11705,12 @@ function AccountsDashboard({ authUser }) {
     }
   }, [
     tableAccountFilter,
+    tableBmFilter,
     tableGeoFilter,
     tableStatusFilter,
     tableOwnerFilter,
     accountFilterOptions,
+    accountBmFilterOptions,
     accountGeoFilterOptions,
     accountStatusFilterOptions,
     accountOwnerFilterOptions,
@@ -11657,12 +11720,13 @@ function AccountsDashboard({ authUser }) {
     () =>
       accountTableRows.filter(({ row, ownerLabel, countries }) => {
         if (tableAccountFilter !== "all" && String(row?.account_number || "") !== tableAccountFilter) return false;
+        if (tableBmFilter !== "all" && String(row?.nickname || "").trim() !== tableBmFilter) return false;
         if (tableGeoFilter !== "all" && !countries.includes(tableGeoFilter)) return false;
         if (tableStatusFilter !== "all" && String(row?.status || "") !== tableStatusFilter) return false;
         if (isLeadership && tableOwnerFilter !== "all" && ownerLabel !== tableOwnerFilter) return false;
         return true;
       }),
-    [accountTableRows, tableAccountFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, isLeadership]
+    [accountTableRows, tableAccountFilter, tableBmFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, isLeadership]
   );
 
   const resolveIntegrationState = (row) => {
@@ -12295,8 +12359,8 @@ function AccountsDashboard({ authUser }) {
                   <input value={editModal.form.accountNumber} onChange={updateEditForm("accountNumber")} required />
                 </div>
                 <div className="field">
-                  <label>{t("Nickname")}</label>
-                  <input value={editModal.form.nickname} onChange={updateEditForm("nickname")} placeholder={t("e.g. Main BR account")} maxLength={60} />
+                  <label>{t("BM")}</label>
+                  <input value={editModal.form.nickname} onChange={updateEditForm("nickname")} placeholder={t("e.g. BM 3 Mina")} maxLength={60} />
                 </div>
                 <div className="field">
                   <label>{t("Status")}</label>
@@ -12320,12 +12384,15 @@ function AccountsDashboard({ authUser }) {
                   </div>
                 ) : null}
                 <div className="field field-span-3">
-                  <label>{t("Comment")}</label>
-                  <textarea
-                    rows={4}
-                    value={editModal.form.notes}
-                    onChange={updateEditForm("notes")}
-                    placeholder={t("Add a comment")}
+                  <label>{t("GEO")} <span className="field-pace-hint">{t("multi-select")}</span></label>
+                  <CountryDropdownPicker
+                    multiple
+                    values={editModal.form.countries}
+                    onToggle={toggleEditCountry}
+                    options={countryOptions}
+                    placeholder={t("No countries selected")}
+                    searchPlaceholder={t("Type to find countries")}
+                    emptyResultsLabel={t("No countries found.")}
                   />
                 </div>
               </div>
@@ -12395,8 +12462,8 @@ function AccountsDashboard({ authUser }) {
               <input value={form.accountNumber} onChange={updateForm("accountNumber")} placeholder="804123612647228" required />
             </div>
             <div className="field">
-              <label>{t("Nickname")} <span className="field-pace-hint">{t("optional label")}</span></label>
-              <input value={form.nickname} onChange={updateForm("nickname")} placeholder={t("e.g. Main BR account")} maxLength={60} />
+              <label>{t("BM")} <span className="field-pace-hint">{t("business manager")}</span></label>
+              <input value={form.nickname} onChange={updateForm("nickname")} placeholder={t("e.g. BM 3 Mina")} maxLength={60} />
             </div>
             <div className="field">
               <label>{t("Status")}</label>
@@ -12420,8 +12487,16 @@ function AccountsDashboard({ authUser }) {
               </div>
             ) : null}
             <div className="field field-span-3 accounts-comment-field">
-              <label>{t("Comment")}</label>
-              <textarea rows={3} value={form.notes} onChange={updateForm("notes")} placeholder={t("Add a comment")} />
+              <label>{t("GEO")} <span className="field-pace-hint">{t("multi-select")}</span></label>
+              <CountryDropdownPicker
+                multiple
+                values={form.countries}
+                onToggle={toggleFormCountry}
+                options={countryOptions}
+                placeholder={t("No countries selected")}
+                searchPlaceholder={t("Type to find countries")}
+                emptyResultsLabel={t("No countries found.")}
+              />
             </div>
             <div className="form-actions">
               <button className="ghost" type="button" onClick={resetForm}>
@@ -12456,6 +12531,18 @@ function AccountsDashboard({ authUser }) {
                   placeholder={t("Select")}
                   searchPlaceholder={t("Type to find accounts")}
                   emptyResultsLabel={t("No entries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("BM")}</label>
+                <CountryDropdownPicker
+                  value={tableBmFilter}
+                  onChange={setTableBmFilter}
+                  options={accountBmFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find BMs")}
+                  emptyResultsLabel={t("No BMs found.")}
                 />
               </div>
               <div className="field">
@@ -12506,16 +12593,16 @@ function AccountsDashboard({ authUser }) {
               <thead>
                 <tr>
                   <th>{t("Account")}</th>
-                  <th>{t("Nickname")}</th>
+                  <th>{t("BM")}</th>
                   <th>{t("Status")}</th>
-                  <th>{t("Comment")}</th>
+                  <th>{t("GEO")}</th>
                   <th>{t("Integration")}</th>
                   <th>{t("Owner")}</th>
                   <th>{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAccountRows.map(({ row, ownerLabel }) => {
+                {filteredAccountRows.map(({ row, ownerLabel, countries }) => {
                   const integrationState = resolveIntegrationState(row);
                   const checkResult = integrationCheckResult[row.id];
                   const rowCanManage = canManageRow(row);
@@ -12545,7 +12632,25 @@ function AccountsDashboard({ authUser }) {
                           </span>
                         )}
                       </td>
-                      <td className="accounts-comment-cell">{row.notes || "—"}</td>
+                      <td>
+                        {countries.length ? (
+                          <div className="geo-chip-row">
+                            {countries.slice(0, 3).map((c) => (
+                              <span className="geo-chip" key={c}>
+                                <CountryFlag value={c} />
+                                {c}
+                              </span>
+                            ))}
+                            {countries.length > 3 ? (
+                              <span className="geo-chip geo-chip-more" title={countries.slice(3).join(", ")}>
+                                +{countries.length - 3}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="offer-muted">—</span>
+                        )}
+                      </td>
                       <td className="accounts-integration-cell">
                         <div className="accounts-integration-badges">
                           <span className="geo-chip">
@@ -12580,15 +12685,6 @@ function AccountsDashboard({ authUser }) {
                               disabled={!rowCanManage}
                             >
                               <Pencil size={15} />
-                            </button>
-                            <button
-                              className="icon-btn"
-                              type="button"
-                              onClick={() => openEditModal(row)}
-                              title={t("Comment")}
-                              disabled={!rowCanManage}
-                            >
-                              <MessageSquare size={15} />
                             </button>
                             <button
                               className="icon-btn icon-btn-check"
