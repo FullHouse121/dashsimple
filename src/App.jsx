@@ -12503,7 +12503,12 @@ function AccountsDashboard({ authUser }) {
                   const rowCanManage = canManageRow(row);
                   return (
                     <tr key={row.id} className={`accounts-row status-${String(row.status || "").toLowerCase()}`}>
-                      <td className="accounts-account-number">{row.account_number}</td>
+                      <td className="accounts-account-number">
+                        <span className="flow-pill" title={row.account_number}>
+                          <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
+                          {row.account_number}
+                        </span>
+                      </td>
                       <td className="accounts-nickname-cell">
                         {row.nickname ? row.nickname : <span className="offer-muted">—</span>}
                       </td>
@@ -12525,10 +12530,24 @@ function AccountsDashboard({ authUser }) {
                       <td className="accounts-comment-cell">{row.notes || "—"}</td>
                       <td className="accounts-integration-cell">
                         <div className="accounts-integration-badges">
-                          <span className={`accounts-integration-pill ${integrationState.tone}`}>{integrationState.label}</span>
+                          <span className="geo-chip">
+                            <span
+                              className="cs-dot"
+                              style={{
+                                background:
+                                  integrationState.tone === "is-working"
+                                    ? "#36d07c"
+                                    : integrationState.tone === "is-down"
+                                      ? "#ff8a7a"
+                                      : "#ffc94d",
+                              }}
+                              aria-hidden="true"
+                            />
+                            {integrationState.label}
+                          </span>
                         </div>
                         {row.integration_account_number ? (
-                          <span className="accounts-integration-caption">{row.integration_account_number}</span>
+                          <span className="accounts-integration-caption mono">{row.integration_account_number}</span>
                         ) : null}
                       </td>
                       <td>{ownerLabel && ownerLabel !== "—" ? (<span className="owner-pill"><span className="owner-pill-dot" />{ownerLabel}</span>) : (<span className="offer-muted">—</span>)}</td>
