@@ -11123,6 +11123,19 @@ function AccountsDashboard({ authUser }) {
   const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
   const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
   const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
+
+  const accountFiltersActive =
+    tableAccountFilter !== "all" ||
+    tableGeoFilter !== "all" ||
+    tableStatusFilter !== "all" ||
+    tableOwnerFilter !== "all";
+
+  const clearAccountFilters = () => {
+    setTableAccountFilter("all");
+    setTableGeoFilter("all");
+    setTableStatusFilter("all");
+    setTableOwnerFilter("all");
+  };
   const [form, setForm] = React.useState({
     accountNumber: "",
     nickname: "",
@@ -12482,6 +12495,11 @@ function AccountsDashboard({ authUser }) {
                     emptyResultsLabel={t("No owners found.")}
                   />
                 </div>
+              ) : null}
+              {accountFiltersActive ? (
+                <button type="button" className="filter-clear-btn" onClick={clearAccountFilters}>
+                  <X size={13} /> {t("Clear filters")}
+                </button>
               ) : null}
             </div>
             <table className="entries-table accounts-table">
