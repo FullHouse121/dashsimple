@@ -12520,7 +12520,7 @@ function AccountsDashboard({ authUser }) {
                   const checkResult = integrationCheckResult[row.id];
                   const rowCanManage = canManageRow(row);
                   return (
-                    <tr key={row.id} className={`accounts-row status-${String(row.status || "").toLowerCase()}`}>
+                    <tr key={row.id} className={`accounts-row acc-row-${String(row.status || "").toLowerCase()}`}>
                       <td className="accounts-account-number">
                         <span className="flow-pill" title={row.account_number}>
                           <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
