@@ -5233,23 +5233,28 @@ select option,
   flex-wrap: wrap;
 }
 
-.geo-chip {
+/* GEO + Flow chips share the Status chip shell: 32px dark rounded-rect,
+   thin border, 12px/500 white label; the flag / colour dot carries the
+   identity, exactly like the status dot. */
+.geo-chip,
+.flow-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 999px;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted-strong, #a9adb7);
-  font-size: 11px;
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
 
 .geo-chip .fi {
   border-radius: 2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .geo-chip-more {
@@ -5257,27 +5262,10 @@ select option,
   cursor: default;
 }
 
-/* Flow pill — landing domain as a quiet mono chip */
 .flow-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   max-width: 220px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(106, 214, 255, 0.22);
-  background: rgba(106, 214, 255, 0.06);
-  color: #9fd9f6;
-  font-family: "JetBrains Mono", "Fira Code", monospace;
-  font-size: 11px;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.flow-pill svg {
-  flex-shrink: 0;
-  opacity: 0.7;
 }
 
 .accounts-form textarea {
@@ -6382,33 +6370,29 @@ select option,
   gap: 12px;
 }
 
+/* KPI cards — same anatomy as the main Dashboard stat cards (.card):
+   gradient shell, icon + label head, big value, muted footer. The tone
+   accent survives only in the icon color and the share bar. */
 .accounts-summary-item {
   position: relative;
   overflow: hidden;
-  padding: 16px 18px;
+  padding: 20px 22px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(160deg, rgba(30, 32, 37, 0.9), rgba(20, 22, 26, 0.92));
+  border: 1px solid #24262b;
+  background: linear-gradient(160deg, rgba(34, 36, 41, 0.95), rgba(24, 26, 30, 0.9));
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.35);
+  min-height: 108px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   --kpi-accent: #6b7080;
-  transition: border-color 0.18s ease, transform 0.18s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
 }
 
 .accounts-summary-item:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--kpi-accent) 40%, transparent);
-}
-
-/* left accent edge in the metric's tone */
-.accounts-summary-item::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--kpi-accent);
-  opacity: 0.85;
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.42);
+  border-color: #2c2f35;
 }
 
 .accounts-summary-item.tone-neutral { --kpi-accent: #6ad6ff; }
@@ -6419,36 +6403,31 @@ select option,
 .accounts-summary-top {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .accounts-summary-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--kpi-accent);
-  background: color-mix(in srgb, var(--kpi-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--kpi-accent) 28%, transparent);
 }
 
 .accounts-summary-label {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-strong, #a9adb7);
-  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+  font-weight: 500;
 }
 
 .accounts-summary-item strong {
-  font-size: 34px;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  letter-spacing: 0.3px;
   color: var(--text);
   line-height: 1;
-  font-weight: 700;
+  font-weight: 600;
   font-feature-settings: "tnum";
 }
 
@@ -6457,6 +6436,7 @@ select option,
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   overflow: hidden;
+  margin-top: auto;
 }
 
 .accounts-summary-bar span {
@@ -6468,8 +6448,9 @@ select option,
 }
 
 .accounts-summary-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
+  margin-top: auto;
 }
 
 .registry-dashboard-panel .form-actions {

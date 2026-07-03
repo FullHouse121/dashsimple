@@ -10671,7 +10671,7 @@ function PixelsDashboard({ authUser }) {
           ].map((kpi) => (
             <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
               <div className="accounts-summary-top">
-                <span className="accounts-summary-icon"><kpi.Icon size={15} /></span>
+                <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
                 <span className="accounts-summary-label">{kpi.label}</span>
               </div>
               <strong>{kpi.value}</strong>
@@ -10944,7 +10944,7 @@ function PixelsDashboard({ authUser }) {
                     <td>
                       {pixel.flows ? (
                         <span className="flow-pill" title={pixel.flows}>
-                          <Globe size={11} />
+                          <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
                           {pixel.flows}
                         </span>
                       ) : (
@@ -12295,7 +12295,7 @@ function AccountsDashboard({ authUser }) {
           ].map((kpi) => (
             <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
               <div className="accounts-summary-top">
-                <span className="accounts-summary-icon"><kpi.Icon size={15} /></span>
+                <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
                 <span className="accounts-summary-label">{kpi.label}</span>
               </div>
               <strong>{kpi.value}</strong>
