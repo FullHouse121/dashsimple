@@ -10462,6 +10462,21 @@ function PixelsDashboard({ authUser }) {
     canManagePixels,
   ]);
 
+  // KPI strip: registry health at a glance (same DNA as Accounts Registry)
+  const pixelSummary = React.useMemo(() => {
+    const total = pixelTableRows.length;
+    let active = 0;
+    let attention = 0;
+    let blocked = 0;
+    pixelTableRows.forEach((row) => {
+      const s = String(row.statusLabel || "").toLowerCase();
+      if (s === "active") active += 1;
+      else if (s === "pending" || s === "paused") attention += 1;
+      else if (s === "blocked" || s === "expired") blocked += 1;
+    });
+    return { total, active, attention, blocked };
+  }, [pixelTableRows]);
+
   return (
     <section className="form-section">
       <AnimatePresence>
@@ -10623,14 +10638,14 @@ function PixelsDashboard({ authUser }) {
       </AnimatePresence>
 
       <motion.div
-        className="panel meta-token-panel"
+        className="panel registry-dashboard-panel pixel-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">{t("Pixels")}</h3>
+            <h3 className="panel-title">{t("Pixels Registry")}</h3>
             <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
           </div>
           <div className="panel-head-actions">
@@ -10645,6 +10660,30 @@ function PixelsDashboard({ authUser }) {
               {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Pixel")}</>)}
             </button>
           </div>
+        </div>
+
+        <div className="accounts-summary-strip">
+          {[
+            { key: "total", tone: "neutral", label: t("Registered Pixels"), value: pixelSummary.total, Icon: Zap, pct: null },
+            { key: "active", tone: "success", label: t("Active"), value: pixelSummary.active, Icon: CheckCircle, pct: pixelSummary.total ? Math.round((pixelSummary.active / pixelSummary.total) * 100) : 0 },
+            { key: "attention", tone: "warning", label: t("Need Attention"), value: pixelSummary.attention, Icon: AlertTriangle, pct: pixelSummary.total ? Math.round((pixelSummary.attention / pixelSummary.total) * 100) : 0 },
+            { key: "blocked", tone: "danger", label: t("Blocked / Expired"), value: pixelSummary.blocked, Icon: Lock, pct: pixelSummary.total ? Math.round((pixelSummary.blocked / pixelSummary.total) * 100) : 0 },
+          ].map((kpi) => (
+            <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+              <div className="accounts-summary-top">
+                <span className="accounts-summary-icon"><kpi.Icon size={15} /></span>
+                <span className="accounts-summary-label">{kpi.label}</span>
+              </div>
+              <strong>{kpi.value}</strong>
+              {kpi.pct !== null ? (
+                <div className="accounts-summary-bar">
+                  <span style={{ width: `${Math.min(100, kpi.pct)}%` }} />
+                </div>
+              ) : (
+                <span className="accounts-summary-sub">{t("in registry")}</span>
+              )}
+            </div>
+          ))}
         </div>
 
         <AnimatePresence>
@@ -10853,10 +10892,10 @@ function PixelsDashboard({ authUser }) {
               <tbody>
                 {filteredPixelTableRows.map(({ pixel, ownerLabel, geos }) => (
                   <tr key={pixel.id}>
-                    <td>{pixel.id}</td>
+                    <td className="mono row-index-cell">{pixel.id}</td>
                     <td className="copy-cell">
                       <div className="copy-inline">
-                        <span className="copy-text">{pixel.pixel_id}</span>
+                        <span className="copy-text mono">{pixel.pixel_id}</span>
                         <button
                           className="icon-btn copy-btn"
                           type="button"
@@ -10869,7 +10908,7 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td className="copy-cell token-cell">
                       <div className="copy-inline">
-                        <span className="copy-text">{maskToken(pixel.token_eaag)}</span>
+                        <span className="copy-text mono">{maskToken(pixel.token_eaag)}</span>
                         <button
                           className="icon-btn copy-btn"
                           type="button"
@@ -10880,8 +10919,38 @@ function PixelsDashboard({ authUser }) {
                         </button>
                       </div>
                     </td>
-                    <td>{geos.length ? geos.join(", ") : "—"}</td>
-                    <td>{pixel.flows || "—"}</td>
+                    <td>
+                      {geos.length ? (
+                        <div className="geo-chip-row">
+                          {geos.slice(0, 3).map((g) => (
+                            <span className="geo-chip" key={g}>
+                              <CountryFlag value={g} />
+                              {g}
+                            </span>
+                          ))}
+                          {geos.length > 3 ? (
+                            <span
+                              className="geo-chip geo-chip-more"
+                              title={geos.slice(3).join(", ")}
+                            >
+                              +{geos.length - 3}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {pixel.flows ? (
+                        <span className="flow-pill" title={pixel.flows}>
+                          <Globe size={11} />
+                          {pixel.flows}
+                        </span>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
                     <td>
                       {canManagePixels || pixel.owner_id === authUser?.id ? (
                         <Select

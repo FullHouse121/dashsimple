@@ -5177,7 +5177,8 @@ select option,
 }
 
 .registry-dashboard-panel .domain-form,
-.registry-dashboard-panel .accounts-form {
+.registry-dashboard-panel .accounts-form,
+.registry-dashboard-panel .pixel-form {
   margin-top: 14px;
   padding: 16px;
   border-radius: 16px;
@@ -5187,7 +5188,8 @@ select option,
 }
 
 .accounts-form .field label,
-.domain-form .field label {
+.domain-form .field label,
+.registry-dashboard-panel .pixel-form .field label {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 11px;
@@ -5199,7 +5201,10 @@ select option,
 .accounts-form .field textarea,
 .domain-form .field input,
 .domain-form .field select,
-.domain-form .field textarea {
+.domain-form .field textarea,
+.registry-dashboard-panel .pixel-form .field input,
+.registry-dashboard-panel .pixel-form .field select,
+.registry-dashboard-panel .pixel-form .field textarea {
   border: 1px solid rgba(255, 255, 255, 0.09);
   background: linear-gradient(160deg, rgba(25, 27, 32, 0.95), rgba(20, 22, 27, 0.95));
   color: #f0f2f7;
@@ -5208,8 +5213,71 @@ select option,
 .accounts-form .field input::placeholder,
 .accounts-form .field textarea::placeholder,
 .domain-form .field input::placeholder,
-.domain-form .field textarea::placeholder {
+.domain-form .field textarea::placeholder,
+.registry-dashboard-panel .pixel-form .field input::placeholder,
+.registry-dashboard-panel .pixel-form .field textarea::placeholder {
   color: rgba(151, 157, 168, 0.78);
+}
+
+/* ── Pixels Registry detail cells ─────────────────────────────────── */
+.row-index-cell {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* GEO flag chips — flag + ISO label, capped row with +N overflow */
+.geo-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.geo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong, #a9adb7);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.geo-chip .fi {
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.geo-chip-more {
+  color: var(--muted);
+  cursor: default;
+}
+
+/* Flow pill — landing domain as a quiet mono chip */
+.flow-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(106, 214, 255, 0.22);
+  background: rgba(106, 214, 255, 0.06);
+  color: #9fd9f6;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-pill svg {
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .accounts-form textarea {
