@@ -9822,6 +9822,8 @@ function PixelsDashboard({ authUser }) {
   const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
   const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
   const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
+  const [tablePixelIdFilter, setTablePixelIdFilter] = React.useState("all");
+  const [tableFlowFilter, setTableFlowFilter] = React.useState("all");
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
@@ -10359,6 +10361,30 @@ function PixelsDashboard({ authUser }) {
       .map((owner) => ({ value: owner, label: owner, search: owner }));
   }, [pixelTableRows]);
 
+  const pixelIdFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    pixelTableRows.forEach((row) => {
+      const value = String(row.pixel?.pixel_id || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((first, second) => first.localeCompare(second))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [pixelTableRows]);
+
+  const pixelFlowFilterOptions = React.useMemo(() => {
+    const unique = new Map();
+    pixelTableRows.forEach((row) => {
+      const value = String(row.pixel?.flows || "").trim();
+      if (!value) return;
+      unique.set(value.toLowerCase(), value);
+    });
+    return Array.from(unique.values())
+      .sort((first, second) => first.localeCompare(second))
+      .map((value) => ({ value, label: value, search: value }));
+  }, [pixelTableRows]);
+
   React.useEffect(() => {
     if (tableBuyerFilter === "all") return;
     if (!pixelBuyerOptions.some((option) => option.value === tableBuyerFilter)) {
@@ -10379,17 +10405,62 @@ function PixelsDashboard({ authUser }) {
     if (tableOwnerFilter !== "all" && !pixelOwnerOptions.some((option) => option.value === tableOwnerFilter)) {
       setTableOwnerFilter("all");
     }
-  }, [tableGeoFilter, tableStatusFilter, tableOwnerFilter, pixelGeoOptions, pixelStatusFilterOptions, pixelOwnerOptions]);
+    if (tablePixelIdFilter !== "all" && !pixelIdFilterOptions.some((option) => option.value === tablePixelIdFilter)) {
+      setTablePixelIdFilter("all");
+    }
+    if (tableFlowFilter !== "all" && !pixelFlowFilterOptions.some((option) => option.value === tableFlowFilter)) {
+      setTableFlowFilter("all");
+    }
+  }, [
+    tableGeoFilter,
+    tableStatusFilter,
+    tableOwnerFilter,
+    tablePixelIdFilter,
+    tableFlowFilter,
+    pixelGeoOptions,
+    pixelStatusFilterOptions,
+    pixelOwnerOptions,
+    pixelIdFilterOptions,
+    pixelFlowFilterOptions,
+  ]);
+
+  const pixelFiltersActive =
+    tableBuyerFilter !== "all" ||
+    tableGeoFilter !== "all" ||
+    tableStatusFilter !== "all" ||
+    tableOwnerFilter !== "all" ||
+    tablePixelIdFilter !== "all" ||
+    tableFlowFilter !== "all";
+
+  const clearPixelFilters = () => {
+    setTableBuyerFilter("all");
+    setTableGeoFilter("all");
+    setTableStatusFilter("all");
+    setTableOwnerFilter("all");
+    setTablePixelIdFilter("all");
+    setTableFlowFilter("all");
+  };
 
   const filteredPixelTableRows = React.useMemo(() => {
     return pixelTableRows.filter((row) => {
+      if (tablePixelIdFilter !== "all" && String(row.pixel?.pixel_id || "") !== tablePixelIdFilter) return false;
+      if (tableFlowFilter !== "all" && String(row.pixel?.flows || "") !== tableFlowFilter) return false;
       if (tableBuyerFilter !== "all" && row.buyerLabel !== tableBuyerFilter) return false;
       if (tableGeoFilter !== "all" && !row.geos.includes(tableGeoFilter)) return false;
       if (tableStatusFilter !== "all" && row.statusLabel !== tableStatusFilter) return false;
       if (canManagePixels && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
       return true;
     });
-  }, [pixelTableRows, tableBuyerFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, canManagePixels]);
+  }, [
+    pixelTableRows,
+    tableBuyerFilter,
+    tableGeoFilter,
+    tableStatusFilter,
+    tableOwnerFilter,
+    tablePixelIdFilter,
+    tableFlowFilter,
+    canManagePixels,
+  ]);
 
   return (
     <section className="form-section">
@@ -10686,6 +10757,18 @@ function PixelsDashboard({ authUser }) {
           <div className="table-wrap pixel-table-wrap">
             <div className="pixel-table-toolbar">
               <div className="field">
+                <label>{t("Pixel ID")}</label>
+                <CountryDropdownPicker
+                  value={tablePixelIdFilter}
+                  onChange={setTablePixelIdFilter}
+                  options={pixelIdFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find pixels")}
+                  emptyResultsLabel={t("No pixels found.")}
+                />
+              </div>
+              <div className="field">
                 <label>{t("Buyer")}</label>
                 <CountryDropdownPicker
                   value={tableBuyerFilter}
@@ -10695,6 +10778,18 @@ function PixelsDashboard({ authUser }) {
                   placeholder={t("Select")}
                   searchPlaceholder={t("Type to find buyers")}
                   emptyResultsLabel={t("No buyers found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Flow")}</label>
+                <CountryDropdownPicker
+                  value={tableFlowFilter}
+                  onChange={setTableFlowFilter}
+                  options={pixelFlowFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find flows")}
+                  emptyResultsLabel={t("No flows found.")}
                 />
               </div>
               <div className="field">
@@ -10734,6 +10829,11 @@ function PixelsDashboard({ authUser }) {
                     emptyResultsLabel={t("No owners found.")}
                   />
                 </div>
+              ) : null}
+              {pixelFiltersActive ? (
+                <button type="button" className="filter-clear-btn" onClick={clearPixelFilters}>
+                  <X size={13} /> {t("Clear filters")}
+                </button>
               ) : null}
             </div>
             <table className="entries-table pixel-table">
