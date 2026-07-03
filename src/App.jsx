@@ -9192,6 +9192,21 @@ function DomainsDashboard({ authUser }) {
     setTableStatusFilter("all");
   };
 
+  // KPI strip: registry health at a glance (same DNA as Pixels/Accounts)
+  const domainSummary = React.useMemo(() => {
+    const total = domainTableRows.length;
+    let active = 0;
+    let attention = 0;
+    let blocked = 0;
+    domainTableRows.forEach((row) => {
+      const s = String(row.domain?.status || "").toLowerCase();
+      if (s === "active" || s === "") active += 1;
+      else if (s === "pending" || s === "paused") attention += 1;
+      else if (s === "blocked" || s === "expired") blocked += 1;
+    });
+    return { total, active, attention, blocked };
+  }, [domainTableRows]);
+
   const filteredDomainRows = React.useMemo(
     () =>
       domainTableRows.filter((row) => {
@@ -9241,6 +9256,30 @@ function DomainsDashboard({ authUser }) {
               {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("Add Domain")}</>)}
             </button>
           </div>
+        </div>
+
+        <div className="accounts-summary-strip">
+          {[
+            { key: "total", tone: "neutral", label: t("Registered Domains"), value: domainSummary.total, Icon: Globe, pct: null },
+            { key: "active", tone: "success", label: t("Active"), value: domainSummary.active, Icon: CheckCircle, pct: domainSummary.total ? Math.round((domainSummary.active / domainSummary.total) * 100) : 0 },
+            { key: "attention", tone: "warning", label: t("Need Attention"), value: domainSummary.attention, Icon: AlertTriangle, pct: domainSummary.total ? Math.round((domainSummary.attention / domainSummary.total) * 100) : 0 },
+            { key: "blocked", tone: "danger", label: t("Blocked / Expired"), value: domainSummary.blocked, Icon: Lock, pct: domainSummary.total ? Math.round((domainSummary.blocked / domainSummary.total) * 100) : 0 },
+          ].map((kpi) => (
+            <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+              <div className="accounts-summary-top">
+                <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
+                <span className="accounts-summary-label">{kpi.label}</span>
+              </div>
+              <strong>{kpi.value}</strong>
+              {kpi.pct !== null ? (
+                <div className="accounts-summary-bar">
+                  <span style={{ width: `${Math.min(100, kpi.pct)}%` }} />
+                </div>
+              ) : (
+                <span className="accounts-summary-sub">{t("in registry")}</span>
+              )}
+            </div>
+          ))}
         </div>
 
         {showForm ? (
@@ -9438,10 +9477,36 @@ function DomainsDashboard({ authUser }) {
               <tbody>
                 {filteredDomainRows.map(({ domain, ownerLabel, countries }) => (
                   <tr key={domain.id}>
-                    <td>{domain.domain}</td>
+                    <td>
+                      <span className="flow-pill" title={domain.domain}>
+                        <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
+                        {domain.domain}
+                      </span>
+                    </td>
                     <td>{domain.game || "—"}</td>
                     <td>{domain.platform || "—"}</td>
-                    <td>{countries.length ? countries.join(", ") : "—"}</td>
+                    <td>
+                      {countries.length ? (
+                        <div className="geo-chip-row">
+                          {countries.slice(0, 3).map((c) => (
+                            <span className="geo-chip" key={c}>
+                              <CountryFlag value={c} />
+                              {c}
+                            </span>
+                          ))}
+                          {countries.length > 3 ? (
+                            <span
+                              className="geo-chip geo-chip-more"
+                              title={countries.slice(3).join(", ")}
+                            >
+                              +{countries.length - 3}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
                     <td>{ownerLabel && ownerLabel !== "—" ? (<span className="owner-pill"><span className="owner-pill-dot" />{ownerLabel}</span>) : (<span className="offer-muted">—</span>)}</td>
                     <td>
                       {canManageDomains || domain.owner_id === authUser?.id ? (
