@@ -14,6 +14,9 @@
   --pink: #ff7da3;
   --orange: #ff9357;
   --teal: #49e0c4;
+  /* Shared motion curves for the DeusMachine tooling series. */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 * {
@@ -13687,4 +13690,134 @@ select option,
   font-size: 13px;
   color: var(--text);
   font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OPERATIONS POLISH LAYER
+   Cohesive motion + readability across My Flows / Tracking Links /
+   UTM Builder / Domains / Pixels / Accounts. Part of the DeusMachine
+   tooling series — same restrained, glassy dark language as DEUS Finance.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Staggered entrance for the KPI strip — cards rise in sequence. */
+@keyframes deus-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* fill-mode: backwards (not both) so the end transform isn't held — that would
+   otherwise override the :hover lift. */
+.accounts-summary-strip .accounts-summary-item {
+  animation: deus-rise 0.5s var(--ease-smooth) backwards;
+}
+.accounts-summary-strip .accounts-summary-item:nth-child(1) { animation-delay: 0.04s; }
+.accounts-summary-strip .accounts-summary-item:nth-child(2) { animation-delay: 0.10s; }
+.accounts-summary-strip .accounts-summary-item:nth-child(3) { animation-delay: 0.16s; }
+.accounts-summary-strip .accounts-summary-item:nth-child(4) { animation-delay: 0.22s; }
+
+/* My Flows entries stagger in, too. */
+.flow-tree .flow-link { animation: deus-rise 0.45s var(--ease-smooth) backwards; }
+.flow-tree .flow-link:nth-child(1) { animation-delay: 0.04s; }
+.flow-tree .flow-link:nth-child(2) { animation-delay: 0.09s; }
+.flow-tree .flow-link:nth-child(3) { animation-delay: 0.14s; }
+.flow-tree .flow-link:nth-child(4) { animation-delay: 0.19s; }
+.flow-tree .flow-link:nth-child(5) { animation-delay: 0.24s; }
+.flow-tree .flow-link:nth-child(6) { animation-delay: 0.29s; }
+
+/* KPI cards: smoother easing, accent-tinted border glow, icon pop + sheen. */
+.accounts-summary-item {
+  transition: transform 0.28s var(--ease-smooth), box-shadow 0.28s var(--ease-smooth),
+    border-color 0.28s var(--ease-smooth);
+}
+.accounts-summary-item:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--kpi-accent) 42%, transparent);
+  box-shadow: 0 22px 42px rgba(0, 0, 0, 0.46),
+    0 0 0 1px color-mix(in srgb, var(--kpi-accent) 22%, transparent);
+}
+.accounts-summary-item::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 82% at 100% 0%,
+    color-mix(in srgb, var(--kpi-accent) 14%, transparent), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.32s var(--ease-smooth);
+  pointer-events: none;
+}
+.accounts-summary-item:hover::after { opacity: 1; }
+.accounts-summary-icon { transition: transform 0.3s var(--ease-spring); }
+.accounts-summary-item:hover .accounts-summary-icon { transform: scale(1.14); }
+
+/* My Flows entries: gentle lift + accent glow on hover. */
+.flow-link {
+  transition: border-color 0.22s var(--ease-smooth), box-shadow 0.22s var(--ease-smooth),
+    transform 0.22s var(--ease-smooth);
+}
+.flow-link:hover {
+  transform: translateY(-1px);
+  border-color: rgba(106, 214, 255, 0.32);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
+}
+.flow-domain { transition: border-left-color 0.2s var(--ease-smooth), background 0.2s var(--ease-smooth); }
+.flow-domain:hover { border-left-color: #6ad6ff; background: rgba(255, 255, 255, 0.035); }
+
+/* Table rows: smooth tint + green left-accent on hover. */
+.registry-dashboard-panel .entries-table tbody tr td {
+  transition: background 0.16s var(--ease-smooth), box-shadow 0.16s var(--ease-smooth);
+}
+.registry-dashboard-panel .entries-table tbody tr:hover td {
+  background: rgba(54, 208, 124, 0.055);
+}
+.registry-dashboard-panel .entries-table tbody tr:hover td:first-child {
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+/* Chips, pills + buttons: unified smooth transitions + tactile press. */
+.geo-chip, .flow-pill, .flow-seg, .flow-kt, .offers-mode-toggle, .filter-clear-btn,
+.flow-see-traffic, .flow-copy-btn, .flow-sort-btn {
+  transition: transform 0.16s var(--ease-smooth), border-color 0.16s var(--ease-smooth),
+    background 0.16s var(--ease-smooth), color 0.16s var(--ease-smooth);
+}
+.offers-mode-toggle:hover, .filter-clear-btn:hover, .flow-see-traffic:hover,
+.flow-copy-btn:hover, .flow-empty-cta:hover { transform: translateY(-1px); }
+.offers-mode-toggle:active, .filter-clear-btn:active, .action-pill:active,
+.flow-see-traffic:active, .flow-copy-btn:active, .icon-btn:active { transform: scale(0.96); }
+
+/* Primary action button: lift + green glow. */
+.action-pill {
+  transition: transform 0.18s var(--ease-smooth), box-shadow 0.18s var(--ease-smooth);
+}
+.action-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(54, 208, 124, 0.3);
+}
+
+/* Icon buttons in rows: tactile hover. */
+.registry-dashboard-panel .icon-btn, .flow-detail-btn, .flow-detail-copy {
+  transition: background 0.16s var(--ease-smooth), color 0.16s var(--ease-smooth),
+    border-color 0.16s var(--ease-smooth), transform 0.16s var(--ease-smooth);
+}
+.registry-dashboard-panel .icon-btn:hover { transform: translateY(-1px); }
+
+/* Focus-visible: soft green ring for inputs across the registry sections. */
+.registry-dashboard-panel .field input:focus-visible,
+.registry-dashboard-panel .field textarea:focus-visible,
+.registry-dashboard-panel .field select:focus-visible,
+.tracking-registry-panel .field input:focus-visible {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.5);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.14);
+}
+
+/* Nav: glow the active icon; smoother easing. */
+.nav-item { transition: background 0.2s var(--ease-smooth), color 0.2s var(--ease-smooth); }
+.nav-item.active svg { filter: drop-shadow(0 0 6px rgba(54, 208, 124, 0.5)); }
+
+/* Accessibility: honour reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  .accounts-summary-strip .accounts-summary-item { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
