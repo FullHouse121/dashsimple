@@ -7924,9 +7924,13 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     ? String(req.query.from)
     : isoDay(new Date(today.getTime() - 59 * 86400000));
 
+  // group=geo drills into country/region/city (for the GEOS tab); the default
+  // is the day/campaign/country grain the Statistics tab uses. Geo mode drops
+  // the day axis (date isn't charted there) to keep the payload small.
+  const geoMode = String(req.query.group || "stats") === "geo";
   const report = await keitaroReportBuild({
     from, to, timezone: tz,
-    grouping: ["day", "campaign", "country"],
+    grouping: geoMode ? ["campaign", "country", "region", "city"] : ["day", "campaign", "country"],
     metrics: LIVE_STATS_METRICS,
   });
   if (!report.ok) {
@@ -7941,7 +7945,9 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     let revenue = num(r.revenue);
     if (revenue === 0 && ftdRev + redepRev > 0) revenue = ftdRev + redepRev;
     return {
-      date: r.day,
+      // Geo rows have no day axis — stamp the range end so client-side date
+      // filtering (which already matches the requested window) passes.
+      date: r.day || to,
       buyer: parsed.buyer,
       campaign: r.campaign,
       campaign_name: r.campaign,
@@ -7950,6 +7956,8 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
       geo: parsed.geo || null,
       brand: parsed.brand || null,
       country: r.country || null,
+      region: r.region || null,
+      city: r.city || null,
       spend: num(r.cost),
       revenue,
       ftd_revenue: ftdRev,
