@@ -4849,6 +4849,7 @@ function TrackingLinksDashboard({ authUser }) {
                 </button>
               ) : null}
             </div>
+            <div className="table-wrap">
             <table className="entries-table tracking-table">
               <thead>
                 <tr>
@@ -4968,6 +4969,7 @@ function TrackingLinksDashboard({ authUser }) {
                 ))}
               </tbody>
             </table>
+            </div>
             {!filteredLinks.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
             ) : null}
@@ -8814,6 +8816,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
   const [search, setSearch] = React.useState("");
   const [behaviorFilter, setBehaviorFilter] = React.useState("Top User By Total Revenue");
+  const [ubPage, setUbPage] = React.useState(1);
 
   const fetchBehavior = React.useCallback(async () => {
     try {
@@ -9044,6 +9047,33 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       )
     );
   }, [filteredUsers, userTableSort]);
+  const UB_PAGE_SIZE = 50;
+  const ubPageCount = Math.max(1, Math.ceil(sortedUserTableRows.length / UB_PAGE_SIZE));
+  const ubClampedPage = Math.min(ubPage, ubPageCount);
+  const pagedUserTableRows = React.useMemo(
+    () => sortedUserTableRows.slice((ubClampedPage - 1) * UB_PAGE_SIZE, ubClampedPage * UB_PAGE_SIZE),
+    [sortedUserTableRows, ubClampedPage]
+  );
+  const ubPageList = React.useMemo(() => {
+    const total = ubPageCount;
+    const cur = ubClampedPage;
+    const out = [];
+    if (total <= 7) {
+      for (let i = 1; i <= total; i += 1) out.push(i);
+    } else {
+      out.push(1);
+      const start = Math.max(2, cur - 1);
+      const end = Math.min(total - 1, cur + 1);
+      if (start > 2) out.push("ellipsis");
+      for (let i = start; i <= end; i += 1) out.push(i);
+      if (end < total - 1) out.push("ellipsis");
+      out.push(total);
+    }
+    return out;
+  }, [ubPageCount, ubClampedPage]);
+  React.useEffect(() => {
+    setUbPage(1);
+  }, [sortedUserTableRows]);
 
   const behaviorFilterOptions = [
     "Tracked Users",
@@ -9251,6 +9281,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           ) : filteredUsers.length === 0 ? (
             <div className="empty-state">{t("No user behavior data available.")}</div>
           ) : (
+            <>
             <div className="table-wrap">
               <table className="entries-table">
                 <thead>
@@ -9283,7 +9314,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedUserTableRows.map((row) => (
+                  {pagedUserTableRows.map((row) => (
                     <tr key={row.externalId}>
                       <td>{row.externalId}</td>
                       <td>{row.campaign || "—"}</td>
@@ -9297,6 +9328,52 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 </tbody>
               </table>
             </div>
+            {sortedUserTableRows.length > UB_PAGE_SIZE ? (
+              <div className="offer-pagebar">
+                <span className="offer-results-count">
+                  {t("Showing")} {(ubClampedPage - 1) * UB_PAGE_SIZE + 1}–
+                  {Math.min(ubClampedPage * UB_PAGE_SIZE, sortedUserTableRows.length)} {t("of")}{" "}
+                  {sortedUserTableRows.length}
+                </span>
+                <div className="offer-pagination">
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={ubClampedPage <= 1}
+                    onClick={() => setUbPage((p) => Math.max(1, p - 1))}
+                    aria-label={t("Previous page")}
+                  >
+                    ‹
+                  </button>
+                  {ubPageList.map((p, i) =>
+                    p === "ellipsis" ? (
+                      <span key={`ub-ellipsis-${i}`} className="offer-pagination-ellipsis">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        key={p}
+                        className={`offer-pagination-page ${p === ubClampedPage ? "is-active" : ""}`}
+                        onClick={() => setUbPage(p)}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={ubClampedPage >= ubPageCount}
+                    onClick={() => setUbPage((p) => Math.min(ubPageCount, p + 1))}
+                    aria-label={t("Next page")}
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            </>
           )}
         </motion.div>
       </section>
@@ -11526,6 +11603,7 @@ function DomainsDashboard({ authUser }) {
                 </button>
               ) : null}
             </div>
+            <div className="table-wrap">
             <table className="entries-table domain-table">
               <thead>
                 <tr>
@@ -11621,6 +11699,7 @@ function DomainsDashboard({ authUser }) {
                 ))}
               </tbody>
             </table>
+            </div>
             {!filteredDomainRows.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
             ) : null}
@@ -13037,6 +13116,7 @@ function PixelsDashboard({ authUser }) {
                 </button>
               ) : null}
             </div>
+            <div className="table-wrap">
             <table className="entries-table pixel-table">
               <thead>
                 <tr>
@@ -13197,6 +13277,7 @@ function PixelsDashboard({ authUser }) {
                 ))}
               </tbody>
             </table>
+            </div>
             {!filteredPixelTableRows.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
             ) : null}
@@ -14653,6 +14734,7 @@ function AccountsDashboard({ authUser }) {
                 </button>
               ) : null}
             </div>
+            <div className="table-wrap">
             <table className="entries-table accounts-table">
               <thead>
                 <tr>
@@ -14779,6 +14861,7 @@ function AccountsDashboard({ authUser }) {
                 })}
               </tbody>
             </table>
+            </div>
             {!filteredAccountRows.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
             ) : null}
