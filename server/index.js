@@ -542,6 +542,9 @@ const initDb = async () => {
     `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS project_id INTEGER;`,
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
     `ALTER TABLE media_buyers ADD COLUMN IF NOT EXISTS tag TEXT;`,
+    // Buyer's short name in Keitaro (e.g. login Leomarketing → "Leo"),
+    // so offer/campaign scoping is DB-managed, no redeploy per new buyer.
+    `ALTER TABLE media_buyers ADD COLUMN IF NOT EXISTS keitaro_name TEXT;`,
     // Brand visual identity
     `ALTER TABLE brands ADD COLUMN IF NOT EXISTS logo_url TEXT;`,
     `ALTER TABLE brands ADD COLUMN IF NOT EXISTS accent_color TEXT;`,
@@ -1009,8 +1012,8 @@ const deleteGoal = async (id) =>
 
 const insertMediaBuyer = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status, tag)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO media_buyers (name, role, country, approach, game, email, contact, status, tag, keitaro_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       payload.name,
@@ -1022,6 +1025,7 @@ const insertMediaBuyer = async (payload) => {
       payload.contact,
       payload.status,
       payload.tag || null,
+      payload.keitaroName || null,
     ]
   );
   return rows[0];
@@ -1029,7 +1033,7 @@ const insertMediaBuyer = async (payload) => {
 
 const selectMediaBuyers = async (limit) =>
   getRows(
-    `SELECT id, name, role, country, approach, game, email, contact, status, tag
+    `SELECT id, name, role, country, approach, game, email, contact, status, tag, keitaro_name
      FROM media_buyers
      ORDER BY name ASC, id DESC
      LIMIT $1`,
@@ -5848,6 +5852,7 @@ app.post("/api/media-buyers", async (req, res) => {
     contact = "",
     status,
     tag = "",
+    keitaroName = "",
   } = req.body ?? {};
 
   if (!name || !role || !status) {
@@ -5864,6 +5869,7 @@ app.post("/api/media-buyers", async (req, res) => {
     contact,
     status,
     tag: String(tag || "").trim().toUpperCase() || null,
+    keitaroName: String(keitaroName || "").trim() || null,
   };
 
   const info = await insertMediaBuyer(payload);
@@ -5878,14 +5884,16 @@ app.patch("/api/media-buyers/:id", async (req, res) => {
   if (!Number.isFinite(id)) {
     return res.status(400).json({ error: "Invalid media buyer id." });
   }
-  const fields = ["name", "role", "country", "approach", "game", "email", "contact", "status", "tag"];
+  const fields = ["name", "role", "country", "approach", "game", "email", "contact", "status", "tag", "keitaro_name"];
   const sets = [];
   const args = [];
   for (const f of fields) {
     if (req.body?.[f] !== undefined) {
       sets.push(`${f} = $${sets.length + 1}`);
       const val = String(req.body[f] ?? "").trim();
-      args.push(f === "tag" ? (val ? val.toUpperCase() : null) : val);
+      if (f === "tag") args.push(val ? val.toUpperCase() : null);
+      else if (f === "keitaro_name") args.push(val || null);
+      else args.push(val);
     }
   }
   if (sets.length === 0) {
@@ -7604,8 +7612,34 @@ const getKeitaroResources = async () => {
   return data;
 };
 
-// A buyer's identity forms: their username + any alias short-name that
-// resolves to them (Leomarketing → ["leomarketing", "leo"]).
+// DB-managed buyer→Keitaro-name aliases (Media Buyers UI), so a new buyer
+// with a different Keitaro name doesn't need an env change / redeploy.
+// Cached 60s; keyed both ways (name→keitaro, keitaro→name).
+const dbBuyerAliasCache = { at: 0, map: new Map() };
+const refreshBuyerAliases = async () => {
+  if (Date.now() - dbBuyerAliasCache.at < 60 * 1000 && dbBuyerAliasCache.map.size) return;
+  try {
+    const rows = await getRows(
+      `SELECT name, keitaro_name FROM media_buyers WHERE keitaro_name IS NOT NULL AND keitaro_name <> ''`
+    );
+    const map = new Map();
+    for (const r of rows) {
+      const name = String(r.name || "").trim().toLowerCase();
+      const kname = String(r.keitaro_name || "").trim();
+      if (!kname) continue;
+      if (name) map.set(name, kname.toLowerCase());
+      map.set(kname.toLowerCase(), name || kname.toLowerCase());
+    }
+    dbBuyerAliasCache.map = map;
+    dbBuyerAliasCache.at = Date.now();
+  } catch (error) {
+    // keep any prior cache; scoping falls back to env aliases + username
+  }
+};
+
+// A buyer's identity forms: username + alias short-name (env map) + the
+// Keitaro name from their Media Buyers profile (DB). Leomarketing →
+// ["leomarketing", "leo"].
 const buyerShortForms = (buyer) => {
   const b = String(buyer || "").trim().toLowerCase();
   const forms = new Set();
@@ -7613,6 +7647,8 @@ const buyerShortForms = (buyer) => {
   for (const [short, canonical] of buyerAliasMap.entries()) {
     if (String(canonical || "").trim().toLowerCase() === b) forms.add(String(short).toLowerCase());
   }
+  const dbAlias = dbBuyerAliasCache.map.get(b);
+  if (dbAlias) forms.add(dbAlias);
   return [...forms].filter(Boolean);
 };
 
@@ -7639,13 +7675,11 @@ const scopeKeitaroResourcesForBuyer = (data, buyer) => ({
 // "Leo", "Karen", "akku"… while buyers log in as Leomarketing,
 // KarenFarias…). Longest group name contained in the buyer wins.
 const resolveKeitaroGroupForBuyer = (groups, buyerName) => {
-  const buyer = String(buyerName || "").toLowerCase();
   let best = null;
   for (const group of groups || []) {
-    const g = String(group.name || "").toLowerCase().trim();
-    if (!g) continue;
-    if (buyer.includes(g) || g.includes(buyer)) {
-      if (!best || g.length > String(best.name).length) best = group;
+    if (keitaroNameMatchesBuyer(group.name, buyerName)) {
+      const len = String(group.name || "").trim().length;
+      if (!best || len > String(best.name).length) best = group;
     }
   }
   return best;
@@ -7712,6 +7746,7 @@ const pushCampaignToKeitaro = async ({
 }) => {
   let resolvedGroupId = groupId ? Number(groupId) : null;
   if (!resolvedGroupId && buyer) {
+    await refreshBuyerAliases();
     const resources = await getKeitaroResources();
     const match = resolveKeitaroGroupForBuyer(resources.groups, buyer);
     if (match) resolvedGroupId = Number(match.id);
@@ -7824,6 +7859,7 @@ app.get("/api/keitaro/resources", async (req, res) => {
   if (isLeadership(req.user)) {
     return res.json(data);
   }
+  await refreshBuyerAliases();
   res.json(scopeKeitaroResourcesForBuyer(data, req.user.username));
 });
 

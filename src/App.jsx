@@ -9125,6 +9125,7 @@ function GoalsDashboard({ authUser }) {
     contact: "",
     status: "Active",
     tag: "",
+    keitaro_name: "",
   });
   const [teamMembers, setTeamMembers] = React.useState([]);
   const [teamState, setTeamState] = React.useState({ loading: true, error: null });
@@ -9189,6 +9190,7 @@ function GoalsDashboard({ authUser }) {
       contact: "",
       status: "Active",
       tag: "",
+      keitaro_name: "",
     });
   };
 
@@ -15102,6 +15104,7 @@ function RolesDashboard({ authUser }) {
     contact: "",
     status: "Active",
     tag: "",
+    keitaro_name: "",
   });
   const [userForm, setUserForm] = React.useState({
     username: "",
@@ -15125,6 +15128,7 @@ function RolesDashboard({ authUser }) {
       contact: "",
       status: "Active",
       tag: "",
+      keitaro_name: "",
     });
   };
 
@@ -15465,6 +15469,7 @@ function RolesDashboard({ authUser }) {
       contact: buyer.contact || "",
       status: buyer.status || "Active",
       tag: buyer.tag || "",
+      keitaro_name: buyer.keitaro_name || "",
     });
     setEditingBuyerId(buyer.id);
     setShowTeamForm(true);
@@ -15965,6 +15970,15 @@ function RolesDashboard({ authUser }) {
                   onChange={(e) => setTeamForm((prev) => ({ ...prev, tag: e.target.value.toUpperCase() }))}
                   placeholder="AKDMC"
                   maxLength={12}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Keitaro name")} <span className="field-pace-hint">{t("only if it differs from the login — e.g. Leomarketing → Leo")}</span></label>
+                <input
+                  value={teamForm.keitaro_name}
+                  onChange={(e) => setTeamForm((prev) => ({ ...prev, keitaro_name: e.target.value }))}
+                  placeholder={t("e.g. Leo")}
+                  maxLength={40}
                 />
               </div>
               <div className="field">
