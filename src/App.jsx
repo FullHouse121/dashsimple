@@ -3920,6 +3920,40 @@ function TrackingLinksDashboard({ authUser }) {
       cancelled = true;
     };
   }, []);
+
+  // Buyer roster for the Edit modal's Buyer dropdown — the team members
+  // (from /api/users) plus any registered media buyers. Leadership only.
+  const [buyerRoster, setBuyerRoster] = React.useState([]);
+  React.useEffect(() => {
+    if (!isLeadership) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [ur, br] = await Promise.all([
+          apiFetch("/api/users?limit=300"),
+          apiFetch("/api/media-buyers?limit=500"),
+        ]);
+        const [ud, bd] = await Promise.all([
+          ur.ok ? ur.json() : [],
+          br.ok ? br.json() : [],
+        ]);
+        if (cancelled) return;
+        const names = [
+          ...(Array.isArray(ud) ? ud.map((u) => u.username) : []),
+          ...(Array.isArray(bd) ? bd.map((b) => b.name) : []),
+        ]
+          .map((n) => String(n || "").trim())
+          .filter(Boolean);
+        setBuyerRoster(names);
+      } catch (error) {
+        /* roster is best-effort; the field still allows typing */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLeadership]);
+
   const [buyerFilter, setBuyerFilter] = React.useState("all");
   const [toolFilter, setToolFilter] = React.useState("all");
   const [geoFilter, setGeoFilter] = React.useState("all");
@@ -4132,6 +4166,13 @@ function TrackingLinksDashboard({ authUser }) {
   const buyerFilterOptions = React.useMemo(
     () => optionFrom(links.map((l) => String(l.buyer || "").trim())),
     [links]
+  );
+  // Buyer picker options for the Edit modal: the roster (team + media buyers)
+  // merged with any buyer already used on a link. Typing a custom value is
+  // still allowed, so alias forms (e.g. KarenFarias) remain possible.
+  const editBuyerOptions = React.useMemo(
+    () => optionFrom([...buyerRoster, ...links.map((l) => String(l.buyer || "").trim())]),
+    [buyerRoster, links]
   );
   const toolFilterOptions = React.useMemo(
     () => optionFrom(links.map((l) => String(l.tool || "").trim())),
@@ -4453,7 +4494,7 @@ function TrackingLinksDashboard({ authUser }) {
                     <CountryDropdownPicker
                       value={editModal.form.buyer}
                       onChange={(v) => setEditModal((p) => ({ ...p, form: { ...p.form, buyer: v } }))}
-                      options={buyerFilterOptions}
+                      options={editBuyerOptions}
                       allowCustom
                       placeholder={t("Select or type a buyer")}
                       searchPlaceholder={t("Find or type a buyer")}
