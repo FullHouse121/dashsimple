@@ -5268,6 +5268,48 @@ select option,
   text-overflow: ellipsis;
 }
 
+/* ── Tracking Links ─────────────────────────────────────────────────── */
+.tracking-table {
+  min-width: 960px;
+}
+
+.tracking-name {
+  display: inline-block;
+  max-width: 340px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* Live preview card inside the create form */
+.tracking-preview {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(160deg, rgba(20, 23, 28, 0.9), rgba(14, 17, 22, 0.92));
+  gap: 8px;
+}
+
+.tracking-preview-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tracking-preview-url {
+  display: block;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: var(--muted-strong, #a9adb7);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
 .accounts-form textarea {
   min-height: 120px;
 }

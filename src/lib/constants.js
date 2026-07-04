@@ -150,6 +150,7 @@ export const permissionOptions = [
   { key: "finances", label: "Finances" },
   { key: "offers", label: "Offers" },
   { key: "utm", label: "UTM Builder" },
+  { key: "tracking_links", label: "Tracking Links" },
   { key: "statistics", label: "Statistics" },
   { key: "campaigns", label: "Campaigns" },
   { key: "placements", label: "Placement" },

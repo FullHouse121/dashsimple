@@ -95,6 +95,27 @@ const initDb = async () => {
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS geo TEXT;`,
     `ALTER TABLE media_stats ADD COLUMN IF NOT EXISTS brand TEXT;`,
+    // Tracking Links: Keitaro campaign links composed in the dashboard.
+    // keitaro_status: created (pushed to Keitaro) | local | failed
+    `CREATE TABLE IF NOT EXISTS tracking_links (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      buyer TEXT,
+      tool TEXT,
+      game TEXT,
+      geo TEXT,
+      brand TEXT,
+      domain TEXT,
+      alias TEXT,
+      params TEXT,
+      url TEXT,
+      filters TEXT,
+      keitaro_id TEXT,
+      keitaro_status TEXT NOT NULL DEFAULT 'local',
+      keitaro_error TEXT,
+      owner_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     // Open Graph / Sharing Debugger scrape history per domain.
     `CREATE TABLE IF NOT EXISTS og_debug_history (
       id SERIAL PRIMARY KEY,
@@ -7418,6 +7439,171 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
     message: `${req.user?.username || "User"} removed integration for account ${integration.account_number || id}.`,
   });
   return res.json({ ok: true });
+});
+
+// ── Tracking Links ───────────────────────────────────────────────────
+// Campaign links composed in the dashboard following the
+// "Buyer | Tool | Game | Geo | Brand" convention. Optionally pushed to
+// Keitaro via the Admin API; stored locally either way.
+
+const buildTrackingUrl = (domain, alias, params) => {
+  const host = String(domain || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+  const path = String(alias || "").trim().replace(/^\/+/, "");
+  const qs = String(params || "").trim().replace(/^\?+/, "");
+  if (!host || !path) return "";
+  return `https://${host}/${path}${qs ? `?${qs}` : ""}`;
+};
+
+// Try to create the campaign in Keitaro. Never throws — returns
+// { ok, id, error } so callers can fall back to local storage.
+const pushCampaignToKeitaro = async ({ name, alias }) => {
+  const baseUrl = process.env.KEITARO_BASE_URL;
+  const apiKey = process.env.KEITARO_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return { ok: false, id: null, error: "Keitaro credentials are not configured on the server." };
+  }
+  try {
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/admin_api/v1/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...buildAuthHeaders(apiKey) },
+      body: JSON.stringify({ name, alias, state: "active" }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        ok: false,
+        id: null,
+        error: data?.error || data?.message || `Keitaro rejected the campaign (HTTP ${response.status}).`,
+      };
+    }
+    const keitaroId = data?.id ?? data?.campaign?.id ?? null;
+    return { ok: true, id: keitaroId ? String(keitaroId) : null, error: null };
+  } catch (error) {
+    return { ok: false, id: null, error: error.message || "Could not reach Keitaro." };
+  }
+};
+
+app.get("/api/tracking-links", async (req, res) => {
+  const limitRaw = Number.parseInt(req.query.limit ?? "300", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 300;
+  const rows = isLeadership(req.user)
+    ? await getRows(
+        `SELECT tl.*, u.username AS owner_name
+         FROM tracking_links tl
+         LEFT JOIN users u ON u.id = tl.owner_id
+         ORDER BY tl.created_at DESC, tl.id DESC
+         LIMIT $1`,
+        [limit]
+      )
+    : await getRows(
+        `SELECT tl.*, u.username AS owner_name
+         FROM tracking_links tl
+         LEFT JOIN users u ON u.id = tl.owner_id
+         WHERE tl.owner_id = $1
+         ORDER BY tl.created_at DESC, tl.id DESC
+         LIMIT $2`,
+        [req.user.id, limit]
+      );
+  res.json(rows);
+});
+
+app.post("/api/tracking-links", async (req, res) => {
+  const {
+    buyer = "",
+    tool = "",
+    game = "",
+    geo = "",
+    brand = "",
+    domain = "",
+    alias = "",
+    params = "",
+    filters = "",
+    pushToKeitaro = false,
+  } = req.body ?? {};
+
+  // Non-leadership links are always attributed to the requester.
+  const resolvedBuyer = isLeadership(req.user)
+    ? String(buyer || "").trim() || String(req.user.username || "").trim()
+    : String(req.user.username || "").trim();
+  const seg = (v) => String(v || "").trim() || "-";
+  const name = [resolvedBuyer, seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
+  const url = buildTrackingUrl(domain, alias, params);
+
+  if (!String(tool || "").trim()) {
+    return res.status(400).json({ error: "Tool is required." });
+  }
+  if (!url) {
+    return res.status(400).json({ error: "Tracking domain and alias are required." });
+  }
+
+  let keitaro = { ok: false, id: null, error: null };
+  let keitaroStatus = "local";
+  if (pushToKeitaro) {
+    keitaro = await pushCampaignToKeitaro({ name, alias: String(alias).trim() });
+    keitaroStatus = keitaro.ok ? "created" : "failed";
+  }
+
+  const { rows } = await query(
+    `INSERT INTO tracking_links
+       (name, buyer, tool, game, geo, brand, domain, alias, params, url, filters,
+        keitaro_id, keitaro_status, keitaro_error, owner_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+     RETURNING id`,
+    [
+      name,
+      resolvedBuyer,
+      String(tool || "").trim() || null,
+      String(game || "").trim() || null,
+      String(geo || "").trim() || null,
+      String(brand || "").trim() || null,
+      String(domain || "").trim() || null,
+      String(alias || "").trim() || null,
+      String(params || "").trim() || null,
+      url,
+      String(filters || "").trim() || null,
+      keitaro.id,
+      keitaroStatus,
+      keitaro.error,
+      req.user.id,
+    ]
+  );
+  res.status(201).json({ id: rows[0]?.id, name, url, keitaro: { status: keitaroStatus, id: keitaro.id, error: keitaro.error } });
+});
+
+// Retry pushing an existing link's campaign to Keitaro.
+app.post("/api/tracking-links/:id/push", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
+  const row = await getRow(`SELECT * FROM tracking_links WHERE id = $1`, [id]);
+  if (!row) return res.status(404).json({ error: "Link not found." });
+  if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  if (row.keitaro_id) {
+    return res.json({ ok: true, keitaro: { status: "created", id: row.keitaro_id, error: null } });
+  }
+  const keitaro = await pushCampaignToKeitaro({ name: row.name, alias: row.alias });
+  const status = keitaro.ok ? "created" : "failed";
+  await query(
+    `UPDATE tracking_links SET keitaro_id = $1, keitaro_status = $2, keitaro_error = $3 WHERE id = $4`,
+    [keitaro.id, status, keitaro.error, id]
+  );
+  res.json({ ok: keitaro.ok, keitaro: { status, id: keitaro.id, error: keitaro.error } });
+});
+
+app.delete("/api/tracking-links/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
+  const row = await getRow(`SELECT id, owner_id FROM tracking_links WHERE id = $1`, [id]);
+  if (!row) return res.status(404).json({ error: "Link not found." });
+  if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  await query(`DELETE FROM tracking_links WHERE id = $1`, [id]);
+  res.json({ ok: true });
 });
 
 app.get("/api/campaigns", async (req, res) => {

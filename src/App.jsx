@@ -170,6 +170,7 @@ const navItems = [
   { key: "geos", label: "GEOS", icon: MapIcon },
   { key: "streams", label: "Goals", icon: Target },
   { key: "utm", label: "UTM Builder", icon: Link2 },
+  { key: "tracking", label: "Tracking Links", icon: MousePointerClick },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
   { key: "placements", label: "Placement", icon: MousePointerClick },
@@ -187,7 +188,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["utm", "domains", "pixels", "accounts"] },
+  { title: "Operations", items: ["tracking", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -3680,6 +3681,521 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
         </motion.div>
       </section>
     </>
+  );
+}
+
+// ── Tracking Links ────────────────────────────────────────────────────
+// Compose Keitaro campaigns from the dashboard: Buyer | Tool | Game |
+// Geo | Brand naming, domain/alias?params link, optional push to the
+// Keitaro Admin API — stored locally either way.
+const TRACKING_TOOL_PRESETS = ["ZMAPPS", "PWA.GROUP", "PWA PARTNERS", "LINKI.GROUP", "SKAK", "FB"];
+const TRACKING_GEO_PRESETS = [
+  "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
+  "DE", "FR", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
+];
+const DEFAULT_TRACKING_PARAMS =
+  "external_id={exid}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
+
+function TrackingLinksDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const isLeadership = isLeadershipRole(authUser?.role);
+  const [links, setLinks] = React.useState([]);
+  const [linkState, setLinkState] = React.useState({ loading: true, error: null });
+  const [showForm, setShowForm] = React.useState(false);
+  const [saveState, setSaveState] = React.useState({ saving: false, message: "", ok: null });
+  const [copiedId, setCopiedId] = React.useState(null);
+  const [pushingId, setPushingId] = React.useState(null);
+  const [form, setForm] = React.useState(() => ({
+    buyer: authUser?.username || "",
+    tool: "",
+    game: "",
+    geo: "",
+    brand: "",
+    domain: localStorage.getItem("tracking-domain") || "",
+    alias: "",
+    filters: "",
+    params: DEFAULT_TRACKING_PARAMS,
+    pushToKeitaro: true,
+  }));
+  const [buyerFilter, setBuyerFilter] = React.useState("all");
+  const [toolFilter, setToolFilter] = React.useState("all");
+  const [geoFilter, setGeoFilter] = React.useState("all");
+
+  const updateForm = (key) => (event) => {
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  };
+
+  const fetchLinks = React.useCallback(async () => {
+    try {
+      setLinkState({ loading: true, error: null });
+      const response = await apiFetch("/api/tracking-links?limit=500");
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load tracking links.");
+      }
+      const data = await response.json();
+      setLinks(Array.isArray(data) ? data : []);
+      setLinkState({ loading: false, error: null });
+    } catch (error) {
+      setLinkState({ loading: false, error: error.message || "Failed to load tracking links." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchLinks();
+  }, [fetchLinks]);
+
+  const seg = (v) => String(v || "").trim() || "-";
+  const previewName = [
+    String(form.buyer || "").trim() || authUser?.username || "Buyer",
+    seg(form.tool),
+    seg(form.game),
+    seg(form.geo),
+    seg(form.brand),
+  ].join(" | ");
+  const previewUrl = (() => {
+    const host = String(form.domain || "").trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    const path = String(form.alias || "").trim().replace(/^\/+/, "");
+    const qs = String(form.params || "").trim().replace(/^\?+/, "");
+    if (!host || !path) return "";
+    return `https://${host}/${path}${qs ? `?${qs}` : ""}`;
+  })();
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    if (!String(form.tool).trim()) {
+      setSaveState({ saving: false, ok: false, message: t("Tool is required.") });
+      return;
+    }
+    if (!previewUrl) {
+      setSaveState({ saving: false, ok: false, message: t("Tracking domain and alias are required.") });
+      return;
+    }
+    setSaveState({ saving: true, ok: null, message: "" });
+    try {
+      localStorage.setItem("tracking-domain", String(form.domain || "").trim());
+      const response = await apiFetch("/api/tracking-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Failed to save tracking link.");
+      }
+      const k = data?.keitaro;
+      setSaveState({
+        saving: false,
+        ok: true,
+        message:
+          k?.status === "created"
+            ? `${t("Campaign created in Keitaro")}${k.id ? ` (ID ${k.id})` : ""}.`
+            : k?.status === "failed"
+              ? `${t("Stored locally — Keitaro push failed")}: ${k.error || ""}`
+              : t("Link stored."),
+      });
+      setForm((prev) => ({ ...prev, game: "", brand: "", alias: "", filters: "" }));
+      await fetchLinks();
+    } catch (error) {
+      setSaveState({ saving: false, ok: false, message: error.message || "Failed to save tracking link." });
+    }
+  };
+
+  const handleCopy = (id, url) => async () => {
+    try {
+      await navigator.clipboard?.writeText(url);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((prev) => (prev === id ? null : prev)), 1200);
+    } catch (error) {
+      // clipboard denied — ignore
+    }
+  };
+
+  const handlePush = (id) => async () => {
+    setPushingId(id);
+    try {
+      const response = await apiFetch(`/api/tracking-links/${id}/push`, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Push failed.");
+      await fetchLinks();
+    } catch (error) {
+      setLinkState((prev) => ({ ...prev, error: error.message || "Push failed." }));
+    } finally {
+      setPushingId(null);
+    }
+  };
+
+  const handleDelete = (id) => async () => {
+    const confirmed = window.confirm("Remove this tracking link? This does not delete the Keitaro campaign.");
+    if (!confirmed) return;
+    try {
+      const response = await apiFetch(`/api/tracking-links/${id}`, { method: "DELETE" });
+      if (!response.ok) throw new Error("Failed to delete link.");
+      await fetchLinks();
+    } catch (error) {
+      setLinkState((prev) => ({ ...prev, error: error.message || "Failed to delete link." }));
+    }
+  };
+
+  const optionFrom = (values) =>
+    Array.from(new Set(values.filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, search: value }));
+  const buyerFilterOptions = React.useMemo(
+    () => optionFrom(links.map((l) => String(l.buyer || "").trim())),
+    [links]
+  );
+  const toolFilterOptions = React.useMemo(
+    () => optionFrom(links.map((l) => String(l.tool || "").trim())),
+    [links]
+  );
+  const geoFilterOptions = React.useMemo(
+    () => optionFrom(links.map((l) => String(l.geo || "").trim())),
+    [links]
+  );
+
+  const trackingFiltersActive = buyerFilter !== "all" || toolFilter !== "all" || geoFilter !== "all";
+  const clearTrackingFilters = () => {
+    setBuyerFilter("all");
+    setToolFilter("all");
+    setGeoFilter("all");
+  };
+
+  const filteredLinks = React.useMemo(
+    () =>
+      links.filter((l) => {
+        if (buyerFilter !== "all" && String(l.buyer || "").trim() !== buyerFilter) return false;
+        if (toolFilter !== "all" && String(l.tool || "").trim() !== toolFilter) return false;
+        if (geoFilter !== "all" && String(l.geo || "").trim() !== geoFilter) return false;
+        return true;
+      }),
+    [links, buyerFilter, toolFilter, geoFilter]
+  );
+
+  const summary = React.useMemo(() => {
+    const total = links.length;
+    let created = 0;
+    let local = 0;
+    let failed = 0;
+    links.forEach((l) => {
+      const s = String(l.keitaro_status || "local");
+      if (s === "created") created += 1;
+      else if (s === "failed") failed += 1;
+      else local += 1;
+    });
+    return { total, created, local, failed };
+  }, [links]);
+
+  const keitaroChip = (link) => {
+    const status = String(link.keitaro_status || "local");
+    if (status === "created") {
+      return (
+        <span className="geo-chip" title={link.keitaro_id ? `Keitaro ID ${link.keitaro_id}` : ""}>
+          <span className="cs-dot" style={{ background: "#36d07c" }} aria-hidden="true" />
+          {t("Keitaro")}{link.keitaro_id ? ` #${link.keitaro_id}` : ""}
+        </span>
+      );
+    }
+    if (status === "failed") {
+      return (
+        <span className="geo-chip" title={link.keitaro_error || ""}>
+          <span className="cs-dot" style={{ background: "#ff8a7a" }} aria-hidden="true" />
+          {t("Push failed")}
+        </span>
+      );
+    }
+    return (
+      <span className="geo-chip">
+        <span className="cs-dot" style={{ background: "#8a93a3" }} aria-hidden="true" />
+        {t("Local")}
+      </span>
+    );
+  };
+
+  return (
+    <section className="form-section">
+      <motion.div
+        className="panel registry-dashboard-panel tracking-registry-panel"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">{t("Tracking Links")}</h3>
+            <p className="panel-subtitle">
+              {t("Compose Keitaro campaigns with the standard naming and generate ready-to-use tracking links.")}
+            </p>
+          </div>
+          <div className="panel-head-actions">
+            <span className="roles-count">
+              {links.length} {t("links")}
+            </span>
+            <button
+              type="button"
+              className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
+              onClick={() => setShowForm((v) => !v)}
+            >
+              {showForm ? t("Close") : (<><Plus size={13} strokeWidth={2.5} /> {t("New Link")}</>)}
+            </button>
+          </div>
+        </div>
+
+        <div className="accounts-summary-strip">
+          {[
+            { key: "total", tone: "neutral", label: t("Tracking Links"), value: summary.total, Icon: Link2, pct: null },
+            { key: "created", tone: "success", label: t("In Keitaro"), value: summary.created, Icon: CheckCircle, pct: summary.total ? Math.round((summary.created / summary.total) * 100) : 0 },
+            { key: "local", tone: "warning", label: t("Stored locally"), value: summary.local, Icon: BookOpen, pct: summary.total ? Math.round((summary.local / summary.total) * 100) : 0 },
+            { key: "failed", tone: "danger", label: t("Push failed"), value: summary.failed, Icon: AlertTriangle, pct: summary.total ? Math.round((summary.failed / summary.total) * 100) : 0 },
+          ].map((kpi) => (
+            <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+              <div className="accounts-summary-top">
+                <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
+                <span className="accounts-summary-label">{kpi.label}</span>
+              </div>
+              <strong>{kpi.value}</strong>
+              {kpi.pct !== null ? (
+                <div className="accounts-summary-bar">
+                  <span style={{ width: `${Math.min(100, kpi.pct)}%` }} />
+                </div>
+              ) : (
+                <span className="accounts-summary-sub">{t("in registry")}</span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {showForm ? (
+          <form className="form-grid accounts-form" onSubmit={handleCreate}>
+            <div className="field">
+              <label>{t("Buyer")}</label>
+              <input
+                value={form.buyer}
+                onChange={updateForm("buyer")}
+                readOnly={!isLeadership}
+                placeholder={authUser?.username || ""}
+              />
+            </div>
+            <div className="field">
+              <label>{t("Tool")}</label>
+              <CountryDropdownPicker
+                value={form.tool}
+                onChange={(tool) => setForm((prev) => ({ ...prev, tool }))}
+                options={TRACKING_TOOL_PRESETS.map((value) => ({ value, label: value, search: value }))}
+                allowCustom
+                placeholder={t("Select or type")}
+                searchPlaceholder={t("Type a tool")}
+                emptyResultsLabel={t("No tools found.")}
+              />
+            </div>
+            <div className="field">
+              <label>{t("Game / Offer")}</label>
+              <input value={form.game} onChange={updateForm("game")} placeholder={t("e.g. Santa Fe Casino")} />
+            </div>
+            <div className="field">
+              <label>{t("GEO")}</label>
+              <CountryDropdownPicker
+                value={form.geo}
+                onChange={(geo) => setForm((prev) => ({ ...prev, geo }))}
+                options={TRACKING_GEO_PRESETS.map((value) => ({ value, label: value, search: value }))}
+                allowCustom
+                placeholder={t("Select or type")}
+                searchPlaceholder={t("ISO-2 or GLOBAL")}
+                emptyResultsLabel={t("No geos found.")}
+              />
+            </div>
+            <div className="field">
+              <label>{t("Brand")}</label>
+              <input value={form.brand} onChange={updateForm("brand")} placeholder="ZLOTMX" />
+            </div>
+            <div className="field">
+              <label>{t("Tracking Domain")}</label>
+              <input value={form.domain} onChange={updateForm("domain")} placeholder="keitaro-domains.com" required />
+            </div>
+            <div className="field">
+              <label>{t("Alias")}</label>
+              <input value={form.alias} onChange={updateForm("alias")} placeholder={t("campaign alias")} required />
+            </div>
+            <div className="field">
+              <label>{t("Filters")} <span className="field-pace-hint">{t("optional note")}</span></label>
+              <input value={form.filters} onChange={updateForm("filters")} placeholder={t("e.g. bot filter, geo lock, device")} />
+            </div>
+            <div className="field field-span-3">
+              <label>{t("Link Parameters")}</label>
+              <textarea rows={2} value={form.params} onChange={updateForm("params")} spellCheck={false} />
+            </div>
+            <div className="field field-span-3 tracking-preview">
+              <label>{t("Preview")}</label>
+              <div className="tracking-preview-name">
+                <span className="cs-dot" style={{ background: "#36d07c" }} aria-hidden="true" />
+                {previewName}
+              </div>
+              <code className="tracking-preview-url">{previewUrl || t("Fill domain + alias to build the link")}</code>
+            </div>
+            <div className="field field-inline">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={form.pushToKeitaro}
+                  onChange={(event) => setForm((prev) => ({ ...prev, pushToKeitaro: event.target.checked }))}
+                />
+                {t("Create campaign in Keitaro")}
+              </label>
+              <p className="field-hint">{t("If the push fails, the link is stored locally anyway.")}</p>
+            </div>
+            <div className="form-actions">
+              {saveState.message ? (
+                <div className={`api-status ${saveState.ok ? "success" : "error"}`}>{saveState.message}</div>
+              ) : null}
+              <button className="ghost" type="button" onClick={() => setSaveState({ saving: false, ok: null, message: "" })}>
+                {t("Reset")}
+              </button>
+              <button className="action-pill" type="submit" disabled={saveState.saving}>
+                {saveState.saving ? t("Saving…") : t("Save Link")}
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {linkState.loading ? (
+          <div className="empty-state">{t("Loading tracking links…")}</div>
+        ) : linkState.error ? (
+          <div className="empty-state error">{linkState.error}</div>
+        ) : links.length === 0 ? (
+          <div className="empty-state">{t("No tracking links yet. Create the first one.")}</div>
+        ) : (
+          <div className="table-wrap pixel-table-wrap">
+            <div className="pixel-table-toolbar">
+              <div className="field">
+                <label>{t("Buyer")}</label>
+                <CountryDropdownPicker
+                  value={buyerFilter}
+                  onChange={setBuyerFilter}
+                  options={buyerFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find buyers")}
+                  emptyResultsLabel={t("No buyers found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Tool")}</label>
+                <CountryDropdownPicker
+                  value={toolFilter}
+                  onChange={setToolFilter}
+                  options={toolFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find tools")}
+                  emptyResultsLabel={t("No tools found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("GEO")}</label>
+                <CountryDropdownPicker
+                  value={geoFilter}
+                  onChange={setGeoFilter}
+                  options={geoFilterOptions}
+                  allOption={{ value: "all", label: t("All") }}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find geos")}
+                  emptyResultsLabel={t("No geos found.")}
+                />
+              </div>
+              {trackingFiltersActive ? (
+                <button type="button" className="filter-clear-btn" onClick={clearTrackingFilters}>
+                  <X size={13} /> {t("Clear filters")}
+                </button>
+              ) : null}
+            </div>
+            <table className="entries-table tracking-table">
+              <thead>
+                <tr>
+                  <th>{t("Campaign")}</th>
+                  <th>{t("GEO")}</th>
+                  <th>{t("Link")}</th>
+                  <th>{t("Keitaro")}</th>
+                  <th>{t("Owner")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLinks.map((link) => (
+                  <tr key={link.id}>
+                    <td>
+                      <span className="tracking-name" title={link.filters ? `${link.name} · ${link.filters}` : link.name}>
+                        {link.name}
+                      </span>
+                    </td>
+                    <td>
+                      {link.geo ? (
+                        <span className="geo-chip">
+                          <CountryFlag value={link.geo} />
+                          {link.geo}
+                        </span>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className="flow-pill" title={link.url}>
+                        <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
+                        {`${String(link.domain || "")}/${String(link.alias || "")}`}
+                      </span>
+                    </td>
+                    <td>{keitaroChip(link)}</td>
+                    <td>
+                      {link.owner_name ? (
+                        <span className="owner-pill">
+                          <span className="owner-pill-dot" />
+                          {link.owner_name}
+                        </span>
+                      ) : (
+                        <span className="offer-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="accounts-action-group">
+                        <button
+                          className="icon-btn"
+                          type="button"
+                          title={copiedId === link.id ? t("Copied!") : t("Copy link")}
+                          onClick={handleCopy(link.id, link.url)}
+                        >
+                          {copiedId === link.id ? <CheckCircle size={15} /> : <Copy size={15} />}
+                        </button>
+                        {String(link.keitaro_status || "local") !== "created" ? (
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            title={t("Create in Keitaro")}
+                            disabled={pushingId === link.id}
+                            onClick={handlePush(link.id)}
+                          >
+                            <Zap size={15} />
+                          </button>
+                        ) : null}
+                        <button
+                          className="icon-btn icon-btn-danger"
+                          type="button"
+                          title={t("Remove")}
+                          onClick={handleDelete(link.id)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!filteredLinks.length ? (
+              <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
+          </div>
+        )}
+      </motion.div>
+    </section>
   );
 }
 
@@ -16430,6 +16946,7 @@ export default function App() {
   const isHome = activeView === "home";
   const isGeos = activeView === "geos";
   const isUtm = activeView === "utm";
+  const isTracking = activeView === "tracking";
   const isStats = activeView === "statistics";
   const isCampaigns = activeView === "campaigns";
   const isPlacements = activeView === "placements";
@@ -16524,6 +17041,7 @@ export default function App() {
       geos: "geos",
       streams: "goals",
       utm: "utm",
+      tracking: "tracking_links",
       statistics: "statistics",
       campaigns: "campaigns",
       placements: "placements",
@@ -16599,6 +17117,9 @@ export default function App() {
     const list = Array.isArray(basePermissions) ? [...basePermissions] : [];
     const normalizedRole = String(authUser?.role || "").toLowerCase();
     const isBuyerRole = normalizedRole.includes("buyer");
+    if (list.includes("utm") && !list.includes("tracking_links")) {
+      list.push("tracking_links");
+    }
     if (list.includes("statistics") && !list.includes("placements")) {
       list.push("placements");
     }
@@ -17498,6 +18019,8 @@ export default function App() {
           >
         {isUtm ? (
           <UtmBuilder />
+        ) : isTracking ? (
+          <TrackingLinksDashboard authUser={authUser} />
         ) : isGoals ? (
           <GoalsDashboard authUser={authUser} />
         ) : isDomains ? (
