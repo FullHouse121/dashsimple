@@ -7977,6 +7977,13 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
   res.json({ rows, range: { from, to }, source: "keitaro-live" });
 });
 
+// The only Keitaro tracking/redirect domains a link may use — enforced
+// server-side so the UI restriction can't be bypassed via the API.
+const ALLOWED_TRACKING_DOMAINS = ["tracker.deusmachine-trk.com", "go.deuskt.click", "deuskt.click"];
+const normalizeTrackingHost = (v) =>
+  String(v || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+const isAllowedTrackingDomain = (v) => ALLOWED_TRACKING_DOMAINS.includes(normalizeTrackingHost(v));
+
 app.post("/api/tracking-links", async (req, res) => {
   const {
     buyer = "",
@@ -8007,6 +8014,11 @@ app.post("/api/tracking-links", async (req, res) => {
   }
   if (!String(domain || "").trim()) {
     return res.status(400).json({ error: "Tracking domain is required." });
+  }
+  if (!isAllowedTrackingDomain(domain)) {
+    return res.status(400).json({
+      error: `Tracking domain must be one of: ${ALLOWED_TRACKING_DOMAINS.join(", ")}.`,
+    });
   }
 
   const filtersJson = typeof filters === "string" ? filters : JSON.stringify(filters || "");
