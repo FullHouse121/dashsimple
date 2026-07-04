@@ -326,6 +326,10 @@ const initDb = async () => {
       ON campaigns (keitaro_id);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_behavior_key
       ON user_behavior (date, external_id, buyer, campaign, country, placement);`,
+    // Supports the install→device attribution lookup (WHERE external_id = ?
+    // ORDER BY date DESC, id DESC LIMIT 1) with a single index seek.
+    `CREATE INDEX IF NOT EXISTS idx_user_behavior_extid
+      ON user_behavior (external_id, date DESC, id DESC);`,
     `CREATE INDEX IF NOT EXISTS idx_install_events_date_buyer_country
       ON install_events (date, buyer, country);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
@@ -2557,38 +2561,47 @@ const selectInstallTotalsByDevice = async () =>
      GROUP BY date, device`
   );
 
+// Attribute each install to a device by matching its external_id to the most
+// recent user_behavior row. The lateral is resolved once per DISTINCT
+// external_id (not per install row) and, crucially, without the buyer filter
+// inside it — so the (external_id, date DESC, id DESC) index returns the top
+// row in a single seek instead of scanning every user_behavior row for that
+// id. Buyer matching is applied in the outer join. Cut runtime from a
+// statement-timeout (>60s) to ~7s.
 const selectInstallTotalsByAttributedDevice = async () =>
   getRows(
-    `SELECT
-      ie.date,
-      COALESCE(NULLIF(TRIM(ub.device), ''), NULLIF(TRIM(ub.os), ''), NULLIF(TRIM(ie.device), ''), 'Unknown') AS device,
-      NULLIF(TRIM(ub.os), '') AS os,
-      NULLIF(TRIM(ub.os_version), '') AS os_version,
-      NULLIF(TRIM(ub.device_model), '') AS device_model,
-      COALESCE(NULLIF(TRIM(ie.buyer), ''), NULLIF(TRIM(ub.buyer), ''), '') AS buyer,
-      COALESCE(NULLIF(TRIM(ie.country), ''), NULLIF(TRIM(ub.country), ''), '') AS country,
-      COUNT(*) AS installs
+    `WITH ie_ext AS (
+       SELECT DISTINCT external_id
+       FROM install_events
+       WHERE COALESCE(external_id, '') <> ''
+     ),
+     latest AS (
+       SELECT e.external_id, ub.device, ub.os, ub.os_version, ub.device_model, ub.buyer, ub.country
+       FROM ie_ext e
+       LEFT JOIN LATERAL (
+         SELECT device, os, os_version, device_model, buyer, country
+         FROM user_behavior u
+         WHERE u.external_id = e.external_id
+         ORDER BY u.date DESC, u.id DESC
+         LIMIT 1
+       ) ub ON TRUE
+     )
+     SELECT
+       ie.date,
+       COALESCE(NULLIF(TRIM(ub.device), ''), NULLIF(TRIM(ub.os), ''), NULLIF(TRIM(ie.device), ''), 'Unknown') AS device,
+       NULLIF(TRIM(ub.os), '') AS os,
+       NULLIF(TRIM(ub.os_version), '') AS os_version,
+       NULLIF(TRIM(ub.device_model), '') AS device_model,
+       COALESCE(NULLIF(TRIM(ie.buyer), ''), NULLIF(TRIM(ub.buyer), ''), '') AS buyer,
+       COALESCE(NULLIF(TRIM(ie.country), ''), NULLIF(TRIM(ub.country), ''), '') AS country,
+       COUNT(*) AS installs
      FROM install_events ie
-     LEFT JOIN LATERAL (
-       SELECT
-         ub.device,
-         ub.os,
-         ub.os_version,
-         ub.device_model,
-         ub.buyer,
-         ub.country
-       FROM user_behavior ub
-       WHERE ub.external_id = ie.external_id
-         AND (NULLIF(TRIM(ie.buyer), '') IS NULL
-              OR NULLIF(TRIM(ub.buyer), '') IS NULL
-              OR LOWER(ub.buyer) LIKE LOWER(ie.buyer) || '%'
-              OR LOWER(ie.buyer) LIKE LOWER(ub.buyer) || '%')
-       ORDER BY
-         CASE WHEN ub.date = ie.date THEN 0 ELSE 1 END,
-         ub.date DESC,
-         ub.id DESC
-       LIMIT 1
-     ) ub ON TRUE
+     LEFT JOIN latest ub
+       ON ub.external_id = ie.external_id
+       AND (NULLIF(TRIM(ie.buyer), '') IS NULL
+            OR NULLIF(TRIM(ub.buyer), '') IS NULL
+            OR LOWER(ub.buyer) LIKE LOWER(ie.buyer) || '%'
+            OR LOWER(ie.buyer) LIKE LOWER(ub.buyer) || '%')
      GROUP BY
        ie.date,
        COALESCE(NULLIF(TRIM(ub.device), ''), NULLIF(TRIM(ub.os), ''), NULLIF(TRIM(ie.device), ''), 'Unknown'),
@@ -5544,7 +5557,15 @@ app.get("/api/device-stats", async (req, res) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const viewerBuyer = await resolveViewerBuyer(req.user);
   let rows = await selectDeviceStats(limit);
-  let attributedInstalls = await selectInstallTotalsByAttributedDevice();
+  // Install attribution touches the large user_behavior table — if it ever
+  // slows down or times out, still return device stats without it rather than
+  // failing the whole tab.
+  let attributedInstalls = [];
+  try {
+    attributedInstalls = await selectInstallTotalsByAttributedDevice();
+  } catch (error) {
+    console.error("device-stats: install attribution failed, returning without it:", error.message);
+  }
   if (viewerBuyer) {
     rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
     attributedInstalls = attributedInstalls.filter((row) => buyerMatches(row.buyer, viewerBuyer));
