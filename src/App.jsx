@@ -171,6 +171,7 @@ const navItems = [
   { key: "streams", label: "Goals", icon: Target },
   { key: "utm", label: "UTM Builder", icon: Link2 },
   { key: "tracking", label: "Tracking Links", icon: MousePointerClick },
+  { key: "flows", label: "My Flows", icon: Target },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
   { key: "placements", label: "Placement", icon: MousePointerClick },
@@ -188,7 +189,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["tracking", "utm", "domains", "pixels", "accounts"] },
+  { title: "Operations", items: ["tracking", "flows", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -4804,6 +4805,264 @@ function TrackingLinksDashboard({ authUser }) {
             {!filteredLinks.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
             ) : null}
+          </div>
+        )}
+      </motion.div>
+    </section>
+  );
+}
+
+// ── My Flows ──────────────────────────────────────────────────────────
+// Buyer-centric tree: Tracking Link → bound PWA domains → pixels on each
+// domain. Buyers bind domains to a link and pixels already carry domains.
+function MyFlowsDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const [links, setLinks] = React.useState([]);
+  const [domains, setDomains] = React.useState([]);
+  const [pixels, setPixels] = React.useState([]);
+  const [state, setState] = React.useState({ loading: true, error: null });
+  const [expanded, setExpanded] = React.useState({});
+  const [bindModal, setBindModal] = React.useState({ open: false, link: null, saving: false, error: null, selected: [] });
+
+  const fetchAll = React.useCallback(async () => {
+    try {
+      setState({ loading: true, error: null });
+      const [lr, dr, pr] = await Promise.all([
+        apiFetch("/api/tracking-links?limit=500"),
+        apiFetch("/api/domains?limit=5000"),
+        apiFetch("/api/pixels?limit=1000"),
+      ]);
+      const [ld, dd, pd] = await Promise.all([lr.json(), dr.json(), pr.json()]);
+      if (!lr.ok) throw new Error(ld?.error || "Failed to load links.");
+      setLinks(Array.isArray(ld) ? ld : []);
+      setDomains(Array.isArray(dd) ? dd : []);
+      setPixels(Array.isArray(pd) ? pd : []);
+      setState({ loading: false, error: null });
+    } catch (error) {
+      setState({ loading: false, error: error.message || "Failed to load flows." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  // domain host (lowercased) → pixels attached via their flows list
+  const pixelsByDomain = React.useMemo(() => {
+    const map = new Map();
+    pixels.forEach((pixel) => {
+      normalizeDomainInputList(pixel.flows).forEach((host) => {
+        if (!map.has(host)) map.set(host, []);
+        map.get(host).push(pixel);
+      });
+    });
+    return map;
+  }, [pixels]);
+
+  const domainsByLink = React.useMemo(() => {
+    const map = new Map();
+    domains.forEach((d) => {
+      const linkId = d.tracking_link_id;
+      if (!linkId) return;
+      if (!map.has(linkId)) map.set(linkId, []);
+      map.get(linkId).push(d);
+    });
+    return map;
+  }, [domains]);
+
+  const unboundDomains = React.useMemo(
+    () => domains.filter((d) => !d.tracking_link_id),
+    [domains]
+  );
+
+  const openBind = (link) => {
+    const current = (domainsByLink.get(link.id) || []).map((d) => String(d.id));
+    setBindModal({ open: true, link, saving: false, error: null, selected: current });
+  };
+  const toggleBindDomain = (domainId) => {
+    setBindModal((prev) => {
+      const id = String(domainId);
+      const has = prev.selected.includes(id);
+      return { ...prev, selected: has ? prev.selected.filter((x) => x !== id) : [...prev.selected, id] };
+    });
+  };
+  const saveBind = async () => {
+    if (!bindModal.link) return;
+    setBindModal((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const linkId = bindModal.link.id;
+      const before = new Set((domainsByLink.get(linkId) || []).map((d) => String(d.id)));
+      const after = new Set(bindModal.selected);
+      const toBind = [...after].filter((id) => !before.has(id));
+      const toUnbind = [...before].filter((id) => !after.has(id));
+      await Promise.all([
+        ...toBind.map((id) =>
+          apiFetch(`/api/domains/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackingLinkId: linkId }),
+          })
+        ),
+        ...toUnbind.map((id) =>
+          apiFetch(`/api/domains/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackingLinkId: null }),
+          })
+        ),
+      ]);
+      setBindModal({ open: false, link: null, saving: false, error: null, selected: [] });
+      await fetchAll();
+    } catch (error) {
+      setBindModal((prev) => ({ ...prev, saving: false, error: error.message || "Failed to bind domains." }));
+    }
+  };
+
+  const bindOptions = React.useMemo(() => {
+    if (!bindModal.link) return [];
+    // domains that are unbound OR already bound to THIS link
+    return domains
+      .filter((d) => !d.tracking_link_id || d.tracking_link_id === bindModal.link.id)
+      .map((d) => ({ value: String(d.id), label: d.domain, search: d.domain }));
+  }, [domains, bindModal.link]);
+
+  return (
+    <section className="form-section">
+      <AnimatePresence>
+        {bindModal.open ? (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setBindModal((p) => ({ ...p, open: false }))}>
+            <motion.div
+              className="modal pixel-edit-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Bind Domains")}</p>
+                  <h2>{bindModal.link?.name}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={() => setBindModal((p) => ({ ...p, open: false }))}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="field field-span-2">
+                  <label>{t("PWA Domains for this tracking link")}</label>
+                  <CountryDropdownPicker
+                    multiple
+                    values={bindModal.selected}
+                    onToggle={toggleBindDomain}
+                    options={bindOptions}
+                    placeholder={t("No domains selected")}
+                    searchPlaceholder={t("Find domain")}
+                    emptyResultsLabel={t("No domains available.")}
+                  />
+                  <p className="field-hint">{t("Only unbound domains and this link's domains are listed. Register PWA domains in the Domains section first.")}</p>
+                </div>
+                {bindModal.error ? <div className="field field-span-2"><div className="api-status error">{bindModal.error}</div></div> : null}
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={() => setBindModal((p) => ({ ...p, open: false }))}>{t("Cancel")}</button>
+                <button className="action-pill" type="button" onClick={saveBind} disabled={bindModal.saving}>
+                  {bindModal.saving ? t("Saving…") : t("Save binding")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <motion.div className="panel registry-dashboard-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <div className="panel-head">
+          <div>
+            <h3 className="panel-title">{t("My Flows")}</h3>
+            <p className="panel-subtitle">
+              {t("Tracking link → PWA domains → pixels. Bind your domains to a link, then attach pixels to each domain.")}
+            </p>
+          </div>
+          <span className="roles-count">{links.length} {t("links")} · {unboundDomains.length} {t("unbound")}</span>
+        </div>
+
+        {state.loading ? (
+          <div className="empty-state">{t("Loading flows…")}</div>
+        ) : state.error ? (
+          <div className="empty-state error">{state.error}</div>
+        ) : links.length === 0 ? (
+          <div className="empty-state">{t("No tracking links yet. Create one in Tracking Links first.")}</div>
+        ) : (
+          <div className="flow-tree">
+            {links.map((link) => {
+              const linkDomains = domainsByLink.get(link.id) || [];
+              const isOpen = expanded[link.id] !== false;
+              const totalPixels = linkDomains.reduce(
+                (acc, d) => acc + (pixelsByDomain.get(String(d.domain || "").toLowerCase()) || []).length,
+                0
+              );
+              return (
+                <div className="flow-link" key={link.id}>
+                  <div className="flow-link-head">
+                    <button
+                      type="button"
+                      className="flow-link-toggle"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [link.id]: !isOpen }))}
+                    >
+                      <span className={`flow-chevron${isOpen ? " is-open" : ""}`}>▸</span>
+                      <span className="cs-dot" style={{ background: String(link.state || "active") === "active" ? "#36d07c" : "#8a93a3" }} />
+                      <span className="flow-link-name">{link.name}</span>
+                    </button>
+                    <div className="flow-link-meta">
+                      <span className="flow-pill" title={link.url}>
+                        <span className="cs-dot" style={{ background: "#6ad6ff" }} />
+                        {`${String(link.domain || "")}/${String(link.alias || "")}`}
+                      </span>
+                      <span className="flow-count">{linkDomains.length} {t("domains")} · {totalPixels} {t("pixels")}</span>
+                      <button type="button" className="offers-mode-toggle" onClick={() => openBind(link)}>
+                        <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isOpen ? (
+                    linkDomains.length === 0 ? (
+                      <div className="flow-empty">{t("No domains bound yet. Click 'Bind domains'.")}</div>
+                    ) : (
+                      <div className="flow-domains">
+                        {linkDomains.map((domain) => {
+                          const dPixels = pixelsByDomain.get(String(domain.domain || "").toLowerCase()) || [];
+                          return (
+                            <div className="flow-domain" key={domain.id}>
+                              <div className="flow-domain-head">
+                                <Globe size={13} />
+                                <span className="flow-domain-name">{domain.domain}</span>
+                                <span className={`accounts-status-pill acc-st-${(domain.status || "active").toLowerCase()}`}>
+                                  {t(domain.status || "Active")}
+                                </span>
+                                <span className="flow-count">{dPixels.length} {t("pixels")}</span>
+                              </div>
+                              {dPixels.length ? (
+                                <div className="flow-pixels">
+                                  {dPixels.map((pixel) => (
+                                    <span className="flow-pixel-chip" key={pixel.id}>
+                                      <Zap size={11} />
+                                      {pixel.pixel_id}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flow-pixels-empty">{t("No pixels on this domain — add one in Pixels with this domain in its list.")}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         )}
       </motion.div>
@@ -17559,6 +17818,7 @@ export default function App() {
   const isGeos = activeView === "geos";
   const isUtm = activeView === "utm";
   const isTracking = activeView === "tracking";
+  const isFlows = activeView === "flows";
   const isStats = activeView === "statistics";
   const isCampaigns = activeView === "campaigns";
   const isPlacements = activeView === "placements";
@@ -17654,6 +17914,7 @@ export default function App() {
       streams: "goals",
       utm: "utm",
       tracking: "tracking_links",
+      flows: "tracking_links",
       statistics: "statistics",
       campaigns: "campaigns",
       placements: "placements",
@@ -18633,6 +18894,8 @@ export default function App() {
           <UtmBuilder />
         ) : isTracking ? (
           <TrackingLinksDashboard authUser={authUser} />
+        ) : isFlows ? (
+          <MyFlowsDashboard authUser={authUser} />
         ) : isGoals ? (
           <GoalsDashboard authUser={authUser} />
         ) : isDomains ? (

@@ -5523,6 +5523,91 @@ select option,
 }
 .tracking-stream-row strong { color: var(--text); }
 
+/* ── My Flows tree ──────────────────────────────────────────────────── */
+.flow-tree { display: grid; gap: 12px; margin-top: 14px; }
+
+.flow-link {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(30, 33, 40, 0.6), rgba(18, 21, 26, 0.7));
+  overflow: hidden;
+}
+.flow-link-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+.flow-link-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  min-width: 0;
+}
+.flow-link-toggle .cs-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.flow-link-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+.flow-chevron { color: var(--muted); transition: transform 0.16s ease; font-size: 11px; }
+.flow-chevron.is-open { transform: rotate(90deg); }
+.flow-link-meta { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.flow-count { font-size: 11px; color: var(--muted); }
+
+.flow-domains {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px 34px;
+}
+.flow-domain {
+  border: 1px solid var(--stroke);
+  border-left: 3px solid rgba(106, 214, 255, 0.5);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.flow-domain-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+.flow-domain-head svg { color: #6ad6ff; }
+.flow-domain-name { font-family: "JetBrains Mono", "Fira Code", monospace; }
+.flow-domain-head .flow-count { margin-left: auto; }
+.flow-pixels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.flow-pixel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(54, 208, 124, 0.3);
+  background: rgba(54, 208, 124, 0.08);
+  color: #7ce2a7;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+.flow-pixel-chip svg { color: var(--green); }
+.flow-pixels-empty,
+.flow-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  padding: 8px 14px 14px 34px;
+}
+.flow-pixels-empty { padding: 8px 0 0 0; }
+
 .accounts-form textarea {
   min-height: 120px;
 }
