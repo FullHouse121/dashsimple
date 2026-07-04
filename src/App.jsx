@@ -11348,6 +11348,7 @@ function DomainsDashboard({ authUser }) {
     return { total, active, attention, blocked };
   }, [domainTableRows]);
 
+  const [domPage, setDomPage] = React.useState(1);
   const filteredDomainRows = React.useMemo(
     () =>
       domainTableRows.filter((row) => {
@@ -11370,6 +11371,34 @@ function DomainsDashboard({ authUser }) {
       canManageDomains,
     ]
   );
+
+  const DOM_PAGE_SIZE = 50;
+  const domPageCount = Math.max(1, Math.ceil(filteredDomainRows.length / DOM_PAGE_SIZE));
+  const domClampedPage = Math.min(domPage, domPageCount);
+  const pagedDomainRows = React.useMemo(
+    () => filteredDomainRows.slice((domClampedPage - 1) * DOM_PAGE_SIZE, domClampedPage * DOM_PAGE_SIZE),
+    [filteredDomainRows, domClampedPage]
+  );
+  const domPageList = React.useMemo(() => {
+    const total = domPageCount;
+    const cur = domClampedPage;
+    const out = [];
+    if (total <= 7) {
+      for (let i = 1; i <= total; i += 1) out.push(i);
+    } else {
+      out.push(1);
+      const start = Math.max(2, cur - 1);
+      const end = Math.min(total - 1, cur + 1);
+      if (start > 2) out.push("ellipsis");
+      for (let i = start; i <= end; i += 1) out.push(i);
+      if (end < total - 1) out.push("ellipsis");
+      out.push(total);
+    }
+    return out;
+  }, [domPageCount, domClampedPage]);
+  React.useEffect(() => {
+    setDomPage(1);
+  }, [filteredDomainRows]);
 
   return (
     <section className="form-section">
@@ -11617,7 +11646,7 @@ function DomainsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredDomainRows.map(({ domain, ownerLabel, countries }) => (
+                {pagedDomainRows.map(({ domain, ownerLabel, countries }) => (
                   <tr key={domain.id}>
                     <td>
                       <span className="flow-pill" title={domain.domain}>
@@ -11702,6 +11731,51 @@ function DomainsDashboard({ authUser }) {
             </div>
             {!filteredDomainRows.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
+            {filteredDomainRows.length > DOM_PAGE_SIZE ? (
+              <div className="offer-pagebar">
+                <span className="offer-results-count">
+                  {t("Showing")} {(domClampedPage - 1) * DOM_PAGE_SIZE + 1}–
+                  {Math.min(domClampedPage * DOM_PAGE_SIZE, filteredDomainRows.length)} {t("of")}{" "}
+                  {filteredDomainRows.length}
+                </span>
+                <div className="offer-pagination">
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={domClampedPage <= 1}
+                    onClick={() => setDomPage((p) => Math.max(1, p - 1))}
+                    aria-label={t("Previous page")}
+                  >
+                    ‹
+                  </button>
+                  {domPageList.map((p, i) =>
+                    p === "ellipsis" ? (
+                      <span key={`dom-ellipsis-${i}`} className="offer-pagination-ellipsis">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        key={p}
+                        className={`offer-pagination-page ${p === domClampedPage ? "is-active" : ""}`}
+                        onClick={() => setDomPage(p)}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={domClampedPage >= domPageCount}
+                    onClick={() => setDomPage((p) => Math.min(domPageCount, p + 1))}
+                    aria-label={t("Next page")}
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
             ) : null}
           </div>
         )}

@@ -1019,21 +1019,28 @@ select {
 }
 
 .action-pill {
-  background: rgba(8, 12, 10, 0.6);
-  border: 1px solid rgba(54, 208, 124, 0.7);
-  color: var(--green);
+  background: linear-gradient(180deg, #3fe08a 0%, #2fc275 100%);
+  border: 1px solid rgba(54, 208, 124, 0.9);
+  color: #071108;
   padding: 10px 16px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;
   gap: 10px;
   font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 10px 20px rgba(54, 208, 124, 0.08);
+  font-weight: 650;
+  box-shadow: 0 10px 22px rgba(54, 208, 124, 0.22);
+  transition: filter 0.18s ease, box-shadow 0.18s ease;
 }
 
 .action-pill:hover {
-  box-shadow: 0 12px 24px rgba(54, 208, 124, 0.18);
+  filter: brightness(1.06);
+  box-shadow: 0 14px 28px rgba(54, 208, 124, 0.3);
+}
+
+.action-pill:disabled {
+  filter: grayscale(0.4) brightness(0.8);
+  cursor: not-allowed;
 }
 
 .topbar-actions {
@@ -1168,6 +1175,13 @@ select {
   display: grid;
   place-items: center;
   transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.notification-btn::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
 }
 
 .notification-btn:hover {
@@ -4358,6 +4372,7 @@ select option,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+  font-variant-numeric: tabular-nums;
 }
 
 .cards.secondary {
@@ -8846,6 +8861,7 @@ select option,
   padding: 12px 14px;
   text-align: left;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-variant-numeric: tabular-nums;
 }
 
 .entries-table th {
