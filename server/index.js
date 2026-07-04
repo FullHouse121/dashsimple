@@ -7064,11 +7064,24 @@ app.delete("/api/pixels/:id", async (req, res) => {
 app.get("/api/meta-tokens", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
-  if (isLeadership(req.user)) {
-    const rows = await selectMetaTokenIntegrations(limit);
-    return res.json(rows);
+  const rows = isLeadership(req.user)
+    ? await selectMetaTokenIntegrations(limit)
+    : await selectMetaTokenIntegrationsByOwner(req.user.id, limit);
+
+  // "Cost Received" reflects the real Keitaro cost integration: overlay the
+  // live cost per buyer (from report/build). Falls back to the SQL-derived
+  // value if Keitaro is unavailable.
+  try {
+    const costByBuyer = await getKeitaroCostByBuyer();
+    if (costByBuyer && costByBuyer.size) {
+      rows.forEach((row) => {
+        const key = normalizeBuyerName(resolveBuyerAlias(row.buyer_name));
+        if (key) row.received_spend = costByBuyer.get(key) || 0;
+      });
+    }
+  } catch (error) {
+    /* keep the SQL-derived received_spend on failure */
   }
-  const rows = await selectMetaTokenIntegrationsByOwner(req.user.id, limit);
   return res.json(rows);
 });
 
@@ -7977,6 +7990,34 @@ const LIVE_STATS_METRICS = [
 ];
 const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 const isoDay = (dt) => dt.toISOString().slice(0, 10);
+
+// Live Keitaro cost per buyer (the actual "cost integration" figure), keyed by
+// the normalized+aliased buyer name. Year-to-date, cached 5 min. Used to drive
+// the Meta Token $ section's "Cost Received".
+const keitaroCostCache = { at: 0, byBuyer: null };
+const getKeitaroCostByBuyer = async () => {
+  if (keitaroCostCache.byBuyer && Date.now() - keitaroCostCache.at < 5 * 60 * 1000) {
+    return keitaroCostCache.byBuyer;
+  }
+  const today = new Date();
+  const report = await keitaroReportBuild({
+    from: `${today.getUTCFullYear()}-01-01`,
+    to: isoDay(today),
+    grouping: ["campaign"],
+    metrics: ["cost"],
+    limit: 5000,
+  });
+  if (!report.ok) return keitaroCostCache.byBuyer || new Map();
+  const map = new Map();
+  for (const r of report.rows) {
+    const key = normalizeBuyerName(parseCampaignName(r.campaign).buyer);
+    if (!key) continue;
+    map.set(key, (map.get(key) || 0) + (Number(r.cost) || 0));
+  }
+  keitaroCostCache.at = Date.now();
+  keitaroCostCache.byBuyer = map;
+  return map;
+};
 
 app.get("/api/keitaro/live-stats", async (req, res) => {
   const tz = String(req.query.tz || "UTC");
