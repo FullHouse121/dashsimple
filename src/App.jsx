@@ -4049,7 +4049,7 @@ function TrackingLinksDashboard({ authUser }) {
 
   // Details / verify modal
   const [details, setDetails] = React.useState({ open: false, link: null, verify: null, verifying: false, error: null });
-  const [editModal, setEditModal] = React.useState({ open: false, link: null, saving: false, error: null, form: { game: "", geo: "", brand: "" } });
+  const [editModal, setEditModal] = React.useState({ open: false, link: null, saving: false, error: null, form: { buyer: "", game: "", geo: "", brand: "" } });
 
   const openDetails = (link, autoVerify = false) => {
     setDetails({ open: true, link, verify: null, verifying: autoVerify, error: null });
@@ -4073,7 +4073,7 @@ function TrackingLinksDashboard({ authUser }) {
       link,
       saving: false,
       error: null,
-      form: { game: link.game || "", geo: link.geo || "", brand: link.brand || "" },
+      form: { buyer: link.buyer || "", game: link.game || "", geo: link.geo || "", brand: link.brand || "" },
     });
   };
   const saveEdit = async () => {
@@ -4087,7 +4087,7 @@ function TrackingLinksDashboard({ authUser }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || "Failed to save.");
-      setEditModal({ open: false, link: null, saving: false, error: null, form: { game: "", geo: "", brand: "" } });
+      setEditModal({ open: false, link: null, saving: false, error: null, form: { buyer: "", game: "", geo: "", brand: "" } });
       await fetchLinks();
     } catch (error) {
       setEditModal((prev) => ({ ...prev, saving: false, error: error.message || "Failed to save." }));
@@ -4426,6 +4426,22 @@ function TrackingLinksDashboard({ authUser }) {
                 </button>
               </div>
               <div className="modal-body">
+                <div className="field field-span-2">
+                  <label>{t("Buyer")}</label>
+                  <input
+                    value={editModal.form.buyer}
+                    onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, buyer: e.target.value } }))}
+                    readOnly={!isLeadership}
+                    list="tracking-buyer-options"
+                    placeholder={editModal.link?.buyer || ""}
+                  />
+                  <datalist id="tracking-buyer-options">
+                    {buyerFilterOptions.map((o) => (
+                      <option key={o.value} value={o.value} />
+                    ))}
+                  </datalist>
+                  <p className="field-hint">{t("This is the first segment of the campaign name. Saving renames it in Keitaro too.")}</p>
+                </div>
                 <div className="field">
                   <label>{t("Game / Offer")}</label>
                   <input value={editModal.form.game} onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, game: e.target.value } }))} />

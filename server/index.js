@@ -8002,16 +8002,17 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   const body = req.body ?? {};
-  const isEdit = ["game", "geo", "brand", "tool"].some((k) => body[k] !== undefined);
+  const isEdit = ["buyer", "game", "geo", "brand", "tool"].some((k) => body[k] !== undefined);
 
   // Edit path: recompose the campaign name from segments + push to Keitaro.
   if (isEdit) {
     const seg = (v) => String(v || "").trim() || "-";
+    const buyer = body.buyer !== undefined ? body.buyer : row.buyer;
     const game = body.game !== undefined ? body.game : row.game;
     const geo = body.geo !== undefined ? body.geo : row.geo;
     const brand = body.brand !== undefined ? body.brand : row.brand;
     const tool = body.tool !== undefined ? body.tool : row.tool;
-    const name = [row.buyer || "-", seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
+    const name = [seg(buyer), seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
     if (row.keitaro_id) {
       const upd = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, {
         method: "PUT",
@@ -8022,8 +8023,8 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
       }
     }
     await query(
-      `UPDATE tracking_links SET name=$1, tool=$2, game=$3, geo=$4, brand=$5 WHERE id=$6`,
-      [name, String(tool || "").trim() || null, String(game || "").trim() || null, String(geo || "").trim() || null, String(brand || "").trim() || null, id]
+      `UPDATE tracking_links SET name=$1, buyer=$2, tool=$3, game=$4, geo=$5, brand=$6 WHERE id=$7`,
+      [name, String(buyer || "").trim() || null, String(tool || "").trim() || null, String(game || "").trim() || null, String(geo || "").trim() || null, String(brand || "").trim() || null, id]
     );
     return res.json({ ok: true, name });
   }
