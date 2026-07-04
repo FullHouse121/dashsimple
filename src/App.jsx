@@ -6297,7 +6297,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   }, [effectiveBuyer, isLeadership]);
 
   const fetchStats = React.useCallback(async () => {
-    const cacheKey = "media-stats:limit=100000";
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    const from = isoRe.test(filters?.dateFrom || "") ? filters.dateFrom : "";
+    const to = isoRe.test(filters?.dateTo || "") ? filters.dateTo : "";
+    const qs = new URLSearchParams();
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    const liveUrl = `/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`;
+    const cacheKey = `live-stats:${qs.toString()}`;
     const cached = readSwrCache(cacheKey);
 
     if (cached && Array.isArray(cached)) {
@@ -6308,10 +6315,20 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     }
 
     try {
-      const response = await apiFetch("/api/media-stats?limit=100000");
-      if (!response.ok) throw new Error("Failed to load media buyer stats.");
-      const data = await response.json();
-      const rows = Array.isArray(data) ? data : [];
+      let rows = null;
+      // Primary path: live, aggregated data straight from Keitaro.
+      const response = await apiFetch(liveUrl);
+      if (response.ok) {
+        const data = await response.json();
+        rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      } else {
+        // Fallback to the synced table when the live endpoint is unavailable
+        // (e.g. backend not yet redeployed).
+        const fb = await apiFetch("/api/media-stats?limit=100000");
+        if (!fb.ok) throw new Error("Failed to load media buyer stats.");
+        const fbData = await fb.json();
+        rows = Array.isArray(fbData) ? fbData : [];
+      }
       writeSwrCache(cacheKey, rows);
       setStatsEntries(rows);
       setStatsState({ loading: false, error: null });
@@ -6320,7 +6337,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         setStatsState({ loading: false, error: error.message || "Failed to load stats." });
       }
     }
-  }, []);
+  }, [filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     fetchStats();

@@ -7893,6 +7893,82 @@ app.get("/api/keitaro/resources", async (req, res) => {
   res.json(scopeKeitaroResourcesForBuyer(data, req.user.username));
 });
 
+// ── Live Performance data straight from Keitaro's report builder ──────
+// No local sync: always fresh, aggregated server-side, returned in the same
+// media_stats-like row shape the Performance tabs already consume. Metrics
+// match the sync mapping 1:1 (regs, custom_conversion_8=FTD, _7=redeposit).
+const keitaroReportBuild = async ({ from, to, timezone = "UTC", grouping, metrics, limit = 200000, filters = [] }) => {
+  const res = await keitaroAdminFetch("/report/build", {
+    method: "POST",
+    body: JSON.stringify({ range: { from, to, timezone }, grouping, metrics, filters, limit }),
+  });
+  if (!res.ok) return { ok: false, error: res.error, rows: [] };
+  const d = res.data || {};
+  return { ok: true, rows: Array.isArray(d) ? d : d.rows || [] };
+};
+
+const LIVE_STATS_METRICS = [
+  "clicks", "campaign_unique_clicks", "regs",
+  "custom_conversion_8", "custom_conversion_7",
+  "revenue", "cost", "custom_conversion_8_revenue", "custom_conversion_7_revenue",
+];
+const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+const isoDay = (dt) => dt.toISOString().slice(0, 10);
+
+app.get("/api/keitaro/live-stats", async (req, res) => {
+  const tz = String(req.query.tz || "UTC");
+  const today = new Date();
+  const to = isIsoDate(req.query.to) ? String(req.query.to) : isoDay(today);
+  // Default window: 60 days back, keeping payloads light and fast.
+  const from = isIsoDate(req.query.from)
+    ? String(req.query.from)
+    : isoDay(new Date(today.getTime() - 59 * 86400000));
+
+  const report = await keitaroReportBuild({
+    from, to, timezone: tz,
+    grouping: ["day", "campaign", "country"],
+    metrics: LIVE_STATS_METRICS,
+  });
+  if (!report.ok) {
+    return res.status(502).json({ error: report.error || "Keitaro report failed." });
+  }
+
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  let rows = report.rows.map((r) => {
+    const parsed = parseCampaignName(r.campaign);
+    const ftdRev = num(r.custom_conversion_8_revenue);
+    const redepRev = num(r.custom_conversion_7_revenue);
+    let revenue = num(r.revenue);
+    if (revenue === 0 && ftdRev + redepRev > 0) revenue = ftdRev + redepRev;
+    return {
+      date: r.day,
+      buyer: parsed.buyer,
+      campaign: r.campaign,
+      campaign_name: r.campaign,
+      tool: parsed.tool || null,
+      game: parsed.game || null,
+      geo: parsed.geo || null,
+      brand: parsed.brand || null,
+      country: r.country || null,
+      spend: num(r.cost),
+      revenue,
+      ftd_revenue: ftdRev,
+      redeposit_revenue: redepRev,
+      clicks: num(r.clicks),
+      unique_clicks: num(r.campaign_unique_clicks),
+      registers: num(r.regs),
+      ftds: num(r.custom_conversion_8),
+      redeposits: num(r.custom_conversion_7),
+    };
+  });
+
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  if (viewerBuyer) {
+    rows = rows.filter((r) => buyerMatches(r.buyer, viewerBuyer));
+  }
+  res.json({ rows, range: { from, to }, source: "keitaro-live" });
+});
+
 app.post("/api/tracking-links", async (req, res) => {
   const {
     buyer = "",
