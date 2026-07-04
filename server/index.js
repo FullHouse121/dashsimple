@@ -7940,20 +7940,29 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
   const tz = String(req.query.tz || "UTC");
   const today = new Date();
   const to = isIsoDate(req.query.to) ? String(req.query.to) : isoDay(today);
-  // Default window: 60 days back, keeping payloads light and fast.
+
+  // group modes:
+  //   stats (default) → day/campaign/country   (Statistics, Campaigns)
+  //   geo             → campaign/country/region/city (GEOS; no day axis)
+  //   placement       → day/campaign/country/sub_id_1 (Placements)
+  // geo/placement are high-cardinality, so their default window stays short;
+  // stats defaults to year-to-date to mirror the old "load all" behaviour.
+  const mode = String(req.query.group || "stats");
+  const geoMode = mode === "geo";
+  const placementMode = mode === "placement";
+  const highCard = geoMode || placementMode;
   const from = isIsoDate(req.query.from)
     ? String(req.query.from)
-    : isoDay(new Date(today.getTime() - 59 * 86400000));
+    : highCard
+      ? isoDay(new Date(today.getTime() - 59 * 86400000))
+      : `${today.getUTCFullYear()}-01-01`;
 
-  // group=geo drills into country/region/city (for the GEOS tab); the default
-  // is the day/campaign/country grain the Statistics tab uses. Geo mode drops
-  // the day axis (date isn't charted there) to keep the payload small.
-  const geoMode = String(req.query.group || "stats") === "geo";
-  const report = await keitaroReportBuild({
-    from, to, timezone: tz,
-    grouping: geoMode ? ["campaign", "country", "region", "city"] : ["day", "campaign", "country"],
-    metrics: LIVE_STATS_METRICS,
-  });
+  const grouping = geoMode
+    ? ["campaign", "country", "region", "city"]
+    : placementMode
+      ? ["day", "campaign", "country", "sub_id_1"]
+      : ["day", "campaign", "country"];
+  const report = await keitaroReportBuild({ from, to, timezone: tz, grouping, metrics: LIVE_STATS_METRICS });
   if (!report.ok) {
     return res.status(502).json({ error: report.error || "Keitaro report failed." });
   }
@@ -7979,6 +7988,7 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
       country: r.country || null,
       region: r.region || null,
       city: r.city || null,
+      placement: r.sub_id_1 || null,
       spend: num(r.cost),
       revenue,
       ftd_revenue: ftdRev,

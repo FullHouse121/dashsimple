@@ -7380,7 +7380,15 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   const [placementFilter, setPlacementFilter] = React.useState("All placements");
 
   const fetchPlacements = React.useCallback(async () => {
-    const cacheKey = "media-stats:limit=100000";
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    const gr = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+    const pr = getPeriodDateRange(period, customRange);
+    const eff = gr.from || gr.to ? gr : pr;
+    const qs = new URLSearchParams({ group: "placement" });
+    if (isoRe.test(eff.from || "")) qs.set("from", eff.from);
+    if (isoRe.test(eff.to || "")) qs.set("to", eff.to);
+    const liveUrl = `/api/keitaro/live-stats?${qs.toString()}`;
+    const cacheKey = `live-placements:${qs.toString()}`;
     const cached = readSwrCache(cacheKey);
 
     if (cached && Array.isArray(cached)) {
@@ -7391,10 +7399,19 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     }
 
     try {
-      const response = await apiFetch("/api/media-stats?limit=100000");
-      if (!response.ok) throw new Error("Failed to load placement stats.");
-      const data = await response.json();
-      const rows = Array.isArray(data) ? data : [];
+      let rows = null;
+      // Primary path: live, placement-grained data straight from Keitaro.
+      const response = await apiFetch(liveUrl);
+      if (response.ok) {
+        const data = await response.json();
+        rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      } else {
+        // Fallback to the synced table when the live endpoint is unavailable.
+        const fb = await apiFetch("/api/media-stats?limit=100000");
+        if (!fb.ok) throw new Error("Failed to load placement stats.");
+        const fbData = await fb.json();
+        rows = Array.isArray(fbData) ? fbData : [];
+      }
       writeSwrCache(cacheKey, rows);
       setPlacementEntries(rows);
       setPlacementState({ loading: false, error: null });
@@ -7403,7 +7420,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         setPlacementState({ loading: false, error: error.message || "Failed to load placement stats." });
       }
     }
-  }, []);
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     fetchPlacements();
@@ -8047,17 +8064,32 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const fetchCampaigns = React.useCallback(async () => {
     try {
       setCampaignState({ loading: true, error: null });
+      const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+      const gr = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+      const pr = getPeriodDateRange(period, customRange);
+      const eff = gr.from || gr.to ? gr : pr;
+      const qs = new URLSearchParams();
+      if (isoRe.test(eff.from || "")) qs.set("from", eff.from);
+      if (isoRe.test(eff.to || "")) qs.set("to", eff.to);
+      const liveUrl = `/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`;
       const [statsResponse, domainsResponse, mappingsResponse] = await Promise.all([
-        apiFetch("/api/media-stats?limit=100000"),
+        apiFetch(liveUrl),
         apiFetch("/api/domains?limit=5000"),
         apiFetch("/api/campaigns?limit=500"),
       ]);
 
-      if (!statsResponse.ok) {
-        throw new Error("Failed to load campaign stats.");
+      // Primary path: live Keitaro data; fall back to the synced table.
+      let statsRows = [];
+      if (statsResponse.ok) {
+        const data = await statsResponse.json();
+        statsRows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      } else {
+        const fb = await apiFetch("/api/media-stats?limit=100000");
+        if (!fb.ok) throw new Error("Failed to load campaign stats.");
+        const fbData = await fb.json();
+        statsRows = Array.isArray(fbData) ? fbData : [];
       }
-      const data = await statsResponse.json();
-      setCampaignEntries(Array.isArray(data) ? data : []);
+      setCampaignEntries(statsRows);
 
       if (domainsResponse.ok) {
         const domainsData = await domainsResponse.json();
@@ -8085,7 +8117,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     } catch (error) {
       setCampaignState({ loading: false, error: error.message || "Failed to load campaign stats." });
     }
-  }, []);
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     fetchCampaigns();
