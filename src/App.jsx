@@ -1218,7 +1218,12 @@ function HomeDashboard({
       [periodRangeInline.from, fFrom].filter(Boolean).sort()[0] || null;
     const fetchTo =
       [periodRangeInline.to, fTo].filter(Boolean).sort().slice(-1)[0] || null;
-    const cacheKey = `media-stats:home:${fetchFrom || "_"}:${fetchTo || "_"}`;
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    const qs = new URLSearchParams();
+    if (isoRe.test(fetchFrom || "")) qs.set("from", fetchFrom);
+    if (isoRe.test(fetchTo || "")) qs.set("to", fetchTo);
+    const liveUrl = `/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`;
+    const cacheKey = `live-home:${fetchFrom || "_"}:${fetchTo || "_"}`;
     const cached = readSwrCache(cacheKey);
     if (cached && Array.isArray(cached)) {
       setHomeRows(cached);
@@ -1227,13 +1232,22 @@ function HomeDashboard({
       setHomeState({ loading: true, error: null });
     }
     try {
-      const qs = new URLSearchParams({ limit: "100000", strict: "1" });
-      if (fetchFrom) qs.set("from", fetchFrom);
-      if (fetchTo) qs.set("to", fetchTo);
-      const response = await apiFetch(`/api/media-stats?${qs.toString()}`);
-      if (!response.ok) throw new Error("Failed to load media buyer stats.");
-      const data = await response.json();
-      const rows = Array.isArray(data) ? data : [];
+      let rows = null;
+      // Primary path: live, aggregated data straight from Keitaro.
+      const response = await apiFetch(liveUrl);
+      if (response.ok) {
+        const data = await response.json();
+        rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      } else {
+        // Fallback to the synced table when the live endpoint is unavailable.
+        const sq = new URLSearchParams({ limit: "100000", strict: "1" });
+        if (fetchFrom) sq.set("from", fetchFrom);
+        if (fetchTo) sq.set("to", fetchTo);
+        const fb = await apiFetch(`/api/media-stats?${sq.toString()}`);
+        if (!fb.ok) throw new Error("Failed to load media buyer stats.");
+        const fbData = await fb.json();
+        rows = Array.isArray(fbData) ? fbData : [];
+      }
       writeSwrCache(cacheKey, rows);
       setHomeRows(rows);
       setHomeState({ loading: false, error: null });
