@@ -3737,6 +3737,26 @@ const TRACKING_GEO_PRESETS = [
 const DEFAULT_TRACKING_PARAMS =
   "external_id={exid}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
 
+// Each traffic tool passes its click identifier under a different macro, so the
+// external_id value must follow the selected tool (keyed by shortcode).
+// Add new tools here as they're confirmed; anything unlisted keeps {exid}.
+const DEFAULT_EXTERNAL_ID_MACRO = "{exid}";
+const TRACKING_TOOL_EXTERNAL_ID = {
+  "PWA.GROUP": "{USER_ID}",
+  "ZMAPPS": "{exid}",
+};
+const externalIdMacroForTool = (tool) =>
+  TRACKING_TOOL_EXTERNAL_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_EXTERNAL_ID_MACRO;
+// Swap only the external_id value in a params string, preserving any custom subs.
+const applyExternalIdMacro = (params, tool) => {
+  const macro = externalIdMacroForTool(tool);
+  const s = String(params || "");
+  if (/(?:^|&)external_id=/i.test(s)) {
+    return s.replace(/((?:^|&)external_id=)[^&]*/i, `$1${macro}`);
+  }
+  return `external_id=${macro}${s ? `&${s}` : ""}`;
+};
+
 // Keitaro stream filter catalog. name = API filter name; bool = no values.
 const TRACKING_FILTER_CATALOG = [
   { group: "Traffic", name: "keyword", label: "Keyword" },
@@ -4543,13 +4563,20 @@ function TrackingLinksDashboard({ authUser }) {
                 onChange={(value) => {
                   const source = resources.trafficSources.find((s) => String(s.id) === String(value));
                   if (source) {
+                    const shortcode = trackingSourceShortcode(source.name);
                     setForm((prev) => ({
                       ...prev,
                       trafficSourceId: String(source.id),
-                      tool: trackingSourceShortcode(source.name),
+                      tool: shortcode,
+                      params: applyExternalIdMacro(prev.params, shortcode),
                     }));
                   } else {
-                    setForm((prev) => ({ ...prev, trafficSourceId: "", tool: value }));
+                    setForm((prev) => ({
+                      ...prev,
+                      trafficSourceId: "",
+                      tool: value,
+                      params: applyExternalIdMacro(prev.params, value),
+                    }));
                   }
                 }}
                 options={resources.trafficSources.map((s) => ({
@@ -4638,6 +4665,11 @@ function TrackingLinksDashboard({ authUser }) {
             <div className="field field-span-3">
               <label>{t("Link Parameters")}</label>
               <textarea rows={2} value={form.params} onChange={updateForm("params")} spellCheck={false} />
+              <p className="field-hint">
+                {form.tool
+                  ? `${t("external_id follows")} ${form.tool} → ${externalIdMacroForTool(form.tool)}`
+                  : t("external_id macro follows the selected tool (e.g. PWA.GROUP → {USER_ID}, ZMAPPS → {exid}).")}
+              </p>
             </div>
             <div className="field field-span-3 tracking-preview">
               <label>{t("Preview")}</label>
