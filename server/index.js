@@ -7481,6 +7481,32 @@ const KEITARO_STANDARD_PARAMETERS = {
   sub_id_12: { name: "fbclid", placeholder: "{{fbclid}}" },
 };
 
+// Keitaro validation errors (422) come back as a flat { field: [messages] }
+// map with no error/message key — format those into a readable string.
+const formatKeitaroError = (data, status) => {
+  if (!data) return `Keitaro returned HTTP ${status}.`;
+  if (typeof data.error === "string" && data.error) return data.error;
+  if (typeof data.message === "string" && data.message) return data.message;
+  if (typeof data === "object") {
+    const parts = [];
+    for (const [key, value] of Object.entries(data)) {
+      if (key === "stacktrace") continue;
+      if (Array.isArray(value)) parts.push(`${key}: ${value.join(", ")}`);
+      else if (typeof value === "string") parts.push(`${key}: ${value}`);
+    }
+    if (parts.length) return parts.join(" · ");
+  }
+  return `Keitaro returned HTTP ${status}.`;
+};
+
+// 8-char alphanumeric alias, matching Keitaro's own alias style.
+const generateCampaignAlias = () => {
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let out = "";
+  for (let i = 0; i < 8; i += 1) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+};
+
 const keitaroAdminFetch = async (path, options = {}) => {
   const baseUrl = process.env.KEITARO_BASE_URL;
   const apiKey = process.env.KEITARO_API_KEY;
@@ -7502,7 +7528,7 @@ const keitaroAdminFetch = async (path, options = {}) => {
         ok: false,
         status: response.status,
         data,
-        error: data?.error || data?.message || `Keitaro returned HTTP ${response.status}.`,
+        error: formatKeitaroError(data, response.status),
       };
     }
     return { ok: true, status: response.status, data, error: null };
@@ -7591,8 +7617,9 @@ const pushCampaignToKeitaro = async ({
     bind_visitors: "slo",
     parameters: KEITARO_STANDARD_PARAMETERS,
   };
-  const trimmedAlias = String(alias || "").trim();
-  if (trimmedAlias) campaignBody.alias = trimmedAlias;
+  // Alias is required by Keitaro on create — generate one when left blank.
+  const trimmedAlias = String(alias || "").trim() || generateCampaignAlias();
+  campaignBody.alias = trimmedAlias;
   if (resolvedGroupId) campaignBody.group_id = resolvedGroupId;
   if (trafficSourceId) campaignBody.traffic_source_id = Number(trafficSourceId);
   if (domainId) campaignBody.domain_id = Number(domainId);
