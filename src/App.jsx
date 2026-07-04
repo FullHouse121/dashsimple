@@ -4824,6 +4824,7 @@ function MyFlowsDashboard({ authUser }) {
   const [expanded, setExpanded] = React.useState({});
   const [bindModal, setBindModal] = React.useState({ open: false, link: null, saving: false, error: null, selected: [] });
   const [detail, setDetail] = React.useState({ open: false, link: null, domain: null, pixels: [] });
+  const [flowViz, setFlowViz] = React.useState({ open: false, link: null });
   const [copied, setCopied] = React.useState(null);
 
   const maskToken = (v) => {
@@ -5100,6 +5101,104 @@ function MyFlowsDashboard({ authUser }) {
         ) : null}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {flowViz.open ? (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFlowViz({ open: false, link: null })}>
+            <motion.div
+              className="modal traffic-flow-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(() => {
+                const link = flowViz.link || {};
+                const linkDomains = link._domains || [];
+                const pbd = link._pixelsByDomain || new Map();
+                const allPixels = linkDomains.flatMap((d) => pbd.get(String(d.domain || "").toLowerCase()) || []);
+                const filterCfg = (() => {
+                  try {
+                    const cfg = typeof link.filters === "string" ? JSON.parse(link.filters) : link.filters;
+                    return cfg && Array.isArray(cfg.rules) ? cfg : { logic: "and", rules: [] };
+                  } catch (e) {
+                    return { logic: "and", rules: [] };
+                  }
+                })();
+                const steps = [
+                  {
+                    key: "source", accent: "#36d07c", Icon: Megaphone,
+                    title: t("Traffic Source"),
+                    value: link.tool || t("Your ad tool"),
+                    desc: t("You buy traffic here and upload the PWA domain link to your ads."),
+                  },
+                  {
+                    key: "pwa", accent: "#64b8ff", Icon: Globe,
+                    title: t("PWA Domain"),
+                    value: linkDomains.length ? linkDomains.map((d) => d.domain).join(", ") : t("No domain bound yet"),
+                    desc: t("Visitors land on the PWA domain. Your Meta pixel fires here and reports the visit."),
+                    chips: allPixels.map((p) => `#${p.pixel_id}`),
+                  },
+                  {
+                    key: "tracker", accent: "#a15bff", Icon: Link2,
+                    title: t("Tracking Link (Keitaro)"),
+                    value: `${String(link.domain || "")}/${String(link.alias || "")}`,
+                    desc: filterCfg.rules.length
+                      ? t("Keitaro receives the click and applies your filters before routing.")
+                      : t("Keitaro receives the click and routes it to the offer."),
+                    chips: filterCfg.rules.map((r) => `${(TRACKING_FILTER_BY_NAME[r.name]?.label || r.name)} ${r.mode === "reject" ? "≠" : "="} ${(r.payload || []).join(",") || "✓"}`),
+                  },
+                  {
+                    key: "offer", accent: "#36d07c", Icon: Target,
+                    title: t("Offer"),
+                    value: link.game || t("Your offer"),
+                    desc: t("The visitor is redirected to the offer page — conversions flow back to your pixel."),
+                  },
+                ];
+                return (
+                  <>
+                    <div className="modal-head">
+                      <div>
+                        <p className="modal-kicker">{t("Traffic Flow")}</p>
+                        <h2>{link.name}</h2>
+                      </div>
+                      <button className="icon-btn" type="button" onClick={() => setFlowViz({ open: false, link: null })}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="modal-body traffic-flow-body">
+                      <p className="traffic-flow-intro">{t("How your traffic moves, step by step:")}</p>
+                      <div className="traffic-steps">
+                        {steps.map((step, i) => (
+                          <div className="traffic-step" key={step.key} style={{ "--tf-accent": step.accent }}>
+                            <div className="traffic-step-rail">
+                              <span className="traffic-step-num"><step.Icon size={15} /></span>
+                              {i < steps.length - 1 ? <span className="traffic-step-line" /> : null}
+                            </div>
+                            <div className="traffic-step-card">
+                              <div className="traffic-step-title">{step.title}</div>
+                              <div className="traffic-step-value">{step.value}</div>
+                              <div className="traffic-step-desc">{step.desc}</div>
+                              {step.chips && step.chips.length ? (
+                                <div className="traffic-step-chips">
+                                  {step.chips.map((c, ci) => (
+                                    <span className="traffic-step-chip" key={ci}>{c}</span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div className="panel registry-dashboard-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="panel-head">
           <div>
@@ -5144,6 +5243,9 @@ function MyFlowsDashboard({ authUser }) {
                         {`${String(link.domain || "")}/${String(link.alias || "")}`}
                       </span>
                       <span className="flow-count">{linkDomains.length} {t("domains")} · {totalPixels} {t("pixels")}</span>
+                      <button type="button" className="flow-see-traffic" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
+                        <Zap size={13} /> {t("See Traffic Flow")}
+                      </button>
                       <button type="button" className="offers-mode-toggle" onClick={() => openBind(link)}>
                         <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
                       </button>
