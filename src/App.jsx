@@ -62,6 +62,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  ArrowDownUp,
   TrendingUp,
   TrendingDown,
   DollarSign,
@@ -4849,6 +4850,7 @@ function MyFlowsDashboard({ authUser }) {
   const [detail, setDetail] = React.useState({ open: false, link: null, domain: null, pixels: [] });
   const [flowViz, setFlowViz] = React.useState({ open: false, link: null });
   const [copied, setCopied] = React.useState(null);
+  const [sortBy, setSortBy] = React.useState("recent");
 
   const maskToken = (v) => {
     const s = String(v || "");
@@ -4871,6 +4873,32 @@ function MyFlowsDashboard({ authUser }) {
     const qs = String(params || "").trim().replace(/^\?+/, "").replace(/(^|&)external_id=[^&]*/i, "").replace(/^&/, "");
     if (!host) return "";
     return `https://${host}${qs ? `?${qs}` : ""}`;
+  };
+
+  // Break a link into its Buyer | Tool | Game | Geo | Brand parts, preferring
+  // the stored columns and falling back to the composed campaign name.
+  const linkSegments = (link) => {
+    const parts = String(link.name || "").split("|").map((s) => s.trim());
+    return {
+      buyer: link.buyer || parts[0] || "",
+      tool: link.tool || parts[1] || "",
+      game: link.game || parts[2] || "",
+      geo: link.geo || parts[3] || "",
+      brand: link.brand || parts[4] || "",
+    };
+  };
+  const splitGeos = (geo) =>
+    String(geo || "")
+      .split(/[,/]+/)
+      .map((g) => g.trim())
+      .filter(Boolean);
+  const countLinkFilters = (link) => {
+    try {
+      const cfg = typeof link.filters === "string" ? JSON.parse(link.filters) : link.filters;
+      return cfg && Array.isArray(cfg.rules) ? cfg.rules.length : 0;
+    } catch (e) {
+      return 0;
+    }
   };
 
   const fetchAll = React.useCallback(async () => {
@@ -4923,6 +4951,44 @@ function MyFlowsDashboard({ authUser }) {
     () => domains.filter((d) => !d.tracking_link_id),
     [domains]
   );
+
+  const pixelCountForLink = React.useCallback(
+    (link) =>
+      (domainsByLink.get(link.id) || []).reduce(
+        (acc, d) => acc + (pixelsByDomain.get(String(d.domain || "").toLowerCase()) || []).length,
+        0
+      ),
+    [domainsByLink, pixelsByDomain]
+  );
+
+  const sortedLinks = React.useMemo(() => {
+    const arr = [...links];
+    const domainCount = (l) => (domainsByLink.get(l.id) || []).length;
+    const byRecent = (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    arr.sort((a, b) => {
+      if (sortBy === "name") return String(a.name || "").localeCompare(String(b.name || ""));
+      if (sortBy === "buyer")
+        return (
+          String(linkSegments(a).buyer).localeCompare(String(linkSegments(b).buyer)) ||
+          byRecent(a, b)
+        );
+      if (sortBy === "domains") return domainCount(b) - domainCount(a) || byRecent(a, b);
+      if (sortBy === "pixels") return pixelCountForLink(b) - pixelCountForLink(a) || byRecent(a, b);
+      // recent (default): active links first, then newest created
+      const av = String(a.state || "active") === "active" ? 0 : 1;
+      const bv = String(b.state || "active") === "active" ? 0 : 1;
+      return av - bv || byRecent(a, b);
+    });
+    return arr;
+  }, [links, sortBy, domainsByLink, pixelCountForLink]);
+
+  const SORT_OPTIONS = [
+    { value: "recent", label: t("Newest first") },
+    { value: "buyer", label: t("Buyer A–Z") },
+    { value: "name", label: t("Campaign A–Z") },
+    { value: "domains", label: t("Most domains") },
+    { value: "pixels", label: t("Most pixels") },
+  ];
 
   const openBind = (link) => {
     const current = (domainsByLink.get(link.id) || []).map((d) => String(d.id));
@@ -5230,7 +5296,24 @@ function MyFlowsDashboard({ authUser }) {
               {t("Tracking link → PWA domains → pixels. Bind your domains to a link, then attach pixels to each domain.")}
             </p>
           </div>
-          <span className="roles-count">{links.length} {t("links")} · {unboundDomains.length} {t("unbound")}</span>
+          <div className="panel-head-actions">
+            {links.length ? (
+              <div className="flow-sort" role="group" aria-label={t("Sort flows")}>
+                <ArrowDownUp size={13} />
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`flow-sort-btn${sortBy === opt.value ? " is-active" : ""}`}
+                    onClick={() => setSortBy(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <span className="roles-count">{links.length} {t("links")} · {unboundDomains.length} {t("unbound")}</span>
+          </div>
         </div>
 
         {state.loading ? (
@@ -5241,56 +5324,150 @@ function MyFlowsDashboard({ authUser }) {
           <div className="empty-state">{t("No tracking links yet. Create one in Tracking Links first.")}</div>
         ) : (
           <div className="flow-tree">
-            {links.map((link) => {
-              const linkDomains = domainsByLink.get(link.id) || [];
+            {sortedLinks.map((link) => {
+              const linkDomains = [...(domainsByLink.get(link.id) || [])].sort((a, b) =>
+                String(a.domain || "").localeCompare(String(b.domain || ""))
+              );
               const isOpen = expanded[link.id] !== false;
               const totalPixels = linkDomains.reduce(
                 (acc, d) => acc + (pixelsByDomain.get(String(d.domain || "").toLowerCase()) || []).length,
                 0
               );
+              const seg = linkSegments(link);
+              const geos = splitGeos(seg.geo);
+              const filterCount = countLinkFilters(link);
+              const isActive = String(link.state || "active") === "active";
+              const inKeitaro = String(link.keitaro_status || "") === "created" || !!link.keitaro_id;
+              const linkUrl = `${String(link.domain || "")}/${String(link.alias || "")}`;
+              const createdAt = link.created_at
+                ? new Date(link.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
+                : "";
               return (
-                <div className="flow-link" key={link.id}>
+                <div className={`flow-link${isOpen ? " is-open" : ""}`} key={link.id}>
                   <div className="flow-link-head">
-                    <button
-                      type="button"
-                      className="flow-link-toggle"
-                      onClick={() => setExpanded((prev) => ({ ...prev, [link.id]: !isOpen }))}
-                    >
-                      <span className={`flow-chevron${isOpen ? " is-open" : ""}`}>▸</span>
-                      <span className="cs-dot" style={{ background: String(link.state || "active") === "active" ? "#36d07c" : "#8a93a3" }} />
-                      <span className="flow-link-name">{link.name}</span>
-                    </button>
-                    <div className="flow-link-meta">
-                      <span className="flow-pill" title={link.url}>
-                        <span className="cs-dot" style={{ background: "#6ad6ff" }} />
-                        {`${String(link.domain || "")}/${String(link.alias || "")}`}
+                    <div className="flow-link-top">
+                      <button
+                        type="button"
+                        className="flow-link-toggle"
+                        onClick={() => setExpanded((prev) => ({ ...prev, [link.id]: !isOpen }))}
+                        title={link.name}
+                      >
+                        <span className={`flow-chevron${isOpen ? " is-open" : ""}`}>
+                          <ChevronRight size={15} />
+                        </span>
+                        <span className={`flow-state-dot${isActive ? " is-active" : " is-off"}`} />
+                        <span className="flow-buyer">{seg.buyer || t("Unassigned")}</span>
+                      </button>
+                      <div className="flow-segments">
+                        {seg.tool ? (
+                          <span className="flow-seg flow-seg-tool" title={t("Traffic source")}>
+                            <Megaphone size={11} /> {seg.tool}
+                          </span>
+                        ) : null}
+                        {seg.game ? (
+                          <span className="flow-seg flow-seg-game" title={t("Offer / game")}>
+                            <Target size={11} /> {seg.game}
+                          </span>
+                        ) : null}
+                        {geos.length ? (
+                          <span className="flow-seg flow-seg-geo" title={t("GEO")}>
+                            {geos.map((g) => (
+                              <CountryFlag key={g} value={g} />
+                            ))}
+                            {geos.join(", ")}
+                          </span>
+                        ) : null}
+                        {seg.brand ? (
+                          <span className="flow-seg flow-seg-brand" title={t("Brand")}>
+                            <Tag size={11} /> {seg.brand}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flow-link-actions">
+                        <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`} title={inKeitaro ? t("Live in Keitaro") : t("Stored locally")}>
+                          <span className="flow-kt-dot" />
+                          {inKeitaro ? t("Keitaro") : t("Local")}
+                        </span>
+                        <button type="button" className="flow-see-traffic" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
+                          <Zap size={13} /> {t("See Traffic Flow")}
+                        </button>
+                        <button type="button" className="offers-mode-toggle" onClick={() => openBind(link)}>
+                          <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flow-link-strip">
+                      <button
+                        type="button"
+                        className={`flow-pill flow-pill-copy${copied === `link-${link.id}` ? " is-copied" : ""}`}
+                        title={t("Copy tracking link")}
+                        onClick={copyValue(`link-${link.id}`, link.url || `https://${linkUrl}`)}
+                      >
+                        <Link2 size={12} />
+                        <span className="flow-pill-url">{linkUrl}</span>
+                        {copied === `link-${link.id}` ? <CheckCircle size={12} /> : <Copy size={12} />}
+                      </button>
+                      <span className="flow-metric" title={t("Bound PWA domains")}>
+                        <Globe size={12} /> {linkDomains.length} {t("domains")}
                       </span>
-                      <span className="flow-count">{linkDomains.length} {t("domains")} · {totalPixels} {t("pixels")}</span>
-                      <button type="button" className="flow-see-traffic" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
-                        <Zap size={13} /> {t("See Traffic Flow")}
-                      </button>
-                      <button type="button" className="offers-mode-toggle" onClick={() => openBind(link)}>
-                        <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
-                      </button>
+                      <span className="flow-metric" title={t("Attached pixels")}>
+                        <Zap size={12} /> {totalPixels} {t("pixels")}
+                      </span>
+                      {filterCount ? (
+                        <span className="flow-metric" title={t("Keitaro filters")}>
+                          <SlidersHorizontal size={12} /> {filterCount} {t("filters")}
+                        </span>
+                      ) : null}
+                      <span className={`flow-metric flow-metric-status flow-status-${isActive ? "on" : "off"}`}>
+                        {isActive ? t("Active") : t("Paused")}
+                      </span>
+                      {createdAt ? (
+                        <span className="flow-metric flow-metric-muted" title={t("Created")}>
+                          <CalendarIcon size={12} /> {createdAt}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
                   {isOpen ? (
                     linkDomains.length === 0 ? (
-                      <div className="flow-empty">{t("No domains bound yet. Click 'Bind domains'.")}</div>
+                      <div className="flow-empty">
+                        <Globe size={14} />
+                        <span>{t("No domains bound yet.")}</span>
+                        <button type="button" className="flow-empty-cta" onClick={() => openBind(link)}>
+                          {t("Bind domains")}
+                        </button>
+                      </div>
                     ) : (
                       <div className="flow-domains">
                         {linkDomains.map((domain) => {
-                          const dPixels = pixelsByDomain.get(String(domain.domain || "").toLowerCase()) || [];
+                          const dPixels = [...(pixelsByDomain.get(String(domain.domain || "").toLowerCase()) || [])].sort((a, b) =>
+                            String(a.pixel_id || "").localeCompare(String(b.pixel_id || ""), undefined, { numeric: true })
+                          );
+                          const dStatus = String(domain.status || "Active");
+                          const dGeos = normalizeCountryListValue(domain.country);
                           return (
                             <div className="flow-domain" key={domain.id}>
                               <div className="flow-domain-head">
-                                <Globe size={13} />
+                                <span className="flow-domain-icon"><Globe size={14} /></span>
                                 <span className="flow-domain-name">{domain.domain}</span>
-                                <span className={`accounts-status-pill acc-st-${(domain.status || "active").toLowerCase()}`}>
-                                  {t(domain.status || "Active")}
+                                {domain.platform ? (
+                                  <span className="flow-domain-tag">{domain.platform}</span>
+                                ) : null}
+                                {dGeos.length ? (
+                                  <span className="flow-domain-geos" title={dGeos.join(", ")}>
+                                    {dGeos.slice(0, 3).map((g) => (
+                                      <CountryFlag key={g} value={g} />
+                                    ))}
+                                    {dGeos.length > 3 ? <span className="flow-domain-geo-more">+{dGeos.length - 3}</span> : null}
+                                  </span>
+                                ) : null}
+                                <span className={`accounts-status-pill acc-st-${dStatus.toLowerCase()}`}>
+                                  {t(dStatus)}
                                 </span>
-                                <span className="flow-count">{dPixels.length} {t("pixels")}</span>
+                                <span className="flow-domain-count" title={t("Pixels on this domain")}>
+                                  <Zap size={11} /> {dPixels.length}
+                                </span>
                                 <button
                                   type="button"
                                   className="icon-btn flow-detail-btn"
@@ -5302,12 +5479,16 @@ function MyFlowsDashboard({ authUser }) {
                               </div>
                               {dPixels.length ? (
                                 <div className="flow-pixels">
-                                  {dPixels.map((pixel) => (
-                                    <span className="flow-pixel-chip" key={pixel.id}>
-                                      <Zap size={11} />
-                                      {pixel.pixel_id}
-                                    </span>
-                                  ))}
+                                  {dPixels.map((pixel) => {
+                                    const pxActive = String(pixel.status || "Active").toLowerCase() === "active";
+                                    return (
+                                      <span className="flow-pixel-chip" key={pixel.id} title={pixel.comment || ""}>
+                                        <span className={`flow-pixel-dot${pxActive ? " is-active" : " is-off"}`} />
+                                        <span className="flow-pixel-id">{pixel.pixel_id}</span>
+                                        <CountryFlag value={pixel.geo} className="flow-pixel-flag" />
+                                      </span>
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 <div className="flow-pixels-empty">{t("No pixels on this domain — add one in Pixels with this domain in its list.")}</div>
