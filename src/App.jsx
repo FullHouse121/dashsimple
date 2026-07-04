@@ -4449,19 +4449,20 @@ function TrackingLinksDashboard({ authUser }) {
               <div className="modal-body">
                 <div className="field field-span-2">
                   <label>{t("Buyer")}</label>
-                  <input
-                    value={editModal.form.buyer}
-                    onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, buyer: e.target.value } }))}
-                    readOnly={!isLeadership}
-                    list="tracking-buyer-options"
-                    placeholder={editModal.link?.buyer || ""}
-                  />
-                  <datalist id="tracking-buyer-options">
-                    {buyerFilterOptions.map((o) => (
-                      <option key={o.value} value={o.value} />
-                    ))}
-                  </datalist>
-                  <p className="field-hint">{t("This is the first segment of the campaign name. Saving renames it in Keitaro too.")}</p>
+                  {isLeadership ? (
+                    <CountryDropdownPicker
+                      value={editModal.form.buyer}
+                      onChange={(v) => setEditModal((p) => ({ ...p, form: { ...p.form, buyer: v } }))}
+                      options={buyerFilterOptions}
+                      allowCustom
+                      placeholder={t("Select or type a buyer")}
+                      searchPlaceholder={t("Find or type a buyer")}
+                      emptyResultsLabel={t("Type to add a buyer.")}
+                    />
+                  ) : (
+                    <input value={editModal.form.buyer} readOnly />
+                  )}
+                  <p className="field-hint">{t("First segment of the campaign name. Saving renames it in Keitaro too.")}</p>
                 </div>
                 <div className="field">
                   <label>{t("Game / Offer")}</label>
