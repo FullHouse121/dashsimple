@@ -165,13 +165,36 @@ import {
 // API client moved to ./lib/api.js (Phase 1 extraction — retry, timeout, fallback all live there)
 // SWR cache helpers moved to ./lib/cache.js (Phase 1 extraction)
 
+// Custom "My Flows" glyph — a source node branching into two, mirroring the
+// tracking link → domains fan-out. Lucide-style (24 grid, currentColor).
+const FlowsIcon = ({ size = 18, strokeWidth = 2, ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    {...props}
+  >
+    <circle cx="5" cy="12" r="2.4" />
+    <circle cx="19" cy="5.5" r="2.4" />
+    <circle cx="19" cy="18.5" r="2.4" />
+    <path d="M7.3 11.1c3-1.4 5-2.6 9.2-4.2" />
+    <path d="M7.3 12.9c3 1.4 5 2.6 9.2 4.2" />
+  </svg>
+);
+
 const navItems = [
   { key: "home", label: "Dashboard", icon: Home },
   { key: "geos", label: "GEOS", icon: MapIcon },
   { key: "streams", label: "Goals", icon: Target },
   { key: "utm", label: "UTM Builder", icon: Link2 },
   { key: "tracking", label: "Tracking Links", icon: MousePointerClick },
-  { key: "flows", label: "My Flows", icon: Target },
+  { key: "flows", label: "My Flows", icon: FlowsIcon },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
   { key: "placements", label: "Placement", icon: MousePointerClick },
