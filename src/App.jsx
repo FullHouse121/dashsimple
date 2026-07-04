@@ -3750,6 +3750,15 @@ const TRACKING_GEO_PRESETS = [
   "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
   "DE", "FR", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
 ];
+// Only these Keitaro tracking/redirect domains may back a tracking link
+// (everyone sees exactly this list). PWA landing domains are never used here.
+const ALLOWED_TRACKING_DOMAINS = [
+  "tracker.deusmachine-trk.com",
+  "go.deuskt.click",
+  "deuskt.click",
+];
+const normalizeTrackingHost = (name) =>
+  String(name || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 const DEFAULT_TRACKING_PARAMS =
   "external_id={exid}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
 
@@ -3973,6 +3982,14 @@ function TrackingLinksDashboard({ authUser }) {
   const [buyerFilter, setBuyerFilter] = React.useState("all");
   const [toolFilter, setToolFilter] = React.useState("all");
   const [geoFilter, setGeoFilter] = React.useState("all");
+
+  // Only the 3 allowed tracking domains are selectable — drop any stale saved
+  // domain (from a previous session) that isn't one of them.
+  React.useEffect(() => {
+    if (form.domain && !ALLOWED_TRACKING_DOMAINS.includes(normalizeTrackingHost(form.domain))) {
+      setForm((prev) => ({ ...prev, domain: "", domainId: "" }));
+    }
+  }, [form.domain]);
 
   const updateForm = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -4687,13 +4704,11 @@ function TrackingLinksDashboard({ authUser }) {
                     setForm((prev) => ({ ...prev, domainId: "", domain: value }));
                   }
                 }}
-                options={resources.domains.map((d) => ({
-                  value: String(d.id),
-                  label: d.name,
-                  search: d.name,
-                }))}
-                allowCustom
-                placeholder={resources.domains.length ? t("Select a domain") : t("Type a domain")}
+                options={ALLOWED_TRACKING_DOMAINS.map((host) => {
+                  const dom = resources.domains.find((d) => normalizeTrackingHost(d.name) === host);
+                  return { value: dom ? String(dom.id) : host, label: host, search: host };
+                })}
+                placeholder={t("Select a domain")}
                 searchPlaceholder={t("Find domain")}
                 emptyResultsLabel={t("No domains found.")}
               />
