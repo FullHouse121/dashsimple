@@ -7784,6 +7784,32 @@ const summarizeTrackingFilters = (filtersConfig) => {
 // Create the COMPLETE campaign in Keitaro: campaign (group, source,
 // domain, standard parameters, CPA auto-cost) + stream + offer + filters.
 // Never throws. status: created | partial (campaign ok, stream failed) | failed
+// Every dashboard-generated campaign gets an FTD S2S postback to the worker.
+// The buyer= value maps the campaign's buyer to the worker's identifier.
+const POSTBACK_BUYER_MAP = {
+  leo: "leo", leomarketing: "leo",
+  karen: "karen", karenfarias: "karen",
+  sara: "sara",
+  carvalho: "carvalho",
+  akku: "akku",
+  enzo: "enzo",
+  matheus: "hail",
+  leticia: "nobre",
+};
+const resolvePostbackBuyer = (buyer) => {
+  const key = String(buyer || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!key) return "unknown";
+  if (POSTBACK_BUYER_MAP[key]) return POSTBACK_BUYER_MAP[key];
+  for (const [k, v] of Object.entries(POSTBACK_BUYER_MAP)) {
+    if (key.includes(k) || k.includes(key)) return v;
+  }
+  return key;
+};
+const FTD_POSTBACK_KEY = "fj39sd92jx91ks20";
+const FTD_POSTBACK_STATUS = 8; // Keitaro status id for FTD (custom_conversion_8)
+const buildFtdPostbackUrl = (buyerValue) =>
+  `https://raspy-star-473e.fullhouseclub1.workers.dev/keitaro?event=ftd&brand={campaign_name}&payout={conversion_revenue}&country={country}&clickid={subid}&placement={sub1}&buyer=${buyerValue}&key=${FTD_POSTBACK_KEY}`;
+
 const pushCampaignToKeitaro = async ({
   name,
   alias,
@@ -7833,6 +7859,22 @@ const pushCampaignToKeitaro = async ({
   const campaign = created.data?.campaign || created.data || {};
   const campaignId = campaign.id ?? null;
   const finalAlias = campaign.alias || trimmedAlias || null;
+
+  // Attach the FTD S2S postback (fires to the worker on FTD conversions).
+  // Isolated from the critical path: a failure here logs but doesn't fail the
+  // campaign. buyer= is mapped from the campaign's buyer.
+  if (campaignId) {
+    const postbackUrl = buildFtdPostbackUrl(resolvePostbackBuyer(buyer));
+    const pb = await keitaroAdminFetch(`/campaigns/${campaignId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        postbacks: [{ method: "GET", url: postbackUrl, statuses: [FTD_POSTBACK_STATUS] }],
+      }),
+    });
+    if (!pb.ok) {
+      console.error(`Postback attach failed for campaign ${campaignId}: ${pb.error}`);
+    }
+  }
 
   const { filterOr, filters: streamFilters } = buildStreamFilters(filtersConfig);
 
