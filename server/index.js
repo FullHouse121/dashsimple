@@ -3038,6 +3038,29 @@ const normalizeCountryInput = (value) => {
   return text;
 };
 
+// Country name → ISO-2 for Keitaro filters (its country filter payload
+// expects codes like "MX", not "Mexico"). Covers the app's country set.
+const COUNTRY_NAME_TO_ISO = {
+  australia: "AU", france: "FR", germany: "DE", "new zealand": "NZ",
+  egypt: "EG", estonia: "EE", japan: "JP", india: "IN", vietnam: "VN",
+  chile: "CL", argentina: "AR", peru: "PE", venezuela: "VE",
+  colombia: "CO", "costa rica": "CR", bolivia: "BO", brazil: "BR",
+  brasil: "BR", mexico: "MX", méxico: "MX", russia: "RU", nigeria: "NG",
+  ukraine: "UA", poland: "PL", ecuador: "EC", paraguay: "PY",
+  romania: "RO", albania: "AL", norway: "NO", morocco: "MA",
+  algeria: "DZ", tunisia: "TN", "south korea": "KR", switzerland: "CH",
+  sweden: "SE", canada: "CA", iran: "IR", iraq: "IQ", azerbaijan: "AZ",
+  "united states": "US", usa: "US", "united kingdom": "GB", uk: "GB",
+  spain: "ES", italy: "IT", portugal: "PT", turkey: "TR", türkiye: "TR",
+  "south africa": "ZA", india_alt: "IN",
+};
+const toKeitaroCountryCode = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^[A-Za-z]{2}$/.test(raw)) return raw.toUpperCase();
+  return COUNTRY_NAME_TO_ISO[raw.toLowerCase()] || raw;
+};
+
 const normalizeExternalIdValue = (value) => {
   const text = String(value || "").trim();
   if (!text) return "";
@@ -7640,11 +7663,19 @@ const buildStreamFilters = (filtersConfig) => {
     }
   }
   if (!cfg || !Array.isArray(cfg.rules)) return { filterOr: false, filters: [] };
+  // Keitaro expects specific payload formats per filter: country as ISO-2,
+  // device_type/os lowercase. Normalize so the values actually match.
+  const normalizeValue = (filterName, value) => {
+    const v = String(value).trim();
+    if (filterName === "country") return toKeitaroCountryCode(v);
+    if (filterName === "device_type") return v.toLowerCase();
+    return v;
+  };
   const filters = cfg.rules
     .filter((r) => r && r.name)
     .map((r) => {
       const payload = Array.isArray(r.payload)
-        ? r.payload.map((v) => String(v).trim()).filter(Boolean)
+        ? r.payload.map((v) => normalizeValue(String(r.name), v)).filter(Boolean)
         : [];
       return {
         name: String(r.name),
@@ -7829,6 +7860,9 @@ app.post("/api/tracking-links", async (req, res) => {
   }
 
   const filtersJson = typeof filters === "string" ? filters : JSON.stringify(filters || "");
+  // Provenance comment on every campaign: who created it, when, and origin.
+  const filterSummary = summarizeTrackingFilters(filtersJson);
+  const campaignNotes = `Created by ${req.user?.username || "Unknown"} on ${new Date().toISOString().slice(0, 10)} · Origin: DeusMachine | Tracker${filterSummary ? ` · Filters: ${filterSummary}` : ""}`;
   let keitaro = { status: "local", id: null, alias: null, error: null };
   if (pushToKeitaro) {
     keitaro = await pushCampaignToKeitaro({
@@ -7840,7 +7874,7 @@ app.post("/api/tracking-links", async (req, res) => {
       domainId,
       offerId,
       filtersConfig: filtersJson,
-      notes: summarizeTrackingFilters(filtersJson),
+      notes: campaignNotes,
     });
   }
 
@@ -7909,7 +7943,7 @@ app.post("/api/tracking-links/:id/push", async (req, res) => {
     domainId: row.kdomain_id,
     offerId: row.offer_id,
     filtersConfig: row.filters,
-    notes: summarizeTrackingFilters(row.filters),
+    notes: `Created by ${row.buyer || "Unknown"} on ${new Date(row.created_at || Date.now()).toISOString().slice(0, 10)} · Origin: DeusMachine | Tracker${summarizeTrackingFilters(row.filters) ? ` · Filters: ${summarizeTrackingFilters(row.filters)}` : ""}`,
   });
   const finalAlias = keitaro.alias || row.alias;
   const url = finalAlias ? buildTrackingUrl(row.domain, finalAlias, row.params) : row.url;
