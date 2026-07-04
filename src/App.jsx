@@ -189,7 +189,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["tracking", "flows", "utm", "domains", "pixels", "accounts"] },
+  { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -4823,6 +4823,31 @@ function MyFlowsDashboard({ authUser }) {
   const [state, setState] = React.useState({ loading: true, error: null });
   const [expanded, setExpanded] = React.useState({});
   const [bindModal, setBindModal] = React.useState({ open: false, link: null, saving: false, error: null, selected: [] });
+  const [detail, setDetail] = React.useState({ open: false, link: null, domain: null, pixels: [] });
+  const [copied, setCopied] = React.useState(null);
+
+  const maskToken = (v) => {
+    const s = String(v || "");
+    return s.length <= 14 ? s || "—" : `${s.slice(0, 8)}••••${s.slice(-4)}`;
+  };
+  const copyValue = (key, value) => async () => {
+    if (!value) return;
+    try {
+      await navigator.clipboard?.writeText(value);
+      setCopied(key);
+      setTimeout(() => setCopied((p) => (p === key ? null : p)), 1200);
+    } catch (error) {
+      /* clipboard denied */
+    }
+  };
+  // The PWA link a buyer uploads to their traffic source: the domain + the
+  // tracking link's params (external_id dropped — sub params only).
+  const trafficLink = (domainHost, params) => {
+    const host = String(domainHost || "").trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+    const qs = String(params || "").trim().replace(/^\?+/, "").replace(/(^|&)external_id=[^&]*/i, "").replace(/^&/, "");
+    if (!host) return "";
+    return `https://${host}${qs ? `?${qs}` : ""}`;
+  };
 
   const fetchAll = React.useCallback(async () => {
     try {
@@ -4975,6 +5000,106 @@ function MyFlowsDashboard({ authUser }) {
         ) : null}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {detail.open ? (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetail({ open: false, link: null, domain: null, pixels: [] })}>
+            <motion.div
+              className="modal flow-detail-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(() => {
+                const link = detail.link || {};
+                const dom = detail.domain || {};
+                const pxs = detail.pixels || [];
+                const geo = (dom.countries && dom.countries.length ? dom.countries : [dom.country]).filter(Boolean).join(", ") || link.geo || "—";
+                const tracker = link.url || "";
+                const finalLink = trafficLink(dom.domain, link.params);
+                const rows = [
+                  ["Campaign", link.name],
+                  ["PWA domain", dom.domain],
+                  ["Application / Game", dom.game || link.game],
+                  ["Platform", dom.platform],
+                  ["Alias", link.alias],
+                  ["GEO", geo],
+                  ["Status", t(dom.status || "Active")],
+                  ["Owner", link.owner_name || dom.owner_name],
+                  ["Keitaro", link.keitaro_id ? `#${link.keitaro_id} (${link.state || "active"})` : t("Local only")],
+                  ["Created", link.created_at ? new Date(link.created_at).toLocaleString() : "—"],
+                ];
+                return (
+                  <>
+                    <div className="modal-head">
+                      <div>
+                        <p className="modal-kicker">{t("Detailed information")}</p>
+                        <h2>{dom.domain || link.name}</h2>
+                      </div>
+                      <button className="icon-btn" type="button" onClick={() => setDetail({ open: false, link: null, domain: null, pixels: [] })}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="modal-body flow-detail-body">
+                      <div className="flow-detail-grid">
+                        {rows.map(([k, v]) => (
+                          <div className="flow-detail-row" key={k}>
+                            <span className="flow-detail-key">{t(k)}</span>
+                            <span className="flow-detail-val">{v || "—"}</span>
+                          </div>
+                        ))}
+                        <div className="flow-detail-row">
+                          <span className="flow-detail-key">{t("Link to offer / tracker")}</span>
+                          <span className="flow-detail-val flow-detail-linkval">
+                            <code>{tracker || "—"}</code>
+                            {tracker ? (
+                              <button className="icon-btn" type="button" onClick={copyValue("tracker", tracker)} title={t("Copy")}>
+                                {copied === "tracker" ? <CheckCircle size={13} /> : <Copy size={13} />}
+                              </button>
+                            ) : null}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flow-detail-section">
+                        <div className="og-history-head"><Zap size={13} /> {t("Pixels on this domain")}</div>
+                        {pxs.length ? (
+                          <div className="flow-detail-pixels">
+                            {pxs.map((p) => (
+                              <div className="flow-detail-pixel" key={p.id}>
+                                <span className="flow-pixel-chip"><Zap size={11} />{p.pixel_id}</span>
+                                <code className="flow-detail-token" title={p.token_eaag}>{maskToken(p.token_eaag)}</code>
+                                <button className="icon-btn" type="button" onClick={copyValue(`tok-${p.id}`, p.token_eaag)} title={t("Copy token")}>
+                                  {copied === `tok-${p.id}` ? <CheckCircle size={13} /> : <Copy size={13} />}
+                                </button>
+                                {p.comment ? <span className="flow-detail-pixel-note">{p.comment}</span> : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="tracking-filter-note">{t("No pixels attached to this domain yet.")}</p>
+                        )}
+                      </div>
+
+                      <div className="flow-final-link">
+                        <div className="flow-final-head">
+                          <span>{t("Final link for traffic upload")}</span>
+                          <button className="ghost" type="button" onClick={copyValue("final", finalLink)} disabled={!finalLink}>
+                            {copied === "final" ? <><CheckCircle size={13} /> {t("Copied")}</> : <><Copy size={13} /> {t("Copy")}</>}
+                          </button>
+                        </div>
+                        <code className="flow-final-url">{finalLink || t("Bind a PWA domain to see the upload link.")}</code>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div className="panel registry-dashboard-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="panel-head">
           <div>
@@ -5041,6 +5166,14 @@ function MyFlowsDashboard({ authUser }) {
                                   {t(domain.status || "Active")}
                                 </span>
                                 <span className="flow-count">{dPixels.length} {t("pixels")}</span>
+                                <button
+                                  type="button"
+                                  className="icon-btn flow-detail-btn"
+                                  title={t("Detailed information")}
+                                  onClick={() => setDetail({ open: true, link, domain, pixels: dPixels })}
+                                >
+                                  <Eye size={14} />
+                                </button>
                               </div>
                               {dPixels.length ? (
                                 <div className="flow-pixels">

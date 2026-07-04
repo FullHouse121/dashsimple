@@ -5608,6 +5608,90 @@ select option,
 }
 .flow-pixels-empty { padding: 8px 0 0 0; }
 
+.flow-detail-btn { margin-left: 8px; width: 28px; height: 28px; }
+
+/* Detailed information modal — clean key/value sheet */
+.flow-detail-modal { width: min(600px, 94vw); }
+.flow-detail-body { display: grid; grid-template-columns: 1fr; gap: 16px; }
+.flow-detail-grid {
+  display: grid;
+  gap: 1px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--stroke);
+}
+.flow-detail-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12.5px;
+  align-items: baseline;
+}
+.flow-detail-key { color: var(--muted); font-weight: 500; }
+.flow-detail-val { color: var(--text); word-break: break-word; }
+.flow-detail-linkval {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.flow-detail-linkval code {
+  flex: 1;
+  min-width: 0;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: #9fd9f6;
+  word-break: break-all;
+}
+.flow-detail-linkval .icon-btn { width: 26px; height: 26px; flex-shrink: 0; }
+
+.flow-detail-section { display: grid; gap: 8px; }
+.flow-detail-pixels { display: grid; gap: 6px; }
+.flow-detail-pixel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.flow-detail-token {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: var(--muted-strong, #a9adb7);
+}
+.flow-detail-pixel .icon-btn { width: 24px; height: 24px; }
+.flow-detail-pixel-note { font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* Final traffic link — highlighted block with copy */
+.flow-final-link {
+  border: 1px solid rgba(54, 208, 124, 0.3);
+  border-radius: 12px;
+  background: rgba(54, 208, 124, 0.06);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+.flow-final-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green);
+  font-weight: 700;
+}
+.flow-final-head .ghost { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; }
+.flow-final-url {
+  display: block;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11.5px;
+  color: var(--text);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
 .accounts-form textarea {
   min-height: 120px;
 }
