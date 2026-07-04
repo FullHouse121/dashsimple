@@ -5815,57 +5815,169 @@ select option,
 
 .flow-detail-btn { width: 28px; height: 28px; }
 
-/* Detailed information modal — clean key/value sheet */
-.flow-detail-modal { width: min(600px, 94vw); }
-.flow-detail-body { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.flow-detail-grid {
-  display: grid;
-  gap: 1px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--stroke);
-}
-.flow-detail-row {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 12px;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.02);
-  font-size: 12.5px;
-  align-items: baseline;
-}
-.flow-detail-key { color: var(--muted); font-weight: 500; }
-.flow-detail-val { color: var(--text); word-break: break-word; }
-.flow-detail-linkval {
+/* Detailed information modal — grouped, scannable sheet */
+.flow-detail-modal { width: min(660px, 94vw); }
+.flow-detail-body { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+/* Identity summary — reuses the list-entry chip language */
+.flow-detail-summary {
   display: flex;
   align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--stroke);
+}
+.flow-detail-buyer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  margin-right: 2px;
+}
+
+/* Two grouped cards, side by side on wide modals */
+.flow-detail-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+.flow-detail-card {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.018);
+  overflow: hidden;
+}
+.flow-detail-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.015);
+}
+.flow-detail-card-head svg { color: #6ad6ff; }
+.flow-detail-count {
+  margin-left: auto;
+  min-width: 20px;
+  text-align: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(54, 208, 124, 0.12);
+  color: #7ce2a7;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.flow-detail-list { display: grid; }
+.flow-detail-row {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  align-items: center;
+}
+.flow-detail-row + .flow-detail-row { border-top: 1px solid rgba(255, 255, 255, 0.045); }
+.flow-detail-key { color: var(--muted); font-weight: 500; }
+.flow-detail-val { color: var(--text); word-break: break-word; min-width: 0; }
+.flow-detail-val.is-mono { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; }
+.flow-detail-code {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11.5px;
+  color: #9fd9f6;
+}
+.flow-detail-geoval { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.flow-detail-geoval .fi { border-radius: 2px; font-size: 12px; }
+
+/* Tracking URL block */
+.flow-detail-urlblock {
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: rgba(106, 214, 255, 0.045);
+  padding: 11px 14px;
+  display: grid;
   gap: 8px;
 }
-.flow-detail-linkval code {
-  flex: 1;
-  min-width: 0;
+.flow-detail-urlhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.flow-detail-urllabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9fd9f6;
+}
+.flow-detail-urllabel svg { color: #6ad6ff; }
+.flow-detail-url {
+  display: block;
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 11px;
-  color: #9fd9f6;
+  color: var(--text);
   word-break: break-all;
+  line-height: 1.55;
 }
-.flow-detail-linkval .icon-btn { width: 26px; height: 26px; flex-shrink: 0; }
+.flow-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.14s ease, border-color 0.14s ease;
+  flex-shrink: 0;
+}
+.flow-copy-btn:hover { color: var(--text); border-color: var(--stroke-strong, rgba(255, 255, 255, 0.18)); }
 
-.flow-detail-section { display: grid; gap: 8px; }
-.flow-detail-pixels { display: grid; gap: 6px; }
+/* Pixel rows */
+.flow-detail-pixels { display: grid; gap: 1px; }
 .flow-detail-pixel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
+  padding: 9px 14px;
   flex-wrap: wrap;
+}
+.flow-detail-pixel + .flow-detail-pixel { border-top: 1px solid rgba(255, 255, 255, 0.045); }
+.flow-detail-pixid {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #9ceabc;
 }
 .flow-detail-token {
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 11px;
-  color: var(--muted-strong, #a9adb7);
+  color: var(--muted);
+  margin-left: auto;
 }
-.flow-detail-pixel .icon-btn { width: 24px; height: 24px; }
-.flow-detail-pixel-note { font-size: 11px; color: var(--muted); font-style: italic; }
+.flow-detail-copy { width: 26px; height: 26px; flex-shrink: 0; }
+.flow-detail-pixel-note {
+  flex-basis: 100%;
+  font-size: 11px;
+  color: var(--muted);
+  font-style: italic;
+}
+.flow-detail-empty { font-size: 12px; color: var(--muted); padding: 10px 14px; margin: 0; }
 
 /* Final traffic link — highlighted block with copy */
 .flow-final-link {

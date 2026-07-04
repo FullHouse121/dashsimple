@@ -5108,18 +5108,15 @@ function MyFlowsDashboard({ authUser }) {
                 const geo = (dom.countries && dom.countries.length ? dom.countries : [dom.country]).filter(Boolean).join(", ") || link.geo || "—";
                 const tracker = link.url || "";
                 const finalLink = trafficLink(dom.domain, link.params);
-                const rows = [
-                  ["Campaign", link.name],
-                  ["PWA domain", dom.domain],
-                  ["Application / Game", dom.game || link.game],
-                  ["Platform", dom.platform],
-                  ["Alias", link.alias],
-                  ["GEO", geo],
-                  ["Status", t(dom.status || "Active")],
-                  ["Owner", link.owner_name || dom.owner_name],
-                  ["Keitaro", link.keitaro_id ? `#${link.keitaro_id} (${link.state || "active"})` : t("Local only")],
-                  ["Created", link.created_at ? new Date(link.created_at).toLocaleString() : "—"],
-                ];
+                const seg = linkSegments(link);
+                const geoList = normalizeCountryListValue(dom.country).length
+                  ? normalizeCountryListValue(dom.country)
+                  : splitGeos(seg.geo);
+                const geoReadable = geoList.join(", ") || geo || "—";
+                const inKeitaro = String(link.keitaro_status || "") === "created" || !!link.keitaro_id;
+                const isActive = String(dom.status || "Active").toLowerCase() === "active";
+                const filterCount = countLinkFilters(link);
+                const createdAt = link.created_at ? new Date(link.created_at).toLocaleString() : "—";
                 return (
                   <>
                     <div className="modal-head">
@@ -5132,46 +5129,94 @@ function MyFlowsDashboard({ authUser }) {
                       </button>
                     </div>
                     <div className="modal-body flow-detail-body">
-                      <div className="flow-detail-grid">
-                        {rows.map(([k, v]) => (
-                          <div className="flow-detail-row" key={k}>
-                            <span className="flow-detail-key">{t(k)}</span>
-                            <span className="flow-detail-val">{v || "—"}</span>
-                          </div>
-                        ))}
-                        <div className="flow-detail-row">
-                          <span className="flow-detail-key">{t("Link to offer / tracker")}</span>
-                          <span className="flow-detail-val flow-detail-linkval">
-                            <code>{tracker || "—"}</code>
-                            {tracker ? (
-                              <button className="icon-btn" type="button" onClick={copyValue("tracker", tracker)} title={t("Copy")}>
-                                {copied === "tracker" ? <CheckCircle size={13} /> : <Copy size={13} />}
-                              </button>
-                            ) : null}
+                      {/* Identity summary — same chip language as the list entry */}
+                      <div className="flow-detail-summary">
+                        <span className="flow-detail-buyer">
+                          <span className={`flow-state-dot${isActive ? " is-active" : " is-off"}`} />
+                          {seg.buyer || t("Unassigned")}
+                        </span>
+                        {seg.tool ? <span className="flow-seg flow-seg-tool"><Megaphone size={11} /> {seg.tool}</span> : null}
+                        {(dom.game || seg.game) ? <span className="flow-seg flow-seg-game"><Target size={11} /> {dom.game || seg.game}</span> : null}
+                        {geoList.length ? (
+                          <span className="flow-seg flow-seg-geo">
+                            {geoList.map((g) => <CountryFlag key={g} value={g} />)}
+                            {geoReadable}
                           </span>
-                        </div>
+                        ) : null}
+                        {seg.brand ? <span className="flow-seg flow-seg-brand"><Tag size={11} /> {seg.brand}</span> : null}
+                        <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`}>
+                          <span className="flow-kt-dot" />
+                          {inKeitaro ? (link.keitaro_id ? `#${link.keitaro_id}` : t("Keitaro")) : t("Local")}
+                        </span>
                       </div>
 
-                      <div className="flow-detail-section">
-                        <div className="og-history-head"><Zap size={13} /> {t("Pixels on this domain")}</div>
+                      {/* Grouped, scannable detail */}
+                      <div className="flow-detail-groups">
+                        <section className="flow-detail-card">
+                          <div className="flow-detail-card-head"><Link2 size={13} /> {t("Campaign")}</div>
+                          <div className="flow-detail-list">
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Alias")}</span><span className="flow-detail-val is-mono">{link.alias || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Keitaro")}</span><span className="flow-detail-val">{link.keitaro_id ? <><span className="flow-detail-code">#{link.keitaro_id}</span> · {t(link.state || "active")}</> : t("Local only")}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Owner")}</span><span className="flow-detail-val">{link.owner_name || dom.owner_name || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Created")}</span><span className="flow-detail-val">{createdAt}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Filters")}</span><span className="flow-detail-val">{filterCount ? `${filterCount} ${filterCount === 1 ? t("rule") : t("rules")}` : t("None")}</span></div>
+                          </div>
+                        </section>
+                        <section className="flow-detail-card">
+                          <div className="flow-detail-card-head"><Globe size={13} /> {t("Domain & targeting")}</div>
+                          <div className="flow-detail-list">
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("PWA domain")}</span><span className="flow-detail-val is-mono">{dom.domain || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Platform")}</span><span className="flow-detail-val">{dom.platform || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Application / Game")}</span><span className="flow-detail-val">{dom.game || seg.game || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("GEO")}</span><span className="flow-detail-val flow-detail-geoval">{geoList.map((g) => <CountryFlag key={g} value={g} />)}{geoReadable}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Status")}</span><span className="flow-detail-val"><span className={`accounts-status-pill acc-st-${String(dom.status || "Active").toLowerCase()}`}>{t(dom.status || "Active")}</span></span></div>
+                          </div>
+                        </section>
+                      </div>
+
+                      {/* Keitaro tracking URL */}
+                      <div className="flow-detail-urlblock">
+                        <div className="flow-detail-urlhead">
+                          <span className="flow-detail-urllabel"><Link2 size={12} /> {t("Tracking link (Keitaro)")}</span>
+                          {tracker ? (
+                            <button className="flow-copy-btn" type="button" onClick={copyValue("tracker", tracker)}>
+                              {copied === "tracker" ? <><CheckCircle size={12} /> {t("Copied")}</> : <><Copy size={12} /> {t("Copy")}</>}
+                            </button>
+                          ) : null}
+                        </div>
+                        <code className="flow-detail-url">{tracker || "—"}</code>
+                      </div>
+
+                      {/* Pixels */}
+                      <section className="flow-detail-card">
+                        <div className="flow-detail-card-head">
+                          <Zap size={13} /> {t("Pixels on this domain")}
+                          <span className="flow-detail-count">{pxs.length}</span>
+                        </div>
                         {pxs.length ? (
                           <div className="flow-detail-pixels">
-                            {pxs.map((p) => (
-                              <div className="flow-detail-pixel" key={p.id}>
-                                <span className="flow-pixel-chip"><Zap size={11} />{p.pixel_id}</span>
-                                <code className="flow-detail-token" title={p.token_eaag}>{maskToken(p.token_eaag)}</code>
-                                <button className="icon-btn" type="button" onClick={copyValue(`tok-${p.id}`, p.token_eaag)} title={t("Copy token")}>
-                                  {copied === `tok-${p.id}` ? <CheckCircle size={13} /> : <Copy size={13} />}
-                                </button>
-                                {p.comment ? <span className="flow-detail-pixel-note">{p.comment}</span> : null}
-                              </div>
-                            ))}
+                            {pxs.map((p) => {
+                              const pxActive = String(p.status || "Active").toLowerCase() === "active";
+                              return (
+                                <div className="flow-detail-pixel" key={p.id}>
+                                  <span className={`flow-pixel-dot${pxActive ? " is-active" : " is-off"}`} />
+                                  <span className="flow-detail-pixid">{p.pixel_id}</span>
+                                  <CountryFlag value={p.geo} className="flow-pixel-flag" />
+                                  <code className="flow-detail-token" title={p.token_eaag}>{maskToken(p.token_eaag)}</code>
+                                  <button className="icon-btn flow-detail-copy" type="button" onClick={copyValue(`tok-${p.id}`, p.token_eaag)} title={t("Copy token")}>
+                                    {copied === `tok-${p.id}` ? <CheckCircle size={13} /> : <Copy size={13} />}
+                                  </button>
+                                  {p.comment ? <span className="flow-detail-pixel-note">{p.comment}</span> : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : (
-                          <p className="tracking-filter-note">{t("No pixels attached to this domain yet.")}</p>
+                          <p className="flow-detail-empty">{t("No pixels attached to this domain yet.")}</p>
                         )}
-                      </div>
+                      </section>
 
+                      {/* The link the buyer uploads to their traffic source */}
                       <div className="flow-final-link">
                         <div className="flow-final-head">
                           <span>{t("Final link for traffic upload")}</span>
@@ -5408,14 +5453,14 @@ function MyFlowsDashboard({ authUser }) {
                         {copied === `link-${link.id}` ? <CheckCircle size={12} /> : <Copy size={12} />}
                       </button>
                       <span className="flow-metric" title={t("Bound PWA domains")}>
-                        <Globe size={12} /> {linkDomains.length} {t("domains")}
+                        <Globe size={12} /> {linkDomains.length} {linkDomains.length === 1 ? t("domain") : t("domains")}
                       </span>
                       <span className="flow-metric" title={t("Attached pixels")}>
-                        <Zap size={12} /> {totalPixels} {t("pixels")}
+                        <Zap size={12} /> {totalPixels} {totalPixels === 1 ? t("pixel") : t("pixels")}
                       </span>
                       {filterCount ? (
                         <span className="flow-metric" title={t("Keitaro filters")}>
-                          <SlidersHorizontal size={12} /> {filterCount} {t("filters")}
+                          <SlidersHorizontal size={12} /> {filterCount} {filterCount === 1 ? t("filter") : t("filters")}
                         </span>
                       ) : null}
                       <span className={`flow-metric flow-metric-status flow-status-${isActive ? "on" : "off"}`}>
