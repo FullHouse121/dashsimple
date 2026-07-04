@@ -7582,6 +7582,31 @@ const keitaroAdminFetch = async (path, options = {}) => {
 
 // Keitaro resource lists for the Tracking Links form — cached 5 minutes.
 const keitaroResourceCache = { at: 0, data: null };
+
+// Build the Link Parameters template from a traffic source's own Keitaro
+// config (its `parameters` map), so each tool's external_id + sub tokens
+// follow exactly what Keitaro expects. Reproduces the standard template for
+// PWA-style sources and adapts automatically for the rest.
+const buildTrafficSourceParams = (parameters) => {
+  if (!parameters || typeof parameters !== "object") return "";
+  const parts = [];
+  const seen = new Set();
+  const push = (name, placeholder) => {
+    const n = String(name || "").trim();
+    const p = String(placeholder || "").trim();
+    if (!n || !p || seen.has(n)) return;
+    seen.add(n);
+    parts.push(`${n}=${p}`);
+  };
+  if (parameters.external_id && parameters.external_id.placeholder) {
+    push("external_id", parameters.external_id.placeholder);
+  }
+  Object.keys(parameters)
+    .filter((k) => /^sub_id_\d+$/.test(k))
+    .sort((a, b) => Number(a.split("_").pop()) - Number(b.split("_").pop()))
+    .forEach((k) => push(parameters[k].name, parameters[k].placeholder));
+  return parts.join("&");
+};
 const getKeitaroResources = async () => {
   if (keitaroResourceCache.data && Date.now() - keitaroResourceCache.at < 5 * 60 * 1000) {
     return keitaroResourceCache.data;
@@ -7597,7 +7622,12 @@ const getKeitaroResources = async () => {
     ok: domains.ok || sources.ok || groups.ok || offers.ok,
     error: domains.ok ? null : domains.error,
     domains: pick(domains, (d) => ({ id: d.id, name: d.name, state: d.state })),
-    trafficSources: pick(sources, (s) => ({ id: s.id, name: s.name })),
+    trafficSources: pick(sources, (s) => ({
+      id: s.id,
+      name: s.name,
+      externalId: s.parameters?.external_id?.placeholder || "",
+      params: buildTrafficSourceParams(s.parameters),
+    })),
     groups: pick(groups, (g) => ({ id: g.id, name: g.name })),
     offers: pick(offers, (o) => ({
       id: o.id,

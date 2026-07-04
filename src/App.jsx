@@ -3860,6 +3860,7 @@ function TrackingLinksDashboard({ authUser }) {
     offerId: "",
     filterConfig: { logic: "and", rules: [] },
     params: DEFAULT_TRACKING_PARAMS,
+    externalIdMacro: "",
     pushToKeitaro: true,
   }));
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
@@ -4564,17 +4565,23 @@ function TrackingLinksDashboard({ authUser }) {
                   const source = resources.trafficSources.find((s) => String(s.id) === String(value));
                   if (source) {
                     const shortcode = trackingSourceShortcode(source.name);
+                    // Prefer the full template Keitaro reports for this source;
+                    // fall back to swapping the external_id macro if unavailable
+                    // (e.g. backend not yet redeployed).
+                    const macro = source.externalId || externalIdMacroForTool(shortcode);
                     setForm((prev) => ({
                       ...prev,
                       trafficSourceId: String(source.id),
                       tool: shortcode,
-                      params: applyExternalIdMacro(prev.params, shortcode),
+                      externalIdMacro: macro,
+                      params: source.params || applyExternalIdMacro(prev.params, shortcode),
                     }));
                   } else {
                     setForm((prev) => ({
                       ...prev,
                       trafficSourceId: "",
                       tool: value,
+                      externalIdMacro: externalIdMacroForTool(value),
                       params: applyExternalIdMacro(prev.params, value),
                     }));
                   }
@@ -4667,8 +4674,8 @@ function TrackingLinksDashboard({ authUser }) {
               <textarea rows={2} value={form.params} onChange={updateForm("params")} spellCheck={false} />
               <p className="field-hint">
                 {form.tool
-                  ? `${t("external_id follows")} ${form.tool} → ${externalIdMacroForTool(form.tool)}`
-                  : t("external_id macro follows the selected tool (e.g. PWA.GROUP → {USER_ID}, ZMAPPS → {exid}).")}
+                  ? `${t("Pulled from")} ${form.tool} ${t("in Keitaro")}${form.externalIdMacro ? ` · external_id=${form.externalIdMacro}` : ""}`
+                  : t("Pick a tool — its parameters (external_id + subs) are pulled from that source's Keitaro config.")}
               </p>
             </div>
             <div className="field field-span-3 tracking-preview">
