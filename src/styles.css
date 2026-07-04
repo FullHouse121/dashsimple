@@ -5475,6 +5475,54 @@ select option,
   box-shadow: none !important;
 }
 
+/* Tracking Links: state toggle chip */
+.tracking-state-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.tracking-state-toggle .cs-dot { width: 8px; height: 8px; border-radius: 50%; }
+.tracking-state-toggle.is-on .cs-dot { background: var(--green); box-shadow: 0 0 8px rgba(54, 208, 124, 0.6); }
+.tracking-state-toggle.is-off { color: var(--muted); }
+.tracking-state-toggle.is-off .cs-dot { background: #8a93a3; }
+.tracking-state-toggle:hover { border-color: rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.04); }
+.tracking-state-toggle:disabled { opacity: 0.5; cursor: wait; }
+
+/* Details / verify modal */
+.tracking-details-modal { width: min(640px, 94vw); }
+.tracking-details-body { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.tracking-details-section { display: grid; gap: 8px; }
+.tracking-details-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.tracking-details-verify-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tracking-verify-result { display: grid; gap: 8px; }
+.tracking-stream-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12px;
+}
+.tracking-stream-row strong { color: var(--text); }
+
 .accounts-form textarea {
   min-height: 120px;
 }

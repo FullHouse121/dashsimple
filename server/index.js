@@ -121,6 +121,10 @@ const initDb = async () => {
     `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS traffic_source_id TEXT;`,
     `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS kdomain_id TEXT;`,
     `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS keitaro_group_id TEXT;`,
+    // Campaign state mirror (active | disabled) for the Status toggle.
+    `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'active';`,
+    // A PWA domain can be bound to one tracking link (My Flows tree).
+    `ALTER TABLE domains ADD COLUMN IF NOT EXISTS tracking_link_id INTEGER;`,
     // Open Graph / Sharing Debugger scrape history per domain.
     `CREATE TABLE IF NOT EXISTS og_debug_history (
       id SERIAL PRIMARY KEY,
@@ -1475,6 +1479,7 @@ const insertDomain = async (payload) => {
 const selectDomains = async (limit) =>
   getRows(
     `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
+            d.tracking_link_id,
             u.username AS owner_name
      FROM domains d
      LEFT JOIN users u ON u.id = d.owner_id
@@ -1486,6 +1491,7 @@ const selectDomains = async (limit) =>
 const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
     `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
+            d.tracking_link_id,
             u.username AS owner_name
      FROM domains d
      LEFT JOIN users u ON u.id = d.owner_id
@@ -6020,6 +6026,12 @@ app.patch("/api/domains/:id", async (req, res) => {
     updates.push(`owner_id = $${updates.length + 1}`);
     params.push(parsedOwner);
   }
+  // Bind / unbind this domain to a tracking link (My Flows).
+  if (body.trackingLinkId !== undefined) {
+    const parsed = Number(body.trackingLinkId);
+    updates.push(`tracking_link_id = $${updates.length + 1}`);
+    params.push(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+  }
 
   if (!updates.length) {
     return res.status(400).json({ error: "Nothing to update." });
@@ -7875,16 +7887,117 @@ app.post("/api/tracking-links/:id/push", async (req, res) => {
   res.json({ ok: keitaro.status !== "failed", keitaro });
 });
 
-app.delete("/api/tracking-links/:id", async (req, res) => {
+// Toggle the campaign state (active | disabled) — mirrored to Keitaro.
+app.patch("/api/tracking-links/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
-  const row = await getRow(`SELECT id, owner_id FROM tracking_links WHERE id = $1`, [id]);
+  const row = await getRow(`SELECT * FROM tracking_links WHERE id = $1`, [id]);
   if (!row) return res.status(404).json({ error: "Link not found." });
   if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
+  const body = req.body ?? {};
+  const isEdit = ["game", "geo", "brand", "tool"].some((k) => body[k] !== undefined);
+
+  // Edit path: recompose the campaign name from segments + push to Keitaro.
+  if (isEdit) {
+    const seg = (v) => String(v || "").trim() || "-";
+    const game = body.game !== undefined ? body.game : row.game;
+    const geo = body.geo !== undefined ? body.geo : row.geo;
+    const brand = body.brand !== undefined ? body.brand : row.brand;
+    const tool = body.tool !== undefined ? body.tool : row.tool;
+    const name = [row.buyer || "-", seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
+    if (row.keitaro_id) {
+      const upd = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      });
+      if (!upd.ok) {
+        return res.status(502).json({ error: `Keitaro name update failed: ${upd.error}` });
+      }
+    }
+    await query(
+      `UPDATE tracking_links SET name=$1, tool=$2, game=$3, geo=$4, brand=$5 WHERE id=$6`,
+      [name, String(tool || "").trim() || null, String(game || "").trim() || null, String(geo || "").trim() || null, String(brand || "").trim() || null, id]
+    );
+    return res.json({ ok: true, name });
+  }
+
+  // State toggle path.
+  const rawState = String(body.state || "").toLowerCase();
+  const state = rawState === "disabled" || rawState === "deactivated" || rawState === "paused" ? "disabled" : "active";
+  if (row.keitaro_id) {
+    const upd = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, {
+      method: "PUT",
+      body: JSON.stringify({ state }),
+    });
+    if (!upd.ok) {
+      return res.status(502).json({ error: `Keitaro state update failed: ${upd.error}` });
+    }
+  }
+  await query(`UPDATE tracking_links SET state = $1 WHERE id = $2`, [state, id]);
+  res.json({ ok: true, state });
+});
+
+// Read the campaign back from Keitaro — live state, streams, offers, filters.
+app.get("/api/tracking-links/:id/verify", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
+  const row = await getRow(`SELECT * FROM tracking_links WHERE id = $1`, [id]);
+  if (!row) return res.status(404).json({ error: "Link not found." });
+  if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  if (!row.keitaro_id) {
+    return res.json({ exists: false, state: null, streams: [] });
+  }
+  const camp = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`);
+  if (!camp.ok) {
+    return res.json({ exists: false, state: null, streams: [], error: camp.error });
+  }
+  const streamsRes = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}/streams`);
+  const streams = streamsRes.ok && Array.isArray(streamsRes.data)
+    ? streamsRes.data.map((s) => ({
+        id: s.id,
+        name: s.name,
+        schema: s.schema,
+        filter_or: s.filter_or,
+        filters: (s.filters || []).map((f) => ({ name: f.name, mode: f.mode, payload: f.payload })),
+        offers: (s.offers || []).map((o) => ({ offer_id: o.offer_id, share: o.share })),
+      }))
+    : [];
+  res.json({
+    exists: true,
+    state: camp.data?.state || null,
+    name: camp.data?.name || row.name,
+    alias: camp.data?.alias || row.alias,
+    domain: camp.data?.domain || row.domain,
+    keitaroId: row.keitaro_id,
+    streams,
+  });
+});
+
+app.delete("/api/tracking-links/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
+  const row = await getRow(`SELECT id, owner_id, keitaro_id FROM tracking_links WHERE id = $1`, [id]);
+  if (!row) return res.status(404).json({ error: "Link not found." });
+  if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  // Delete the Keitaro campaign first, then the local row.
+  let keitaroDeleted = null;
+  if (row.keitaro_id) {
+    const del = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, { method: "DELETE" });
+    keitaroDeleted = del.ok;
+    if (!del.ok && del.status !== 404) {
+      return res.status(502).json({ error: `Keitaro campaign delete failed: ${del.error}` });
+    }
+  }
+  // Unbind any domains that pointed at this link.
+  await query(`UPDATE domains SET tracking_link_id = NULL WHERE tracking_link_id = $1`, [id]);
   await query(`DELETE FROM tracking_links WHERE id = $1`, [id]);
-  res.json({ ok: true });
+  res.json({ ok: true, keitaroDeleted });
 });
 
 app.get("/api/campaigns", async (req, res) => {

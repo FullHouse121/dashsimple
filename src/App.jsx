@@ -3990,14 +3990,92 @@ function TrackingLinksDashboard({ authUser }) {
   };
 
   const handleDelete = (id) => async () => {
-    const confirmed = window.confirm("Remove this tracking link? This does not delete the Keitaro campaign.");
+    const confirmed = window.confirm("Remove this tracking link? This also deletes the campaign in Keitaro.");
     if (!confirmed) return;
     try {
       const response = await apiFetch(`/api/tracking-links/${id}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete link.");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to delete link.");
       await fetchLinks();
     } catch (error) {
       setLinkState((prev) => ({ ...prev, error: error.message || "Failed to delete link." }));
+    }
+  };
+
+  const [togglingId, setTogglingId] = React.useState(null);
+  const handleToggleState = (link) => async () => {
+    const next = String(link.state || "active") === "active" ? "disabled" : "active";
+    setTogglingId(link.id);
+    try {
+      const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: next }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to update status.");
+      await fetchLinks();
+    } catch (error) {
+      setLinkState((prev) => ({ ...prev, error: error.message || "Failed to update status." }));
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // Details / verify modal
+  const [details, setDetails] = React.useState({ open: false, link: null, verify: null, verifying: false, error: null });
+  const [editModal, setEditModal] = React.useState({ open: false, link: null, saving: false, error: null, form: { game: "", geo: "", brand: "" } });
+
+  const openDetails = (link, autoVerify = false) => {
+    setDetails({ open: true, link, verify: null, verifying: autoVerify, error: null });
+    if (autoVerify) runVerify(link.id);
+  };
+  const runVerify = async (id) => {
+    setDetails((prev) => ({ ...prev, verifying: true, error: null }));
+    try {
+      const response = await apiFetch(`/api/tracking-links/${id}/verify`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Verify failed.");
+      setDetails((prev) => ({ ...prev, verify: data, verifying: false }));
+    } catch (error) {
+      setDetails((prev) => ({ ...prev, verifying: false, error: error.message || "Verify failed." }));
+    }
+  };
+
+  const openEdit = (link) => {
+    setEditModal({
+      open: true,
+      link,
+      saving: false,
+      error: null,
+      form: { game: link.game || "", geo: link.geo || "", brand: link.brand || "" },
+    });
+  };
+  const saveEdit = async () => {
+    if (!editModal.link) return;
+    setEditModal((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const response = await apiFetch(`/api/tracking-links/${editModal.link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editModal.form),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to save.");
+      setEditModal({ open: false, link: null, saving: false, error: null, form: { game: "", geo: "", brand: "" } });
+      await fetchLinks();
+    } catch (error) {
+      setEditModal((prev) => ({ ...prev, saving: false, error: error.message || "Failed to save." }));
+    }
+  };
+
+  const parseFilterConfig = (raw) => {
+    if (!raw) return { logic: "and", rules: [] };
+    try {
+      const cfg = typeof raw === "string" ? JSON.parse(raw) : raw;
+      return { logic: cfg.logic || "and", rules: Array.isArray(cfg.rules) ? cfg.rules : [] };
+    } catch (error) {
+      return { logic: "and", rules: [] };
     }
   };
 
@@ -4199,6 +4277,148 @@ function TrackingLinksDashboard({ authUser }) {
                 </button>
                 <button className="action-pill" type="button" onClick={applyFilters}>
                   {t("Apply filters")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {details.open ? (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetails({ open: false, link: null, verify: null, verifying: false, error: null })}>
+            <motion.div
+              className="modal pixel-edit-modal tracking-details-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Campaign Flow")}</p>
+                  <h2>{details.link?.name}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={() => setDetails({ open: false, link: null, verify: null, verifying: false, error: null })}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body tracking-details-body">
+                <div className="og-props">
+                  {[
+                    ["Buyer", details.link?.buyer],
+                    ["Tool", details.link?.tool],
+                    ["Game / Offer", details.link?.game],
+                    ["GEO", details.link?.geo],
+                    ["Brand", details.link?.brand],
+                    ["Link", details.link?.url],
+                  ].map(([k, v]) => (
+                    <div className="og-prop" key={k}>
+                      <span className="og-prop-key">{t(k)}</span>
+                      <span className={`og-prop-val${k === "Link" ? " og-prop-mono" : ""}`}>{v || "—"}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {(() => {
+                  const cfg = parseFilterConfig(details.link?.filters);
+                  return cfg.rules.length ? (
+                    <div className="tracking-details-section">
+                      <div className="og-history-head">
+                        <SlidersHorizontal size={13} /> {t("Filters")} · {cfg.logic.toUpperCase()}
+                      </div>
+                      <div className="tracking-details-filters">
+                        {cfg.rules.map((r, i) => (
+                          <span className="geo-chip" key={i}>
+                            <span className="cs-dot" style={{ background: r.mode === "reject" ? "#ff8a7a" : "#36d07c" }} />
+                            {(TRACKING_FILTER_BY_NAME[r.name]?.label || r.name)} {r.mode === "reject" ? "≠" : "="} {(r.payload || []).join(", ") || "✓"}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="tracking-filter-note">{t("No filters on this campaign.")}</p>
+                  );
+                })()}
+
+                <div className="tracking-details-section">
+                  <div className="tracking-details-verify-head">
+                    <span className="og-history-head"><ShieldCheck size={13} /> {t("Live in Keitaro")}</span>
+                    <button className="ghost" type="button" onClick={() => runVerify(details.link.id)} disabled={details.verifying}>
+                      {details.verifying ? t("Checking…") : t("Verify now")}
+                    </button>
+                  </div>
+                  {details.error ? (
+                    <div className="api-status error">{details.error}</div>
+                  ) : details.verify ? (
+                    details.verify.exists ? (
+                      <div className="tracking-verify-result">
+                        <span className="geo-chip">
+                          <span className="cs-dot" style={{ background: details.verify.state === "active" ? "#36d07c" : "#ffc94d" }} />
+                          {t("State")}: {details.verify.state}
+                        </span>
+                        {details.verify.streams.map((s) => (
+                          <div className="tracking-stream-row" key={s.id}>
+                            <strong>{s.name}</strong>
+                            <span className="offer-muted">
+                              {s.offers.length ? `${s.offers.length} offer(s)` : "no offer"} · {s.filters.length ? `${s.filters.length} filter(s)` : "no filters"} · {s.filter_or ? "OR" : "AND"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="api-status error">{t("Campaign not found in Keitaro.")}</div>
+                    )
+                  ) : (
+                    <p className="tracking-filter-note">{t("Click Verify to read the live campaign back from Keitaro.")}</p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {editModal.open ? (
+          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditModal((p) => ({ ...p, open: false }))}>
+            <motion.div
+              className="modal pixel-edit-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Edit Tracking Link")}</p>
+                  <h2>{editModal.link?.name}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={() => setEditModal((p) => ({ ...p, open: false }))}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="field">
+                  <label>{t("Game / Offer")}</label>
+                  <input value={editModal.form.game} onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, game: e.target.value } }))} />
+                </div>
+                <div className="field">
+                  <label>{t("GEO")}</label>
+                  <input value={editModal.form.geo} onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, geo: e.target.value } }))} />
+                </div>
+                <div className="field">
+                  <label>{t("Brand")}</label>
+                  <input value={editModal.form.brand} onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, brand: e.target.value } }))} />
+                </div>
+                {editModal.error ? <div className="field field-span-2"><div className="api-status error">{editModal.error}</div></div> : null}
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={() => setEditModal((p) => ({ ...p, open: false }))}>{t("Cancel")}</button>
+                <button className="action-pill" type="button" onClick={saveEdit} disabled={editModal.saving}>
+                  {editModal.saving ? t("Saving…") : t("Save & update Keitaro")}
                 </button>
               </div>
             </motion.div>
@@ -4466,6 +4686,7 @@ function TrackingLinksDashboard({ authUser }) {
               <thead>
                 <tr>
                   <th>{t("Campaign")}</th>
+                  <th>{t("Status")}</th>
                   <th>{t("GEO")}</th>
                   <th>{t("Link")}</th>
                   <th>{t("Keitaro")}</th>
@@ -4477,9 +4698,21 @@ function TrackingLinksDashboard({ authUser }) {
                 {filteredLinks.map((link) => (
                   <tr key={link.id}>
                     <td>
-                      <span className="tracking-name" title={link.filters ? `${link.name} · ${link.filters}` : link.name}>
+                      <span className="tracking-name" title={link.name}>
                         {link.name}
                       </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={`tracking-state-toggle ${String(link.state || "active") === "active" ? "is-on" : "is-off"}`}
+                        onClick={handleToggleState(link)}
+                        disabled={togglingId === link.id}
+                        title={t("Toggle campaign state")}
+                      >
+                        <span className="cs-dot" />
+                        {String(link.state || "active") === "active" ? t("Activated") : t("Deactivated")}
+                      </button>
                     </td>
                     <td>
                       {link.geo ? (
@@ -4518,7 +4751,32 @@ function TrackingLinksDashboard({ authUser }) {
                         >
                           {copiedId === link.id ? <CheckCircle size={15} /> : <Copy size={15} />}
                         </button>
-                        {String(link.keitaro_status || "local") !== "created" ? (
+                        <button
+                          className="icon-btn"
+                          type="button"
+                          title={t("Edit")}
+                          onClick={() => openEdit(link)}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          className="icon-btn"
+                          type="button"
+                          title={t("View flow, filters, offer")}
+                          onClick={() => openDetails(link)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {String(link.keitaro_status || "local") === "created" ? (
+                          <button
+                            className="icon-btn icon-btn-check"
+                            type="button"
+                            title={t("Verify in Keitaro")}
+                            onClick={() => openDetails(link, true)}
+                          >
+                            <ShieldCheck size={15} />
+                          </button>
+                        ) : (
                           <button
                             className="icon-btn"
                             type="button"
@@ -4528,7 +4786,7 @@ function TrackingLinksDashboard({ authUser }) {
                           >
                             <Zap size={15} />
                           </button>
-                        ) : null}
+                        )}
                         <button
                           className="icon-btn icon-btn-danger"
                           type="button"
