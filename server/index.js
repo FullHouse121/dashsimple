@@ -7581,6 +7581,37 @@ const getKeitaroResources = async () => {
   return data;
 };
 
+// A buyer's identity forms: their username + any alias short-name that
+// resolves to them (Leomarketing → ["leomarketing", "leo"]).
+const buyerShortForms = (buyer) => {
+  const b = String(buyer || "").trim().toLowerCase();
+  const forms = new Set();
+  if (b) forms.add(b);
+  for (const [short, canonical] of buyerAliasMap.entries()) {
+    if (String(canonical || "").trim().toLowerCase() === b) forms.add(String(short).toLowerCase());
+  }
+  return [...forms].filter(Boolean);
+};
+
+// Does a Keitaro name (offer/group) belong to this buyer? Offers are named
+// inconsistently ("Karen | …", "Leo (InApp) - …", "ZM.APPS - Leo - …") so
+// we match any of the buyer's identity forms as a WHOLE WORD in the name.
+const keitaroNameMatchesBuyer = (name, buyer) => {
+  const text = String(name || "").toLowerCase();
+  return buyerShortForms(buyer).some((form) => {
+    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(text);
+  });
+};
+
+// Scope the shared resource lists to one buyer: only their offers and
+// campaign group(s). Traffic sources + tracking domains are shared infra.
+const scopeKeitaroResourcesForBuyer = (data, buyer) => ({
+  ...data,
+  offers: (data.offers || []).filter((o) => keitaroNameMatchesBuyer(o.name, buyer)),
+  groups: (data.groups || []).filter((g) => keitaroNameMatchesBuyer(g.name, buyer)),
+});
+
 // Resolve the buyer's campaign group (groups are named per buyer:
 // "Leo", "Karen", "akku"… while buyers log in as Leomarketing,
 // KarenFarias…). Longest group name contained in the buyer wins.
@@ -7752,13 +7783,17 @@ app.get("/api/tracking-links", async (req, res) => {
   res.json(rows);
 });
 
-// Keitaro resource lists for the Tracking Links form.
+// Keitaro resource lists for the Tracking Links form. Leadership sees all;
+// a buyer sees only their own offers and campaign group(s).
 app.get("/api/keitaro/resources", async (req, res) => {
   const data = await getKeitaroResources();
   if (!data.ok) {
     return res.status(502).json({ error: data.error || "Could not load Keitaro resources." });
   }
-  res.json(data);
+  if (isLeadership(req.user)) {
+    return res.json(data);
+  }
+  res.json(scopeKeitaroResourcesForBuyer(data, req.user.username));
 });
 
 app.post("/api/tracking-links", async (req, res) => {
