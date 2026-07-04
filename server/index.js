@@ -116,6 +116,11 @@ const initDb = async () => {
       owner_id INTEGER,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    // Keitaro resource ids so a failed push can be retried with full setup.
+    `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS offer_id TEXT;`,
+    `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS traffic_source_id TEXT;`,
+    `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS kdomain_id TEXT;`,
+    `ALTER TABLE tracking_links ADD COLUMN IF NOT EXISTS keitaro_group_id TEXT;`,
     // Open Graph / Sharing Debugger scrape history per domain.
     `CREATE TABLE IF NOT EXISTS og_debug_history (
       id SERIAL PRIMARY KEY,
@@ -7457,33 +7462,184 @@ const buildTrackingUrl = (domain, alias, params) => {
   return `https://${host}/${path}${qs ? `?${qs}` : ""}`;
 };
 
-// Try to create the campaign in Keitaro. Never throws — returns
-// { ok, id, error } so callers can fall back to local storage.
-const pushCampaignToKeitaro = async ({ name, alias }) => {
+// Standard link parameter map — mirrors the existing campaigns on this
+// tracker (external_id={exid}, sub1..sub11, adset_id={{adset.id}},
+// fbclid={{fbclid}}) so new campaigns produce identical links.
+const KEITARO_STANDARD_PARAMETERS = {
+  external_id: { placeholder: "{exid}" },
+  sub_id_1: { name: "sub1", placeholder: "{sub1}" },
+  sub_id_2: { name: "sub2", placeholder: "{sub2}" },
+  sub_id_3: { name: "sub3", placeholder: "{sub3}" },
+  sub_id_4: { name: "sub4", placeholder: "{sub4}" },
+  sub_id_5: { name: "sub5", placeholder: "{sub5}" },
+  sub_id_6: { name: "adset_id", placeholder: "{{adset.id}}" },
+  sub_id_7: { name: "sub7", placeholder: "{sub7}" },
+  sub_id_8: { name: "sub8", placeholder: "{sub8}" },
+  sub_id_9: { name: "sub9", placeholder: "{sub9}" },
+  sub_id_10: { name: "sub10", placeholder: "{sub10}" },
+  sub_id_11: { name: "sub11", placeholder: "{sub11}" },
+  sub_id_12: { name: "fbclid", placeholder: "{{fbclid}}" },
+};
+
+const keitaroAdminFetch = async (path, options = {}) => {
   const baseUrl = process.env.KEITARO_BASE_URL;
   const apiKey = process.env.KEITARO_API_KEY;
   if (!baseUrl || !apiKey) {
-    return { ok: false, id: null, error: "Keitaro credentials are not configured on the server." };
+    return { ok: false, status: 0, data: null, error: "Keitaro credentials are not configured on the server." };
   }
   try {
-    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/admin_api/v1/campaigns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...buildAuthHeaders(apiKey) },
-      body: JSON.stringify({ name, alias, state: "active" }),
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}/admin_api/v1${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...buildAuthHeaders(apiKey),
+        ...(options.headers || {}),
+      },
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       return {
         ok: false,
-        id: null,
-        error: data?.error || data?.message || `Keitaro rejected the campaign (HTTP ${response.status}).`,
+        status: response.status,
+        data,
+        error: data?.error || data?.message || `Keitaro returned HTTP ${response.status}.`,
       };
     }
-    const keitaroId = data?.id ?? data?.campaign?.id ?? null;
-    return { ok: true, id: keitaroId ? String(keitaroId) : null, error: null };
+    return { ok: true, status: response.status, data, error: null };
   } catch (error) {
-    return { ok: false, id: null, error: error.message || "Could not reach Keitaro." };
+    return { ok: false, status: 0, data: null, error: error.message || "Could not reach Keitaro." };
   }
+};
+
+// Keitaro resource lists for the Tracking Links form — cached 5 minutes.
+const keitaroResourceCache = { at: 0, data: null };
+const getKeitaroResources = async () => {
+  if (keitaroResourceCache.data && Date.now() - keitaroResourceCache.at < 5 * 60 * 1000) {
+    return keitaroResourceCache.data;
+  }
+  const [domains, sources, groups, offers] = await Promise.all([
+    keitaroAdminFetch("/domains"),
+    keitaroAdminFetch("/traffic_sources?limit=100"),
+    keitaroAdminFetch("/groups?type=campaigns"),
+    keitaroAdminFetch("/offers?limit=1000"),
+  ]);
+  const pick = (r, map) => (r.ok && Array.isArray(r.data) ? r.data.map(map) : []);
+  const data = {
+    ok: domains.ok || sources.ok || groups.ok || offers.ok,
+    error: domains.ok ? null : domains.error,
+    domains: pick(domains, (d) => ({ id: d.id, name: d.name, state: d.state })),
+    trafficSources: pick(sources, (s) => ({ id: s.id, name: s.name })),
+    groups: pick(groups, (g) => ({ id: g.id, name: g.name })),
+    offers: pick(offers, (o) => ({
+      id: o.id,
+      name: o.name,
+      country: Array.isArray(o.country) ? o.country.join(", ") : o.country || "",
+    })),
+  };
+  if (data.ok) {
+    keitaroResourceCache.at = Date.now();
+    keitaroResourceCache.data = data;
+  }
+  return data;
+};
+
+// Resolve the buyer's campaign group (groups are named per buyer:
+// "Leo", "Karen", "akku"… while buyers log in as Leomarketing,
+// KarenFarias…). Longest group name contained in the buyer wins.
+const resolveKeitaroGroupForBuyer = (groups, buyerName) => {
+  const buyer = String(buyerName || "").toLowerCase();
+  let best = null;
+  for (const group of groups || []) {
+    const g = String(group.name || "").toLowerCase().trim();
+    if (!g) continue;
+    if (buyer.includes(g) || g.includes(buyer)) {
+      if (!best || g.length > String(best.name).length) best = group;
+    }
+  }
+  return best;
+};
+
+// Create the COMPLETE campaign in Keitaro: campaign (group, source,
+// domain, standard parameters, CPA auto-cost) + stream + offer binding.
+// Never throws. status: created | partial (campaign ok, stream failed) | failed
+const pushCampaignToKeitaro = async ({
+  name,
+  alias,
+  buyer,
+  groupId,
+  trafficSourceId,
+  domainId,
+  offerId,
+  notes,
+}) => {
+  let resolvedGroupId = groupId ? Number(groupId) : null;
+  if (!resolvedGroupId && buyer) {
+    const resources = await getKeitaroResources();
+    const match = resolveKeitaroGroupForBuyer(resources.groups, buyer);
+    if (match) resolvedGroupId = Number(match.id);
+  }
+
+  const campaignBody = {
+    name,
+    state: "active",
+    type: "weight",
+    cost_type: "CPA",
+    cost_auto: true,
+    cost_currency: "USD",
+    uniqueness_method: "ip_ua",
+    cookies_ttl: 24,
+    bind_visitors: "slo",
+    parameters: KEITARO_STANDARD_PARAMETERS,
+  };
+  const trimmedAlias = String(alias || "").trim();
+  if (trimmedAlias) campaignBody.alias = trimmedAlias;
+  if (resolvedGroupId) campaignBody.group_id = resolvedGroupId;
+  if (trafficSourceId) campaignBody.traffic_source_id = Number(trafficSourceId);
+  if (domainId) campaignBody.domain_id = Number(domainId);
+  if (String(notes || "").trim()) campaignBody.notes = String(notes).trim();
+
+  const created = await keitaroAdminFetch("/campaigns", {
+    method: "POST",
+    body: JSON.stringify(campaignBody),
+  });
+  if (!created.ok) {
+    return { status: "failed", id: null, alias: null, error: created.error };
+  }
+  const campaign = created.data?.campaign || created.data || {};
+  const campaignId = campaign.id ?? null;
+  const finalAlias = campaign.alias || trimmedAlias || null;
+
+  if (!offerId) {
+    return { status: "created", id: campaignId ? String(campaignId) : null, alias: finalAlias, error: null };
+  }
+
+  // Stream with the offer bound — mirrors the existing streams on this
+  // tracker (regular / landings / before_click / weight 100).
+  const stream = await keitaroAdminFetch("/streams", {
+    method: "POST",
+    body: JSON.stringify({
+      campaign_id: campaignId,
+      type: "regular",
+      name: `${String(buyer || "Stream").split(" ")[0]}_Offer`,
+      schema: "landings",
+      action_type: "http",
+      collect_clicks: true,
+      filter_or: false,
+      weight: 100,
+      state: "active",
+      offer_selection: "before_click",
+      offers: [{ offer_id: Number(offerId), share: 100, state: "active" }],
+    }),
+  });
+  if (!stream.ok) {
+    return {
+      status: "partial",
+      id: campaignId ? String(campaignId) : null,
+      alias: finalAlias,
+      error: `Campaign created, but the stream/offer failed: ${stream.error}`,
+    };
+  }
+  return { status: "created", id: campaignId ? String(campaignId) : null, alias: finalAlias, error: null };
 };
 
 app.get("/api/tracking-links", async (req, res) => {
@@ -7510,6 +7666,15 @@ app.get("/api/tracking-links", async (req, res) => {
   res.json(rows);
 });
 
+// Keitaro resource lists for the Tracking Links form.
+app.get("/api/keitaro/resources", async (req, res) => {
+  const data = await getKeitaroResources();
+  if (!data.ok) {
+    return res.status(502).json({ error: data.error || "Could not load Keitaro resources." });
+  }
+  res.json(data);
+});
+
 app.post("/api/tracking-links", async (req, res) => {
   const {
     buyer = "",
@@ -7521,6 +7686,10 @@ app.post("/api/tracking-links", async (req, res) => {
     alias = "",
     params = "",
     filters = "",
+    offerId = null,
+    trafficSourceId = null,
+    domainId = null,
+    groupId = null,
     pushToKeitaro = false,
   } = req.body ?? {};
 
@@ -7530,27 +7699,41 @@ app.post("/api/tracking-links", async (req, res) => {
     : String(req.user.username || "").trim();
   const seg = (v) => String(v || "").trim() || "-";
   const name = [resolvedBuyer, seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
-  const url = buildTrackingUrl(domain, alias, params);
 
   if (!String(tool || "").trim()) {
     return res.status(400).json({ error: "Tool is required." });
   }
-  if (!url) {
-    return res.status(400).json({ error: "Tracking domain and alias are required." });
+  if (!String(domain || "").trim()) {
+    return res.status(400).json({ error: "Tracking domain is required." });
   }
 
-  let keitaro = { ok: false, id: null, error: null };
-  let keitaroStatus = "local";
+  let keitaro = { status: "local", id: null, alias: null, error: null };
   if (pushToKeitaro) {
-    keitaro = await pushCampaignToKeitaro({ name, alias: String(alias).trim() });
-    keitaroStatus = keitaro.ok ? "created" : "failed";
+    keitaro = await pushCampaignToKeitaro({
+      name,
+      alias,
+      buyer: resolvedBuyer,
+      groupId,
+      trafficSourceId,
+      domainId,
+      offerId,
+      notes: filters,
+    });
+  }
+
+  // Prefer the alias Keitaro assigned (it auto-generates when omitted).
+  const finalAlias = keitaro.alias || String(alias || "").trim();
+  const url = finalAlias ? buildTrackingUrl(domain, finalAlias, params) : "";
+  if (!pushToKeitaro && !url) {
+    return res.status(400).json({ error: "Alias is required when not pushing to Keitaro." });
   }
 
   const { rows } = await query(
     `INSERT INTO tracking_links
        (name, buyer, tool, game, geo, brand, domain, alias, params, url, filters,
-        keitaro_id, keitaro_status, keitaro_error, owner_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        keitaro_id, keitaro_status, keitaro_error, owner_id,
+        offer_id, traffic_source_id, kdomain_id, keitaro_group_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      RETURNING id`,
     [
       name,
@@ -7560,20 +7743,29 @@ app.post("/api/tracking-links", async (req, res) => {
       String(geo || "").trim() || null,
       String(brand || "").trim() || null,
       String(domain || "").trim() || null,
-      String(alias || "").trim() || null,
+      finalAlias || null,
       String(params || "").trim() || null,
-      url,
+      url || null,
       String(filters || "").trim() || null,
       keitaro.id,
-      keitaroStatus,
+      keitaro.status,
       keitaro.error,
       req.user.id,
+      offerId ? String(offerId) : null,
+      trafficSourceId ? String(trafficSourceId) : null,
+      domainId ? String(domainId) : null,
+      groupId ? String(groupId) : null,
     ]
   );
-  res.status(201).json({ id: rows[0]?.id, name, url, keitaro: { status: keitaroStatus, id: keitaro.id, error: keitaro.error } });
+  res.status(201).json({
+    id: rows[0]?.id,
+    name,
+    url,
+    keitaro: { status: keitaro.status, id: keitaro.id, alias: keitaro.alias, error: keitaro.error },
+  });
 });
 
-// Retry pushing an existing link's campaign to Keitaro.
+// Retry pushing an existing link's campaign to Keitaro (full setup).
 app.post("/api/tracking-links/:id/push", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
@@ -7582,16 +7774,28 @@ app.post("/api/tracking-links/:id/push", async (req, res) => {
   if (!isLeadership(req.user) && row.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
-  if (row.keitaro_id) {
+  if (row.keitaro_id && row.keitaro_status === "created") {
     return res.json({ ok: true, keitaro: { status: "created", id: row.keitaro_id, error: null } });
   }
-  const keitaro = await pushCampaignToKeitaro({ name: row.name, alias: row.alias });
-  const status = keitaro.ok ? "created" : "failed";
+  const keitaro = await pushCampaignToKeitaro({
+    name: row.name,
+    alias: row.alias,
+    buyer: row.buyer,
+    groupId: row.keitaro_group_id,
+    trafficSourceId: row.traffic_source_id,
+    domainId: row.kdomain_id,
+    offerId: row.offer_id,
+    notes: row.filters,
+  });
+  const finalAlias = keitaro.alias || row.alias;
+  const url = finalAlias ? buildTrackingUrl(row.domain, finalAlias, row.params) : row.url;
   await query(
-    `UPDATE tracking_links SET keitaro_id = $1, keitaro_status = $2, keitaro_error = $3 WHERE id = $4`,
-    [keitaro.id, status, keitaro.error, id]
+    `UPDATE tracking_links
+     SET keitaro_id = $1, keitaro_status = $2, keitaro_error = $3, alias = $4, url = $5
+     WHERE id = $6`,
+    [keitaro.id, keitaro.status, keitaro.error, finalAlias, url, id]
   );
-  res.json({ ok: keitaro.ok, keitaro: { status, id: keitaro.id, error: keitaro.error } });
+  res.json({ ok: keitaro.status !== "failed", keitaro });
 });
 
 app.delete("/api/tracking-links/:id", async (req, res) => {

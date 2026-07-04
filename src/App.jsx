@@ -3688,7 +3688,23 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
 // Compose Keitaro campaigns from the dashboard: Buyer | Tool | Game |
 // Geo | Brand naming, domain/alias?params link, optional push to the
 // Keitaro Admin API — stored locally either way.
-const TRACKING_TOOL_PRESETS = ["ZMAPPS", "PWA.GROUP", "PWA PARTNERS", "LINKI.GROUP", "SKAK", "FB"];
+// Keitaro traffic-source name → short code used in the campaign-name Tool segment.
+const TRACKING_SOURCE_SHORTCODES = {
+  "pwa.group": "PWA.GROUP",
+  "linki.group": "LINKI.GROUP",
+  "zm.app": "ZMAPPS",
+  "skakapp.com": "SKAK",
+  "facebook.com": "FB",
+  "pwa partners": "PWA PARTNERS",
+  "trafficjunky.com": "TRAFFIC JUNKY",
+  "youtarget.com": "YOUTARGET",
+  "google ads": "GOOGLE",
+  "tiktok.com": "TIKTOK",
+};
+const trackingSourceShortcode = (name) => {
+  const key = String(name || "").trim().toLowerCase();
+  return TRACKING_SOURCE_SHORTCODES[key] || String(name || "").trim().toUpperCase();
+};
 const TRACKING_GEO_PRESETS = [
   "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
   "DE", "FR", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
@@ -3708,15 +3724,46 @@ function TrackingLinksDashboard({ authUser }) {
   const [form, setForm] = React.useState(() => ({
     buyer: authUser?.username || "",
     tool: "",
+    trafficSourceId: "",
     game: "",
     geo: "",
     brand: "",
     domain: localStorage.getItem("tracking-domain") || "",
+    domainId: localStorage.getItem("tracking-domain-id") || "",
     alias: "",
+    offerId: "",
     filters: "",
     params: DEFAULT_TRACKING_PARAMS,
     pushToKeitaro: true,
   }));
+  // Live Keitaro resources (domains, traffic sources, offers, groups)
+  const [resources, setResources] = React.useState({ domains: [], trafficSources: [], groups: [], offers: [] });
+  const [resourcesError, setResourcesError] = React.useState(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/keitaro/resources");
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Failed to load Keitaro resources.");
+        if (!cancelled) {
+          setResources({
+            domains: data.domains || [],
+            trafficSources: data.trafficSources || [],
+            groups: data.groups || [],
+            offers: data.offers || [],
+          });
+          setResourcesError(null);
+        }
+      } catch (error) {
+        if (!cancelled) setResourcesError(error.message || "Failed to load Keitaro resources.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [buyerFilter, setBuyerFilter] = React.useState("all");
   const [toolFilter, setToolFilter] = React.useState("all");
   const [geoFilter, setGeoFilter] = React.useState("all");
@@ -3755,7 +3802,7 @@ function TrackingLinksDashboard({ authUser }) {
   ].join(" | ");
   const previewUrl = (() => {
     const host = String(form.domain || "").trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
-    const path = String(form.alias || "").trim().replace(/^\/+/, "");
+    const path = String(form.alias || "").trim().replace(/^\/+/, "") || (form.pushToKeitaro ? "{auto}" : "");
     const qs = String(form.params || "").trim().replace(/^\?+/, "");
     if (!host || !path) return "";
     return `https://${host}/${path}${qs ? `?${qs}` : ""}`;
@@ -3767,13 +3814,18 @@ function TrackingLinksDashboard({ authUser }) {
       setSaveState({ saving: false, ok: false, message: t("Tool is required.") });
       return;
     }
-    if (!previewUrl) {
-      setSaveState({ saving: false, ok: false, message: t("Tracking domain and alias are required.") });
+    if (!String(form.domain).trim()) {
+      setSaveState({ saving: false, ok: false, message: t("Tracking domain is required.") });
+      return;
+    }
+    if (!form.pushToKeitaro && !String(form.alias).trim()) {
+      setSaveState({ saving: false, ok: false, message: t("Alias is required when not pushing to Keitaro.") });
       return;
     }
     setSaveState({ saving: true, ok: null, message: "" });
     try {
       localStorage.setItem("tracking-domain", String(form.domain || "").trim());
+      localStorage.setItem("tracking-domain-id", String(form.domainId || ""));
       const response = await apiFetch("/api/tracking-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3789,12 +3841,14 @@ function TrackingLinksDashboard({ authUser }) {
         ok: true,
         message:
           k?.status === "created"
-            ? `${t("Campaign created in Keitaro")}${k.id ? ` (ID ${k.id})` : ""}.`
-            : k?.status === "failed"
-              ? `${t("Stored locally — Keitaro push failed")}: ${k.error || ""}`
-              : t("Link stored."),
+            ? `${t("Campaign created in Keitaro")}${k.id ? ` (ID ${k.id})` : ""}${k.alias ? ` · alias ${k.alias}` : ""}.`
+            : k?.status === "partial"
+              ? `${t("Campaign created, offer/stream failed")}: ${k.error || ""}`
+              : k?.status === "failed"
+                ? `${t("Stored locally — Keitaro push failed")}: ${k.error || ""}`
+                : t("Link stored."),
       });
-      setForm((prev) => ({ ...prev, game: "", brand: "", alias: "", filters: "" }));
+      setForm((prev) => ({ ...prev, game: "", brand: "", alias: "", filters: "", offerId: "" }));
       await fetchLinks();
     } catch (error) {
       setSaveState({ saving: false, ok: false, message: error.message || "Failed to save tracking link." });
@@ -3967,6 +4021,13 @@ function TrackingLinksDashboard({ authUser }) {
 
         {showForm ? (
           <form className="form-grid accounts-form" onSubmit={handleCreate}>
+            {resourcesError ? (
+              <div className="field field-span-3">
+                <div className="api-status error">
+                  {t("Keitaro resources unavailable")}: {resourcesError}. {t("You can still store links locally.")}
+                </div>
+              </div>
+            ) : null}
             <div className="field">
               <label>{t("Buyer")}</label>
               <input
@@ -3977,13 +4038,28 @@ function TrackingLinksDashboard({ authUser }) {
               />
             </div>
             <div className="field">
-              <label>{t("Tool")}</label>
+              <label>{t("Tool / Traffic Source")}</label>
               <CountryDropdownPicker
-                value={form.tool}
-                onChange={(tool) => setForm((prev) => ({ ...prev, tool }))}
-                options={TRACKING_TOOL_PRESETS.map((value) => ({ value, label: value, search: value }))}
+                value={form.trafficSourceId || form.tool}
+                onChange={(value) => {
+                  const source = resources.trafficSources.find((s) => String(s.id) === String(value));
+                  if (source) {
+                    setForm((prev) => ({
+                      ...prev,
+                      trafficSourceId: String(source.id),
+                      tool: trackingSourceShortcode(source.name),
+                    }));
+                  } else {
+                    setForm((prev) => ({ ...prev, trafficSourceId: "", tool: value }));
+                  }
+                }}
+                options={resources.trafficSources.map((s) => ({
+                  value: String(s.id),
+                  label: `${trackingSourceShortcode(s.name)} · ${s.name}`,
+                  search: `${s.name} ${trackingSourceShortcode(s.name)}`,
+                }))}
                 allowCustom
-                placeholder={t("Select or type")}
+                placeholder={resources.trafficSources.length ? t("Select or type") : t("Type a tool")}
                 searchPlaceholder={t("Type a tool")}
                 emptyResultsLabel={t("No tools found.")}
               />
@@ -4009,12 +4085,47 @@ function TrackingLinksDashboard({ authUser }) {
               <input value={form.brand} onChange={updateForm("brand")} placeholder="ZLOTMX" />
             </div>
             <div className="field">
-              <label>{t("Tracking Domain")}</label>
-              <input value={form.domain} onChange={updateForm("domain")} placeholder="keitaro-domains.com" required />
+              <label>{t("Tracking Domain")} <span className="field-pace-hint">{t("from Keitaro")}</span></label>
+              <CountryDropdownPicker
+                value={form.domainId || form.domain}
+                onChange={(value) => {
+                  const dom = resources.domains.find((d) => String(d.id) === String(value));
+                  if (dom) {
+                    setForm((prev) => ({ ...prev, domainId: String(dom.id), domain: dom.name }));
+                  } else {
+                    setForm((prev) => ({ ...prev, domainId: "", domain: value }));
+                  }
+                }}
+                options={resources.domains.map((d) => ({
+                  value: String(d.id),
+                  label: d.name,
+                  search: d.name,
+                }))}
+                allowCustom
+                placeholder={resources.domains.length ? t("Select a domain") : t("Type a domain")}
+                searchPlaceholder={t("Find domain")}
+                emptyResultsLabel={t("No domains found.")}
+              />
             </div>
             <div className="field">
-              <label>{t("Alias")}</label>
-              <input value={form.alias} onChange={updateForm("alias")} placeholder={t("campaign alias")} required />
+              <label>{t("Alias")} <span className="field-pace-hint">{t("blank = auto by Keitaro")}</span></label>
+              <input value={form.alias} onChange={updateForm("alias")} placeholder={t("auto-generated")} />
+            </div>
+            <div className="field field-span-2">
+              <label>{t("Offer")} <span className="field-pace-hint">{t("bound via stream")}</span></label>
+              <CountryDropdownPicker
+                value={form.offerId}
+                onChange={(offerId) => setForm((prev) => ({ ...prev, offerId }))}
+                options={resources.offers.map((o) => ({
+                  value: String(o.id),
+                  label: `#${o.id} · ${o.name}${o.country ? ` · ${o.country}` : ""}`,
+                  search: `${o.id} ${o.name} ${o.country}`,
+                }))}
+                allOption={{ value: "", label: t("No offer (campaign only)") }}
+                placeholder={resources.offers.length ? t("Select an offer") : t("No offers loaded")}
+                searchPlaceholder={t("Find offer by name, id, geo")}
+                emptyResultsLabel={t("No offers found.")}
+              />
             </div>
             <div className="field">
               <label>{t("Filters")} <span className="field-pace-hint">{t("optional note")}</span></label>
