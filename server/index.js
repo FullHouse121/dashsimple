@@ -7585,8 +7585,45 @@ const resolveKeitaroGroupForBuyer = (groups, buyerName) => {
   return best;
 };
 
+// Build Keitaro stream filters from our stored config
+// ({ logic: "and"|"or", rules: [{ name, mode, payload:[] }] }).
+const buildStreamFilters = (filtersConfig) => {
+  let cfg = filtersConfig;
+  if (typeof cfg === "string") {
+    try {
+      cfg = JSON.parse(cfg);
+    } catch (error) {
+      cfg = null;
+    }
+  }
+  if (!cfg || !Array.isArray(cfg.rules)) return { filterOr: false, filters: [] };
+  const filters = cfg.rules
+    .filter((r) => r && r.name)
+    .map((r) => {
+      const payload = Array.isArray(r.payload)
+        ? r.payload.map((v) => String(v).trim()).filter(Boolean)
+        : [];
+      return {
+        name: String(r.name),
+        mode: r.mode === "reject" ? "reject" : "accept",
+        payload: payload.length ? payload : null,
+      };
+    });
+  return { filterOr: cfg.logic === "or", filters };
+};
+
+// Short human summary of a filter config → campaign notes in Keitaro.
+const summarizeTrackingFilters = (filtersConfig) => {
+  const { filters, filterOr } = buildStreamFilters(filtersConfig);
+  if (!filters.length) return "";
+  const join = filterOr ? " OR " : " AND ";
+  return filters
+    .map((f) => `${f.name} ${f.mode === "reject" ? "IS NOT" : "IS"}${f.payload ? ` ${f.payload.join(",")}` : ""}`)
+    .join(join);
+};
+
 // Create the COMPLETE campaign in Keitaro: campaign (group, source,
-// domain, standard parameters, CPA auto-cost) + stream + offer binding.
+// domain, standard parameters, CPA auto-cost) + stream + offer + filters.
 // Never throws. status: created | partial (campaign ok, stream failed) | failed
 const pushCampaignToKeitaro = async ({
   name,
@@ -7596,6 +7633,7 @@ const pushCampaignToKeitaro = async ({
   trafficSourceId,
   domainId,
   offerId,
+  filtersConfig,
   notes,
 }) => {
   let resolvedGroupId = groupId ? Number(groupId) : null;
@@ -7636,27 +7674,36 @@ const pushCampaignToKeitaro = async ({
   const campaignId = campaign.id ?? null;
   const finalAlias = campaign.alias || trimmedAlias || null;
 
-  if (!offerId) {
+  const { filterOr, filters: streamFilters } = buildStreamFilters(filtersConfig);
+
+  // A stream is needed if there's an offer to bind OR filters to apply.
+  if (!offerId && !streamFilters.length) {
     return { status: "created", id: campaignId ? String(campaignId) : null, alias: finalAlias, error: null };
   }
 
-  // Stream with the offer bound — mirrors the existing streams on this
-  // tracker (regular / landings / before_click / weight 100).
+  // Stream mirrors the existing streams on this tracker (regular /
+  // landings / before_click / weight 100), with the offer + filters.
+  const streamBody = {
+    campaign_id: campaignId,
+    type: "regular",
+    name: `${String(buyer || "Stream").split(" ")[0]}_Offer`,
+    schema: "landings",
+    action_type: "http",
+    collect_clicks: true,
+    filter_or: filterOr,
+    weight: 100,
+    state: "active",
+    offer_selection: "before_click",
+  };
+  if (offerId) {
+    streamBody.offers = [{ offer_id: Number(offerId), share: 100, state: "active" }];
+  }
+  if (streamFilters.length) {
+    streamBody.filters = streamFilters;
+  }
   const stream = await keitaroAdminFetch("/streams", {
     method: "POST",
-    body: JSON.stringify({
-      campaign_id: campaignId,
-      type: "regular",
-      name: `${String(buyer || "Stream").split(" ")[0]}_Offer`,
-      schema: "landings",
-      action_type: "http",
-      collect_clicks: true,
-      filter_or: false,
-      weight: 100,
-      state: "active",
-      offer_selection: "before_click",
-      offers: [{ offer_id: Number(offerId), share: 100, state: "active" }],
-    }),
+    body: JSON.stringify(streamBody),
   });
   if (!stream.ok) {
     return {
@@ -7734,6 +7781,7 @@ app.post("/api/tracking-links", async (req, res) => {
     return res.status(400).json({ error: "Tracking domain is required." });
   }
 
+  const filtersJson = typeof filters === "string" ? filters : JSON.stringify(filters || "");
   let keitaro = { status: "local", id: null, alias: null, error: null };
   if (pushToKeitaro) {
     keitaro = await pushCampaignToKeitaro({
@@ -7744,7 +7792,8 @@ app.post("/api/tracking-links", async (req, res) => {
       trafficSourceId,
       domainId,
       offerId,
-      notes: filters,
+      filtersConfig: filtersJson,
+      notes: summarizeTrackingFilters(filtersJson),
     });
   }
 
@@ -7773,7 +7822,7 @@ app.post("/api/tracking-links", async (req, res) => {
       finalAlias || null,
       String(params || "").trim() || null,
       url || null,
-      String(filters || "").trim() || null,
+      filtersJson && filtersJson !== '""' ? filtersJson : null,
       keitaro.id,
       keitaro.status,
       keitaro.error,
@@ -7812,7 +7861,8 @@ app.post("/api/tracking-links/:id/push", async (req, res) => {
     trafficSourceId: row.traffic_source_id,
     domainId: row.kdomain_id,
     offerId: row.offer_id,
-    notes: row.filters,
+    filtersConfig: row.filters,
+    notes: summarizeTrackingFilters(row.filters),
   });
   const finalAlias = keitaro.alias || row.alias;
   const url = finalAlias ? buildTrackingUrl(row.domain, finalAlias, row.params) : row.url;

@@ -3712,6 +3712,87 @@ const TRACKING_GEO_PRESETS = [
 const DEFAULT_TRACKING_PARAMS =
   "external_id={exid}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
 
+// Keitaro stream filter catalog. name = API filter name; bool = no values.
+const TRACKING_FILTER_CATALOG = [
+  { group: "Traffic", name: "keyword", label: "Keyword" },
+  { group: "Traffic", name: "search_engine", label: "Search engine", bool: true },
+  { group: "Traffic", name: "ad_campaign_id", label: "Ad campaign ID" },
+  { group: "Traffic", name: "creative_id", label: "Creative ID" },
+  { group: "Traffic", name: "empty_referrer", label: "Empty referer", bool: true },
+  { group: "Traffic", name: "referrer", label: "Referrer" },
+  { group: "Geo", name: "country", label: "Country / GEO" },
+  { group: "Geo", name: "region", label: "Region" },
+  { group: "Geo", name: "city", label: "City" },
+  { group: "Geo", name: "language", label: "Language" },
+  { group: "Geo", name: "connection_type", label: "Connection type" },
+  { group: "Geo", name: "isp", label: "ISP / Carrier" },
+  { group: "Security", name: "bot", label: "Bot", bool: true },
+  { group: "Security", name: "proxy", label: "Proxy detected", bool: true },
+  { group: "Security", name: "ipv_6", label: "IPv6", bool: true },
+  { group: "Security", name: "unique_click", label: "Unique click", bool: true },
+  { group: "Device", name: "device_type", label: "Device type", options: ["mobile", "desktop", "tablet", "tv"] },
+  { group: "Device", name: "os", label: "OS" },
+  { group: "Device", name: "os_version", label: "OS version" },
+  { group: "Device", name: "browser", label: "Browser" },
+  { group: "Device", name: "browser_version", label: "Browser version" },
+  ...Array.from({ length: 11 }, (_, i) => ({
+    group: "Sub IDs",
+    name: `sub_id_${i + 1}`,
+    label: `Sub ID ${i + 1}`,
+  })),
+];
+const TRACKING_FILTER_BY_NAME = Object.fromEntries(TRACKING_FILTER_CATALOG.map((f) => [f.name, f]));
+
+// Chip/tag input — Enter or comma commits a value, Backspace on empty pops.
+function TagInput({ values, onChange, placeholder, options }) {
+  const [draft, setDraft] = React.useState("");
+  const commit = (raw) => {
+    const parts = String(raw).split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+    if (!parts.length) return;
+    const next = [...values];
+    parts.forEach((p) => {
+      if (!next.includes(p)) next.push(p);
+    });
+    onChange(next);
+    setDraft("");
+  };
+  return (
+    <div className="tag-input">
+      {values.map((v) => (
+        <span className="tag-chip" key={v}>
+          {v}
+          <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label="Remove">
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        className="tag-input-field"
+        value={draft}
+        list={options ? "tag-opts" : undefined}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit(draft);
+          } else if (e.key === "Backspace" && !draft && values.length) {
+            onChange(values.slice(0, -1));
+          }
+        }}
+        onBlur={() => commit(draft)}
+        placeholder={values.length ? "" : placeholder}
+      />
+      {options ? (
+        <datalist id="tag-opts">
+          {options.map((o) => (
+            <option value={o} key={o} />
+          ))}
+        </datalist>
+      ) : null}
+    </div>
+  );
+}
+
 function TrackingLinksDashboard({ authUser }) {
   const { t } = useLanguage();
   const isLeadership = isLeadershipRole(authUser?.role);
@@ -3732,10 +3813,39 @@ function TrackingLinksDashboard({ authUser }) {
     domainId: localStorage.getItem("tracking-domain-id") || "",
     alias: "",
     offerId: "",
-    filters: "",
+    filterConfig: { logic: "and", rules: [] },
     params: DEFAULT_TRACKING_PARAMS,
     pushToKeitaro: true,
   }));
+  const [filterModalOpen, setFilterModalOpen] = React.useState(false);
+  const [filterDraft, setFilterDraft] = React.useState({ logic: "and", rules: [] });
+
+  const openFilterModal = () => {
+    setFilterDraft({
+      logic: form.filterConfig.logic || "and",
+      rules: (form.filterConfig.rules || []).map((r) => ({ ...r, payload: [...(r.payload || [])] })),
+    });
+    setFilterModalOpen(true);
+  };
+  const applyFilters = () => {
+    setForm((prev) => ({
+      ...prev,
+      filterConfig: {
+        logic: filterDraft.logic,
+        rules: filterDraft.rules.filter((r) => r.name),
+      },
+    }));
+    setFilterModalOpen(false);
+  };
+  const addFilterRule = () =>
+    setFilterDraft((prev) => ({ ...prev, rules: [...prev.rules, { name: "country", mode: "accept", payload: [] }] }));
+  const updateFilterRule = (idx, patch) =>
+    setFilterDraft((prev) => ({
+      ...prev,
+      rules: prev.rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    }));
+  const removeFilterRule = (idx) =>
+    setFilterDraft((prev) => ({ ...prev, rules: prev.rules.filter((_, i) => i !== idx) }));
   // Live Keitaro resources (domains, traffic sources, offers, groups)
   const [resources, setResources] = React.useState({ domains: [], trafficSources: [], groups: [], offers: [] });
   const [resourcesError, setResourcesError] = React.useState(null);
@@ -3829,7 +3939,7 @@ function TrackingLinksDashboard({ authUser }) {
       const response = await apiFetch("/api/tracking-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, filters: JSON.stringify(form.filterConfig) }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -3848,7 +3958,7 @@ function TrackingLinksDashboard({ authUser }) {
                 ? `${t("Stored locally — Keitaro push failed")}: ${k.error || ""}`
                 : t("Link stored."),
       });
-      setForm((prev) => ({ ...prev, game: "", brand: "", alias: "", filters: "", offerId: "" }));
+      setForm((prev) => ({ ...prev, game: "", brand: "", alias: "", offerId: "", filterConfig: { logic: "and", rules: [] } }));
       await fetchLinks();
     } catch (error) {
       setSaveState({ saving: false, ok: false, message: error.message || "Failed to save tracking link." });
@@ -3968,6 +4078,134 @@ function TrackingLinksDashboard({ authUser }) {
 
   return (
     <section className="form-section">
+      <AnimatePresence>
+        {filterModalOpen ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setFilterModalOpen(false)}
+          >
+            <motion.div
+              className="modal pixel-edit-modal tracking-filter-modal"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Stream Filters")}</p>
+                  <h2>{t("Keitaro filters")}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={() => setFilterModalOpen(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body tracking-filter-body">
+                <div className="tracking-filter-logic">
+                  <span className="tracking-filter-logic-label">{t("Logical relation")}</span>
+                  <div className="tracking-logic-toggle">
+                    {["and", "or"].map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        className={filterDraft.logic === mode ? "is-active" : ""}
+                        onClick={() => setFilterDraft((prev) => ({ ...prev, logic: mode }))}
+                      >
+                        {mode.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filterDraft.rules.length === 0 ? (
+                  <div className="tracking-filter-empty">{t("No filters yet. Add a rule below.")}</div>
+                ) : (
+                  <div className="tracking-filter-rules">
+                    {filterDraft.rules.map((rule, idx) => {
+                      const meta = TRACKING_FILTER_BY_NAME[rule.name] || {};
+                      return (
+                        <div className="tracking-filter-rule" key={idx}>
+                          <div className="tracking-filter-rule-head">
+                            <CountryDropdownPicker
+                              value={rule.name}
+                              onChange={(name) => updateFilterRule(idx, { name, payload: [] })}
+                              options={TRACKING_FILTER_CATALOG.map((f) => ({
+                                value: f.name,
+                                label: `${f.group} · ${f.label}`,
+                                search: `${f.group} ${f.label} ${f.name}`,
+                              }))}
+                              placeholder={t("Select filter")}
+                              searchPlaceholder={t("Find filter")}
+                              emptyResultsLabel={t("No filters found.")}
+                            />
+                            <div className="tracking-mode-toggle">
+                              <button
+                                type="button"
+                                className={rule.mode === "accept" ? "is-active is-ok" : ""}
+                                onClick={() => updateFilterRule(idx, { mode: "accept" })}
+                              >
+                                {t("IS")}
+                              </button>
+                              <button
+                                type="button"
+                                className={rule.mode === "reject" ? "is-active is-bad" : ""}
+                                onClick={() => updateFilterRule(idx, { mode: "reject" })}
+                              >
+                                {t("IS NOT")}
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              className="icon-btn icon-btn-danger"
+                              onClick={() => removeFilterRule(idx)}
+                              title={t("Remove")}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {meta.bool ? (
+                            <p className="tracking-filter-note">
+                              {t("This filter has no values — it matches by presence.")}
+                            </p>
+                          ) : (
+                            <TagInput
+                              values={rule.payload || []}
+                              onChange={(payload) => updateFilterRule(idx, { payload })}
+                              placeholder={
+                                meta.options
+                                  ? meta.options.join(", ")
+                                  : t("Type a value, Enter or comma to add")
+                              }
+                              options={meta.options}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button type="button" className="tracking-filter-add" onClick={addFilterRule}>
+                  <Plus size={13} strokeWidth={2.5} /> {t("Add filter")}
+                </button>
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={() => setFilterModalOpen(false)}>
+                  {t("Cancel")}
+                </button>
+                <button className="action-pill" type="button" onClick={applyFilters}>
+                  {t("Apply filters")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       <motion.div
         className="panel registry-dashboard-panel tracking-registry-panel"
         initial={{ opacity: 0, y: 20 }}
@@ -4128,8 +4366,13 @@ function TrackingLinksDashboard({ authUser }) {
               />
             </div>
             <div className="field">
-              <label>{t("Filters")} <span className="field-pace-hint">{t("optional note")}</span></label>
-              <input value={form.filters} onChange={updateForm("filters")} placeholder={t("e.g. bot filter, geo lock, device")} />
+              <label>{t("Filters")} <span className="field-pace-hint">{t("stream rules in Keitaro")}</span></label>
+              <button type="button" className="tracking-filter-open" onClick={openFilterModal}>
+                <SlidersHorizontal size={14} />
+                {form.filterConfig.rules.length
+                  ? `${form.filterConfig.rules.length} ${t("filter(s)")} · ${form.filterConfig.logic.toUpperCase()}`
+                  : t("Add filters")}
+              </button>
             </div>
             <div className="field field-span-3">
               <label>{t("Link Parameters")}</label>
