@@ -13618,26 +13618,29 @@ function AccountsDashboard({ authUser }) {
   const [editPixelQuery, setEditPixelQuery] = React.useState("");
   const [checkingIntegrationId, setCheckingIntegrationId] = React.useState(null);
   const [integrationCheckResult, setIntegrationCheckResult] = React.useState({});
-  const [tableAccountFilter, setTableAccountFilter] = React.useState("all");
-  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
-  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
-  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
+  const [tableAccountFilter, setTableAccountFilter] = React.useState([]);
+  const [tableGeoFilter, setTableGeoFilter] = React.useState([]);
+  const [tableStatusFilter, setTableStatusFilter] = React.useState([]);
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState([]);
 
-  const [tableBmFilter, setTableBmFilter] = React.useState("all");
+  const [tableBmFilter, setTableBmFilter] = React.useState([]);
+  const toggleTableFilter = (setter) => (value) =>
+    setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+  const [accountSearch, setAccountSearch] = React.useState("");
 
   const accountFiltersActive =
-    tableAccountFilter !== "all" ||
-    tableBmFilter !== "all" ||
-    tableGeoFilter !== "all" ||
-    tableStatusFilter !== "all" ||
-    tableOwnerFilter !== "all";
+    tableAccountFilter.length > 0 ||
+    tableBmFilter.length > 0 ||
+    tableGeoFilter.length > 0 ||
+    tableStatusFilter.length > 0 ||
+    tableOwnerFilter.length > 0;
 
   const clearAccountFilters = () => {
-    setTableAccountFilter("all");
-    setTableBmFilter("all");
-    setTableGeoFilter("all");
-    setTableStatusFilter("all");
-    setTableOwnerFilter("all");
+    setTableAccountFilter([]);
+    setTableBmFilter([]);
+    setTableGeoFilter([]);
+    setTableStatusFilter([]);
+    setTableOwnerFilter([]);
   };
   const [form, setForm] = React.useState({
     accountNumber: "",
@@ -14139,33 +14142,19 @@ function AccountsDashboard({ authUser }) {
   }, [accountTableRows]);
 
   React.useEffect(() => {
-    if (tableAccountFilter !== "all" && !accountFilterOptions.some((option) => option.value === tableAccountFilter)) {
-      setTableAccountFilter("all");
-    }
-    if (tableBmFilter !== "all" && !accountBmFilterOptions.some((option) => option.value === tableBmFilter)) {
-      setTableBmFilter("all");
-    }
-    if (tableGeoFilter !== "all" && !accountGeoFilterOptions.some((option) => option.value === tableGeoFilter)) {
-      setTableGeoFilter("all");
-    }
-    if (
-      tableStatusFilter !== "all" &&
-      !accountStatusFilterOptions.some((option) => option.value === tableStatusFilter)
-    ) {
-      setTableStatusFilter("all");
-    }
-    if (
-      tableOwnerFilter !== "all" &&
-      !accountOwnerFilterOptions.some((option) => option.value === tableOwnerFilter)
-    ) {
-      setTableOwnerFilter("all");
-    }
+    // Prune any selected multi-filter values that are no longer valid options.
+    // Return the same array ref when nothing changed to avoid a render loop.
+    const prune = (setter, options) =>
+      setter((prev) => {
+        const next = prev.filter((v) => options.some((option) => option.value === v));
+        return next.length === prev.length ? prev : next;
+      });
+    prune(setTableAccountFilter, accountFilterOptions);
+    prune(setTableBmFilter, accountBmFilterOptions);
+    prune(setTableGeoFilter, accountGeoFilterOptions);
+    prune(setTableStatusFilter, accountStatusFilterOptions);
+    prune(setTableOwnerFilter, accountOwnerFilterOptions);
   }, [
-    tableAccountFilter,
-    tableBmFilter,
-    tableGeoFilter,
-    tableStatusFilter,
-    tableOwnerFilter,
     accountFilterOptions,
     accountBmFilterOptions,
     accountGeoFilterOptions,
@@ -14173,17 +14162,31 @@ function AccountsDashboard({ authUser }) {
     accountOwnerFilterOptions,
   ]);
 
+  const normalizedAccountSearch = accountSearch.trim().toLowerCase();
   const filteredAccountRows = React.useMemo(
     () =>
       accountTableRows.filter(({ row, ownerLabel, countries }) => {
-        if (tableAccountFilter !== "all" && String(row?.account_number || "") !== tableAccountFilter) return false;
-        if (tableBmFilter !== "all" && String(row?.nickname || "").trim() !== tableBmFilter) return false;
-        if (tableGeoFilter !== "all" && !countries.includes(tableGeoFilter)) return false;
-        if (tableStatusFilter !== "all" && String(row?.status || "") !== tableStatusFilter) return false;
-        if (isLeadership && tableOwnerFilter !== "all" && ownerLabel !== tableOwnerFilter) return false;
+        if (normalizedAccountSearch) {
+          const hay = `${row?.account_number || ""} ${row?.nickname || ""} ${ownerLabel || ""}`.toLowerCase();
+          if (!hay.includes(normalizedAccountSearch)) return false;
+        }
+        if (tableAccountFilter.length && !tableAccountFilter.includes(String(row?.account_number || ""))) return false;
+        if (tableBmFilter.length && !tableBmFilter.includes(String(row?.nickname || "").trim())) return false;
+        if (tableGeoFilter.length && !tableGeoFilter.some((g) => countries.includes(g))) return false;
+        if (tableStatusFilter.length && !tableStatusFilter.includes(String(row?.status || ""))) return false;
+        if (isLeadership && tableOwnerFilter.length && !tableOwnerFilter.includes(ownerLabel)) return false;
         return true;
       }),
-    [accountTableRows, tableAccountFilter, tableBmFilter, tableGeoFilter, tableStatusFilter, tableOwnerFilter, isLeadership]
+    [
+      accountTableRows,
+      normalizedAccountSearch,
+      tableAccountFilter,
+      tableBmFilter,
+      tableGeoFilter,
+      tableStatusFilter,
+      tableOwnerFilter,
+      isLeadership,
+    ]
   );
 
   const resolveIntegrationState = (row) => {
@@ -14231,6 +14234,33 @@ function AccountsDashboard({ authUser }) {
       label: t("Pending"),
     };
   };
+
+  const [accountSort, setAccountSort] = React.useState({ key: null, dir: "asc" });
+  const toggleAccountSort = (key) => setAccountSort((prev) => toggleSortConfig(prev, key, "asc"));
+  const getAccountSortValue = ({ row, ownerLabel, countries }, key) => {
+    switch (key) {
+      case "account": return String(row?.account_number || "");
+      case "bm": return String(row?.nickname || "");
+      case "status": return String(row?.status || "");
+      case "geo": return countries?.[0] || "";
+      case "integration": return resolveIntegrationState(row).label || "";
+      case "owner": return ownerLabel || "";
+      default: return null;
+    }
+  };
+
+  const sortedAccountRows = React.useMemo(() => {
+    const rows = [...filteredAccountRows];
+    if (!accountSort?.key) return rows;
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getAccountSortValue(a, accountSort.key),
+        getAccountSortValue(b, accountSort.key),
+        accountSort.dir,
+        "text"
+      )
+    );
+  }, [filteredAccountRows, accountSort]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -14978,14 +15008,36 @@ function AccountsDashboard({ authUser }) {
         ) : (
           <div className="table-wrap pixel-table-wrap">
             <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={accountSearch}
+                    onChange={(e) => setAccountSearch(e.target.value)}
+                    placeholder={t("Search account, BM, owner…")}
+                  />
+                  {accountSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setAccountSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div className="field">
                 <label>{t("Account")}</label>
                 <CountryDropdownPicker
-                  value={tableAccountFilter}
-                  onChange={setTableAccountFilter}
+                  multiple
+                  values={tableAccountFilter}
+                  onToggle={toggleTableFilter(setTableAccountFilter)}
                   options={accountFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find accounts")}
                   emptyResultsLabel={t("No entries found.")}
                 />
@@ -14993,11 +15045,11 @@ function AccountsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("BM")}</label>
                 <CountryDropdownPicker
-                  value={tableBmFilter}
-                  onChange={setTableBmFilter}
+                  multiple
+                  values={tableBmFilter}
+                  onToggle={toggleTableFilter(setTableBmFilter)}
                   options={accountBmFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find BMs")}
                   emptyResultsLabel={t("No BMs found.")}
                 />
@@ -15005,11 +15057,11 @@ function AccountsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("GEO")}</label>
                 <CountryDropdownPicker
-                  value={tableGeoFilter}
-                  onChange={setTableGeoFilter}
+                  multiple
+                  values={tableGeoFilter}
+                  onToggle={toggleTableFilter(setTableGeoFilter)}
                   options={accountGeoFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find countries")}
                   emptyResultsLabel={t("No countries found.")}
                 />
@@ -15017,11 +15069,11 @@ function AccountsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Status")}</label>
                 <CountryDropdownPicker
-                  value={tableStatusFilter}
-                  onChange={setTableStatusFilter}
+                  multiple
+                  values={tableStatusFilter}
+                  onToggle={toggleTableFilter(setTableStatusFilter)}
                   options={accountStatusFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find status")}
                   emptyResultsLabel={t("No status found.")}
                 />
@@ -15030,11 +15082,11 @@ function AccountsDashboard({ authUser }) {
                 <div className="field">
                   <label>{t("Owner")}</label>
                   <CountryDropdownPicker
-                    value={tableOwnerFilter}
-                    onChange={setTableOwnerFilter}
+                    multiple
+                    values={tableOwnerFilter}
+                    onToggle={toggleTableFilter(setTableOwnerFilter)}
                     options={accountOwnerFilterOptions}
-                    allOption={{ value: "all", label: t("All") }}
-                    placeholder={t("Select")}
+                    placeholder={t("All")}
                     searchPlaceholder={t("Type to find owners")}
                     emptyResultsLabel={t("No owners found.")}
                   />
@@ -15050,17 +15102,30 @@ function AccountsDashboard({ authUser }) {
             <table className="entries-table accounts-table">
               <thead>
                 <tr>
-                  <th>{t("Account")}</th>
-                  <th>{t("BM")}</th>
-                  <th>{t("Status")}</th>
-                  <th>{t("GEO")}</th>
-                  <th>{t("Integration")}</th>
-                  <th>{t("Owner")}</th>
+                  {[
+                    { key: "account", label: t("Account") },
+                    { key: "bm", label: t("BM") },
+                    { key: "status", label: t("Status") },
+                    { key: "geo", label: t("GEO") },
+                    { key: "integration", label: t("Integration") },
+                    { key: "owner", label: t("Owner") },
+                  ].map((col) => (
+                    <th key={col.key}>
+                      <button
+                        type="button"
+                        className={`sortable-header ${accountSort.key === col.key ? "active" : ""}`}
+                        onClick={() => toggleAccountSort(col.key)}
+                      >
+                        {col.label}
+                        <span className="sort-indicator">{getSortIndicator(accountSort, col.key)}</span>
+                      </button>
+                    </th>
+                  ))}
                   <th>{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAccountRows.map(({ row, ownerLabel, countries }) => {
+                {sortedAccountRows.map(({ row, ownerLabel, countries }) => {
                   const integrationState = resolveIntegrationState(row);
                   const checkResult = integrationCheckResult[row.id];
                   const rowCanManage = canManageRow(row);
@@ -15139,7 +15204,8 @@ function AccountsDashboard({ authUser }) {
                               className="icon-btn"
                               type="button"
                               onClick={() => openEditModal(row)}
-                              title={t("Edit")}
+                              aria-label={t("Edit")}
+                              data-tip={t("Edit")}
                               disabled={!rowCanManage}
                             >
                               <Pencil size={15} />
@@ -15148,7 +15214,8 @@ function AccountsDashboard({ authUser }) {
                               className="icon-btn icon-btn-check"
                               type="button"
                               onClick={() => handleCheckIntegration(row)}
-                              title={t("Check integration")}
+                              aria-label={t("Check integration")}
+                              data-tip={t("Check integration")}
                               disabled={!rowCanManage || checkingIntegrationId === row.id || !row.meta_integration_id}
                             >
                               <CheckCircle size={15} />
@@ -15157,7 +15224,8 @@ function AccountsDashboard({ authUser }) {
                               className="icon-btn icon-btn-danger"
                               type="button"
                               onClick={() => handleDelete(row)}
-                              title={t("Remove")}
+                              aria-label={t("Remove")}
+                              data-tip={t("Remove")}
                               disabled={!rowCanManage}
                             >
                               <Trash2 size={15} />
