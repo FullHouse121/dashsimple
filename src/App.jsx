@@ -4678,11 +4678,14 @@ function TrackingLinksDashboard({ authUser }) {
         transition={{ duration: 0.5 }}
       >
         <div className="panel-head">
-          <div>
-            <h3 className="panel-title">{t("Tracking Links")}</h3>
-            <p className="panel-subtitle">
-              {t("Compose Keitaro campaigns with the standard naming and generate ready-to-use tracking links.")}
-            </p>
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><Link2 size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Tracking Links")}</h3>
+              <p className="panel-subtitle">
+                {t("Compose Keitaro campaigns with the standard naming and generate ready-to-use tracking links.")}
+              </p>
+            </div>
           </div>
           <div className="panel-head-actions">
             <span className="roles-count">
@@ -4723,7 +4726,7 @@ function TrackingLinksDashboard({ authUser }) {
         </div>
 
         {showForm ? (
-          <form className="form-grid accounts-form" onSubmit={handleCreate}>
+          <form className="form-grid accounts-form tracking-link-form" onSubmit={handleCreate}>
             {resourcesError ? (
               <div className="field field-span-3">
                 <div className="api-status error">
@@ -4731,6 +4734,9 @@ function TrackingLinksDashboard({ authUser }) {
                 </div>
               </div>
             ) : null}
+            <div className="field field-span-3 form-section-head">
+              <span className="form-section-label">{t("Campaign identity")}</span>
+            </div>
             <div className="field">
               <label>{t("Buyer")}</label>
               <input
@@ -4800,6 +4806,9 @@ function TrackingLinksDashboard({ authUser }) {
               <label>{t("Brand")}</label>
               <input value={form.brand} onChange={updateForm("brand")} placeholder="ZLOTMX" />
             </div>
+            <div className="field field-span-3 form-section-head">
+              <span className="form-section-label">{t("Keitaro routing")}</span>
+            </div>
             <div className="field">
               <label>{t("Tracking Domain")} <span className="field-pace-hint">{t("from Keitaro")}</span></label>
               <CountryDropdownPicker
@@ -4850,6 +4859,9 @@ function TrackingLinksDashboard({ authUser }) {
                   : t("Add filters")}
               </button>
             </div>
+            <div className="field field-span-3 form-section-head">
+              <span className="form-section-label">{t("Parameters & preview")}</span>
+            </div>
             <div className="field field-span-3">
               <label>{t("Link Parameters")}</label>
               <textarea rows={2} value={form.params} onChange={updateForm("params")} spellCheck={false} />
@@ -4867,6 +4879,9 @@ function TrackingLinksDashboard({ authUser }) {
               </div>
               <code className="tracking-preview-url">{previewUrl || t("Fill domain + alias to build the link")}</code>
             </div>
+            <div className="field field-span-3 form-section-head">
+              <span className="form-section-label">{t("Publish")}</span>
+            </div>
             <div className="field field-inline">
               <label className="checkbox">
                 <input
@@ -4878,6 +4893,35 @@ function TrackingLinksDashboard({ authUser }) {
               </label>
               <p className="field-hint">{t("If the push fails, the link is stored locally anyway.")}</p>
             </div>
+            {form.pushToKeitaro ? (
+              <div className="field field-span-3 s2s-panel">
+                <div className="s2s-head">
+                  <span className="s2s-icon"><Zap size={16} /></span>
+                  <div className="s2s-headtext">
+                    <p className="s2s-title">{t("S2S postback attached")} <span className="s2s-badge">FTD</span></p>
+                    <p className="s2s-sub">{t("On every first deposit, Keitaro fires a server-to-server postback to your worker — conversions report back automatically, no manual work.")}</p>
+                  </div>
+                </div>
+                <div className="s2s-params">
+                  {[
+                    ["brand", "{campaign_name}"],
+                    ["payout", "{conversion_revenue}"],
+                    ["country", "{country}"],
+                    ["clickid", "{subid}"],
+                    ["placement", "{sub1}"],
+                    ["buyer", form.buyer || authUser?.username || "—"],
+                  ].map(([k, v]) => (
+                    <span className="s2s-param" key={k}>
+                      <span className="s2s-key">{k}</span>
+                      <span className="s2s-val">{v}</span>
+                    </span>
+                  ))}
+                </div>
+                <p className="s2s-foot">
+                  {t("Fires on")} <code>custom_conversion_8</code> (FTD) · {t("method")} <code>GET</code>
+                </p>
+              </div>
+            ) : null}
             <div className="form-actions">
               {saveState.message ? (
                 <div className={`api-status ${saveState.ok ? "success" : "error"}`}>{saveState.message}</div>
@@ -5570,10 +5614,24 @@ function MyFlowsDashboard({ authUser }) {
                 ];
                 return (
                   <>
-                    <div className="modal-head">
-                      <div>
+                    <div className="modal-head traffic-flow-head">
+                      <div className="traffic-flow-titlewrap">
                         <p className="modal-kicker">{t("Traffic Flow")}</p>
-                        <h2>{link.name}</h2>
+                        {(() => {
+                          const parts = String(link.name || "").split("|").map((s) => s.trim()).filter(Boolean);
+                          return (
+                            <>
+                              <h2>{parts[0] || link.name || t("Flow")}</h2>
+                              {parts.length > 1 ? (
+                                <div className="traffic-flow-tags">
+                                  {parts.slice(1).map((p, i) => (
+                                    <span className="traffic-flow-tag" key={i}>{p}</span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </>
+                          );
+                        })()}
                       </div>
                       <button className="icon-btn" type="button" onClick={() => setFlowViz({ open: false, link: null })}>
                         <X size={18} />
@@ -5636,9 +5694,24 @@ function MyFlowsDashboard({ authUser }) {
                 ))}
               </div>
             ) : null}
-            <span className="roles-count">{links.length} {t("links")} · {unboundDomains.length} {t("unbound")}</span>
+            <span className="roles-count">{links.length} {t("links")}</span>
           </div>
         </div>
+
+        {unboundDomains.length ? (
+          <div className="flow-unbound-banner">
+            <span className="flow-unbound-icon"><Globe size={16} /></span>
+            <span className="flow-unbound-text">
+              <strong>{unboundDomains.length}</strong>{" "}
+              {unboundDomains.length === 1 ? t("PWA domain isn't bound to any tracking link yet.") : t("PWA domains aren't bound to any tracking link yet.")}
+            </span>
+            {sortedLinks.length ? (
+              <button type="button" className="flow-unbound-cta" onClick={() => openBind(sortedLinks[0])}>
+                <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {state.loading ? (
           <div className="empty-state">{t("Loading flows…")}</div>
@@ -5667,147 +5740,92 @@ function MyFlowsDashboard({ authUser }) {
                 ? new Date(link.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })
                 : "";
               return (
-                <div className={`flow-link${isOpen ? " is-open" : ""}`} key={link.id}>
-                  <div className="flow-link-head">
-                    <div className="flow-link-top">
-                      <button
-                        type="button"
-                        className="flow-link-toggle"
-                        onClick={() => setExpanded((prev) => ({ ...prev, [link.id]: !isOpen }))}
-                        title={link.name}
-                      >
-                        <span className={`flow-chevron${isOpen ? " is-open" : ""}`}>
-                          <ChevronRight size={15} />
-                        </span>
-                        <span className={`flow-state-dot${isActive ? " is-active" : " is-off"}`} />
-                        <span className="flow-buyer">{seg.buyer || t("Unassigned")}</span>
-                      </button>
-                      <div className="flow-segments">
-                        {seg.tool ? (
-                          <span className="flow-seg flow-seg-tool" title={t("Traffic source")}>
-                            <Megaphone size={11} /> {seg.tool}
-                          </span>
-                        ) : null}
-                        {seg.game ? (
-                          <span className="flow-seg flow-seg-game" title={t("Offer / game")}>
-                            <Target size={11} /> {seg.game}
-                          </span>
-                        ) : null}
-                        {geos.length ? (
-                          <span className="flow-seg flow-seg-geo" title={t("GEO")}>
-                            {geos.map((g) => (
-                              <CountryFlag key={g} value={g} />
-                            ))}
-                            {geos.join(", ")}
-                          </span>
-                        ) : null}
-                        {seg.brand ? (
-                          <span className="flow-seg flow-seg-brand" title={t("Brand")}>
-                            <Tag size={11} /> {seg.brand}
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="flow-link-actions">
-                        <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`} title={inKeitaro ? t("Live in Keitaro") : t("Stored locally")}>
-                          <span className="flow-kt-dot" />
-                          {inKeitaro ? t("Keitaro") : t("Local")}
-                        </span>
-                        <button type="button" className="flow-see-traffic" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
-                          <Zap size={13} /> {t("See Traffic Flow")}
-                        </button>
-                        <button type="button" className="offers-mode-toggle" onClick={() => openBind(link)}>
-                          <Plus size={13} strokeWidth={2.5} /> {t("Bind domains")}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="flow-link-strip">
-                      <button
-                        type="button"
-                        className={`flow-pill flow-pill-copy${copied === `link-${link.id}` ? " is-copied" : ""}`}
-                        title={t("Copy tracking link")}
-                        onClick={copyValue(`link-${link.id}`, link.url || `https://${linkUrl}`)}
-                      >
-                        <Link2 size={12} />
-                        <span className="flow-pill-url">{linkUrl}</span>
-                        {copied === `link-${link.id}` ? <CheckCircle size={12} /> : <Copy size={12} />}
-                      </button>
-                      <span className="flow-metric" title={t("Bound PWA domains")}>
-                        <Globe size={12} /> {linkDomains.length} {linkDomains.length === 1 ? t("domain") : t("domains")}
-                      </span>
-                      <span className="flow-metric" title={t("Attached pixels")}>
-                        <Zap size={12} /> {totalPixels} {totalPixels === 1 ? t("pixel") : t("pixels")}
-                      </span>
-                      {filterCount ? (
-                        <span className="flow-metric" title={t("Keitaro filters")}>
-                          <SlidersHorizontal size={12} /> {filterCount} {filterCount === 1 ? t("filter") : t("filters")}
-                        </span>
+                <div className={`flow-card${isOpen ? " is-open" : ""}`} key={link.id}>
+                  <div className="flow-card-head">
+                    <button
+                      type="button"
+                      className="flow-card-toggle"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [link.id]: !isOpen }))}
+                      aria-expanded={isOpen}
+                      title={link.name}
+                    >
+                      <span className={`flow-chevron${isOpen ? " is-open" : ""}`}><ChevronRight size={16} /></span>
+                      <span className={`flow-avatar${isActive ? " is-active" : ""}`} aria-hidden="true">{(seg.buyer || "?").trim().charAt(0).toUpperCase() || "?"}</span>
+                      <span className="flow-buyer">{seg.buyer || t("Unassigned")}</span>
+                      {(seg.tool || seg.game) ? (
+                        <span className="flow-card-campaign">{[seg.tool, seg.game].filter(Boolean).join(" · ")}</span>
                       ) : null}
-                      <span className={`flow-metric flow-metric-status flow-status-${isActive ? "on" : "off"}`}>
-                        {isActive ? t("Active") : t("Paused")}
+                    </button>
+                    <div className="flow-card-head-right">
+                      <span className={`flow-status-pill flow-status-${isActive ? "on" : "off"}`}>{isActive ? t("Active") : t("Paused")}</span>
+                      <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`} title={inKeitaro ? t("Live in Keitaro") : t("Stored locally")}>
+                        <span className="flow-kt-dot" />{inKeitaro ? t("Keitaro") : t("Local")}
                       </span>
-                      {createdAt ? (
-                        <span className="flow-metric flow-metric-muted" title={t("Created")}>
-                          <CalendarIcon size={12} /> {createdAt}
-                        </span>
-                      ) : null}
                     </div>
                   </div>
 
+                  <button
+                    type="button"
+                    className={`flow-card-link${copied === `link-${link.id}` ? " is-copied" : ""}`}
+                    title={t("Copy tracking link")}
+                    onClick={copyValue(`link-${link.id}`, link.url || `https://${linkUrl}`)}
+                  >
+                    <Link2 size={13} className="flow-card-link-icon" />
+                    <span className="flow-card-link-url">{linkUrl}</span>
+                    {copied === `link-${link.id}` ? <CheckCircle size={13} /> : <Copy size={13} />}
+                  </button>
+
+                  <div className="flow-card-meta">
+                    {geos.length ? (
+                      <span className="flow-meta-item">{geos.map((g) => <CountryFlag key={g} value={g} />)}{geos.join(", ")}</span>
+                    ) : null}
+                    {seg.brand ? <span className="flow-meta-item"><Tag size={11} /> {seg.brand}</span> : null}
+                    <span className="flow-meta-item"><Globe size={11} /> {linkDomains.length} {linkDomains.length === 1 ? t("domain") : t("domains")}</span>
+                    <span className="flow-meta-item"><Zap size={11} /> {totalPixels} {totalPixels === 1 ? t("pixel") : t("pixels")}</span>
+                    {filterCount ? <span className="flow-meta-item"><SlidersHorizontal size={11} /> {filterCount} {filterCount === 1 ? t("filter") : t("filters")}</span> : null}
+                    {createdAt ? <span className="flow-meta-item flow-meta-muted"><CalendarIcon size={11} /> {createdAt}</span> : null}
+                  </div>
+
                   {isOpen ? (
-                    linkDomains.length === 0 ? (
-                      <div className="flow-empty">
-                        <Globe size={14} />
-                        <span>{t("No domains bound yet.")}</span>
-                        <button type="button" className="flow-empty-cta" onClick={() => openBind(link)}>
-                          {t("Bind domains")}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flow-domains">
-                        {linkDomains.map((domain) => {
+                    <div className="flow-card-tree">
+                      {linkDomains.length === 0 ? (
+                        <div className="flow-empty">
+                          <Globe size={14} />
+                          <span>{t("No domains bound yet.")}</span>
+                          <button type="button" className="flow-empty-cta" onClick={() => openBind(link)}>{t("Bind domains")}</button>
+                        </div>
+                      ) : (
+                        linkDomains.map((domain) => {
                           const dPixels = [...(pixelsByDomain.get(String(domain.domain || "").toLowerCase()) || [])].sort((a, b) =>
                             String(a.pixel_id || "").localeCompare(String(b.pixel_id || ""), undefined, { numeric: true })
                           );
                           const dStatus = String(domain.status || "Active");
                           const dGeos = normalizeCountryListValue(domain.country);
                           return (
-                            <div className="flow-domain" key={domain.id}>
-                              <div className="flow-domain-head">
-                                <span className="flow-domain-icon"><Globe size={14} /></span>
-                                <span className="flow-domain-name">{domain.domain}</span>
-                                {domain.platform ? (
-                                  <span className="flow-domain-tag">{domain.platform}</span>
-                                ) : null}
+                            <div className="flow-node-domain" key={domain.id}>
+                              <div className="flow-node-body">
+                                <span className="flow-node-icon"><Globe size={14} /></span>
+                                <span className="flow-node-name">{domain.domain}</span>
+                                {domain.platform ? <span className="flow-node-tag">{domain.platform}</span> : null}
                                 {dGeos.length ? (
-                                  <span className="flow-domain-geos" title={dGeos.join(", ")}>
-                                    {dGeos.slice(0, 3).map((g) => (
-                                      <CountryFlag key={g} value={g} />
-                                    ))}
+                                  <span className="flow-node-geos" title={dGeos.join(", ")}>
+                                    {dGeos.slice(0, 3).map((g) => <CountryFlag key={g} value={g} />)}
                                     {dGeos.length > 3 ? <span className="flow-domain-geo-more">+{dGeos.length - 3}</span> : null}
                                   </span>
                                 ) : null}
-                                <span className={`accounts-status-pill acc-st-${dStatus.toLowerCase()}`}>
-                                  {t(dStatus)}
-                                </span>
-                                <span className="flow-domain-count" title={t("Pixels on this domain")}>
-                                  <Zap size={11} /> {dPixels.length}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="icon-btn flow-detail-btn"
-                                  title={t("Detailed information")}
-                                  onClick={() => setDetail({ open: true, link, domain, pixels: dPixels })}
-                                >
+                                <span className={`accounts-status-pill acc-st-${dStatus.toLowerCase()}`}>{t(dStatus)}</span>
+                                <button type="button" className="icon-btn flow-node-detail" aria-label={t("Detailed information")} data-tip={t("Details")} onClick={() => setDetail({ open: true, link, domain, pixels: dPixels })}>
                                   <Eye size={14} />
                                 </button>
                               </div>
                               {dPixels.length ? (
-                                <div className="flow-pixels">
+                                <div className="flow-node-pixels">
                                   {dPixels.map((pixel) => {
                                     const pxActive = String(pixel.status || "Active").toLowerCase() === "active";
                                     return (
-                                      <span className="flow-pixel-chip" key={pixel.id} title={pixel.comment || ""}>
+                                      <span className="flow-node-pixel" key={pixel.id} title={pixel.comment || ""}>
                                         <span className={`flow-pixel-dot${pxActive ? " is-active" : " is-off"}`} />
+                                        <Zap size={11} className="flow-pixel-icon" />
                                         <span className="flow-pixel-id">{pixel.pixel_id}</span>
                                         <CountryFlag value={pixel.geo} className="flow-pixel-flag" />
                                       </span>
@@ -5815,14 +5833,23 @@ function MyFlowsDashboard({ authUser }) {
                                   })}
                                 </div>
                               ) : (
-                                <div className="flow-pixels-empty">{t("No pixels on this domain — add one in Pixels with this domain in its list.")}</div>
+                                <div className="flow-node-pixels-empty">{t("No pixels on this domain — add one in Pixels.")}</div>
                               )}
                             </div>
                           );
-                        })}
-                      </div>
-                    )
+                        })
+                      )}
+                    </div>
                   ) : null}
+
+                  <div className="flow-card-actions">
+                    <button type="button" className="flow-action-primary" onClick={() => openBind(link)}>
+                      <Plus size={14} strokeWidth={2.5} /> {t("Bind domains")}
+                    </button>
+                    <button type="button" className="flow-action-ghost" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
+                      <Zap size={13} /> {t("Traffic flow")}
+                    </button>
+                  </div>
                 </div>
               );
             })}

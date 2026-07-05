@@ -17,6 +17,15 @@
   /* Shared motion curves for the DeusMachine tooling series. */
   --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* Finance-grade radius scale + supporting neutrals */
+  --radius: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --stroke-strong: #3a3e47;
+  --muted-strong: #a9adb7;
+  --faint: #6b7079;
+  --green-soft: rgba(54, 208, 124, 0.14);
+  --red: #ff7d88;
 }
 
 /* Global thin scrollbar — matches the popover scrollbar treatment */
@@ -96,8 +105,14 @@ select {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 80% 10%, rgba(54, 208, 124, 0.05), transparent 55%),
-    radial-gradient(circle at 10% 90%, rgba(100, 184, 255, 0.035), transparent 50%);
+  background:
+    linear-gradient(rgba(54, 208, 124, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(54, 208, 124, 0.03) 1px, transparent 1px),
+    radial-gradient(1100px 560px at 84% -10%, rgba(54, 208, 124, 0.07), transparent 60%),
+    radial-gradient(820px 460px at 6% 110%, rgba(100, 184, 255, 0.05), transparent 60%);
+  background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%;
+  -webkit-mask-image: radial-gradient(circle at 50% 30%, #000 0%, #000 55%, rgba(0, 0, 0, 0.6) 100%);
+  mask-image: radial-gradient(circle at 50% 30%, #000 0%, #000 55%, rgba(0, 0, 0, 0.6) 100%);
   pointer-events: none;
 }
 
@@ -14007,3 +14022,308 @@ select option,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── My Flows — hierarchy-tree redesign ─────────────────────────── */
+.flow-unbound-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 18px;
+  padding: 12px 16px;
+  border-radius: 13px;
+  border: 1px solid rgba(247, 198, 37, 0.28);
+  background: linear-gradient(180deg, rgba(247, 198, 37, 0.09), rgba(247, 198, 37, 0.03));
+}
+.flow-unbound-icon { color: var(--yellow, #f7c625); display: grid; place-items: center; }
+.flow-unbound-text { flex: 1; min-width: 0; font-size: 13.5px; color: var(--text); }
+.flow-unbound-text strong { color: var(--yellow, #f7c625); }
+.flow-unbound-cta {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 650;
+  color: #1a1400; border: 1px solid rgba(247, 198, 37, 0.9);
+  background: linear-gradient(180deg, #f7d64a, #e6b71f);
+  transition: filter 0.16s ease;
+}
+.flow-unbound-cta:hover { filter: brightness(1.06); }
+
+.flow-card {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  background: linear-gradient(160deg, rgba(31, 33, 38, 0.9), rgba(22, 24, 28, 0.92));
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  transition: border-color 0.16s ease;
+}
+.flow-card:hover { border-color: var(--stroke-strong, #3a3e47); }
+
+.flow-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.flow-card-toggle {
+  display: inline-flex; align-items: center; gap: 10px; min-width: 0;
+  background: none; border: none; padding: 0; cursor: pointer; color: var(--text);
+}
+.flow-chevron { display: grid; place-items: center; color: var(--muted); transition: transform 0.18s var(--ease-smooth, ease); }
+.flow-chevron.is-open { transform: rotate(90deg); }
+.flow-state-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.flow-state-dot.is-active { background: var(--green); box-shadow: 0 0 0 3px rgba(54,208,124,0.15); }
+.flow-state-dot.is-off { background: #6b7079; }
+.flow-buyer { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.flow-card-campaign { font-size: 13px; color: var(--muted); font-weight: 500; }
+.flow-card-campaign::before { content: "· "; color: var(--faint, #6b7079); }
+.flow-card-head-right { display: inline-flex; align-items: center; gap: 8px; }
+.flow-status-pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 650;
+  padding: 3px 10px; border-radius: 999px; font-family: ui-monospace, Menlo, monospace;
+}
+.flow-status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.flow-status-on { color: var(--green); background: rgba(54,208,124,0.12); }
+.flow-status-off { color: var(--muted); background: rgba(255,255,255,0.05); }
+
+.flow-card-link {
+  display: flex; align-items: center; gap: 10px; width: fit-content; max-width: 100%;
+  padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.02);
+  color: var(--text); font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.flow-card-link:hover { border-color: rgba(100,184,255,0.5); background: rgba(100,184,255,0.06); }
+.flow-card-link.is-copied { border-color: rgba(54,208,124,0.6); color: var(--green); }
+.flow-card-link-icon { color: #6ad6ff; flex-shrink: 0; }
+.flow-card-link-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.flow-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+.flow-meta-item { display: inline-flex; align-items: center; gap: 6px; }
+.flow-meta-item .fi, .flow-meta-item .deus-flag { margin-right: 2px; }
+.flow-meta-muted { color: var(--faint, #6b7079); }
+
+.flow-card-tree { position: relative; margin-top: 2px; padding: 14px 0 2px 22px; border-top: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 12px; }
+.flow-card-tree::before { content: ""; position: absolute; left: 7px; top: 16px; bottom: 16px; width: 2px; background: var(--stroke-strong, #3a3e47); border-radius: 2px; }
+.flow-node-domain { position: relative; }
+.flow-node-domain::before { content: ""; position: absolute; left: -15px; top: 12px; width: 13px; height: 2px; background: var(--stroke-strong, #3a3e47); }
+.flow-node-body { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flow-node-icon { color: #6ad6ff; display: grid; place-items: center; }
+.flow-node-name { font-family: ui-monospace, Menlo, monospace; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.flow-node-tag { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--stroke); }
+.flow-node-geos { display: inline-flex; align-items: center; gap: 3px; }
+.flow-node-detail { width: 30px; height: 30px; }
+.flow-node-pixels { margin: 8px 0 0 12px; padding-left: 16px; border-left: 2px solid var(--stroke); display: flex; flex-wrap: wrap; gap: 8px; }
+.flow-node-pixel { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.02); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.flow-pixel-icon { color: var(--yellow, #f7c625); }
+.flow-pixel-dot { width: 7px; height: 7px; border-radius: 50%; }
+.flow-pixel-dot.is-active { background: var(--green); }
+.flow-pixel-dot.is-off { background: #6b7079; }
+.flow-node-pixels-empty { margin: 6px 0 0 12px; padding-left: 16px; font-size: 12px; color: var(--faint, #6b7079); }
+
+.flow-card-actions { display: flex; gap: 10px; padding-top: 12px; border-top: 1px solid var(--stroke); }
+.flow-action-primary { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 10px; font-size: 13px; font-weight: 650; color: #071108; border: 1px solid rgba(54,208,124,0.9); background: linear-gradient(180deg, #3fe08a, #2fc275); transition: filter 0.16s ease; }
+.flow-action-primary:hover { filter: brightness(1.06); }
+.flow-action-ghost { display: inline-flex; align-items: center; gap: 7px; padding: 9px 15px; border-radius: 10px; font-size: 13px; font-weight: 500; color: var(--muted); border: 1px solid var(--stroke); background: rgba(255,255,255,0.02); transition: color 0.16s ease, border-color 0.16s ease; }
+.flow-action-ghost:hover { color: var(--text); border-color: var(--stroke-strong, #3a3e47); }
+
+.flow-tree { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── My Flows + Traffic Flow — premium polish ─────────────────────── */
+.flow-card { transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease; }
+.flow-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.34); }
+
+.flow-avatar {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; color: var(--muted);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--stroke-strong, #3a3e47);
+}
+.flow-avatar.is-active {
+  color: var(--green); border-color: rgba(54, 208, 124, 0.55);
+  background: linear-gradient(160deg, rgba(54, 208, 124, 0.2), rgba(54, 208, 124, 0.05));
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.08);
+}
+.flow-card-link { font-weight: 600; }
+
+/* Keitaro badge quieter than Active so status leads */
+.flow-kt {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--stroke); color: var(--muted-strong, #a9adb7); background: rgba(255, 255, 255, 0.03);
+}
+.flow-kt-dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7079; }
+.flow-kt.is-live { color: #9cf0c3; border-color: rgba(54, 208, 124, 0.3); }
+.flow-kt.is-live .flow-kt-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.15); }
+
+/* Traffic Flow modal — premium */
+.traffic-flow-modal { width: min(600px, 94vw); }
+.traffic-flow-titlewrap h2 { margin: 3px 0 0; font-size: 20px; letter-spacing: -0.01em; }
+.traffic-flow-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.traffic-flow-tag {
+  font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 8px;
+  color: var(--muted-strong, #a9adb7); border: 1px solid var(--stroke); background: rgba(255, 255, 255, 0.03);
+}
+.traffic-flow-tag:first-child { color: var(--green); border-color: rgba(54, 208, 124, 0.3); background: rgba(54, 208, 124, 0.08); }
+
+.traffic-step { grid-template-columns: 42px 1fr; gap: 16px; }
+.traffic-step-num {
+  width: 42px; height: 42px; border-radius: 13px; color: var(--tf-accent);
+  background: linear-gradient(158deg, color-mix(in srgb, var(--tf-accent) 26%, transparent), color-mix(in srgb, var(--tf-accent) 7%, transparent));
+  border: 1px solid color-mix(in srgb, var(--tf-accent) 48%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--tf-accent) 22%, transparent), inset 0 1px 0 color-mix(in srgb, var(--tf-accent) 32%, transparent);
+}
+.traffic-step-line { width: 2px; min-height: 34px; margin: 6px 0; opacity: 0.6; border-radius: 2px; }
+.traffic-step-card {
+  padding: 12px 14px 13px; margin-bottom: 12px; border-radius: 13px;
+  border: 1px solid color-mix(in srgb, var(--tf-accent) 20%, var(--stroke));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--tf-accent) 6%, rgba(255,255,255,0.012)), transparent);
+}
+.traffic-step-value { font-size: 15px; margin: 4px 0 5px; }
+.traffic-step-chip { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+/* ── Tracking Link form — sectioning, field polish, S2S panel ─────── */
+.form-section-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 -2px; }
+.form-section-head::after { content: ""; flex: 1; height: 1px; background: var(--stroke); }
+.form-section-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
+  display: inline-flex; align-items: center;
+}
+.form-section-label::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--green); margin-right: 8px;
+}
+
+.accounts-form input,
+.accounts-form textarea {
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+.accounts-form input:focus,
+.accounts-form textarea:focus {
+  outline: none;
+  border-color: rgba(54, 208, 124, 0.5);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
+}
+
+.s2s-panel {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px; border-radius: 14px;
+  border: 1px solid rgba(100, 184, 255, 0.24);
+  background: linear-gradient(160deg, rgba(100, 184, 255, 0.07), rgba(100, 184, 255, 0.02));
+}
+.s2s-head { display: flex; align-items: flex-start; gap: 12px; }
+.s2s-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: grid; place-items: center; color: #64b8ff;
+  background: rgba(100, 184, 255, 0.14); border: 1px solid rgba(100, 184, 255, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.s2s-headtext { min-width: 0; }
+.s2s-title { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.s2s-badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 7px;
+  border-radius: 6px; color: #071108; background: var(--green);
+}
+.s2s-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--muted-strong, #a9adb7); line-height: 1.5; }
+.s2s-params { display: flex; flex-wrap: wrap; gap: 8px; }
+.s2s-param {
+  display: inline-flex; align-items: stretch; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--stroke); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+}
+.s2s-key { padding: 4px 8px; background: rgba(255, 255, 255, 0.04); color: var(--muted); }
+.s2s-val { padding: 4px 9px; color: #9cc9ff; }
+.s2s-foot { margin: 0; font-size: 11.5px; color: var(--faint, #6b7079); }
+.s2s-foot code {
+  font-family: ui-monospace, Menlo, monospace; color: var(--muted-strong, #a9adb7);
+  background: rgba(255, 255, 255, 0.05); padding: 1px 6px; border-radius: 5px; font-size: 11px;
+}
+
+/* ── Tracking Link form — clean 3-col layout + refined fields ─────── */
+.tracking-link-form { gap: 18px 20px; }
+/* neutralise the shared .accounts-form nth-child(4) hack (GAME) — never headers */
+.tracking-link-form .field:nth-child(4):not(.form-section-head):not(.field-span-3) { grid-column: auto; }
+/* class-level specificity (0,3,0) so spans beat .accounts-form .field:first-child */
+.tracking-link-form .field.form-section-head,
+.tracking-link-form .field.field-span-3 { grid-column: 1 / -1; }
+.tracking-link-form .field.field-span-2 { grid-column: span 2; }
+
+/* consistent control height + polish across inputs and dropdowns */
+.tracking-link-form .field input,
+.tracking-link-form .field textarea {
+  min-height: 50px;
+  padding: 13px 15px;
+  border-radius: 11px;
+  font-size: 14px;
+}
+.tracking-link-form .field textarea { min-height: 84px; line-height: 1.6; }
+.tracking-link-form .field .country-select-trigger { min-height: 50px; border-radius: 11px; }
+
+/* section header — quiet premium divider */
+.tracking-link-form .form-section-head { margin: 12px 0 0; }
+.tracking-link-form .form-section-head:first-child { margin-top: 0; }
+
+/* Preview + parameters cards a touch more refined */
+.tracking-preview {
+  border: 1px solid var(--stroke);
+  border-radius: 13px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.02), rgba(255,255,255,0.006));
+  padding: 14px 16px;
+}
+.tracking-preview .tracking-preview-name { font-size: 14px; }
+
+/* checkbox row breathing room */
+.tracking-link-form .field-inline { margin-top: 2px; }
+
+/* ── Tracking Links — responsive + touch polish ──────────────────── */
+/* Form: mobile single-column below 620px */
+@media (max-width: 620px) {
+  .tracking-link-form { grid-template-columns: 1fr; gap: 14px; }
+  .tracking-link-form .field.field-span-2,
+  .tracking-link-form .field.field-span-3,
+  .tracking-link-form .field:nth-child(4):not(.form-section-head):not(.field-span-3) { grid-column: 1 / -1; }
+  .tracking-link-form .form-actions { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+  .tracking-link-form .form-actions .action-pill,
+  .tracking-link-form .form-actions .ghost { width: 100%; min-height: 46px; justify-content: center; }
+  .s2s-params { gap: 6px; }
+}
+
+/* KPI strip: 4 → 2 → 1 on smaller screens (shared registries) */
+@media (max-width: 780px) {
+  .accounts-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 460px) {
+  .accounts-summary-strip { grid-template-columns: 1fr; }
+}
+
+/* Touch-friendly controls on mobile */
+@media (max-width: 620px) {
+  .tracking-filter-open,
+  .tracking-link-form .field .country-select-trigger { min-height: 48px; }
+  .flow-action-primary,
+  .flow-action-ghost,
+  .flow-unbound-cta { min-height: 46px; }
+}
+
+/* ── Per-section identity — accent icon badge + signature glow ────── */
+.panel-head-title { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.panel-icon-badge {
+  width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0;
+  display: grid; place-items: center;
+  color: var(--section-accent, var(--green));
+  background: linear-gradient(158deg,
+    color-mix(in srgb, var(--section-accent, #36d07c) 22%, transparent),
+    color-mix(in srgb, var(--section-accent, #36d07c) 6%, transparent));
+  border: 1px solid color-mix(in srgb, var(--section-accent, #36d07c) 42%, transparent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--section-accent, #36d07c) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--section-accent, #36d07c) 30%, transparent);
+}
+/* signature corner glow — only shows when a section sets --section-accent */
+.registry-dashboard-panel {
+  background-image:
+    radial-gradient(60% 120% at 8% -8%, color-mix(in srgb, var(--section-accent, transparent) 13%, transparent), transparent 60%),
+    linear-gradient(135deg, rgba(22, 24, 28, 0.95), rgba(11, 12, 14, 0.98));
+}
+/* accent divider under the header */
+.registry-dashboard-panel:has(.panel-icon-badge) .panel-head {
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--section-accent, #ffffff) 16%, var(--stroke));
+}
+
+/* Signature accents per Operations section */
+.tracking-registry-panel { --section-accent: #64b8ff; }
