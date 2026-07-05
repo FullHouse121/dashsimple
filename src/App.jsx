@@ -4040,9 +4040,12 @@ function TrackingLinksDashboard({ authUser }) {
     };
   }, [isLeadership]);
 
-  const [buyerFilter, setBuyerFilter] = React.useState("all");
-  const [toolFilter, setToolFilter] = React.useState("all");
-  const [geoFilter, setGeoFilter] = React.useState("all");
+  const [buyerFilter, setBuyerFilter] = React.useState([]);
+  const [toolFilter, setToolFilter] = React.useState([]);
+  const [geoFilter, setGeoFilter] = React.useState([]);
+  const [trackingSearch, setTrackingSearch] = React.useState("");
+  const toggleTableFilter = (setter) => (value) =>
+    setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
 
   // Only the 3 allowed tracking domains are selectable — drop any stale saved
   // domain (from a previous session) that isn't one of them.
@@ -4277,23 +4280,67 @@ function TrackingLinksDashboard({ authUser }) {
     [links]
   );
 
-  const trackingFiltersActive = buyerFilter !== "all" || toolFilter !== "all" || geoFilter !== "all";
+  React.useEffect(() => {
+    // Prune any selected multi-filter values that are no longer valid options.
+    // Return the same array ref when nothing changed to avoid a render loop.
+    const prune = (setter, options) =>
+      setter((prev) => {
+        const next = prev.filter((v) => options.some((option) => option.value === v));
+        return next.length === prev.length ? prev : next;
+      });
+    prune(setBuyerFilter, buyerFilterOptions);
+    prune(setToolFilter, toolFilterOptions);
+    prune(setGeoFilter, geoFilterOptions);
+  }, [buyerFilterOptions, toolFilterOptions, geoFilterOptions]);
+
+  const trackingFiltersActive = buyerFilter.length > 0 || toolFilter.length > 0 || geoFilter.length > 0;
   const clearTrackingFilters = () => {
-    setBuyerFilter("all");
-    setToolFilter("all");
-    setGeoFilter("all");
+    setBuyerFilter([]);
+    setToolFilter([]);
+    setGeoFilter([]);
   };
 
+  const normalizedTrackingSearch = trackingSearch.trim().toLowerCase();
   const filteredLinks = React.useMemo(
     () =>
       links.filter((l) => {
-        if (buyerFilter !== "all" && String(l.buyer || "").trim() !== buyerFilter) return false;
-        if (toolFilter !== "all" && String(l.tool || "").trim() !== toolFilter) return false;
-        if (geoFilter !== "all" && String(l.geo || "").trim() !== geoFilter) return false;
+        if (normalizedTrackingSearch) {
+          const hay = `${l.name || ""} ${l.owner_name || ""}`.toLowerCase();
+          if (!hay.includes(normalizedTrackingSearch)) return false;
+        }
+        if (buyerFilter.length && !buyerFilter.includes(String(l.buyer || "").trim())) return false;
+        if (toolFilter.length && !toolFilter.includes(String(l.tool || "").trim())) return false;
+        if (geoFilter.length && !geoFilter.includes(String(l.geo || "").trim())) return false;
         return true;
       }),
-    [links, buyerFilter, toolFilter, geoFilter]
+    [links, normalizedTrackingSearch, buyerFilter, toolFilter, geoFilter]
   );
+
+  const [trackingSort, setTrackingSort] = React.useState({ key: null, dir: "asc" });
+  const toggleTrackingSort = (key) => setTrackingSort((prev) => toggleSortConfig(prev, key, "asc"));
+  const getTrackingSortValue = (link, key) => {
+    switch (key) {
+      case "campaign": return link.name || "";
+      case "status": return String(link.state || "");
+      case "geo": return link.geo || "";
+      case "link": return `${String(link.domain || "")}/${String(link.alias || "")}`;
+      case "keitaro": return String(link.keitaro_status || "");
+      case "owner": return link.owner_name || "";
+      default: return null;
+    }
+  };
+  const sortedLinks = React.useMemo(() => {
+    const rows = [...filteredLinks];
+    if (!trackingSort?.key) return rows;
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getTrackingSortValue(a, trackingSort.key),
+        getTrackingSortValue(b, trackingSort.key),
+        trackingSort.dir,
+        "text"
+      )
+    );
+  }, [filteredLinks, trackingSort]);
 
   const summary = React.useMemo(() => {
     const total = links.length;
@@ -4854,14 +4901,36 @@ function TrackingLinksDashboard({ authUser }) {
         ) : (
           <div className="table-wrap pixel-table-wrap">
             <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={trackingSearch}
+                    onChange={(e) => setTrackingSearch(e.target.value)}
+                    placeholder={t("Search campaign, owner…")}
+                  />
+                  {trackingSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setTrackingSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div className="field">
                 <label>{t("Buyer")}</label>
                 <CountryDropdownPicker
-                  value={buyerFilter}
-                  onChange={setBuyerFilter}
+                  multiple
+                  values={buyerFilter}
+                  onToggle={toggleTableFilter(setBuyerFilter)}
                   options={buyerFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find buyers")}
                   emptyResultsLabel={t("No buyers found.")}
                 />
@@ -4869,11 +4938,11 @@ function TrackingLinksDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Tool")}</label>
                 <CountryDropdownPicker
-                  value={toolFilter}
-                  onChange={setToolFilter}
+                  multiple
+                  values={toolFilter}
+                  onToggle={toggleTableFilter(setToolFilter)}
                   options={toolFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find tools")}
                   emptyResultsLabel={t("No tools found.")}
                 />
@@ -4881,11 +4950,11 @@ function TrackingLinksDashboard({ authUser }) {
               <div className="field">
                 <label>{t("GEO")}</label>
                 <CountryDropdownPicker
-                  value={geoFilter}
-                  onChange={setGeoFilter}
+                  multiple
+                  values={geoFilter}
+                  onToggle={toggleTableFilter(setGeoFilter)}
                   options={geoFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find geos")}
                   emptyResultsLabel={t("No geos found.")}
                 />
@@ -4900,17 +4969,30 @@ function TrackingLinksDashboard({ authUser }) {
             <table className="entries-table tracking-table">
               <thead>
                 <tr>
-                  <th>{t("Campaign")}</th>
-                  <th>{t("Status")}</th>
-                  <th>{t("GEO")}</th>
-                  <th>{t("Link")}</th>
-                  <th>{t("Keitaro")}</th>
-                  <th>{t("Owner")}</th>
-                  <th />
+                  {[
+                    { key: "campaign", label: t("Campaign") },
+                    { key: "status", label: t("Status") },
+                    { key: "geo", label: t("GEO") },
+                    { key: "link", label: t("Link") },
+                    { key: "keitaro", label: t("Keitaro") },
+                    { key: "owner", label: t("Owner") },
+                  ].map((col) => (
+                    <th key={col.key}>
+                      <button
+                        type="button"
+                        className={`sortable-header ${trackingSort.key === col.key ? "active" : ""}`}
+                        onClick={() => toggleTrackingSort(col.key)}
+                      >
+                        {col.label}
+                        <span className="sort-indicator">{getSortIndicator(trackingSort, col.key)}</span>
+                      </button>
+                    </th>
+                  ))}
+                  <th className="col-actions">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLinks.map((link) => (
+                {sortedLinks.map((link) => (
                   <tr key={link.id}>
                     <td>
                       <span className="tracking-name" title={link.name}>
@@ -4961,7 +5043,8 @@ function TrackingLinksDashboard({ authUser }) {
                         <button
                           className="icon-btn"
                           type="button"
-                          title={copiedId === link.id ? t("Copied!") : t("Copy link")}
+                          aria-label={copiedId === link.id ? t("Copied!") : t("Copy link")}
+                          data-tip={copiedId === link.id ? t("Copied!") : t("Copy link")}
                           onClick={handleCopy(link.id, link.url)}
                         >
                           {copiedId === link.id ? <CheckCircle size={15} /> : <Copy size={15} />}
@@ -4969,7 +5052,8 @@ function TrackingLinksDashboard({ authUser }) {
                         <button
                           className="icon-btn"
                           type="button"
-                          title={t("Edit")}
+                          aria-label={t("Edit")}
+                          data-tip={t("Edit")}
                           onClick={() => openEdit(link)}
                         >
                           <Pencil size={15} />
@@ -4977,7 +5061,8 @@ function TrackingLinksDashboard({ authUser }) {
                         <button
                           className="icon-btn"
                           type="button"
-                          title={t("View flow, filters, offer")}
+                          aria-label={t("View flow, filters, offer")}
+                          data-tip={t("View flow, filters, offer")}
                           onClick={() => openDetails(link)}
                         >
                           <Eye size={15} />
@@ -4986,7 +5071,8 @@ function TrackingLinksDashboard({ authUser }) {
                           <button
                             className="icon-btn icon-btn-check"
                             type="button"
-                            title={t("Verify in Keitaro")}
+                            aria-label={t("Verify in Keitaro")}
+                            data-tip={t("Verify in Keitaro")}
                             onClick={() => openDetails(link, true)}
                           >
                             <ShieldCheck size={15} />
@@ -4995,7 +5081,8 @@ function TrackingLinksDashboard({ authUser }) {
                           <button
                             className="icon-btn"
                             type="button"
-                            title={t("Create in Keitaro")}
+                            aria-label={t("Create in Keitaro")}
+                            data-tip={t("Create in Keitaro")}
                             disabled={pushingId === link.id}
                             onClick={handlePush(link.id)}
                           >
@@ -5005,7 +5092,8 @@ function TrackingLinksDashboard({ authUser }) {
                         <button
                           className="icon-btn icon-btn-danger"
                           type="button"
-                          title={t("Remove")}
+                          aria-label={t("Remove")}
+                          data-tip={t("Remove")}
                           onClick={handleDelete(link.id)}
                         >
                           <Trash2 size={15} />
