@@ -29,6 +29,7 @@ import {
   BarChart3,
   Megaphone,
   Trophy,
+  Search,
   SlidersHorizontal,
   X,
   Clock,
@@ -10812,12 +10813,14 @@ function DomainsDashboard({ authUser }) {
   const [domainState, setDomainState] = React.useState({ loading: true, error: null });
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
-  const [tableDomainFilter, setTableDomainFilter] = React.useState("all");
-  const [tableGameFilter, setTableGameFilter] = React.useState("all");
-  const [tablePlatformFilter, setTablePlatformFilter] = React.useState("all");
-  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
-  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
-  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
+  const [tableDomainFilter, setTableDomainFilter] = React.useState([]);
+  const [tableGameFilter, setTableGameFilter] = React.useState([]);
+  const [tablePlatformFilter, setTablePlatformFilter] = React.useState([]);
+  const [tableGeoFilter, setTableGeoFilter] = React.useState([]);
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState([]);
+  const [tableStatusFilter, setTableStatusFilter] = React.useState([]);
+  const toggleTableFilter = (setter) => (value) =>
+    setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
 
   const updateDomainForm = (key) => (event) => {
     setDomainForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -11280,34 +11283,20 @@ function DomainsDashboard({ authUser }) {
   }, [domainTableRows, t]);
 
   React.useEffect(() => {
-    if (tableDomainFilter !== "all" && !domainFilterOptions.some((option) => option.value === tableDomainFilter)) {
-      setTableDomainFilter("all");
-    }
-    if (tableGameFilter !== "all" && !gameFilterOptions.some((option) => option.value === tableGameFilter)) {
-      setTableGameFilter("all");
-    }
-    if (
-      tablePlatformFilter !== "all" &&
-      !platformFilterOptions.some((option) => option.value === tablePlatformFilter)
-    ) {
-      setTablePlatformFilter("all");
-    }
-    if (tableGeoFilter !== "all" && !geoFilterOptions.some((option) => option.value === tableGeoFilter)) {
-      setTableGeoFilter("all");
-    }
-    if (tableOwnerFilter !== "all" && !ownerFilterOptions.some((option) => option.value === tableOwnerFilter)) {
-      setTableOwnerFilter("all");
-    }
-    if (tableStatusFilter !== "all" && !statusFilterOptions.some((option) => option.value === tableStatusFilter)) {
-      setTableStatusFilter("all");
-    }
+    // Prune any selected multi-filter values that are no longer valid options.
+    // Return the same array ref when nothing changed to avoid a render loop.
+    const prune = (setter, options) =>
+      setter((prev) => {
+        const next = prev.filter((v) => options.some((option) => option.value === v));
+        return next.length === prev.length ? prev : next;
+      });
+    prune(setTableDomainFilter, domainFilterOptions);
+    prune(setTableGameFilter, gameFilterOptions);
+    prune(setTablePlatformFilter, platformFilterOptions);
+    prune(setTableGeoFilter, geoFilterOptions);
+    prune(setTableOwnerFilter, ownerFilterOptions);
+    prune(setTableStatusFilter, statusFilterOptions);
   }, [
-    tableDomainFilter,
-    tableGameFilter,
-    tablePlatformFilter,
-    tableGeoFilter,
-    tableOwnerFilter,
-    tableStatusFilter,
     domainFilterOptions,
     gameFilterOptions,
     platformFilterOptions,
@@ -11317,20 +11306,20 @@ function DomainsDashboard({ authUser }) {
   ]);
 
   const domainFiltersActive =
-    tableDomainFilter !== "all" ||
-    tableGameFilter !== "all" ||
-    tablePlatformFilter !== "all" ||
-    tableGeoFilter !== "all" ||
-    tableOwnerFilter !== "all" ||
-    tableStatusFilter !== "all";
+    tableDomainFilter.length > 0 ||
+    tableGameFilter.length > 0 ||
+    tablePlatformFilter.length > 0 ||
+    tableGeoFilter.length > 0 ||
+    tableOwnerFilter.length > 0 ||
+    tableStatusFilter.length > 0;
 
   const clearDomainFilters = () => {
-    setTableDomainFilter("all");
-    setTableGameFilter("all");
-    setTablePlatformFilter("all");
-    setTableGeoFilter("all");
-    setTableOwnerFilter("all");
-    setTableStatusFilter("all");
+    setTableDomainFilter([]);
+    setTableGameFilter([]);
+    setTablePlatformFilter([]);
+    setTableGeoFilter([]);
+    setTableOwnerFilter([]);
+    setTableStatusFilter([]);
   };
 
   // KPI strip: registry health at a glance (same DNA as Pixels/Accounts)
@@ -11349,19 +11338,39 @@ function DomainsDashboard({ authUser }) {
   }, [domainTableRows]);
 
   const [domPage, setDomPage] = React.useState(1);
+  const [domainSearch, setDomainSearch] = React.useState("");
+  const [domainSort, setDomainSort] = React.useState({ key: null, dir: "asc" });
+  const toggleDomainSort = (key) => setDomainSort((prev) => toggleSortConfig(prev, key, "asc"));
+  const getDomainSortValue = (row, key) => {
+    switch (key) {
+      case "domain": return row.domain?.domain || "";
+      case "game": return row.domain?.game || "";
+      case "platform": return row.domain?.platform || "";
+      case "country": return row.countries?.[0] || "";
+      case "owner": return row.ownerLabel || "";
+      case "status": return row.domain?.status || "";
+      default: return null;
+    }
+  };
+  const normalizedDomainSearch = domainSearch.trim().toLowerCase();
   const filteredDomainRows = React.useMemo(
     () =>
       domainTableRows.filter((row) => {
-        if (tableDomainFilter !== "all" && String(row.domain?.domain || "") !== tableDomainFilter) return false;
-        if (tableGameFilter !== "all" && String(row.domain?.game || "") !== tableGameFilter) return false;
-        if (tablePlatformFilter !== "all" && String(row.domain?.platform || "") !== tablePlatformFilter) return false;
-        if (tableGeoFilter !== "all" && !row.countries.includes(tableGeoFilter)) return false;
-        if (canManageDomains && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
-        if (tableStatusFilter !== "all" && String(row.domain?.status || "") !== tableStatusFilter) return false;
+        if (normalizedDomainSearch) {
+          const hay = `${row.domain?.domain || ""} ${row.domain?.game || ""} ${row.ownerLabel || ""}`.toLowerCase();
+          if (!hay.includes(normalizedDomainSearch)) return false;
+        }
+        if (tableDomainFilter.length && !tableDomainFilter.includes(String(row.domain?.domain || ""))) return false;
+        if (tableGameFilter.length && !tableGameFilter.includes(String(row.domain?.game || ""))) return false;
+        if (tablePlatformFilter.length && !tablePlatformFilter.includes(String(row.domain?.platform || ""))) return false;
+        if (tableGeoFilter.length && !tableGeoFilter.some((g) => row.countries.includes(g))) return false;
+        if (canManageDomains && tableOwnerFilter.length && !tableOwnerFilter.includes(row.ownerLabel)) return false;
+        if (tableStatusFilter.length && !tableStatusFilter.includes(String(row.domain?.status || ""))) return false;
         return true;
       }),
     [
       domainTableRows,
+      normalizedDomainSearch,
       tableDomainFilter,
       tableGameFilter,
       tablePlatformFilter,
@@ -11372,12 +11381,25 @@ function DomainsDashboard({ authUser }) {
     ]
   );
 
+  const sortedDomainRows = React.useMemo(() => {
+    const rows = [...filteredDomainRows];
+    if (!domainSort?.key) return rows;
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getDomainSortValue(a, domainSort.key),
+        getDomainSortValue(b, domainSort.key),
+        domainSort.dir,
+        "text"
+      )
+    );
+  }, [filteredDomainRows, domainSort]);
+
   const DOM_PAGE_SIZE = 50;
-  const domPageCount = Math.max(1, Math.ceil(filteredDomainRows.length / DOM_PAGE_SIZE));
+  const domPageCount = Math.max(1, Math.ceil(sortedDomainRows.length / DOM_PAGE_SIZE));
   const domClampedPage = Math.min(domPage, domPageCount);
   const pagedDomainRows = React.useMemo(
-    () => filteredDomainRows.slice((domClampedPage - 1) * DOM_PAGE_SIZE, domClampedPage * DOM_PAGE_SIZE),
-    [filteredDomainRows, domClampedPage]
+    () => sortedDomainRows.slice((domClampedPage - 1) * DOM_PAGE_SIZE, domClampedPage * DOM_PAGE_SIZE),
+    [sortedDomainRows, domClampedPage]
   );
   const domPageList = React.useMemo(() => {
     const total = domPageCount;
@@ -11398,7 +11420,7 @@ function DomainsDashboard({ authUser }) {
   }, [domPageCount, domClampedPage]);
   React.useEffect(() => {
     setDomPage(1);
-  }, [filteredDomainRows]);
+  }, [sortedDomainRows]);
 
   return (
     <section className="form-section">
@@ -11552,14 +11574,36 @@ function DomainsDashboard({ authUser }) {
         ) : (
           <div className="table-wrap pixel-table-wrap">
             <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={domainSearch}
+                    onChange={(e) => setDomainSearch(e.target.value)}
+                    placeholder={t("Search domain, game, owner…")}
+                  />
+                  {domainSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setDomainSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div className="field">
                 <label>{t("Domain")}</label>
                 <CountryDropdownPicker
-                  value={tableDomainFilter}
-                  onChange={setTableDomainFilter}
+                  multiple
+                  values={tableDomainFilter}
+                  onToggle={toggleTableFilter(setTableDomainFilter)}
                   options={domainFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find domains")}
                   emptyResultsLabel={t("No entries found.")}
                 />
@@ -11567,11 +11611,11 @@ function DomainsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Game")}</label>
                 <CountryDropdownPicker
-                  value={tableGameFilter}
-                  onChange={setTableGameFilter}
+                  multiple
+                  values={tableGameFilter}
+                  onToggle={toggleTableFilter(setTableGameFilter)}
                   options={gameFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find games")}
                   emptyResultsLabel={t("No entries found.")}
                 />
@@ -11579,11 +11623,11 @@ function DomainsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Platform")}</label>
                 <CountryDropdownPicker
-                  value={tablePlatformFilter}
-                  onChange={setTablePlatformFilter}
+                  multiple
+                  values={tablePlatformFilter}
+                  onToggle={toggleTableFilter(setTablePlatformFilter)}
                   options={platformFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find platforms")}
                   emptyResultsLabel={t("No entries found.")}
                 />
@@ -11591,11 +11635,11 @@ function DomainsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("GEO")}</label>
                 <CountryDropdownPicker
-                  value={tableGeoFilter}
-                  onChange={setTableGeoFilter}
+                  multiple
+                  values={tableGeoFilter}
+                  onToggle={toggleTableFilter(setTableGeoFilter)}
                   options={geoFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find countries")}
                   emptyResultsLabel={t("No countries found.")}
                 />
@@ -11603,11 +11647,11 @@ function DomainsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Status")}</label>
                 <CountryDropdownPicker
-                  value={tableStatusFilter}
-                  onChange={setTableStatusFilter}
+                  multiple
+                  values={tableStatusFilter}
+                  onToggle={toggleTableFilter(setTableStatusFilter)}
                   options={statusFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find status")}
                   emptyResultsLabel={t("No status found.")}
                 />
@@ -11616,11 +11660,11 @@ function DomainsDashboard({ authUser }) {
                 <div className="field">
                   <label>{t("Owner")}</label>
                   <CountryDropdownPicker
-                    value={tableOwnerFilter}
-                    onChange={setTableOwnerFilter}
+                    multiple
+                    values={tableOwnerFilter}
+                    onToggle={toggleTableFilter(setTableOwnerFilter)}
                     options={ownerFilterOptions}
-                    allOption={{ value: "all", label: t("All") }}
-                    placeholder={t("Select")}
+                    placeholder={t("All")}
                     searchPlaceholder={t("Type to find owners")}
                     emptyResultsLabel={t("No owners found.")}
                   />
@@ -11636,13 +11680,26 @@ function DomainsDashboard({ authUser }) {
             <table className="entries-table domain-table">
               <thead>
                 <tr>
-                  <th>{t("Domain")}</th>
-                  <th>{t("Game")}</th>
-                  <th>{t("Platform")}</th>
-                  <th>{t("Country")}</th>
-                  <th>{t("Owner")}</th>
-                  <th>{t("Status")}</th>
-                  <th />
+                  {[
+                    { key: "domain", label: t("Domain") },
+                    { key: "game", label: t("Game") },
+                    { key: "platform", label: t("Platform") },
+                    { key: "country", label: t("Country") },
+                    { key: "owner", label: t("Owner") },
+                    { key: "status", label: t("Status") },
+                  ].map((col) => (
+                    <th key={col.key}>
+                      <button
+                        type="button"
+                        className={`sortable-header ${domainSort.key === col.key ? "active" : ""}`}
+                        onClick={() => toggleDomainSort(col.key)}
+                      >
+                        {col.label}
+                        <span className="sort-indicator">{getSortIndicator(domainSort, col.key)}</span>
+                      </button>
+                    </th>
+                  ))}
+                  <th className="col-actions">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -11700,7 +11757,8 @@ function DomainsDashboard({ authUser }) {
                           <button
                             className="icon-btn"
                             type="button"
-                            title={t("Sharing debugger")}
+                            aria-label={t("Sharing debugger")}
+                            data-tip={t("Sharing debugger")}
                             onClick={() => openOgDebug(domain)}
                           >
                             <Settings size={15} />
@@ -11708,7 +11766,8 @@ function DomainsDashboard({ authUser }) {
                           <button
                             className="icon-btn"
                             type="button"
-                            title={t("Edit domain")}
+                            aria-label={t("Edit domain")}
+                            data-tip={t("Edit domain")}
                             onClick={() => openDomainEdit(domain)}
                           >
                             <Pencil size={15} />
@@ -11716,7 +11775,8 @@ function DomainsDashboard({ authUser }) {
                           <button
                             className="icon-btn icon-btn-danger"
                             type="button"
-                            title={t("Remove")}
+                            aria-label={t("Remove")}
+                            data-tip={t("Remove")}
                             onClick={() => handleDomainDelete(domain.id)}
                           >
                             <Trash2 size={15} />
