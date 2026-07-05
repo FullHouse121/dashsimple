@@ -7131,7 +7131,7 @@ select option,
    scroll container — and lift the whole wrap above sibling cards (forms,
    batch bars) so drop-up menus never paint behind them. Overrides the
    low z-index some registry panels put on their table-wrap. */
-.table-wrap:has(.country-select-picker[open]) {
+.table-wrap:has(.country-select-picker.is-open) {
   overflow: visible;
   position: relative;
   z-index: 1600;
@@ -8825,7 +8825,7 @@ select option,
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.02));
 }
 .registry-search:focus-within,
-.pixel-table-toolbar .country-select-picker[open] .country-select-trigger {
+.pixel-table-toolbar .country-select-picker.is-open .country-select-trigger {
   border-color: rgba(54, 208, 124, 0.6);
   box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
@@ -9758,14 +9758,14 @@ select option,
   min-width: 0;
 }
 
-.country-select-picker[open] {
+.country-select-picker.is-open {
   z-index: 1500;
   isolation: isolate;
 }
 
 /* When a dropdown is open inside a .panel, let it overflow the panel
    (otherwise overflow:hidden on .panel clips the menu). */
-.panel:has(.country-select-picker[open]) {
+.panel:has(.country-select-picker.is-open) {
   overflow: visible;
 }
 
@@ -9804,7 +9804,7 @@ select option,
   background: rgba(255, 255, 255, 0.035);
 }
 
-.country-select-picker[open] .country-select-trigger {
+.country-select-picker.is-open .country-select-trigger {
   border-color: rgba(54, 208, 124, 0.4);
   background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1);
@@ -9866,7 +9866,7 @@ select option,
   transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), color 0.18s ease;
 }
 
-.country-select-picker[open] .country-select-arrow {
+.country-select-picker.is-open .country-select-arrow {
   transform: rotate(180deg);
   color: var(--green);
 }
@@ -9876,8 +9876,6 @@ select option,
 .country-select-picker.drop-up .country-select-menu {
   top: auto;
   bottom: calc(100% + 8px);
-  transform-origin: bottom center;
-  animation-name: deus-dropdown-up-in;
 }
 
 /* Comment text shown as a quiet clickable cell — opens the comment editor */
@@ -9916,8 +9914,6 @@ select option,
   box-shadow:
     0 24px 50px rgba(0, 0, 0, 0.5),
     inset 0 1px rgba(255, 255, 255, 0.04);
-  transform-origin: top center;
-  animation: deus-dropdown-in 0.2s cubic-bezier(0.34, 1.4, 0.64, 1) both;
 }
 
 /* DEUS signature: subtle green corner glow blob */

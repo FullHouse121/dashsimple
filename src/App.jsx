@@ -325,29 +325,66 @@ function CountryDropdownPicker({
   );
 
   const [dropUp, setDropUp] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+  const searchRef = React.useRef(null);
+  const instanceId = React.useId();
+
+  const closeMenu = React.useCallback(() => {
+    setOpen(false);
+    setQuery("");
+  }, []);
+  const openMenu = React.useCallback(() => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (rect) {
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setDropUp(spaceBelow < 300 && rect.top > spaceBelow);
+    }
+    if (typeof window !== "undefined") {
+      // Only one dropdown open at a time — notify the others to close.
+      window.dispatchEvent(new CustomEvent("cs-open", { detail: instanceId }));
+    }
+    setOpen(true);
+  }, [instanceId]);
+
+  React.useEffect(() => {
+    const onOtherOpen = (event) => {
+      if (event.detail !== instanceId) setOpen(false);
+    };
+    window.addEventListener("cs-open", onOtherOpen);
+    return () => window.removeEventListener("cs-open", onOtherOpen);
+  }, [instanceId]);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onDocDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) closeMenu();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, closeMenu]);
+  React.useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
 
   return (
-    <details
-      className={`country-select-picker${dropUp ? " drop-up" : ""}`}
-      onToggle={(event) => {
-        const el = event.currentTarget;
-        if (el.open) {
-          // Only one dropdown open at a time — close every other open picker.
-          if (typeof document !== "undefined") {
-            document.querySelectorAll("details.country-select-picker[open]").forEach((other) => {
-              if (other !== el) other.open = false;
-            });
-          }
-          // Flip the menu upward when there isn't room below (e.g. last table rows).
-          const rect = el.getBoundingClientRect();
-          const spaceBelow = window.innerHeight - rect.bottom;
-          setDropUp(spaceBelow < 300 && rect.top > spaceBelow);
-        } else if (query) {
-          setQuery("");
-        }
-      }}
+    <div
+      ref={rootRef}
+      className={`country-select-picker${dropUp ? " drop-up" : ""}${open ? " is-open" : ""}`}
     >
-      <summary className={`country-select-trigger${multiple ? " is-multi" : ""}`}>
+      <button
+        type="button"
+        className={`country-select-trigger${multiple ? " is-multi" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => (open ? closeMenu() : openMenu())}
+      >
         {multiple ? (
           <span className="country-select-multi-values">
             {selectedOptions.length ? (
@@ -382,10 +419,20 @@ function CountryDropdownPicker({
         <span className="country-select-arrow" aria-hidden="true">
           ▾
         </span>
-      </summary>
-      <div className="country-select-menu">
+      </button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            className="country-select-menu"
+            role="listbox"
+            initial={{ opacity: 0, y: dropUp ? 8 : -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: dropUp ? 6 : -6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          >
         <div className="country-select-search-wrap">
           <input
+            ref={searchRef}
             className="country-select-search"
             type="text"
             value={query}
@@ -414,7 +461,8 @@ function CountryDropdownPicker({
                   key={`country-select-${item.value || "all"}`}
                   type="button"
                   className={`country-select-option${selected ? " is-selected" : ""}`}
-                  aria-pressed={selected}
+                  role="option"
+                  aria-selected={selected}
                   onClick={(event) => {
                     if (multiple) {
                       if (typeof onToggle === "function") {
@@ -424,9 +472,7 @@ function CountryDropdownPicker({
                       }
                     } else {
                       onChange(item.value);
-                      setQuery("");
-                      const details = event.currentTarget.closest("details");
-                      if (details) details.open = false;
+                      closeMenu();
                     }
                   }}
                 >
@@ -450,11 +496,9 @@ function CountryDropdownPicker({
             <button
               type="button"
               className="country-select-option country-select-custom"
-              onClick={(event) => {
+              onClick={() => {
                 onChange(query.trim());
-                setQuery("");
-                const details = event.currentTarget.closest("details");
-                if (details) details.open = false;
+                closeMenu();
               }}
             >
               <span className="country-select-name">Use “{query.trim()}”</span>
@@ -462,8 +506,10 @@ function CountryDropdownPicker({
             </button>
           ) : null}
         </div>
-      </div>
-    </details>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
