@@ -12206,12 +12206,16 @@ function PixelsDashboard({ authUser }) {
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [showForm, setShowForm] = React.useState(false);
-  const [tableBuyerFilter, setTableBuyerFilter] = React.useState("all");
-  const [tableGeoFilter, setTableGeoFilter] = React.useState("all");
-  const [tableStatusFilter, setTableStatusFilter] = React.useState("all");
-  const [tableOwnerFilter, setTableOwnerFilter] = React.useState("all");
-  const [tablePixelIdFilter, setTablePixelIdFilter] = React.useState("all");
-  const [tableFlowFilter, setTableFlowFilter] = React.useState("all");
+  const [tableBuyerFilter, setTableBuyerFilter] = React.useState([]);
+  const [tableGeoFilter, setTableGeoFilter] = React.useState([]);
+  const [tableStatusFilter, setTableStatusFilter] = React.useState([]);
+  const [tableOwnerFilter, setTableOwnerFilter] = React.useState([]);
+  const [tablePixelIdFilter, setTablePixelIdFilter] = React.useState([]);
+  const [tableFlowFilter, setTableFlowFilter] = React.useState([]);
+  const toggleTableFilter = (setter) => (value) =>
+    setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
+  const [pixelSearch, setPixelSearch] = React.useState("");
+  const [pixelPage, setPixelPage] = React.useState(1);
   const [pixelForm, setPixelForm] = React.useState({
     pixelId: "",
     tokenEaag: "",
@@ -12805,37 +12809,21 @@ function PixelsDashboard({ authUser }) {
   }, [pixelTableRows]);
 
   React.useEffect(() => {
-    if (tableBuyerFilter === "all") return;
-    if (!pixelBuyerOptions.some((option) => option.value === tableBuyerFilter)) {
-      setTableBuyerFilter("all");
-    }
-  }, [tableBuyerFilter, pixelBuyerOptions]);
-
-  React.useEffect(() => {
-    if (tableGeoFilter !== "all" && !pixelGeoOptions.some((option) => option.value === tableGeoFilter)) {
-      setTableGeoFilter("all");
-    }
-    if (
-      tableStatusFilter !== "all" &&
-      !pixelStatusFilterOptions.some((option) => option.value === tableStatusFilter)
-    ) {
-      setTableStatusFilter("all");
-    }
-    if (tableOwnerFilter !== "all" && !pixelOwnerOptions.some((option) => option.value === tableOwnerFilter)) {
-      setTableOwnerFilter("all");
-    }
-    if (tablePixelIdFilter !== "all" && !pixelIdFilterOptions.some((option) => option.value === tablePixelIdFilter)) {
-      setTablePixelIdFilter("all");
-    }
-    if (tableFlowFilter !== "all" && !pixelFlowFilterOptions.some((option) => option.value === tableFlowFilter)) {
-      setTableFlowFilter("all");
-    }
+    // Prune any selected multi-filter values that are no longer valid options.
+    // Return the same array ref when nothing changed to avoid a render loop.
+    const prune = (setter, options) =>
+      setter((prev) => {
+        const next = prev.filter((v) => options.some((option) => option.value === v));
+        return next.length === prev.length ? prev : next;
+      });
+    prune(setTableBuyerFilter, pixelBuyerOptions);
+    prune(setTableGeoFilter, pixelGeoOptions);
+    prune(setTableStatusFilter, pixelStatusFilterOptions);
+    prune(setTableOwnerFilter, pixelOwnerOptions);
+    prune(setTablePixelIdFilter, pixelIdFilterOptions);
+    prune(setTableFlowFilter, pixelFlowFilterOptions);
   }, [
-    tableGeoFilter,
-    tableStatusFilter,
-    tableOwnerFilter,
-    tablePixelIdFilter,
-    tableFlowFilter,
+    pixelBuyerOptions,
     pixelGeoOptions,
     pixelStatusFilterOptions,
     pixelOwnerOptions,
@@ -12844,34 +12832,55 @@ function PixelsDashboard({ authUser }) {
   ]);
 
   const pixelFiltersActive =
-    tableBuyerFilter !== "all" ||
-    tableGeoFilter !== "all" ||
-    tableStatusFilter !== "all" ||
-    tableOwnerFilter !== "all" ||
-    tablePixelIdFilter !== "all" ||
-    tableFlowFilter !== "all";
+    tableBuyerFilter.length > 0 ||
+    tableGeoFilter.length > 0 ||
+    tableStatusFilter.length > 0 ||
+    tableOwnerFilter.length > 0 ||
+    tablePixelIdFilter.length > 0 ||
+    tableFlowFilter.length > 0;
 
   const clearPixelFilters = () => {
-    setTableBuyerFilter("all");
-    setTableGeoFilter("all");
-    setTableStatusFilter("all");
-    setTableOwnerFilter("all");
-    setTablePixelIdFilter("all");
-    setTableFlowFilter("all");
+    setTableBuyerFilter([]);
+    setTableGeoFilter([]);
+    setTableStatusFilter([]);
+    setTableOwnerFilter([]);
+    setTablePixelIdFilter([]);
+    setTableFlowFilter([]);
   };
 
+  const [pixelSort, setPixelSort] = React.useState({ key: null, dir: "asc" });
+  const togglePixelSort = (key) => setPixelSort((prev) => toggleSortConfig(prev, key, "asc"));
+  const getPixelSortValue = (row, key) => {
+    switch (key) {
+      case "id": return row.pixel?.id;
+      case "pixelId": return row.pixel?.pixel_id || "";
+      case "token": return row.pixel?.token_eaag || "";
+      case "geo": return row.geos?.[0] || "";
+      case "domain": return row.flows?.[0] || "";
+      case "status": return row.statusLabel || "";
+      case "comment": return row.pixel?.comment || "";
+      case "owner": return row.ownerLabel || "";
+      default: return null;
+    }
+  };
+  const normalizedPixelSearch = pixelSearch.trim().toLowerCase();
   const filteredPixelTableRows = React.useMemo(() => {
     return pixelTableRows.filter((row) => {
-      if (tablePixelIdFilter !== "all" && String(row.pixel?.pixel_id || "") !== tablePixelIdFilter) return false;
-      if (tableFlowFilter !== "all" && !row.flows.includes(tableFlowFilter)) return false;
-      if (tableBuyerFilter !== "all" && row.buyerLabel !== tableBuyerFilter) return false;
-      if (tableGeoFilter !== "all" && !row.geos.includes(tableGeoFilter)) return false;
-      if (tableStatusFilter !== "all" && row.statusLabel !== tableStatusFilter) return false;
-      if (canManagePixels && tableOwnerFilter !== "all" && row.ownerLabel !== tableOwnerFilter) return false;
+      if (normalizedPixelSearch) {
+        const hay = `${row.pixel?.pixel_id || ""} ${row.buyerLabel || ""} ${row.ownerLabel || ""}`.toLowerCase();
+        if (!hay.includes(normalizedPixelSearch)) return false;
+      }
+      if (tablePixelIdFilter.length && !tablePixelIdFilter.includes(String(row.pixel?.pixel_id || ""))) return false;
+      if (tableFlowFilter.length && !tableFlowFilter.some((f) => row.flows.includes(f))) return false;
+      if (tableBuyerFilter.length && !tableBuyerFilter.includes(row.buyerLabel)) return false;
+      if (tableGeoFilter.length && !tableGeoFilter.some((g) => row.geos.includes(g))) return false;
+      if (tableStatusFilter.length && !tableStatusFilter.includes(row.statusLabel)) return false;
+      if (canManagePixels && tableOwnerFilter.length && !tableOwnerFilter.includes(row.ownerLabel)) return false;
       return true;
     });
   }, [
     pixelTableRows,
+    normalizedPixelSearch,
     tableBuyerFilter,
     tableGeoFilter,
     tableStatusFilter,
@@ -12880,6 +12889,47 @@ function PixelsDashboard({ authUser }) {
     tableFlowFilter,
     canManagePixels,
   ]);
+
+  const sortedPixelTableRows = React.useMemo(() => {
+    const rows = [...filteredPixelTableRows];
+    if (!pixelSort?.key) return rows;
+    return rows.sort((a, b) =>
+      compareSortValues(
+        getPixelSortValue(a, pixelSort.key),
+        getPixelSortValue(b, pixelSort.key),
+        pixelSort.dir,
+        pixelSort.key === "id" ? "number" : "text"
+      )
+    );
+  }, [filteredPixelTableRows, pixelSort]);
+
+  const PIXEL_PAGE_SIZE = 50;
+  const pixelPageCount = Math.max(1, Math.ceil(sortedPixelTableRows.length / PIXEL_PAGE_SIZE));
+  const pixelClampedPage = Math.min(pixelPage, pixelPageCount);
+  const pagedPixelTableRows = React.useMemo(
+    () => sortedPixelTableRows.slice((pixelClampedPage - 1) * PIXEL_PAGE_SIZE, pixelClampedPage * PIXEL_PAGE_SIZE),
+    [sortedPixelTableRows, pixelClampedPage]
+  );
+  const pixelPageList = React.useMemo(() => {
+    const total = pixelPageCount;
+    const cur = pixelClampedPage;
+    const out = [];
+    if (total <= 7) {
+      for (let i = 1; i <= total; i += 1) out.push(i);
+    } else {
+      out.push(1);
+      const start = Math.max(2, cur - 1);
+      const end = Math.min(total - 1, cur + 1);
+      if (start > 2) out.push("ellipsis");
+      for (let i = start; i <= end; i += 1) out.push(i);
+      if (end < total - 1) out.push("ellipsis");
+      out.push(total);
+    }
+    return out;
+  }, [pixelPageCount, pixelClampedPage]);
+  React.useEffect(() => {
+    setPixelPage(1);
+  }, [sortedPixelTableRows]);
 
   // KPI strip: registry health at a glance (same DNA as Accounts Registry)
   const pixelSummary = React.useMemo(() => {
@@ -13216,14 +13266,36 @@ function PixelsDashboard({ authUser }) {
         ) : (
           <div className="table-wrap pixel-table-wrap">
             <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={pixelSearch}
+                    onChange={(e) => setPixelSearch(e.target.value)}
+                    placeholder={t("Search pixel, buyer, owner…")}
+                  />
+                  {pixelSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setPixelSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
               <div className="field">
                 <label>{t("Pixel ID")}</label>
                 <CountryDropdownPicker
-                  value={tablePixelIdFilter}
-                  onChange={setTablePixelIdFilter}
+                  multiple
+                  values={tablePixelIdFilter}
+                  onToggle={toggleTableFilter(setTablePixelIdFilter)}
                   options={pixelIdFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find pixels")}
                   emptyResultsLabel={t("No pixels found.")}
                 />
@@ -13231,11 +13303,11 @@ function PixelsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Buyer")}</label>
                 <CountryDropdownPicker
-                  value={tableBuyerFilter}
-                  onChange={setTableBuyerFilter}
+                  multiple
+                  values={tableBuyerFilter}
+                  onToggle={toggleTableFilter(setTableBuyerFilter)}
                   options={pixelBuyerOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find buyers")}
                   emptyResultsLabel={t("No buyers found.")}
                 />
@@ -13243,11 +13315,11 @@ function PixelsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Domain")}</label>
                 <CountryDropdownPicker
-                  value={tableFlowFilter}
-                  onChange={setTableFlowFilter}
+                  multiple
+                  values={tableFlowFilter}
+                  onToggle={toggleTableFilter(setTableFlowFilter)}
                   options={pixelFlowFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find domains")}
                   emptyResultsLabel={t("No domains found.")}
                 />
@@ -13255,11 +13327,11 @@ function PixelsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("GEO")}</label>
                 <CountryDropdownPicker
-                  value={tableGeoFilter}
-                  onChange={setTableGeoFilter}
+                  multiple
+                  values={tableGeoFilter}
+                  onToggle={toggleTableFilter(setTableGeoFilter)}
                   options={pixelGeoOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find countries")}
                   emptyResultsLabel={t("No countries found.")}
                 />
@@ -13267,11 +13339,11 @@ function PixelsDashboard({ authUser }) {
               <div className="field">
                 <label>{t("Status")}</label>
                 <CountryDropdownPicker
-                  value={tableStatusFilter}
-                  onChange={setTableStatusFilter}
+                  multiple
+                  values={tableStatusFilter}
+                  onToggle={toggleTableFilter(setTableStatusFilter)}
                   options={pixelStatusFilterOptions}
-                  allOption={{ value: "all", label: t("All") }}
-                  placeholder={t("Select")}
+                  placeholder={t("All")}
                   searchPlaceholder={t("Type to find status")}
                   emptyResultsLabel={t("No status found.")}
                 />
@@ -13280,11 +13352,11 @@ function PixelsDashboard({ authUser }) {
                 <div className="field">
                   <label>{t("Owner")}</label>
                   <CountryDropdownPicker
-                    value={tableOwnerFilter}
-                    onChange={setTableOwnerFilter}
+                    multiple
+                    values={tableOwnerFilter}
+                    onToggle={toggleTableFilter(setTableOwnerFilter)}
                     options={pixelOwnerOptions}
-                    allOption={{ value: "all", label: t("All") }}
-                    placeholder={t("Select")}
+                    placeholder={t("All")}
                     searchPlaceholder={t("Type to find owners")}
                     emptyResultsLabel={t("No owners found.")}
                   />
@@ -13300,19 +13372,32 @@ function PixelsDashboard({ authUser }) {
             <table className="entries-table pixel-table">
               <thead>
                 <tr>
-                  <th>{t("ID")}</th>
-                  <th>{t("Pixel ID")}</th>
-                  <th>{t("Token EAAG")}</th>
-                  <th>{t("GEO")}</th>
-                  <th>{t("Domain")}</th>
-                  <th>{t("Status")}</th>
-                  <th>{t("Comment")}</th>
-                  <th>{t("Owner")}</th>
-                  <th />
+                  {[
+                    { key: "id", label: t("ID") },
+                    { key: "pixelId", label: t("Pixel ID") },
+                    { key: "token", label: t("Token EAAG") },
+                    { key: "geo", label: t("GEO") },
+                    { key: "domain", label: t("Domain") },
+                    { key: "status", label: t("Status") },
+                    { key: "comment", label: t("Comment") },
+                    { key: "owner", label: t("Owner") },
+                  ].map((col) => (
+                    <th key={col.key}>
+                      <button
+                        type="button"
+                        className={`sortable-header ${pixelSort.key === col.key ? "active" : ""}`}
+                        onClick={() => togglePixelSort(col.key)}
+                      >
+                        {col.label}
+                        <span className="sort-indicator">{getSortIndicator(pixelSort, col.key)}</span>
+                      </button>
+                    </th>
+                  ))}
+                  <th className="col-actions">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPixelTableRows.map(({ pixel, ownerLabel, geos, flows }) => (
+                {pagedPixelTableRows.map(({ pixel, ownerLabel, geos, flows }) => (
                   <tr key={pixel.id}>
                     <td className="mono row-index-cell">{pixel.id}</td>
                     <td className="copy-cell">
@@ -13435,7 +13520,8 @@ function PixelsDashboard({ authUser }) {
                           <button
                             className="icon-btn"
                             type="button"
-                            title={t("Edit pixel")}
+                            aria-label={t("Edit pixel")}
+                            data-tip={t("Edit pixel")}
                             onClick={() => openPixelEdit(pixel)}
                           >
                             <Pencil size={15} />
@@ -13444,7 +13530,8 @@ function PixelsDashboard({ authUser }) {
                             <button
                               className="icon-btn icon-btn-danger"
                               type="button"
-                              title={t("Remove")}
+                              aria-label={t("Remove")}
+                              data-tip={t("Remove")}
                               onClick={() => handlePixelDelete(pixel.id)}
                             >
                               <Trash2 size={15} />
@@ -13460,6 +13547,51 @@ function PixelsDashboard({ authUser }) {
             </div>
             {!filteredPixelTableRows.length ? (
               <div className="empty-state">{t("No entries found for this filter.")}</div>
+            ) : null}
+            {filteredPixelTableRows.length > PIXEL_PAGE_SIZE ? (
+              <div className="offer-pagebar">
+                <span className="offer-results-count">
+                  {t("Showing")} {(pixelClampedPage - 1) * PIXEL_PAGE_SIZE + 1}–
+                  {Math.min(pixelClampedPage * PIXEL_PAGE_SIZE, filteredPixelTableRows.length)} {t("of")}{" "}
+                  {filteredPixelTableRows.length}
+                </span>
+                <div className="offer-pagination">
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={pixelClampedPage <= 1}
+                    onClick={() => setPixelPage((p) => Math.max(1, p - 1))}
+                    aria-label={t("Previous page")}
+                  >
+                    ‹
+                  </button>
+                  {pixelPageList.map((p, i) =>
+                    p === "ellipsis" ? (
+                      <span key={`pixel-ellipsis-${i}`} className="offer-pagination-ellipsis">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        key={p}
+                        className={`offer-pagination-page ${p === pixelClampedPage ? "is-active" : ""}`}
+                        onClick={() => setPixelPage(p)}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    className="offer-pagination-arrow"
+                    disabled={pixelClampedPage >= pixelPageCount}
+                    onClick={() => setPixelPage((p) => Math.min(pixelPageCount, p + 1))}
+                    aria-label={t("Next page")}
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
             ) : null}
           </div>
         )}

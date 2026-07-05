@@ -8874,18 +8874,23 @@ select option,
 }
 
 /* Registry row polish — hover highlight + reveal actions (Domains template) */
-.domain-table tbody tr {
+.domain-table tbody tr,
+.pixel-table tbody tr {
   transition: background 0.14s ease;
 }
-.domain-table tbody tr:hover {
+.domain-table tbody tr:hover,
+.pixel-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
 }
-.domain-table tbody tr .accounts-action-group {
+.domain-table tbody tr .accounts-action-group,
+.pixel-table tbody tr .accounts-action-group {
   opacity: 0.5;
   transition: opacity 0.15s ease;
 }
 .domain-table tbody tr:hover .accounts-action-group,
-.domain-table tbody tr:focus-within .accounts-action-group {
+.domain-table tbody tr:focus-within .accounts-action-group,
+.pixel-table tbody tr:hover .accounts-action-group,
+.pixel-table tbody tr:focus-within .accounts-action-group {
   opacity: 1;
 }
 
