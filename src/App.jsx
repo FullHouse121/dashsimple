@@ -16613,15 +16613,30 @@ function MetaTokenDashboard({ authUser }) {
                     <td>{row.buyer_name || "—"}</td>
                     <td>{resolvePixelLabel(row)}</td>
                     <td>
-                      <span
-                        className={`status-pill ${
-                          Number(row.received_spend || 0) > 0
-                            ? "status-success"
-                            : `status-${String(row.status || "pending").toLowerCase()}`
-                        }`}
-                      >
-                        {Number(row.received_spend || 0) > 0 ? "Success" : row.status || "Pending"}
-                      </span>
+                      <div className="meta-status-cell">
+                        <span
+                          className={`status-pill ${
+                            Number(row.received_spend || 0) > 0
+                              ? "status-success"
+                              : `status-${String(row.status || "pending").toLowerCase()}`
+                          }`}
+                        >
+                          {Number(row.received_spend || 0) > 0 ? "Success" : row.status || "Pending"}
+                        </span>
+                        {row.keitaro_integration_id ? (
+                          <span
+                            className={`keitaro-int-chip${row.keitaro_last_error ? " is-error" : ""}`}
+                            title={row.keitaro_last_error ? `Keitaro error: ${row.keitaro_last_error}` : `Live in Keitaro cost integrations · #${row.keitaro_integration_id}`}
+                          >
+                            <img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" />
+                            {row.keitaro_last_error ? t("Error") : `#${row.keitaro_integration_id}`}
+                          </span>
+                        ) : (
+                          <span className="keitaro-int-chip is-local" title={t("Stored locally — not yet in Keitaro")}>
+                            {t("Local")}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>{formatCurrency(Number(row.received_spend || 0))}</td>
                     <td>{row.comment || "—"}</td>

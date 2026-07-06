@@ -370,6 +370,8 @@ const initDb = async () => {
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS meta_binding TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS is_wired INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_integration_id INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_last_error TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS status TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
@@ -1170,6 +1172,8 @@ const selectMetaTokenIntegrations = async (limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            m.keitaro_integration_id,
+            m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
@@ -1201,6 +1205,8 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            m.keitaro_integration_id,
+            m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
@@ -1233,6 +1239,8 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.is_wired,
             m.last_checked_at,
             m.created_at,
+            m.keitaro_integration_id,
+            m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
@@ -1439,9 +1447,11 @@ const insertMetaTokenIntegration = async (payload) => {
       owner_id,
       meta_binding,
       is_wired,
-      last_checked_at
+      last_checked_at,
+      keitaro_integration_id,
+      keitaro_last_error
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING id`,
     [
       payload.account_number,
@@ -1458,6 +1468,8 @@ const insertMetaTokenIntegration = async (payload) => {
       payload.meta_binding,
       payload.is_wired ? 1 : 0,
       payload.last_checked_at || null,
+      payload.keitaro_integration_id ?? null,
+      payload.keitaro_last_error ?? null,
     ]
   );
   return rows[0];
@@ -7202,6 +7214,21 @@ app.post("/api/meta-tokens", async (req, res) => {
     payload.is_wired = isMetaIntegrationWired(payload) && receivedSpend > 0;
     payload.last_checked_at = new Date();
 
+    // Register the cost integration in Keitaro (Integrations → Facebook) so it
+    // appears there automatically. Isolated: if Keitaro rejects it we still keep
+    // the local record and surface the error instead of failing the request.
+    const keitaroPush = await pushMetaIntegrationToKeitaro({
+      name: `${resolvedBuyerName || "Buyer"} · ${normalizedAccountNumber}`,
+      adAccountId: normalizedAccountNumber,
+      token: payload.meta_token,
+    });
+    payload.keitaro_integration_id = keitaroPush.ok ? keitaroPush.id : null;
+    payload.keitaro_last_error = keitaroPush.ok ? keitaroPush.lastError || null : keitaroPush.lastError;
+    // Reflect Keitaro's verdict: a clean push with no FB error is "Success".
+    if (keitaroPush.ok && !keitaroPush.lastError && !String(status || "").trim()) {
+      payload.status = "Success";
+    }
+
     const info = await insertMetaTokenIntegration(payload);
     await syncAccountFromLatestIntegration({
       accountNumber: payload.account_number,
@@ -7480,13 +7507,26 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
   });
   if (!(receivedSpend > 0)) issues.push("No cost received for this integration yet");
 
+  // Re-read Keitaro's own health for the linked cost integration, if any.
+  let keitaroId = integration.keitaro_integration_id || null;
+  let keitaroLastError = integration.keitaro_last_error || null;
+  if (keitaroId) {
+    const sync = await syncMetaIntegrationFromKeitaro(keitaroId);
+    if (sync.ok) {
+      keitaroId = sync.id || keitaroId;
+      keitaroLastError = sync.lastError || null;
+      if (keitaroLastError) issues.push(`Keitaro: ${keitaroLastError}`);
+    }
+  }
+
   const wired = issues.length === 0;
   const status = wired ? "Success" : "Pending";
   await query(
     `UPDATE meta_token_integrations
-     SET is_wired = $1, status = $2, last_checked_at = NOW()
+     SET is_wired = $1, status = $2, last_checked_at = NOW(),
+         keitaro_integration_id = $4, keitaro_last_error = $5
      WHERE id = $3`,
-    [wired ? 1 : 0, status, id]
+    [wired ? 1 : 0, status, id, keitaroId, keitaroLastError]
   );
   await syncAccountFromLatestIntegration({
     accountNumber: integration.account_number,
@@ -7522,6 +7562,8 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   await deleteMetaTokenIntegration(id);
+  // Also remove the linked cost integration from Keitaro (best-effort).
+  await deleteMetaIntegrationFromKeitaro(integration.keitaro_integration_id);
   await syncAccountFromLatestIntegration({
     accountNumber: integration.account_number,
     ownerId: integration.owner_id,
@@ -7624,6 +7666,52 @@ const keitaroAdminFetch = async (path, options = {}) => {
     return { ok: true, status: response.status, data, error: null };
   } catch (error) {
     return { ok: false, status: 0, data: null, error: error.message || "Could not reach Keitaro." };
+  }
+};
+
+// ── Meta/Facebook COST integration inside Keitaro ─────────────────────
+// Creating an integration on our dashboard registers it in Keitaro's
+// Integrations → Facebook (the "cost integration" panel) so it shows there with
+// the same token/account + status, with no manual Keitaro work. All isolated:
+// a Keitaro failure never blocks the local record — it's stored as an error.
+const readKeitaroFbIntegration = (result) => {
+  const data = result?.data?.integration || result?.data || {};
+  return {
+    id: data.id ?? null,
+    lastError: data.last_error || data.last_raw_error || null,
+  };
+};
+const pushMetaIntegrationToKeitaro = async ({ name, adAccountId, token }) => {
+  const account = String(adAccountId || "").trim();
+  const tok = String(token || "").trim();
+  if (!account || !tok) return { ok: false, id: null, lastError: "Missing account or token" };
+  const result = await keitaroAdminFetch("/integrations/facebook", {
+    method: "POST",
+    body: JSON.stringify({
+      name: String(name || `DeusMachine ${account}`).slice(0, 120),
+      ad_account_id: account,
+      token: tok,
+    }),
+  });
+  if (!result.ok) return { ok: false, id: null, lastError: result.error };
+  const { id, lastError } = readKeitaroFbIntegration(result);
+  return { ok: true, id, lastError };
+};
+// Re-read a Keitaro FB integration so our status mirrors Keitaro's live health.
+const syncMetaIntegrationFromKeitaro = async (keitaroId) => {
+  if (!keitaroId) return { ok: false, id: null, lastError: null };
+  const result = await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`);
+  if (!result.ok) return { ok: false, id: keitaroId, lastError: result.error };
+  const { id, lastError } = readKeitaroFbIntegration(result);
+  return { ok: true, id: id || keitaroId, lastError };
+};
+// Remove the Keitaro FB integration when we delete the local record. Best-effort.
+const deleteMetaIntegrationFromKeitaro = async (keitaroId) => {
+  if (!keitaroId) return;
+  try {
+    await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`, { method: "DELETE" });
+  } catch (error) {
+    console.error(`Keitaro FB integration delete failed for ${keitaroId}: ${error.message}`);
   }
 };
 

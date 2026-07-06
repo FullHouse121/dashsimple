@@ -15385,3 +15385,21 @@ select option,
 @media (max-width: 900px) {
   .profile-highlights { grid-template-columns: 1fr; }
 }
+
+/* Meta Token — Keitaro cost-integration chip in the status cell */
+.meta-status-cell { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.keitaro-int-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9cf0c3;
+  background: rgba(54, 208, 124, 0.1);
+  border: 1px solid rgba(54, 208, 124, 0.28);
+}
+.keitaro-int-chip .keitaro-mark { height: 11px; }
+.keitaro-int-chip.is-error { color: #ff9b8a; background: rgba(255, 138, 122, 0.12); border-color: rgba(255, 138, 122, 0.3); }
+.keitaro-int-chip.is-local { color: var(--muted); background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.1); }
