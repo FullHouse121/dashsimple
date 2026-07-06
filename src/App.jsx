@@ -6320,6 +6320,7 @@ function UtmBuilder() {
               />
             </div>
             <p className="utm-tool-hint">
+              {resolveBrandLogo(utm.tool) ? <BrandMark value={utm.tool} height={14} /> : null}
               {isZmTool
                 ? <>ZM apps — the pixel is appended as <code>pixel_fb={"{meta_pixel}"}</code> at the <strong>end</strong> of the URL.</>
                 : <>{utm.tool} — the pixel is placed as <code>fbp={"{meta_pixel}"}</code> at the <strong>start</strong> of the parameters.</>}
@@ -6361,8 +6362,8 @@ function UtmBuilder() {
                 allowCustom
               />
             </div>
-            <div className="field">
-              <label>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
+            <div className="field utm-pixel-field">
+              <label><span className="utm-label-meta"><MetaGlyph size={13} /></span>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
               <input
                 type="text"
                 placeholder="{meta_pixel} or pixel id"

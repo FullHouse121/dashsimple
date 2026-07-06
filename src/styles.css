@@ -14734,3 +14734,347 @@ select option,
   background: color-mix(in srgb, var(--section-accent, #8a93a3) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--section-accent, #8a93a3) 30%, transparent);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   UTM Builder — full re-skin (logic unchanged, presentation rebuilt)
+   Pink section identity, zone cards, hero output, better readability.
+   Scoped to .utm-registry-panel so it wins over the older .utm-* rules.
+   ═══════════════════════════════════════════════════════════════════ */
+.utm-registry-panel {
+  --utm: #ff7da3;
+  --utm-strong: #ff9bb8;
+  --utm-tint: color-mix(in srgb, var(--utm) 12%, transparent);
+  --utm-line: color-mix(in srgb, var(--utm) 26%, rgba(255, 255, 255, 0.06));
+  gap: 20px;
+}
+
+/* ── Shared zone-card shell ─────────────────────────────────────── */
+.utm-registry-panel .utm-tool-bar,
+.utm-registry-panel .utm-macros,
+.utm-registry-panel .utm-preview,
+.utm-registry-panel .utm-history {
+  position: relative;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0.006));
+  padding: 18px 20px;
+}
+
+/* ── Config strip: Tool + Country + placement hint ──────────────── */
+.utm-registry-panel .utm-tool-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 18px;
+  align-items: end;
+  border-color: var(--utm-line);
+  background:
+    radial-gradient(120% 130% at 100% 0%, var(--utm-tint) 0%, transparent 48%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.006));
+  overflow: visible;
+}
+.utm-registry-panel .utm-tool-bar::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 20px; right: 20px; height: 2px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--utm) 80%, transparent), transparent 72%);
+}
+.utm-registry-panel .utm-tool-field { gap: 8px; }
+.utm-registry-panel .utm-tool-field label,
+.utm-registry-panel .utm-grid .field label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #9aa1ad;
+  font-weight: 600;
+}
+.utm-registry-panel .field-pace-hint {
+  color: color-mix(in srgb, var(--utm) 60%, var(--muted-strong, #a9adb7));
+  text-transform: none;
+  letter-spacing: 0;
+}
+.utm-registry-panel .utm-tool-hint {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px 0 0;
+  padding: 10px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.utm-registry-panel .utm-tool-hint code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--utm-strong);
+  background: color-mix(in srgb, var(--utm) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--utm) 26%, transparent);
+}
+.utm-registry-panel .utm-tool-hint strong { color: var(--text); font-weight: 650; }
+.utm-registry-panel .utm-tool-hint .brand-mark { max-width: 70px; }
+
+/* ── Macro quick-insert ─────────────────────────────────────────── */
+.utm-registry-panel .utm-macros {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+}
+.utm-registry-panel .utm-macros-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #8a919d;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.utm-registry-panel .utm-macros-chips { gap: 7px; }
+.utm-registry-panel .utm-macro-chip {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: #c7ccd6;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  transition: transform 0.14s var(--ease-smooth, ease), border-color 0.14s ease,
+    background 0.14s ease, color 0.14s ease;
+}
+.utm-registry-panel .utm-macro-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--utm-strong);
+  background: color-mix(in srgb, var(--utm) 12%, transparent);
+  border-color: color-mix(in srgb, var(--utm) 42%, transparent);
+}
+.utm-registry-panel .utm-macro-chip:active:not(:disabled) { transform: scale(0.96); }
+.utm-registry-panel .utm-macro-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Parameter grid ─────────────────────────────────────────────── */
+.utm-registry-panel .utm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+.utm-registry-panel .utm-grid .field:first-child { grid-column: 1 / -1; }
+.utm-registry-panel .utm-grid .field input {
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+.utm-registry-panel .utm-grid .field input::placeholder { color: rgba(151, 157, 168, 0.7); }
+.utm-registry-panel .utm-grid .field input:hover { border-color: rgba(255, 255, 255, 0.14); }
+.utm-registry-panel .utm-grid .field input:focus,
+.utm-registry-panel .utm-grid .field input:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--utm) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--utm) 16%, transparent);
+  background: rgba(255, 255, 255, 0.04);
+}
+/* Meta pixel field — Meta glyph badge on the label */
+.utm-registry-panel .utm-label-meta {
+  display: inline-grid;
+  place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  margin-right: 6px;
+  color: #4a8bff;
+  background: rgba(74, 139, 255, 0.14);
+  border: 1px solid rgba(74, 139, 255, 0.3);
+  vertical-align: -4px;
+}
+/* Aliased sub fields (mapped to a real name) get the pink accent */
+.utm-registry-panel .utm-field-aliased label { color: var(--utm-strong); }
+.utm-registry-panel .utm-field-aliased input {
+  border-color: color-mix(in srgb, var(--utm) 32%, transparent);
+  background: color-mix(in srgb, var(--utm) 6%, rgba(255, 255, 255, 0.02));
+}
+
+/* ── Show-all toggle + presets ──────────────────────────────────── */
+.utm-registry-panel .utm-subs-toggle {
+  width: 100%;
+  padding: 9px;
+  border-radius: 11px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+.utm-registry-panel .utm-subs-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--utm) 40%, transparent);
+  color: var(--utm-strong);
+  background: color-mix(in srgb, var(--utm) 6%, transparent);
+}
+.utm-registry-panel .utm-presets { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.utm-registry-panel .utm-preset-save {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 650; cursor: pointer;
+  color: var(--utm-strong);
+  background: color-mix(in srgb, var(--utm) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--utm) 32%, transparent);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.utm-registry-panel .utm-preset-save:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--utm) 16%, transparent); }
+.utm-registry-panel .utm-preset-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 6px 4px 11px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+.utm-registry-panel .utm-preset-load { color: var(--text); font-weight: 600; }
+.utm-registry-panel .utm-preset-load:hover { color: var(--utm-strong); }
+.utm-registry-panel .utm-preset-del {
+  display: grid; place-items: center; width: 18px; height: 18px;
+  border-radius: 50%; color: var(--muted); cursor: pointer;
+}
+.utm-registry-panel .utm-preset-del:hover { color: #ff8a7a; background: rgba(255, 138, 122, 0.14); }
+.utm-registry-panel .utm-presets-empty { font-size: 12px; color: var(--faint, #6b7079); font-style: italic; }
+
+/* ── Generated URL — the hero output ────────────────────────────── */
+.utm-registry-panel .utm-preview {
+  border-color: var(--utm-line);
+  background:
+    radial-gradient(120% 130% at 0% 0%, var(--utm-tint) 0%, transparent 46%),
+    linear-gradient(160deg, rgba(30, 26, 30, 0.6), rgba(20, 18, 22, 0.55));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+  padding: 20px 22px;
+}
+.utm-registry-panel .utm-preview::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 22px; right: 22px; height: 2px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(90deg, var(--utm), transparent 72%);
+}
+.utm-registry-panel .utm-preview-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px;
+}
+.utm-registry-panel .utm-preview-head .summary-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--utm-strong); font-weight: 700; margin: 0;
+}
+.utm-registry-panel .utm-param-count {
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  color: var(--utm-strong);
+  background: color-mix(in srgb, var(--utm) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--utm) 30%, transparent);
+}
+.utm-registry-panel .utm-url {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #dfe3ea;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 14px 16px;
+  min-height: 58px;
+  margin: 0;
+}
+.utm-registry-panel .utm-url.is-empty { color: var(--faint, #6b7079); font-style: italic; font-family: inherit; }
+.utm-registry-panel .utm-url.is-invalid { border-color: rgba(255, 138, 122, 0.4); }
+.utm-registry-panel .utm-url-pixel {
+  background: color-mix(in srgb, var(--utm) 26%, transparent);
+  color: #ffd7e4;
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+.utm-registry-panel .utm-warnings { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.utm-registry-panel .utm-warnings li {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: #ffcf9e;
+  padding: 7px 11px; border-radius: 9px;
+  background: rgba(247, 170, 60, 0.1);
+  border: 1px solid rgba(247, 170, 60, 0.24);
+}
+.utm-registry-panel .utm-actions {
+  display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.utm-registry-panel .utm-actions .action-pill.is-disabled { opacity: 0.45; pointer-events: none; }
+
+/* ── Recent links history ───────────────────────────────────────── */
+.utm-registry-panel .utm-history { padding: 18px 20px; }
+.utm-registry-panel .utm-history-head { margin-bottom: 4px; }
+.utm-registry-panel .utm-history-title {
+  display: flex; align-items: center; gap: 9px; margin: 0;
+  font-size: 13px; font-weight: 650; color: var(--text);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.utm-registry-panel .utm-history-count {
+  font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px;
+  color: var(--utm-strong); background: color-mix(in srgb, var(--utm) 14%, transparent);
+}
+.utm-registry-panel .utm-history-search {
+  min-height: 34px; padding: 7px 12px; border-radius: 9px; font-size: 12.5px;
+  border: 1px solid rgba(255, 255, 255, 0.09); background: rgba(255, 255, 255, 0.025); color: var(--text);
+}
+.utm-registry-panel .utm-history-search:focus {
+  outline: none; border-color: color-mix(in srgb, var(--utm) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--utm) 14%, transparent);
+}
+.utm-registry-panel .utm-history-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+.utm-registry-panel .utm-history-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.utm-registry-panel .utm-history-item:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--utm) 30%, transparent);
+  background: color-mix(in srgb, var(--utm) 5%, rgba(255, 255, 255, 0.02));
+}
+.utm-registry-panel .utm-history-main { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.utm-registry-panel .utm-history-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11.5px; }
+.utm-registry-panel .utm-history-tool { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-weight: 600; }
+.utm-registry-panel .utm-history-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--utm); }
+.utm-registry-panel .utm-history-country { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.utm-registry-panel .utm-history-sub { color: var(--faint, #6b7079); }
+.utm-registry-panel .utm-history-url {
+  font-family: "JetBrains Mono", monospace; font-size: 12px; color: #aeb4bf;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.utm-registry-panel .utm-history-copy {
+  flex-shrink: 0; display: grid; place-items: center; width: 34px; height: 34px;
+  border-radius: 9px; color: var(--muted); cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02);
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.utm-registry-panel .utm-history-copy:hover {
+  color: var(--utm-strong); transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--utm) 40%, transparent);
+}
+.utm-registry-panel .utm-history .empty-state {
+  text-align: center; padding: 26px; color: var(--faint, #6b7079); font-size: 13px;
+  border: 1px dashed rgba(255, 255, 255, 0.08); border-radius: 12px; background: transparent;
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .utm-registry-panel .utm-tool-bar { grid-template-columns: 1fr; }
+  .utm-registry-panel .utm-grid { grid-template-columns: 1fr; }
+}
