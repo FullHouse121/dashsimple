@@ -14771,6 +14771,14 @@ select option,
     radial-gradient(120% 130% at 100% 0%, var(--utm-tint) 0%, transparent 48%),
     linear-gradient(160deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.006));
   overflow: visible;
+  /* Beat the panel-wide `.utm-registry-panel > * { z-index: 1 }` rule so the
+     open Tool/Country dropdown paints above the zones below it. */
+  z-index: 50;
+}
+/* Domain picker lives in the grid — keep it above the output/history below */
+.utm-registry-panel .utm-grid {
+  position: relative;
+  z-index: 40;
 }
 .utm-registry-panel .utm-tool-bar::before {
   content: "";
@@ -15078,3 +15086,136 @@ select option,
   .utm-registry-panel .utm-tool-bar { grid-template-columns: 1fr; }
   .utm-registry-panel .utm-grid { grid-template-columns: 1fr; }
 }
+
+/* ═══ Styled language switcher (replaces native <select>) ═══════════ */
+.lang-switch { position: relative; width: 100%; }
+.lang-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.lang-trigger:hover { border-color: rgba(54, 208, 124, 0.35); background: rgba(54, 208, 124, 0.05); }
+.lang-switch.is-open .lang-trigger {
+  border-color: rgba(54, 208, 124, 0.5);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.12);
+}
+.lang-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 24px; height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.lang-flag svg, .lang-flag img { width: 100%; height: 100%; object-fit: cover; }
+.lang-cur { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lang-cur strong { font-size: 13px; font-weight: 700; color: var(--text); }
+.lang-cur-label { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lang-caret { margin-left: auto; color: var(--muted); transition: transform 0.2s var(--ease-smooth, ease); flex-shrink: 0; }
+.lang-switch.is-open .lang-caret { transform: rotate(180deg); color: var(--green); }
+.lang-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0; right: 0;
+  z-index: 60;
+  padding: 6px;
+  display: grid;
+  gap: 3px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(30, 33, 38, 0.98), rgba(21, 24, 28, 0.98));
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+}
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.lang-option-text { font-size: 13px; }
+.lang-option-text strong { color: var(--text); font-weight: 700; }
+.lang-option:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.lang-option.is-active { color: var(--green); background: rgba(54, 208, 124, 0.08); }
+.lang-option.is-active .lang-option-text strong { color: #9cf0c3; }
+.lang-check { margin-left: auto; color: var(--green); }
+
+/* ═══ App-wide confirm dialog (replaces native window.confirm) ══════ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 8, 6, 0.62);
+  backdrop-filter: blur(4px);
+}
+.confirm-dialog {
+  --c: #ff7d6b;
+  width: min(430px, 94vw);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 2px solid color-mix(in srgb, var(--c) 60%, transparent);
+  background:
+    radial-gradient(90% 60% at 100% 0%, color-mix(in srgb, var(--c) 9%, transparent), transparent 46%),
+    linear-gradient(165deg, rgba(30, 26, 26, 0.98), rgba(20, 18, 19, 0.98));
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55), 0 0 0 1px color-mix(in srgb, var(--c) 12%, transparent);
+  padding: 22px 22px 18px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 15px;
+}
+.confirm-dialog.tone-danger { --c: #ff7d6b; }
+.confirm-icon {
+  grid-row: span 1;
+  display: grid;
+  place-items: center;
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 34%, transparent);
+}
+.confirm-body { align-self: center; }
+.confirm-title { margin: 0; font-size: 16.5px; font-weight: 650; color: var(--text); }
+.confirm-message { margin: 5px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--muted); }
+.confirm-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.confirm-actions .ghost { padding: 9px 16px; }
+.confirm-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 11px;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #2a0d08;
+  cursor: pointer;
+  background: linear-gradient(180deg, #ff9384, #ff6f5c);
+  border: 1px solid rgba(255, 125, 107, 0.9);
+  box-shadow: 0 10px 22px rgba(255, 111, 92, 0.26);
+  transition: filter 0.16s ease, transform 0.16s ease;
+}
+.confirm-confirm:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.confirm-confirm:active { transform: scale(0.97); }

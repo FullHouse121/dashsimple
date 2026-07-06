@@ -62,6 +62,8 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Check,
   ArrowRight,
   ArrowDownUp,
   TrendingUp,
@@ -902,6 +904,134 @@ const languageOptions = [
   { code: "EN", label: "English", Flag: FlagEN },
   { code: "TR", label: "Türkçe", Flag: FlagTR },
 ];
+
+// Styled language switcher (replaces the native <select>, whose dropdown was
+// unstyleable OS chrome). Opens upward — it sits in the sidebar footer.
+function LanguageSwitcher({ language, setLanguage }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+  const current = languageOptions.find((i) => i.code === language) || languageOptions[0];
+  const CurFlag = current.Flag;
+  return (
+    <div className={`lang-switch${open ? " is-open" : ""}`} ref={ref}>
+      <button type="button" className="lang-trigger" onClick={() => setOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={open}>
+        <span className="lang-flag">{CurFlag ? <CurFlag /> : current.code}</span>
+        <span className="lang-cur"><strong>{current.code}</strong><span className="lang-cur-label">{current.label}</span></span>
+        <ChevronDown size={15} className="lang-caret" />
+      </button>
+      {open ? (
+        <div className="lang-menu" role="listbox">
+          {languageOptions.map((lang) => {
+            const LFlag = lang.Flag;
+            const active = lang.code === language;
+            return (
+              <button
+                key={lang.code}
+                type="button"
+                role="option"
+                aria-selected={active}
+                className={`lang-option${active ? " is-active" : ""}`}
+                onClick={() => { setLanguage(lang.code); setOpen(false); }}
+              >
+                <span className="lang-flag">{LFlag ? <LFlag /> : lang.code}</span>
+                <span className="lang-option-text"><strong>{lang.code}</strong> · {lang.label}</span>
+                {active ? <Check size={15} className="lang-check" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// App-wide styled confirm dialog — replaces native window.confirm() so system
+// prompts carry the app's design. appConfirm({...}) returns a Promise<boolean>.
+let _confirmSet = null;
+let _confirmResolve = null;
+function appConfirm(opts = {}) {
+  return new Promise((resolve) => {
+    if (typeof _confirmSet !== "function") {
+      resolve(window.confirm(opts.message || opts.title || "")); // fallback if host unmounted
+      return;
+    }
+    _confirmResolve = resolve;
+    _confirmSet({
+      open: true,
+      tone: "danger",
+      title: "Are you sure?",
+      message: "",
+      confirmLabel: "Confirm",
+      cancelLabel: "Cancel",
+      ...opts,
+    });
+  });
+}
+function ConfirmHost() {
+  const [state, setState] = React.useState({ open: false });
+  React.useEffect(() => {
+    _confirmSet = setState;
+    return () => { _confirmSet = null; };
+  }, []);
+  const finish = (result) => {
+    setState((s) => ({ ...s, open: false }));
+    const r = _confirmResolve;
+    _confirmResolve = null;
+    if (r) r(result);
+  };
+  React.useEffect(() => {
+    if (!state.open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") finish(false);
+      else if (e.key === "Enter") finish(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.open]);
+  return (
+    <AnimatePresence>
+      {state.open ? (
+        <motion.div
+          className="confirm-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          onClick={() => finish(false)}
+        >
+          <motion.div
+            className={`confirm-dialog tone-${state.tone || "danger"}`}
+            role="alertdialog"
+            aria-modal="true"
+            initial={{ opacity: 0, y: 14, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="confirm-icon"><AlertTriangle size={20} /></div>
+            <div className="confirm-body">
+              <h3 className="confirm-title">{state.title}</h3>
+              {state.message ? <p className="confirm-message">{state.message}</p> : null}
+            </div>
+            <div className="confirm-actions">
+              <button type="button" className="ghost" onClick={() => finish(false)}>{state.cancelLabel}</button>
+              <button type="button" className="confirm-confirm" onClick={() => finish(true)} autoFocus>{state.confirmLabel}</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
 
 
 const defaultKeitaroOverallPayloadObject = {
@@ -4265,7 +4395,11 @@ function TrackingLinksDashboard({ authUser }) {
   };
 
   const handleDelete = (id) => async () => {
-    const confirmed = window.confirm("Remove this tracking link? This also deletes the campaign in Keitaro.");
+    const confirmed = await appConfirm({
+      title: "Remove tracking link?",
+      message: "This also deletes the campaign in Keitaro. This cannot be undone.",
+      confirmLabel: "Remove link",
+    });
     if (!confirmed) return;
     try {
       const response = await apiFetch(`/api/tracking-links/${id}`, { method: "DELETE" });
@@ -12643,7 +12777,11 @@ function PixelsDashboard({ authUser }) {
   };
 
   const handlePixelDelete = async (id) => {
-    const confirmed = window.confirm("Remove this pixel? This cannot be undone.");
+    const confirmed = await appConfirm({
+      title: "Remove pixel?",
+      message: "This cannot be undone.",
+      confirmLabel: "Remove pixel",
+    });
     if (!confirmed) return;
     try {
       const response = await apiFetch(`/api/pixels/${id}`, { method: "DELETE" });
@@ -14732,7 +14870,11 @@ function AccountsDashboard({ authUser }) {
 
   const handleDelete = async (row) => {
     if (!canManageRow(row)) return;
-    const confirmed = window.confirm("Remove this account? This cannot be undone.");
+    const confirmed = await appConfirm({
+      title: "Remove account?",
+      message: "This cannot be undone.",
+      confirmLabel: "Remove account",
+    });
     if (!confirmed) return;
     try {
       const response = await apiFetch(`/api/accounts/${row.id}`, { method: "DELETE" });
@@ -15789,7 +15931,11 @@ function MetaTokenDashboard({ authUser }) {
   };
 
   const handleDelete = async (id) => {
-    const confirmed = window.confirm("Delete this Meta integration?");
+    const confirmed = await appConfirm({
+      title: "Delete Meta integration?",
+      message: "This removes the token binding for this account.",
+      confirmLabel: "Delete",
+    });
     if (!confirmed) return;
     try {
       const response = await apiFetch(`/api/meta-tokens/${id}`, { method: "DELETE" });
@@ -19881,6 +20027,7 @@ export default function App() {
 
   return (
     <LanguageContext.Provider value={{ language, t }}>
+      <ConfirmHost />
       <div className="app">
       <aside className="sidebar">
         <div className="brand">
@@ -19941,23 +20088,7 @@ export default function App() {
             <BookOpen size={16} />
             {t("Documentation")}
           </button>
-          <div className="language-switch">
-            <div className="language-chip">
-              {(() => {
-                const current = languageOptions.find((item) => item.code === language) || languageOptions[0];
-                const Flag = current.Flag;
-                return <span className="flag">{Flag ? <Flag /> : current.code}</span>;
-              })()}
-              <span>{language}</span>
-            </div>
-            <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              {languageOptions.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.code} · {lang.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          <LanguageSwitcher language={language} setLanguage={setLanguage} />
         </div>
       </aside>
 
