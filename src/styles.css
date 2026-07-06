@@ -14679,7 +14679,7 @@ select option,
    the wordmark needs real height to stay legible. Trim the pill's vertical
    padding so it doesn't tower over the neighbouring status pill. */
 .flow-kt .keitaro-mark {
-  height: 20px;
+  height: 40px;
 }
 .flow-kt:has(.keitaro-mark) {
   padding-top: 2px;
