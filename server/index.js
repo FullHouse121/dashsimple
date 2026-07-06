@@ -4222,9 +4222,16 @@ const resolveViewerBuyer = async (user) => {
   // live-stats/behaviour/device endpoints filtered against a cold cache and the
   // configured mapping was ignored.
   await refreshBuyerAliases();
+  // A buyer's identity for campaign matching is: their explicit Keitaro name
+  // (Roles → Media Buyers) if set, otherwise their LOGIN username — which by
+  // convention equals the buyer label in campaign names ("Karen | …"). The
+  // media-buyer PROFILE name is an internal code (KRBR, AKDMC, SRDMC…) and must
+  // NOT be used for matching — doing so was why buyers like Karen (login
+  // "Karen", profile "KRBR") saw no data.
   if (user.buyerId) {
     const record = await selectMediaBuyerById(user.buyerId);
-    if (record?.name) return record.name;
+    const kname = record?.keitaro_name ? String(record.keitaro_name).trim() : "";
+    if (kname) return kname;
   }
   return user.username || "";
 };
