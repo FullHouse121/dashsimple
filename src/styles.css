@@ -14684,6 +14684,11 @@ select option,
   max-width: 96px;
   opacity: 0.94;
 }
+/* Pure-black source logos flipped to white for the dark UI */
+.platform-mark--invert {
+  filter: invert(1);
+  opacity: 0.88;
+}
 /* Lettermark fallback for brands with no logo — keeps the column consistent */
 .brand-lettermark {
   display: inline-flex;

@@ -84,6 +84,8 @@ import jasinoLogo from "./assets/brands/jasino.svg";
 import pwaGroupLogo from "./assets/brands/pwa-group.svg";
 import zmAppsLogo from "./assets/brands/zm-apps.svg";
 import linkiLogo from "./assets/brands/linki-group.svg";
+import skakLogo from "./assets/brands/skak-apps.svg";
+import pwaPartnersLogo from "./assets/brands/pwa-partners-white.svg";
 
 // Canonical single-path Telegram glyph (tint-able via currentColor) — used in
 // place of the heavy multi-shade source logo for small inline UI.
@@ -113,6 +115,12 @@ const BRAND_LOGOS = {
   zlotmx: { src: zlotLogo, label: "ZlotMX" },
   zlot: { src: zlotLogo, label: "ZlotMX" },
   jasino: { src: jasinoLogo, label: "Jasino" },
+  skakapps: { src: skakLogo, label: "SkakApp" },
+  skakapp: { src: skakLogo, label: "SkakApp" },
+  skak: { src: skakLogo, label: "SkakApp" },
+  // PWA Partners ships as a pure-black emblem — invert to white for the dark UI
+  pwapartners: { src: pwaPartnersLogo, label: "PWA Partners", invert: true },
+  pwapartner: { src: pwaPartnersLogo, label: "PWA Partners", invert: true },
 };
 const normalizeBrandKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 const resolveBrandLogo = (value) => {
@@ -131,7 +139,15 @@ const BrandMark = ({ value, height = 15 }) => {
   if (!raw) return <span className="offer-muted">—</span>;
   const hit = resolveBrandLogo(raw);
   if (hit) {
-    return <img className="brand-mark platform-mark" src={hit.src} alt={hit.label} title={hit.label} style={{ height }} />;
+    return (
+      <img
+        className={`brand-mark platform-mark${hit.invert ? " platform-mark--invert" : ""}`}
+        src={hit.src}
+        alt={hit.label}
+        title={hit.label}
+        style={{ height }}
+      />
+    );
   }
   return (
     <span className="brand-lettermark" title={raw}>
