@@ -7217,8 +7217,14 @@ app.post("/api/meta-tokens", async (req, res) => {
     // Register the cost integration in Keitaro (Integrations → Facebook) so it
     // appears there automatically. Isolated: if Keitaro rejects it we still keep
     // the local record and surface the error instead of failing the request.
+    // Name follows Keitaro's Facebook-costs convention "Buyer | …" (e.g.
+    // "Matheus | Zlot | Mexico"); we use the buyer + the integration comment,
+    // falling back to the account number.
+    const keitaroName =
+      [resolvedBuyerName, String(comment || "").trim()].filter(Boolean).join(" | ") ||
+      normalizedAccountNumber;
     const keitaroPush = await pushMetaIntegrationToKeitaro({
-      name: `${resolvedBuyerName || "Buyer"} · ${normalizedAccountNumber}`,
+      name: keitaroName,
       adAccountId: normalizedAccountNumber,
       token: payload.meta_token,
     });
