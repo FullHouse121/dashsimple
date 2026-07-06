@@ -17845,11 +17845,15 @@ function ProfileDashboard({ authUser }) {
   const loadProfile = React.useCallback(async () => {
     try {
       setProfileState({ loading: true, error: null });
+      // All-time window so the "lifetime" KPIs + achievement badges are honest
+      // (the endpoint defaults to year-to-date). Server still scopes rows to the
+      // logged-in buyer, so every profile shows only that buyer's own numbers.
+      const allTimeFrom = `${new Date().getUTCFullYear() - 4}-01-01`;
       const [usersRes, rolesRes, buyersRes, statsRes] = await Promise.all([
         apiFetch("/api/users?limit=300"),
         apiFetch("/api/roles?limit=200"),
         apiFetch("/api/media-buyers?limit=300"),
-        apiFetch("/api/keitaro/live-stats"),
+        apiFetch(`/api/keitaro/live-stats?from=${allTimeFrom}`),
       ]);
 
       const users = usersRes.ok ? await usersRes.json() : [];
@@ -18020,7 +18024,7 @@ function ProfileDashboard({ authUser }) {
             <span className="ph-label">{t("Preferred tool")}</span>
             {perf.preferredTool ? (
               <span className="ph-value">
-                {resolveBrandLogo(perf.preferredTool[0]) ? <BrandMark value={perf.preferredTool[0]} height={16} /> : perf.preferredTool[0]}
+                {resolveBrandLogo(perf.preferredTool[0]) ? <BrandMark value={perf.preferredTool[0]} height={24} /> : perf.preferredTool[0]}
               </span>
             ) : (
               <span className="ph-value ph-empty">{t("No data yet")}</span>
@@ -18036,7 +18040,7 @@ function ProfileDashboard({ authUser }) {
             <span className="ph-label">{t("Top brand")}</span>
             {perf.topBrand ? (
               <span className="ph-value">
-                {resolveBrandLogo(perf.topBrand[0]) ? <BrandMark value={perf.topBrand[0]} height={16} /> : perf.topBrand[0]}
+                {resolveBrandLogo(perf.topBrand[0]) ? <BrandMark value={perf.topBrand[0]} height={22} /> : perf.topBrand[0]}
               </span>
             ) : (
               <span className="ph-value ph-empty">{t("No data yet")}</span>

@@ -15311,6 +15311,7 @@ select option,
 .ph-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
 .ph-value { display: inline-flex; align-items: center; gap: 7px; font-size: 19px; font-weight: 700; color: var(--text); }
 .ph-value .country-flag, .ph-value svg { flex-shrink: 0; }
+.ph-value .brand-mark { max-width: 140px; }
 .ph-value.ph-empty { font-size: 15px; color: var(--faint, #6b7079); font-weight: 500; }
 .ph-of { font-size: 14px; color: var(--muted); font-weight: 600; }
 .ph-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
