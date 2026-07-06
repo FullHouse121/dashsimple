@@ -1622,12 +1622,13 @@ function HomeDashboard({
         (acc, row) => ({
           spend: acc.spend + sum(row.spend),
           clicks: acc.clicks + sum(row.clicks),
+          uniqueClicks: acc.uniqueClicks + sum(row.unique_clicks),
           installs: acc.installs + sum(row.installs),
           registers: acc.registers + sum(row.registers),
           ftds: acc.ftds + sum(row.ftds),
           redeposits: acc.redeposits + sum(row.redeposits),
         }),
-        { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0 }
+        { spend: 0, clicks: 0, uniqueClicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0 }
       ),
     [filteredRows]
   );
@@ -1652,7 +1653,13 @@ function HomeDashboard({
         : t(period);
 
   const homePrimaryStats = [
-    { label: "Clicks", value: fmtCount(totals.clicks), icon: MousePointerClick, meta: periodLabel },
+    {
+      label: "Clicks",
+      value: fmtCount(totals.clicks),
+      icon: MousePointerClick,
+      meta: periodLabel,
+      sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
+    },
     { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click" },
     { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel },
     {
@@ -2076,6 +2083,13 @@ function HomeDashboard({
                 {t(stat.label)}
               </div>
               <div className="card-value">{stat.value}</div>
+              {stat.sub ? (
+                <div className="card-sub">
+                  <span className="card-sub-dot" />
+                  <span className="card-sub-value">{stat.sub.value}</span>
+                  <span className="card-sub-label">{t(stat.sub.label)}</span>
+                </div>
+              ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
             </motion.div>
           );

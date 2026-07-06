@@ -15219,3 +15219,29 @@ select option,
 }
 .confirm-confirm:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .confirm-confirm:active { transform: scale(0.97); }
+
+/* Stat-card sub metric (e.g. Unique clicks under the Clicks total) */
+.card-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -4px;
+}
+.card-sub-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.16);
+  flex-shrink: 0;
+}
+.card-sub-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #9cf0c3;
+  font-variant-numeric: tabular-nums;
+}
+.card-sub-label {
+  font-size: 11.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
