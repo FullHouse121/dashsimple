@@ -14671,9 +14671,16 @@ select option,
   padding-left: 9px;
 }
 .keitaro-mark {
-  height: 11px;
+  height: 13px;
   vertical-align: -1px;
   /* the source is already brand green (#61C761) — no tint needed */
+}
+/* Larger in the My-Flows / detail status pills where it stands alone */
+.flow-kt .keitaro-mark {
+  height: 16px;
+}
+.keitaro-chip .keitaro-mark {
+  height: 14px;
 }
 /* Keitaro wordmark replacing the word in the "routing" section label */
 .keitaro-label-mark {
