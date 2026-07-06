@@ -5337,7 +5337,7 @@ app.get("/api/media-stats", async (req, res) => {
   }
 
   if (viewerBuyer) {
-    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
 
   if (strictMode) {
@@ -5351,8 +5351,8 @@ app.get("/api/media-stats", async (req, res) => {
     selectConversionTotals({ from, to }),
   ]);
   if (viewerBuyer) {
-    installTotals = installTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
-    conversionTotals = conversionTotals.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    installTotals = installTotals.filter((row) => viewerOwnsRow(row, viewerBuyer));
+    conversionTotals = conversionTotals.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
   const installMap = new Map();
   const conversionMap = new Map();
@@ -5489,8 +5489,8 @@ app.get("/api/user-behavior", async (req, res) => {
   let rows = await selectUserBehavior(limit);
   let installRows = await selectInstallTotalsByExternalId();
   if (viewerBuyer) {
-    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
-    installRows = installRows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
+    installRows = installRows.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
 
   const merged = new Map();
@@ -5567,8 +5567,8 @@ app.get("/api/device-stats", async (req, res) => {
     console.error("device-stats: install attribution failed, returning without it:", error.message);
   }
   if (viewerBuyer) {
-    rows = rows.filter((row) => buyerMatches(row.buyer, viewerBuyer));
-    attributedInstalls = attributedInstalls.filter((row) => buyerMatches(row.buyer, viewerBuyer));
+    rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
+    attributedInstalls = attributedInstalls.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
 
   const aggregated = new Map();
@@ -5781,7 +5781,7 @@ app.get("/api/goals", async (req, res) => {
   }
   const viewerBuyer = await resolveViewerBuyer(req.user);
   const filtered = rows.filter(
-    (row) => row.is_global || (viewerBuyer && buyerMatches(row.buyer, viewerBuyer))
+    (row) => row.is_global || (viewerBuyer && viewerOwnsRow(row, viewerBuyer))
   );
   return res.json(filtered);
 });
@@ -7727,6 +7727,15 @@ const keitaroNameMatchesBuyer = (name, buyer) => {
   });
 };
 
+// Does a stats row belong to this viewer? Prefer the whole-word, short-form
+// matcher against the raw campaign name (robust to messy names like
+// "ZM.APPS - Karen - …"), unioned with the legacy parsed-buyer substring check
+// so no buyer who matched before ever loses rows. Used by every buyer-scoped
+// Keitaro endpoint so a buyer reliably sees all of their own data.
+const viewerOwnsRow = (row, viewerBuyer) =>
+  keitaroNameMatchesBuyer(row.campaign_name || row.campaign || row.buyer, viewerBuyer) ||
+  buyerMatches(row.buyer, viewerBuyer);
+
 // Scope the shared resource lists to one buyer: only their offers and
 // campaign group(s). Traffic sources + tracking domains are shared infra.
 const scopeKeitaroResourcesForBuyer = (data, buyer) => ({
@@ -8088,7 +8097,7 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
 
   const viewerBuyer = await resolveViewerBuyer(req.user);
   if (viewerBuyer) {
-    rows = rows.filter((r) => buyerMatches(r.buyer, viewerBuyer));
+    rows = rows.filter((r) => viewerOwnsRow(r, viewerBuyer));
   }
   res.json({ rows, range: { from, to }, source: "keitaro-live" });
 });
@@ -8468,7 +8477,7 @@ app.get("/api/postbacks/logs", async (req, res) => {
   };
 
   const filtered = viewerBuyer
-    ? rows.filter((row) => buyerMatches(row.buyer, viewerBuyer))
+    ? rows.filter((row) => viewerOwnsRow(row, viewerBuyer))
     : rows;
 
   const normalized = filtered.map((row) => ({
