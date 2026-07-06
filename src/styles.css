@@ -5245,12 +5245,16 @@ select option,
 .registry-dashboard-panel .domain-form,
 .registry-dashboard-panel .accounts-form,
 .registry-dashboard-panel .pixel-form {
+  position: relative;
   margin-top: 14px;
-  padding: 16px;
+  padding: 20px 22px 18px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  background: linear-gradient(160deg, rgba(27, 30, 36, 0.94), rgba(18, 21, 26, 0.95));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border: 1px solid color-mix(in srgb, var(--section-accent, #36d07c) 17%, rgba(255, 255, 255, 0.07));
+  background:
+    radial-gradient(130% 100% at 100% 0%,
+      color-mix(in srgb, var(--section-accent, #36d07c) 7%, transparent) 0%, transparent 46%),
+    linear-gradient(160deg, rgba(27, 30, 36, 0.94), rgba(18, 21, 26, 0.95));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 14px 32px rgba(0, 0, 0, 0.26);
 }
 
 .accounts-form .field label,
@@ -14388,3 +14392,57 @@ select option,
 .pixel-registry-panel { --section-accent: #f7c625; }
 .accounts-registry-panel { --section-accent: #a15bff; }
 .utm-registry-panel { --section-accent: #ff7da3; }
+
+/* ── Operations "add data" composer forms ───────────────────────────
+   The .registry-dashboard-panel card rule above already gives these
+   forms a section-accented surface; here we add the finishing details.
+   No overflow:hidden — the forms hold inline dropdowns that open outward. */
+
+/* Top accent hairline — absolute so it never becomes a grid item */
+.registry-dashboard-panel .domain-form::before,
+.registry-dashboard-panel .pixel-form::before,
+.registry-dashboard-panel .accounts-form::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 20px; right: 20px;
+  height: 2px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--section-accent, #36d07c) 78%, transparent),
+    transparent 72%);
+  pointer-events: none;
+}
+
+/* Footer: divider + section-tinted rule before Reset / submit */
+.domain-form .form-actions,
+.pixel-form .form-actions,
+.accounts-form .form-actions {
+  border-top: 1px solid color-mix(in srgb, var(--section-accent, #36d07c) 13%, rgba(255, 255, 255, 0.06));
+  padding-top: 16px;
+  margin-top: 14px;
+}
+
+/* Focus rings adopt the section accent instead of the global green */
+.domain-form .field input:focus,
+.domain-form .field input:focus-visible,
+.domain-form .field textarea:focus,
+.domain-form .field textarea:focus-visible,
+.pixel-form .field input:focus,
+.pixel-form .field input:focus-visible,
+.pixel-form .field textarea:focus,
+.pixel-form .field textarea:focus-visible,
+.accounts-form .field input:focus,
+.accounts-form .field input:focus-visible,
+.accounts-form .field textarea:focus,
+.accounts-form .field textarea:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--section-accent, #36d07c) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--section-accent, #36d07c) 16%, transparent);
+}
+
+/* Label hint suffix picks up a hint of the section accent */
+.domain-form .field-pace-hint,
+.pixel-form .field-pace-hint,
+.accounts-form .field-pace-hint {
+  color: color-mix(in srgb, var(--section-accent, #36d07c) 62%, var(--muted-strong, #a9adb7));
+}
