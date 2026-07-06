@@ -29,6 +29,13 @@ import {
   BarChart3,
   Megaphone,
   Trophy,
+  Award,
+  Medal,
+  Crown,
+  Gem,
+  Flame,
+  Rocket,
+  Sparkles,
   Search,
   SlidersHorizontal,
   X,
@@ -17760,12 +17767,28 @@ function RolesDashboard({ authUser }) {
   );
 }
 
+// Achievement badges — unlocked on lifetime totals across all of a buyer's
+// links. Two tracks (FTDs + revenue), rising tiers. Kept data-driven so tiers
+// are easy to tune.
+const PROFILE_BADGES = [
+  { id: "ftd-100", track: "ftds", label: "Century", req: 100, Icon: Medal, hint: "100 FTDs" },
+  { id: "ftd-500", track: "ftds", label: "High Roller", req: 500, Icon: Flame, hint: "500 FTDs" },
+  { id: "ftd-1k", track: "ftds", label: "Rainmaker", req: 1000, Icon: Trophy, hint: "1,000 FTDs" },
+  { id: "ftd-5k", track: "ftds", label: "Whale Hunter", req: 5000, Icon: Crown, hint: "5,000 FTDs" },
+  { id: "ftd-10k", track: "ftds", label: "Legend", req: 10000, Icon: Gem, hint: "10,000 FTDs" },
+  { id: "rev-1k", track: "revenue", label: "$1K Club", req: 1000, Icon: DollarSign, hint: "$1,000 revenue" },
+  { id: "rev-10k", track: "revenue", label: "$10K Club", req: 10000, Icon: Award, hint: "$10,000 revenue" },
+  { id: "rev-50k", track: "revenue", label: "$50K Club", req: 50000, Icon: Rocket, hint: "$50,000 revenue" },
+  { id: "rev-100k", track: "revenue", label: "$100K Club", req: 100000, Icon: Sparkles, hint: "$100,000 revenue" },
+];
+
 function ProfileDashboard({ authUser }) {
   const { t } = useLanguage();
   const [profileState, setProfileState] = React.useState({ loading: true, error: null });
   const [userRecord, setUserRecord] = React.useState(null);
   const [roleRecord, setRoleRecord] = React.useState(null);
   const [buyerRecord, setBuyerRecord] = React.useState(null);
+  const [statRows, setStatRows] = React.useState([]);
   const [passwordForm, setPasswordForm] = React.useState({
     current: "",
     next: "",
@@ -17780,15 +17803,18 @@ function ProfileDashboard({ authUser }) {
   const loadProfile = React.useCallback(async () => {
     try {
       setProfileState({ loading: true, error: null });
-      const [usersRes, rolesRes, buyersRes] = await Promise.all([
+      const [usersRes, rolesRes, buyersRes, statsRes] = await Promise.all([
         apiFetch("/api/users?limit=300"),
         apiFetch("/api/roles?limit=200"),
         apiFetch("/api/media-buyers?limit=300"),
+        apiFetch("/api/keitaro/live-stats"),
       ]);
 
       const users = usersRes.ok ? await usersRes.json() : [];
       const roles = rolesRes.ok ? await rolesRes.json() : [];
       const buyers = buyersRes.ok ? await buyersRes.json() : [];
+      const statsData = statsRes.ok ? await statsRes.json() : null;
+      setStatRows(Array.isArray(statsData?.rows) ? statsData.rows : []);
 
       const currentUser =
         users.find((user) => user.id === authUser?.id) ||
@@ -17816,6 +17842,57 @@ function ProfileDashboard({ authUser }) {
   const buyerName = buyerRecord?.name || t("No buyer linked");
   const verified = userRecord?.verified ? t("Verified") : t("Unverified");
   const permissions = roleRecord?.permissions || [];
+
+  const fmtCount = (n) => Math.round(Number(n) || 0).toLocaleString();
+
+  // Lifetime performance across all of this buyer's links (server already
+  // scopes live-stats to the viewer). Drives the KPI tiles, highlights + badges.
+  const perf = React.useMemo(() => {
+    let revenue = 0, ftds = 0, clicks = 0, redeposits = 0, registers = 0, spend = 0;
+    const geoMap = new Map();
+    const toolMap = new Map();
+    for (const r of statRows) {
+      const rev = (Number(r.ftd_revenue) || 0) + (Number(r.redeposit_revenue) || 0);
+      revenue += rev;
+      ftds += Number(r.ftds) || 0;
+      clicks += Number(r.clicks) || 0;
+      redeposits += Number(r.redeposits) || 0;
+      registers += Number(r.registers) || 0;
+      spend += Number(r.spend) || 0;
+      const country = r.country || r.geo;
+      if (country) {
+        const g = geoMap.get(country) || { ftds: 0, revenue: 0 };
+        g.ftds += Number(r.ftds) || 0;
+        g.revenue += rev;
+        geoMap.set(country, g);
+      }
+      const tool = r.tool;
+      if (tool) {
+        const tm = toolMap.get(tool) || { clicks: 0, revenue: 0, ftds: 0 };
+        tm.clicks += Number(r.clicks) || 0;
+        tm.revenue += rev;
+        tm.ftds += Number(r.ftds) || 0;
+        toolMap.set(tool, tm);
+      }
+    }
+    const bestGeo = [...geoMap.entries()]
+      .sort((a, b) => b[1].ftds - a[1].ftds || b[1].revenue - a[1].revenue)[0] || null;
+    const preferredTool = [...toolMap.entries()]
+      .sort((a, b) => b[1].clicks - a[1].clicks || b[1].ftds - a[1].ftds)[0] || null;
+    const roi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
+    return { revenue, ftds, clicks, redeposits, registers, spend, roi, bestGeo, preferredTool, geoCount: geoMap.size };
+  }, [statRows]);
+
+  const badges = React.useMemo(
+    () =>
+      PROFILE_BADGES.map((b) => {
+        const value = b.track === "ftds" ? perf.ftds : perf.revenue;
+        return { ...b, value, earned: value >= b.req, progress: Math.min(1, b.req ? value / b.req : 0) };
+      }),
+    [perf.ftds, perf.revenue]
+  );
+  const earnedBadges = badges.filter((b) => b.earned);
+  const nextBadge = badges.find((b) => !b.earned) || null;
 
   const handlePasswordChange = async (event) => {
     event.preventDefault();
@@ -17850,6 +17927,104 @@ function ProfileDashboard({ authUser }) {
 
   return (
     <>
+      {/* Performance — lifetime totals across all of this buyer's links */}
+      <section className="cards">
+        {[
+          { label: "Total Revenue", value: formatCurrency(perf.revenue), meta: "FTD + Redeposit", icon: DollarSign, accent: true },
+          { label: "Total FTDs", value: fmtCount(perf.ftds), meta: "All-time deposits", icon: CreditCard },
+          { label: "Total Clicks", value: fmtCount(perf.clicks), meta: "Traffic delivered", icon: MousePointerClick },
+          { label: "Redeposits", value: fmtCount(perf.redeposits), meta: "Repeat deposits", icon: TrendingUp },
+        ].map((stat) => {
+          const Icon = stat.icon;
+          return (
+            <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}`}>
+              <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
+              <div className="card-value">{stat.value}</div>
+              <div className="card-meta">{t(stat.meta)}</div>
+            </div>
+          );
+        })}
+      </section>
+
+      {/* Highlights: best GEO · preferred tool · achievement rank */}
+      <section className="profile-highlights">
+        <div className="profile-highlight">
+          <span className="ph-icon ph-geo"><Globe size={18} /></span>
+          <div className="ph-body">
+            <span className="ph-label">{t("Best GEO")}</span>
+            {perf.bestGeo ? (
+              <span className="ph-value"><CountryFlag value={perf.bestGeo[0]} /> {perf.bestGeo[0]}</span>
+            ) : (
+              <span className="ph-value ph-empty">{t("No data yet")}</span>
+            )}
+            <span className="ph-sub">
+              {perf.bestGeo ? `${fmtCount(perf.bestGeo[1].ftds)} ${t("FTDs")} · ${formatCurrency(perf.bestGeo[1].revenue)}` : t("Generate FTDs to rank your GEOs")}
+            </span>
+          </div>
+        </div>
+        <div className="profile-highlight">
+          <span className="ph-icon ph-tool"><Target size={18} /></span>
+          <div className="ph-body">
+            <span className="ph-label">{t("Preferred tool")}</span>
+            {perf.preferredTool ? (
+              <span className="ph-value">
+                {resolveBrandLogo(perf.preferredTool[0]) ? <BrandMark value={perf.preferredTool[0]} height={16} /> : perf.preferredTool[0]}
+              </span>
+            ) : (
+              <span className="ph-value ph-empty">{t("No data yet")}</span>
+            )}
+            <span className="ph-sub">
+              {perf.preferredTool ? `${fmtCount(perf.preferredTool[1].clicks)} ${t("clicks")} · ${fmtCount(perf.preferredTool[1].ftds)} ${t("FTDs")}` : t("Your most-used traffic source")}
+            </span>
+          </div>
+        </div>
+        <div className="profile-highlight">
+          <span className="ph-icon ph-rank"><Trophy size={18} /></span>
+          <div className="ph-body">
+            <span className="ph-label">{t("Achievements")}</span>
+            <span className="ph-value">{earnedBadges.length} <span className="ph-of">/ {badges.length}</span></span>
+            <span className="ph-sub">
+              {nextBadge ? `${t("Next")}: ${t(nextBadge.label)} — ${Math.round(nextBadge.progress * 100)}%` : t("All badges unlocked — legend!")}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* Achievements — badges earned on lifetime totals */}
+      <section className="panel profile-achievements">
+        <div className="panel-head">
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><Trophy size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Achievements")}</h3>
+              <p className="panel-subtitle">{t("Badges unlock on your all-time results across every link.")}</p>
+            </div>
+          </div>
+          <span className="badge-count-chip">{earnedBadges.length}/{badges.length} {t("unlocked")}</span>
+        </div>
+        <div className="badge-grid">
+          {badges.map((b) => {
+            const Icon = b.Icon;
+            return (
+              <div key={b.id} className={`badge-tile track-${b.track}${b.earned ? " is-earned" : " is-locked"}`} title={b.hint}>
+                <div className="badge-medal"><Icon size={24} /></div>
+                <div className="badge-name">{t(b.label)}</div>
+                <div className="badge-hint">{b.hint}</div>
+                {b.earned ? (
+                  <div className="badge-status"><CheckCircle size={12} /> {t("Unlocked")}</div>
+                ) : (
+                  <div className="badge-progress">
+                    <div className="badge-progress-bar"><span style={{ width: `${Math.round(b.progress * 100)}%` }} /></div>
+                    <span className="badge-progress-text">{Math.round(b.progress * 100)}%</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Account overview */}
       <section className="cards">
         {[
           { label: "Username", value: username, meta: "Account Overview", icon: User },
