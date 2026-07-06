@@ -7191,10 +7191,28 @@ select option,
   overflow: hidden;
   border-color: rgba(255, 255, 255, 0.08);
   background:
-    radial-gradient(120% 120% at 50% -10%, rgba(54, 208, 124, 0.1) 0%, rgba(16, 20, 28, 0) 54%),
+    radial-gradient(120% 120% at 50% -10%,
+      color-mix(in srgb, var(--section-accent, #36d07c) 13%, transparent) 0%,
+      rgba(16, 20, 28, 0) 54%),
     linear-gradient(160deg, rgba(30, 32, 37, 0.96), rgba(20, 22, 26, 0.95));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02), 0 20px 40px rgba(0, 0, 0, 0.35);
 }
+
+/* Finance-style radial highlight sweeping from the section-accent corner */
+.registry-dashboard-panel::after,
+.utm-registry-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(80% 120% at 100% 0%,
+    color-mix(in srgb, var(--section-accent, #36d07c) 9%, transparent) 0%,
+    transparent 42%);
+  opacity: 0.9;
+  z-index: 0;
+}
+.registry-dashboard-panel > *,
+.utm-registry-panel > * { position: relative; z-index: 1; }
 
 .domain-registry-panel,
 .accounts-registry-panel {
@@ -7303,8 +7321,42 @@ select option,
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   color: var(--kpi-accent);
+  background: linear-gradient(158deg,
+    color-mix(in srgb, var(--kpi-accent) 24%, transparent),
+    color-mix(in srgb, var(--kpi-accent) 7%, transparent));
+  border: 1px solid color-mix(in srgb, var(--kpi-accent) 40%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--kpi-accent) 26%, transparent);
 }
+
+.accounts-summary-icon svg { width: 18px; height: 18px; }
+
+/* per-tile accent glow in its own semantic tone */
+.accounts-summary-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(90% 120% at 100% 0%,
+    color-mix(in srgb, var(--kpi-accent) 12%, transparent) 0%,
+    transparent 46%);
+  opacity: 0.85;
+}
+.accounts-summary-item > * { position: relative; }
+.accounts-summary-item::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 16px; right: 16px;
+  height: 2px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--kpi-accent) 70%, transparent),
+    transparent);
+}
+.accounts-summary-item:hover { border-color: color-mix(in srgb, var(--kpi-accent) 34%, #2c2f35); }
 
 .accounts-summary-label {
   font-size: 14px;
@@ -14327,3 +14379,10 @@ select option,
 
 /* Signature accents per Operations section */
 .tracking-registry-panel { --section-accent: #64b8ff; }
+
+/* Per-section signature accents (Operations) */
+.flows-registry-panel { --section-accent: #36d07c; }
+.domain-registry-panel { --section-accent: #49e0c4; }
+.pixel-registry-panel { --section-accent: #f7c625; }
+.accounts-registry-panel { --section-accent: #a15bff; }
+.utm-registry-panel { --section-accent: #ff7da3; }

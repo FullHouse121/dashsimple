@@ -5670,13 +5670,16 @@ function MyFlowsDashboard({ authUser }) {
         ) : null}
       </AnimatePresence>
 
-      <motion.div className="panel registry-dashboard-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+      <motion.div className="panel registry-dashboard-panel flows-registry-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="panel-head">
-          <div>
-            <h3 className="panel-title">{t("My Flows")}</h3>
-            <p className="panel-subtitle">
-              {t("Tracking link → PWA domains → pixels. Bind your domains to a link, then attach pixels to each domain.")}
-            </p>
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><FlowsIcon size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("My Flows")}</h3>
+              <p className="panel-subtitle">
+                {t("Tracking link → PWA domains → pixels. Bind your domains to a link, then attach pixels to each domain.")}
+              </p>
+            </div>
           </div>
           <div className="panel-head-actions">
             {links.length ? (
@@ -6177,17 +6180,20 @@ function UtmBuilder() {
     <>
       <section className="form-section">
         <motion.div
-          className="panel form-panel"
+          className="panel form-panel utm-registry-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
           <div className="panel-head">
-            <div>
-              <h3 className="panel-title">UTM Builder</h3>
-              <p className="panel-subtitle">
-                Generate clean tracking links for campaigns and media buyers.
-              </p>
+            <div className="panel-head-title">
+              <span className="panel-icon-badge"><Link2 size={20} /></span>
+              <div>
+                <h3 className="panel-title">UTM Builder</h3>
+                <p className="panel-subtitle">
+                  Generate clean tracking links for campaigns and media buyers.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -11592,9 +11598,12 @@ function DomainsDashboard({ authUser }) {
         transition={{ duration: 0.6 }}
       >
         <div className="panel-head">
-          <div>
-            <h3 className="panel-title">{t("Domains Registry")}</h3>
-            <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><Globe size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Domains Registry")}</h3>
+              <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
+            </div>
           </div>
           <div className="panel-head-actions">
             <span className="roles-count">
@@ -13229,9 +13238,12 @@ function PixelsDashboard({ authUser }) {
         transition={{ duration: 0.6 }}
       >
         <div className="panel-head">
-          <div>
-            <h3 className="panel-title">{t("Pixels Registry")}</h3>
-            <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><Zap size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Pixels Registry")}</h3>
+              <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
+            </div>
           </div>
           <div className="panel-head-actions">
             <span className="roles-count">
@@ -15018,11 +15030,14 @@ function AccountsDashboard({ authUser }) {
         transition={{ duration: 0.5 }}
       >
         <div className="panel-head">
-          <div>
-            <h3 className="panel-title">{t("Accounts Registry")}</h3>
-            <p className="panel-subtitle">
-              {t("Register account numbers with a nickname, owner, and status in one clean view.")}
-            </p>
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><Users size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Accounts Registry")}</h3>
+              <p className="panel-subtitle">
+                {t("Register account numbers with a nickname, owner, and status in one clean view.")}
+              </p>
+            </div>
           </div>
           <button
             type="button"
