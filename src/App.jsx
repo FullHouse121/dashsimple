@@ -6904,6 +6904,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           country,
           spend: 0,
           clicks: 0,
+          uniqueClicks: 0,
           installs: 0,
           registers: 0,
           ftds: 0,
@@ -6914,6 +6915,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       const current = map.get(key);
       current.spend += sum(row.spend);
       current.clicks += sum(row.clicks);
+      current.uniqueClicks += sum(row.unique_clicks);
       current.installs += sum(row.installs);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
@@ -6973,13 +6975,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     (acc, row) => ({
       spend: acc.spend + sum(row.spend),
       clicks: acc.clicks + sum(row.clicks),
+      uniqueClicks: acc.uniqueClicks + sum(row.uniqueClicks),
       installs: acc.installs + sum(row.installs),
       registers: acc.registers + sum(row.registers),
       ftds: acc.ftds + sum(row.ftds),
       redeposits: acc.redeposits + sum(row.redeposits),
       revenue: acc.revenue + sum(row.revenue),
     }),
-    { spend: 0, clicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
+    { spend: 0, clicks: 0, uniqueClicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
   );
 
   const isStatsSingleDayRange = Boolean(
@@ -7120,11 +7123,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       ? statsOverviewData.reduce((acc, item) => acc + (item.ftds || 0), 0) / statsOverviewData.length
       : 0;
 
+  const uc = totals.uniqueClicks;
+  const ucSub = (num, formatter) =>
+    uc > 0 ? { value: formatter(num, uc), label: "on unique" } : null;
   const statsKpis = [
-    { label: "Click2Install", value: fmtPercent(toPercent(totals.installs, totals.clicks)), meta: "Rate" },
-    { label: "Click2Reg", value: fmtPercent(toPercent(totals.registers, totals.clicks)), meta: "Rate" },
-    { label: "Click2Dep", value: fmtPercent(toPercent(totals.ftds, totals.clicks)), meta: "Rate" },
-    { label: "EPC", value: fmtCost(safeDivide(totals.revenue, totals.clicks)), meta: "Revenue per click" },
+    { label: "Click2Install", value: fmtPercent(toPercent(totals.installs, totals.clicks)), meta: "Rate", sub: ucSub(totals.installs, (n, d) => fmtPercent(toPercent(n, d))) },
+    { label: "Click2Reg", value: fmtPercent(toPercent(totals.registers, totals.clicks)), meta: "Rate", sub: ucSub(totals.registers, (n, d) => fmtPercent(toPercent(n, d))) },
+    { label: "Click2Dep", value: fmtPercent(toPercent(totals.ftds, totals.clicks)), meta: "Rate", sub: ucSub(totals.ftds, (n, d) => fmtPercent(toPercent(n, d))) },
+    { label: "EPC", value: fmtCost(safeDivide(totals.revenue, totals.clicks)), meta: "Revenue per click", sub: uc > 0 ? { value: fmtCost(safeDivide(totals.revenue, uc)), label: "per unique" } : null },
     { label: "Install2Reg", value: fmtPercent(toPercent(totals.registers, totals.installs)), meta: "Rate" },
     { label: "Install2Dep", value: fmtPercent(toPercent(totals.ftds, totals.installs)), meta: "Rate" },
     { label: "Reg2Dep", value: fmtPercent(toPercent(totals.ftds, totals.registers)), meta: "Rate" },
@@ -7272,6 +7278,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           >
             <div className="card-head">{stat.label}</div>
             <div className="card-value">{stat.value}</div>
+            {stat.sub ? (
+              <div className="card-sub">
+                <span className="card-sub-dot" />
+                <span className="card-sub-value">{stat.sub.value}</span>
+                <span className="card-sub-label">{stat.sub.label}</span>
+              </div>
+            ) : null}
             <div className="card-meta">{stat.meta}</div>
           </motion.div>
         ))}
