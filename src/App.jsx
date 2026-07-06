@@ -17771,16 +17771,58 @@ function RolesDashboard({ authUser }) {
 // links. Two tracks (FTDs + revenue), rising tiers. Kept data-driven so tiers
 // are easy to tune.
 const PROFILE_BADGES = [
-  { id: "ftd-100", track: "ftds", label: "Century", req: 100, Icon: Medal, hint: "100 FTDs" },
-  { id: "ftd-500", track: "ftds", label: "High Roller", req: 500, Icon: Flame, hint: "500 FTDs" },
-  { id: "ftd-1k", track: "ftds", label: "Rainmaker", req: 1000, Icon: Trophy, hint: "1,000 FTDs" },
-  { id: "ftd-5k", track: "ftds", label: "Whale Hunter", req: 5000, Icon: Crown, hint: "5,000 FTDs" },
-  { id: "ftd-10k", track: "ftds", label: "Legend", req: 10000, Icon: Gem, hint: "10,000 FTDs" },
-  { id: "rev-1k", track: "revenue", label: "$1K Club", req: 1000, Icon: DollarSign, hint: "$1,000 revenue" },
-  { id: "rev-10k", track: "revenue", label: "$10K Club", req: 10000, Icon: Award, hint: "$10,000 revenue" },
-  { id: "rev-50k", track: "revenue", label: "$50K Club", req: 50000, Icon: Rocket, hint: "$50,000 revenue" },
-  { id: "rev-100k", track: "revenue", label: "$100K Club", req: 100000, Icon: Sparkles, hint: "$100,000 revenue" },
+  { id: "ftd-100", track: "ftds", label: "Century", req: 100, Icon: Medal, hint: "100 FTDs", tier: "bronze" },
+  { id: "ftd-500", track: "ftds", label: "High Roller", req: 500, Icon: Flame, hint: "500 FTDs", tier: "silver" },
+  { id: "ftd-1k", track: "ftds", label: "Rainmaker", req: 1000, Icon: Trophy, hint: "1,000 FTDs", tier: "gold" },
+  { id: "ftd-5k", track: "ftds", label: "Whale Hunter", req: 5000, Icon: Crown, hint: "5,000 FTDs", tier: "emerald" },
+  { id: "ftd-10k", track: "ftds", label: "Legend", req: 10000, Icon: Gem, hint: "10,000 FTDs", tier: "diamond" },
+  { id: "rev-1k", track: "revenue", label: "$1K Club", req: 1000, Icon: DollarSign, hint: "$1,000 revenue", tier: "bronze" },
+  { id: "rev-10k", track: "revenue", label: "$10K Club", req: 10000, Icon: Award, hint: "$10,000 revenue", tier: "silver" },
+  { id: "rev-50k", track: "revenue", label: "$50K Club", req: 50000, Icon: Rocket, hint: "$50,000 revenue", tier: "gold" },
+  { id: "rev-100k", track: "revenue", label: "$100K Club", req: 100000, Icon: Sparkles, hint: "$100,000 revenue", tier: "diamond" },
 ];
+
+// Metallic tier palettes [highlight, mid, shadow] for the SVG medal coins.
+const BADGE_TIERS = {
+  bronze: ["#f4d0a4", "#cd7f32", "#7a4318"],
+  silver: ["#f7f9fc", "#c3c8d2", "#7c8290"],
+  gold: ["#ffe9a3", "#f7c625", "#a9781a"],
+  emerald: ["#bff7db", "#36d07c", "#15683f"],
+  diamond: ["#e9fbff", "#8fe0ff", "#3f9fd6"],
+};
+
+// Quality SVG medal coin: notched rim, metallic radial bevel, gloss highlight.
+// The tier glyph is overlaid separately (in .badge-glyph). Greys out when locked.
+const BadgeMedal = ({ badgeId, tier, locked }) => {
+  const [c1, c2, c3] = locked ? ["#3b3e45", "#2b2e34", "#1f2125"] : (BADGE_TIERS[tier] || BADGE_TIERS.gold);
+  const gid = `bm-${badgeId}${locked ? "-l" : ""}`;
+  const notches = [];
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    notches.push([32 + Math.cos(a) * 29, 32 + Math.sin(a) * 29]);
+  }
+  return (
+    <svg viewBox="0 0 64 64" className="badge-svg" aria-hidden="true">
+      <defs>
+        <radialGradient id={`${gid}-c`} cx="50%" cy="32%" r="72%">
+          <stop offset="0%" stopColor={c1} />
+          <stop offset="52%" stopColor={c2} />
+          <stop offset="100%" stopColor={c3} />
+        </radialGradient>
+        <linearGradient id={`${gid}-s`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity={locked ? 0.1 : 0.55} />
+          <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {notches.map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r="2.4" fill={c2} opacity={locked ? 0.5 : 0.92} />
+      ))}
+      <circle cx="32" cy="32" r="26" fill={`url(#${gid}-c)`} stroke="rgba(255,255,255,0.32)" strokeWidth="1" />
+      <circle cx="32" cy="32" r="20.5" fill="none" stroke="rgba(0,0,0,0.24)" strokeWidth="1.4" />
+      <ellipse cx="32" cy="22" rx="15" ry="8" fill={`url(#${gid}-s)`} />
+    </svg>
+  );
+};
 
 function ProfileDashboard({ authUser }) {
   const { t } = useLanguage();
@@ -17930,10 +17972,10 @@ function ProfileDashboard({ authUser }) {
       {/* Performance — lifetime totals across all of this buyer's links */}
       <section className="cards">
         {[
-          { label: "Total Revenue", value: formatCurrency(perf.revenue), meta: "FTD + Redeposit", icon: DollarSign, accent: true },
-          { label: "Total FTDs", value: fmtCount(perf.ftds), meta: "All-time deposits", icon: CreditCard },
-          { label: "Total Clicks", value: fmtCount(perf.clicks), meta: "Traffic delivered", icon: MousePointerClick },
-          { label: "Redeposits", value: fmtCount(perf.redeposits), meta: "Repeat deposits", icon: TrendingUp },
+          { label: "Registrations", value: fmtCount(perf.registers), meta: "All-time sign-ups", icon: UserPlus },
+          { label: "FTD", value: fmtCount(perf.ftds), meta: "First-time deposits", icon: CreditCard },
+          { label: "Redeposit", value: fmtCount(perf.redeposits), meta: "Repeat deposits", icon: TrendingUp },
+          { label: "Revenue", value: formatCurrency(perf.revenue), meta: "FTD + Redeposit", icon: DollarSign, accent: true },
         ].map((stat) => {
           const Icon = stat.icon;
           return (
@@ -18006,8 +18048,11 @@ function ProfileDashboard({ authUser }) {
           {badges.map((b) => {
             const Icon = b.Icon;
             return (
-              <div key={b.id} className={`badge-tile track-${b.track}${b.earned ? " is-earned" : " is-locked"}`} title={b.hint}>
-                <div className="badge-medal"><Icon size={24} /></div>
+              <div key={b.id} className={`badge-tile tier-${b.tier}${b.earned ? " is-earned" : " is-locked"}`} title={b.hint}>
+                <div className="badge-medal">
+                  <BadgeMedal badgeId={b.id} tier={b.tier} locked={!b.earned} />
+                  <span className="badge-glyph"><Icon size={22} /></span>
+                </div>
                 <div className="badge-name">{t(b.label)}</div>
                 <div className="badge-hint">{b.hint}</div>
                 {b.earned ? (

@@ -15342,21 +15342,29 @@ select option,
 }
 .badge-tile.is-earned:hover { transform: translateY(-3px); }
 .badge-medal {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  transition: transform 0.2s var(--ease-smooth, ease);
+}
+.badge-svg { display: block; width: 100%; height: 100%; }
+.badge-tile.is-earned .badge-medal { filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.4)); }
+.badge-tile.is-earned:hover .badge-medal { transform: translateY(-2px) scale(1.04); }
+.badge-glyph {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  color: #6b7079;
-  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  color: rgba(26, 18, 2, 0.8);
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.25));
 }
-.badge-tile.is-earned .badge-medal {
-  color: #2a1e00;
-  background: radial-gradient(circle at 50% 30%, #ffe08a, #f7c625 55%, #d99b1f 100%);
-  border-color: rgba(247, 198, 37, 0.7);
-  box-shadow: 0 6px 18px rgba(247, 198, 37, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.5);
-}
+.badge-tile.is-locked .badge-glyph { color: #6b7079; filter: none; }
+/* tier-tinted glow on unlocked tiles */
+.badge-tile.is-earned.tier-bronze { border-color: rgba(205, 127, 50, 0.36); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(205, 127, 50, 0.12); }
+.badge-tile.is-earned.tier-silver { border-color: rgba(195, 200, 210, 0.36); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(195, 200, 210, 0.12); }
+.badge-tile.is-earned.tier-gold { border-color: rgba(247, 198, 37, 0.36); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(247, 198, 37, 0.14); }
+.badge-tile.is-earned.tier-emerald { border-color: rgba(54, 208, 124, 0.36); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(54, 208, 124, 0.14); }
+.badge-tile.is-earned.tier-diamond { border-color: rgba(143, 224, 255, 0.4); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(143, 224, 255, 0.16); }
 .badge-name { font-size: 13.5px; font-weight: 700; color: var(--text); }
 .badge-tile.is-locked .badge-name { color: var(--muted); }
 .badge-hint { font-size: 11px; color: var(--faint, #6b7079); }
