@@ -7584,6 +7584,64 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ── Keitaro Facebook COST integrations (live) ────────────────────────
+// Read Keitaro's "Facebook costs" list straight from the tracker and scope it
+// to the viewer by the buyer encoded in the integration name ("Buyer | …").
+// Each buyer sees only their own accounts + errors; leadership sees all.
+const shapeFacebookCost = (it) => {
+  const name = String(it?.name || it?.integration || "").trim();
+  const parsed = parseCampaignName(name);
+  const lastError = it?.last_error || null;
+  const lastRawError = it?.last_raw_error || null;
+  return {
+    id: it?.id ?? null,
+    name,
+    buyer: parsed.buyer || parsed.rawBuyer || "",
+    account_id: String(it?.ad_account_id || "").trim(),
+    status: lastError || lastRawError ? "Error" : "Working",
+    last_error: lastError,
+    last_raw_error: lastRawError,
+  };
+};
+
+app.get("/api/keitaro/facebook-costs", async (req, res) => {
+  const result = await keitaroAdminFetch("/integrations/facebook");
+  if (!result.ok) {
+    return res.status(502).json({ error: result.error || "Could not load Facebook costs from Keitaro." });
+  }
+  const raw = Array.isArray(result.data)
+    ? result.data
+    : result.data?.data || result.data?.integrations || result.data?.rows || [];
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  const items = raw
+    .map(shapeFacebookCost)
+    .filter((it) => (viewerBuyer ? keitaroNameMatchesBuyer(it.name, viewerBuyer) : true));
+  return res.json({ integrations: items });
+});
+
+app.delete("/api/keitaro/facebook-costs/:id", async (req, res) => {
+  const keitaroId = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(keitaroId)) {
+    return res.status(400).json({ error: "Invalid integration id." });
+  }
+  // Non-leadership may only delete integrations whose name is theirs.
+  if (!isLeadership(req.user)) {
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    const one = await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`);
+    const name = String(one.data?.integration?.name || one.data?.name || "").trim();
+    if (!viewerBuyer || !keitaroNameMatchesBuyer(name, viewerBuyer)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+  const del = await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`, { method: "DELETE" });
+  if (!del.ok) {
+    return res.status(502).json({ error: del.error || "Could not delete the integration in Keitaro." });
+  }
+  // Drop any local mirror rows that referenced it.
+  await query(`DELETE FROM meta_token_integrations WHERE keitaro_integration_id = $1`, [keitaroId]);
+  return res.json({ ok: true });
+});
+
 // ── Tracking Links ───────────────────────────────────────────────────
 // Campaign links composed in the dashboard following the
 // "Buyer | Tool | Game | Geo | Brand" convention. Optionally pushed to

@@ -15687,6 +15687,8 @@ function MetaTokenDashboard({ authUser }) {
   const canManage = isLeadershipRole(authUser?.role);
   const [integrations, setIntegrations] = React.useState([]);
   const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
+  const [keitaroCosts, setKeitaroCosts] = React.useState([]);
+  const [costsState, setCostsState] = React.useState({ loading: true, error: null });
   const [accountOptionsState, setAccountOptionsState] = React.useState({ loading: true, error: null });
   const [accountOptions, setAccountOptions] = React.useState([]);
   const [pixels, setPixels] = React.useState([]);
@@ -15725,6 +15727,43 @@ function MetaTokenDashboard({ authUser }) {
       pixelId: "",
       comment: "",
     });
+  };
+
+  // Live Facebook cost integrations straight from Keitaro, scoped to the viewer.
+  const fetchKeitaroCosts = React.useCallback(async () => {
+    try {
+      setCostsState({ loading: true, error: null });
+      const res = await apiFetch("/api/keitaro/facebook-costs");
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "Could not load Facebook costs from Keitaro.");
+      }
+      const data = await res.json();
+      setKeitaroCosts(Array.isArray(data?.integrations) ? data.integrations : []);
+      setCostsState({ loading: false, error: null });
+    } catch (error) {
+      setKeitaroCosts([]);
+      setCostsState({ loading: false, error: error.message || "Could not load Facebook costs." });
+    }
+  }, []);
+
+  const handleDeleteKeitaroCost = async (keitaroId, name) => {
+    const confirmed = await appConfirm({
+      title: "Delete this Facebook cost integration?",
+      message: `This removes "${name || keitaroId}" from Keitaro's Facebook costs.`,
+      confirmLabel: "Delete",
+    });
+    if (!confirmed) return;
+    try {
+      const res = await apiFetch(`/api/keitaro/facebook-costs/${keitaroId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "Failed to delete.");
+      }
+      await fetchKeitaroCosts();
+    } catch (error) {
+      setCostsState((s) => ({ ...s, error: error.message || "Failed to delete." }));
+    }
   };
 
   const fetchIntegrations = React.useCallback(async () => {
@@ -15822,11 +15861,12 @@ function MetaTokenDashboard({ authUser }) {
 
   React.useEffect(() => {
     fetchIntegrations();
+    fetchKeitaroCosts();
     fetchAccountOptions();
     fetchPixels();
     fetchUsers();
     fetchBuyers();
-  }, [fetchIntegrations, fetchAccountOptions, fetchPixels, fetchUsers, fetchBuyers]);
+  }, [fetchIntegrations, fetchKeitaroCosts, fetchAccountOptions, fetchPixels, fetchUsers, fetchBuyers]);
 
   React.useEffect(() => {
     if (!integrations.length) {
@@ -15983,7 +16023,7 @@ function MetaTokenDashboard({ authUser }) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to save integration.");
       }
-      await Promise.all([fetchIntegrations(), fetchAccountOptions?.()]);
+      await Promise.all([fetchIntegrations(), fetchKeitaroCosts(), fetchAccountOptions?.()]);
       resetForm();
     } catch (error) {
       setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });
@@ -16571,102 +16611,61 @@ function MetaTokenDashboard({ authUser }) {
         {accountOptionsState.error ? <div className="empty-state error">{accountOptionsState.error}</div> : null}
         {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
         {buyerState.error ? <div className="empty-state error">{buyerState.error}</div> : null}
-        {integrationState.loading ? (
-          <div className="empty-state">Loading integrations…</div>
-        ) : visibleIntegrations.length === 0 ? (
-          <div className="empty-state">No integrations added yet.</div>
-        ) : (
+          <div className="meta-costs-head">
+            <div>
+              <h4 className="meta-costs-title"><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /> {t("Facebook costs — live from Keitaro")}</h4>
+              <p className="meta-costs-sub">{t("Every account's cost integration and its status, assigned to each buyer.")}</p>
+            </div>
+            <button className="ghost" type="button" onClick={fetchKeitaroCosts} disabled={costsState.loading} title={t("Refresh from Keitaro")}>
+              <RotateCcw size={14} /> {costsState.loading ? t("Syncing…") : t("Sync")}
+            </button>
+          </div>
           <div className="table-wrap meta-token-table">
             <table className="entries-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>ACC Number</th>
-                  <th>Token</th>
-                  <th>Buyer</th>
-                  <th>Pixel</th>
-                  <th>Status</th>
-                  <th>Cost Received</th>
-                  <th>Comment</th>
-                  <th>Owner</th>
-                  <th>Actions</th>
+                  <th>{t("Name")}</th>
+                  <th>{t("Buyer")}</th>
+                  <th>{t("Ad account")}</th>
+                  <th>{t("Status")}</th>
+                  <th>{t("Error")}</th>
+                  <th>{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleIntegrations.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.id}</td>
-                    <td>{row.account_number}</td>
-                    <td className="copy-cell">
-                      <div className="copy-inline">
-                        <span className="copy-text">{maskToken(row.meta_token)}</span>
-                        <button
-                          className="icon-btn copy-btn"
-                          type="button"
-                          onClick={() => handleCopyToken(row.meta_token)}
-                          title={t("Copy")}
-                        >
-                          <Copy size={14} />
-                        </button>
-                      </div>
-                    </td>
-                    <td>{row.buyer_name || "—"}</td>
-                    <td>{resolvePixelLabel(row)}</td>
-                    <td>
-                      <div className="meta-status-cell">
-                        <span
-                          className={`status-pill ${
-                            Number(row.received_spend || 0) > 0
-                              ? "status-success"
-                              : `status-${String(row.status || "pending").toLowerCase()}`
-                          }`}
-                        >
-                          {Number(row.received_spend || 0) > 0 ? "Success" : row.status || "Pending"}
-                        </span>
-                        {row.keitaro_integration_id ? (
-                          <span
-                            className={`keitaro-int-chip${row.keitaro_last_error ? " is-error" : ""}`}
-                            title={row.keitaro_last_error ? `Keitaro error: ${row.keitaro_last_error}` : `Live in Keitaro cost integrations · #${row.keitaro_integration_id}`}
-                          >
-                            <img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" />
-                            {row.keitaro_last_error ? t("Error") : `#${row.keitaro_integration_id}`}
-                          </span>
+                {costsState.loading ? (
+                  <tr><td colSpan={6} className="empty-state">{t("Loading Facebook costs from Keitaro…")}</td></tr>
+                ) : keitaroCosts.length === 0 ? (
+                  <tr><td colSpan={6} className="empty-state">{costsState.error || t("No Facebook cost integrations in Keitaro yet. Add one above.")}</td></tr>
+                ) : (
+                  keitaroCosts.map((row) => (
+                    <tr key={row.id}>
+                      <td className="meta-cost-name">{row.name || "—"}</td>
+                      <td>{row.buyer ? <span className="owner-pill"><span className="owner-pill-dot" />{row.buyer}</span> : <span className="offer-muted">—</span>}</td>
+                      <td className="mono">{row.account_id || "—"}</td>
+                      <td>
+                        <span className={`status-pill ${row.status === "Error" ? "status-error" : "status-success"}`}>{t(row.status)}</span>
+                      </td>
+                      <td className="meta-cost-error" title={row.last_raw_error || row.last_error || ""}>
+                        {row.last_error || row.last_raw_error ? (
+                          <span className="meta-cost-error-text"><AlertTriangle size={12} /> {row.last_error || row.last_raw_error}</span>
                         ) : (
-                          <span className="keitaro-int-chip is-local" title={t("Stored locally — not yet in Keitaro")}>
-                            {t("Local")}
-                          </span>
+                          <span className="offer-muted">—</span>
                         )}
-                      </div>
-                    </td>
-                    <td>{formatCurrency(Number(row.received_spend || 0))}</td>
-                    <td>{row.comment || "—"}</td>
-                    <td>{resolveOwnerName(row)}</td>
-                    <td>
-                      <div className="inline-actions">
-                        <button className="icon-btn" type="button" onClick={() => setSelectedBindingId(row.id)} title="Show binding">
-                          <Plug size={14} />
-                        </button>
-                        <button className="icon-btn" type="button" onClick={() => handleRunCheck(row.id)} title="Run check">
-                          <CheckCircle size={14} />
-                        </button>
-                        {canManage ? (
-                          <button className="icon-btn" type="button" onClick={() => openCommentModal(row)} title="Edit comment">
-                            <MessageSquare size={14} />
-                          </button>
-                        ) : null}
-                        {canManage ? (
-                          <button className="icon-btn danger" type="button" onClick={() => handleDelete(row.id)} title="Delete">
+                      </td>
+                      <td>
+                        <div className="inline-actions">
+                          <button className="icon-btn danger" type="button" onClick={() => handleDeleteKeitaroCost(row.id, row.name)} title={t("Delete from Keitaro")}>
                             <Trash2 size={14} />
                           </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-        )}
       </motion.div>
     </section>
   );
