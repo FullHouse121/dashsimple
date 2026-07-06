@@ -78,6 +78,17 @@ import {
   Maximize2,
 } from "lucide-react";
 import logo from "./assets/logo.png";
+import keitaroLogo from "./assets/brands/keitaro.svg";
+import zlotLogo from "./assets/brands/zlot-mx.svg";
+import jasinoLogo from "./assets/brands/jasino.svg";
+
+// Canonical single-path Telegram glyph (tint-able via currentColor) — used in
+// place of the heavy multi-shade source logo for small inline UI.
+const TelegramGlyph = ({ size = 14 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M23.91 3.79L20.3 20.84c-.25 1.21-.98 1.5-2 .94l-5.5-4.07-2.66 2.57c-.3.3-.55.56-1.13.56l.41-5.75 10.42-9.42c.45-.4-.1-.63-.7-.23L6.36 12.79l-5.4-1.68c-1.16-.36-1.19-1.17.24-1.73L22.5 2.24c.98-.36 1.83.22 1.41 1.55z" />
+  </svg>
+);
 
 // Lazy-loaded dashboard views — each splits into its own chunk so the initial
 // bundle stays small. Add more dashboards here as they're extracted to /src/dashboards/
@@ -4380,9 +4391,9 @@ function TrackingLinksDashboard({ authUser }) {
     const status = String(link.keitaro_status || "local");
     if (status === "created") {
       return (
-        <span className="geo-chip" title={link.keitaro_id ? `Keitaro ID ${link.keitaro_id}` : ""}>
-          <span className="cs-dot" style={{ background: "#36d07c" }} aria-hidden="true" />
-          {t("Keitaro")}{link.keitaro_id ? ` #${link.keitaro_id}` : ""}
+        <span className="geo-chip keitaro-chip" title={link.keitaro_id ? `Keitaro ID ${link.keitaro_id}` : "Keitaro"}>
+          <img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" />
+          {link.keitaro_id ? `#${link.keitaro_id}` : ""}
         </span>
       );
     }
@@ -4923,7 +4934,7 @@ function TrackingLinksDashboard({ authUser }) {
                     onChange={(event) => setForm((prev) => ({ ...prev, sendFtdToBot: event.target.checked }))}
                   />
                   <span className="ios-switch-track" aria-hidden="true"><span className="ios-switch-knob" /></span>
-                  <span className="s2s-toggle-icon"><Zap size={13} /></span>
+                  <span className="s2s-toggle-icon s2s-toggle-telegram"><TelegramGlyph size={13} /></span>
                   <span className="ios-switch-label">{t("Send FTDs to the Telegram bot")}</span>
                 </label>
                 <p className="field-hint">

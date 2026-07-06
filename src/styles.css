@@ -14656,3 +14656,25 @@ select option,
 @media (prefers-reduced-motion: reduce) {
   .ios-switch-knob { transition: none; }
 }
+
+/* ── Brand marks (real logos, used where they replace a text label) ── */
+.brand-mark {
+  display: inline-block;
+  width: auto;
+  object-fit: contain;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+/* Keitaro wordmark inside the tracking-status chip (replaces the word) */
+.keitaro-chip {
+  gap: 6px;
+  padding-left: 9px;
+}
+.keitaro-mark {
+  height: 11px;
+  /* the source is already brand green (#61C761) — no tint needed */
+}
+/* Telegram paper-plane sits a hair off-centre; nudge it inside its badge */
+.s2s-toggle-telegram svg {
+  transform: translateX(-0.5px);
+}
