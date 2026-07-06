@@ -7833,6 +7833,7 @@ const pushCampaignToKeitaro = async ({
   offerId,
   filtersConfig,
   notes,
+  attachFtdPostback = true,
 }) => {
   let resolvedGroupId = groupId ? Number(groupId) : null;
   if (!resolvedGroupId && buyer) {
@@ -7873,10 +7874,11 @@ const pushCampaignToKeitaro = async ({
   const campaignId = campaign.id ?? null;
   const finalAlias = campaign.alias || trimmedAlias || null;
 
-  // Attach the FTD S2S postback (fires to the worker on FTD conversions).
-  // Isolated from the critical path: a failure here logs but doesn't fail the
-  // campaign. buyer= is mapped from the campaign's buyer.
-  if (campaignId) {
+  // Attach the FTD S2S postback (fires to the worker/Telegram bot on FTD
+  // conversions) — opt-in via attachFtdPostback. Isolated from the critical
+  // path: a failure here logs but doesn't fail the campaign. buyer= is mapped
+  // from the campaign's buyer.
+  if (campaignId && attachFtdPostback) {
     const postbackUrl = buildFtdPostbackUrl(resolvePostbackBuyer(buyer));
     const pb = await keitaroAdminFetch(`/campaigns/${campaignId}`, {
       method: "PUT",
@@ -8114,6 +8116,7 @@ app.post("/api/tracking-links", async (req, res) => {
     domainId = null,
     groupId = null,
     pushToKeitaro = false,
+    sendFtdToBot = true,
   } = req.body ?? {};
 
   // Non-leadership links are always attributed to the requester.
@@ -8151,6 +8154,7 @@ app.post("/api/tracking-links", async (req, res) => {
       offerId,
       filtersConfig: filtersJson,
       notes: campaignNotes,
+      attachFtdPostback: sendFtdToBot !== false,
     });
   }
 

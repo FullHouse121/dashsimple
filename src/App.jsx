@@ -3948,7 +3948,27 @@ function TrackingLinksDashboard({ authUser }) {
     params: DEFAULT_TRACKING_PARAMS,
     externalIdMacro: "",
     pushToKeitaro: true,
+    sendFtdToBot: true,
   }));
+
+  // Mirrors the server's POSTBACK_BUYER_MAP so the form can preview which bot
+  // identifier this buyer's FTDs report as (display only — the server is the
+  // source of truth for the actual postback).
+  const resolvedBotBuyer = React.useMemo(() => {
+    const MAP = {
+      leo: "leo", leomarketing: "leo",
+      karen: "karen", karenfarias: "karen",
+      sara: "sara", carvalho: "carvalho", akku: "akku", enzo: "enzo",
+      matheus: "hail", leticia: "nobre",
+    };
+    const key = String(form.buyer || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!key) return "unknown";
+    if (MAP[key]) return MAP[key];
+    for (const [k, v] of Object.entries(MAP)) {
+      if (key.includes(k) || k.includes(key)) return v;
+    }
+    return key;
+  }, [form.buyer]);
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
   const [filterDraft, setFilterDraft] = React.useState({ logic: "and", rules: [] });
 
@@ -4894,31 +4914,26 @@ function TrackingLinksDashboard({ authUser }) {
               <p className="field-hint">{t("If the push fails, the link is stored locally anyway.")}</p>
             </div>
             {form.pushToKeitaro ? (
-              <div className="field field-span-3 s2s-panel">
-                <div className="s2s-head">
-                  <span className="s2s-icon"><Zap size={16} /></span>
-                  <div className="s2s-headtext">
-                    <p className="s2s-title">{t("S2S postback attached")} <span className="s2s-badge">FTD</span></p>
-                    <p className="s2s-sub">{t("On every first deposit, Keitaro fires a server-to-server postback to your worker — conversions report back automatically, no manual work.")}</p>
-                  </div>
-                </div>
-                <div className="s2s-params">
-                  {[
-                    ["brand", "{campaign_name}"],
-                    ["payout", "{conversion_revenue}"],
-                    ["country", "{country}"],
-                    ["clickid", "{subid}"],
-                    ["placement", "{sub1}"],
-                    ["buyer", form.buyer || authUser?.username || "—"],
-                  ].map(([k, v]) => (
-                    <span className="s2s-param" key={k}>
-                      <span className="s2s-key">{k}</span>
-                      <span className="s2s-val">{v}</span>
-                    </span>
-                  ))}
-                </div>
-                <p className="s2s-foot">
-                  {t("Fires on")} <code>custom_conversion_8</code> (FTD) · {t("method")} <code>GET</code>
+              <div className={`field field-span-3 field-inline s2s-toggle-field ${form.sendFtdToBot ? "is-on" : ""}`}>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.sendFtdToBot}
+                    onChange={(event) => setForm((prev) => ({ ...prev, sendFtdToBot: event.target.checked }))}
+                  />
+                  <span className="s2s-toggle-icon"><Zap size={13} /></span>
+                  {t("Send FTDs to the Telegram bot")}
+                </label>
+                <p className="field-hint">
+                  {form.sendFtdToBot ? (
+                    <>
+                      {t("On each first deposit, Keitaro posts back to the bot as buyer")}{" "}
+                      <code>{resolvedBotBuyer}</code>
+                      <span className="s2s-foot-dim"> · custom_conversion_8 (FTD) · GET</span>
+                    </>
+                  ) : (
+                    t("FTD conversions won't be forwarded to the bot.")
+                  )}
                 </p>
               </div>
             ) : null}

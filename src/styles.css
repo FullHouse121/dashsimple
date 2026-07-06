@@ -14552,3 +14552,38 @@ select option,
   .pixel-edit-modal,
   .accounts-modal { width: 94vw; }
 }
+
+/* ── Send-FTDs-to-bot toggle (replaces the verbose S2S info box) ───── */
+.s2s-toggle-field {
+  --s2s-accent: var(--section-accent, #64b8ff);
+  gap: 7px;
+}
+.s2s-toggle-field .checkbox {
+  font-size: 13.5px;
+  font-weight: 550;
+}
+.s2s-toggle-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  color: var(--s2s-accent);
+  background: color-mix(in srgb, var(--s2s-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--s2s-accent) 34%, transparent);
+  transition: box-shadow 0.2s var(--ease-smooth, ease), opacity 0.2s ease;
+}
+.s2s-toggle-field.is-on .s2s-toggle-icon {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--s2s-accent) 34%, transparent);
+}
+.s2s-toggle-field:not(.is-on) .s2s-toggle-icon { opacity: 0.5; }
+.s2s-toggle-field .field-hint code {
+  color: color-mix(in srgb, var(--s2s-accent) 45%, #ffffff);
+  background: color-mix(in srgb, var(--s2s-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--s2s-accent) 26%, transparent);
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.s2s-foot-dim { color: var(--muted); }
