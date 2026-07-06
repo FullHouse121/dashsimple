@@ -14587,3 +14587,72 @@ select option,
   font-weight: 600;
 }
 .s2s-foot-dim { color: var(--muted); }
+
+/* ── iOS-style on/off switch (Publish toggles) ──────────────────────
+   Real track + knob driven by a visually-hidden checkbox. Green by
+   default; .ios-switch-accent inherits the section accent (cyan here). */
+.ios-switch {
+  --switch-accent: var(--green, #36d07c);
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  cursor: pointer;
+}
+.ios-switch.ios-switch-accent {
+  --switch-accent: var(--section-accent, #64b8ff);
+}
+.ios-switch > input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: 0;
+  pointer-events: none;
+}
+.ios-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  transition: background 0.24s var(--ease-smooth, ease), border-color 0.24s var(--ease-smooth, ease);
+}
+.ios-switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  transition: transform 0.26s cubic-bezier(0.34, 1.4, 0.5, 1);
+}
+.ios-switch > input:checked ~ .ios-switch-track {
+  background: var(--switch-accent);
+  border-color: color-mix(in srgb, var(--switch-accent) 68%, transparent);
+}
+.ios-switch > input:checked ~ .ios-switch-track .ios-switch-knob {
+  transform: translateY(-50%) translateX(18px);
+}
+.ios-switch:hover .ios-switch-track {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.ios-switch > input:focus-visible ~ .ios-switch-track {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--switch-accent) 26%, transparent);
+}
+/* Label text: normal case (beats .form-grid .field label uppercase via a
+   direct declaration, which always overrides an inherited value) */
+.ios-switch-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13.5px;
+  font-weight: 550;
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ios-switch-knob { transition: none; }
+}

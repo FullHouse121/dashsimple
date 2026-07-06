@@ -4903,26 +4903,28 @@ function TrackingLinksDashboard({ authUser }) {
               <span className="form-section-label">{t("Publish")}</span>
             </div>
             <div className="field field-inline">
-              <label className="checkbox">
+              <label className="ios-switch">
                 <input
                   type="checkbox"
                   checked={form.pushToKeitaro}
                   onChange={(event) => setForm((prev) => ({ ...prev, pushToKeitaro: event.target.checked }))}
                 />
-                {t("Create campaign in Keitaro")}
+                <span className="ios-switch-track" aria-hidden="true"><span className="ios-switch-knob" /></span>
+                <span className="ios-switch-label">{t("Create campaign in Keitaro")}</span>
               </label>
               <p className="field-hint">{t("If the push fails, the link is stored locally anyway.")}</p>
             </div>
             {form.pushToKeitaro ? (
               <div className={`field field-span-3 field-inline s2s-toggle-field ${form.sendFtdToBot ? "is-on" : ""}`}>
-                <label className="checkbox">
+                <label className="ios-switch ios-switch-accent">
                   <input
                     type="checkbox"
                     checked={form.sendFtdToBot}
                     onChange={(event) => setForm((prev) => ({ ...prev, sendFtdToBot: event.target.checked }))}
                   />
+                  <span className="ios-switch-track" aria-hidden="true"><span className="ios-switch-knob" /></span>
                   <span className="s2s-toggle-icon"><Zap size={13} /></span>
-                  {t("Send FTDs to the Telegram bot")}
+                  <span className="ios-switch-label">{t("Send FTDs to the Telegram bot")}</span>
                 </label>
                 <p className="field-hint">
                   {form.sendFtdToBot ? (
