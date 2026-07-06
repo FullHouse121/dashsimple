@@ -14672,7 +14672,19 @@ select option,
 }
 .keitaro-mark {
   height: 11px;
+  vertical-align: -1px;
   /* the source is already brand green (#61C761) — no tint needed */
+}
+/* Keitaro wordmark replacing the word in the "routing" section label */
+.keitaro-label-mark {
+  height: 13px;
+  vertical-align: -2px;
+  margin-right: 2px;
+}
+/* Tool logo inside a My-Flows chip: cap width so wide wordmarks stay tidy */
+.flow-seg-tool .brand-mark {
+  max-width: 74px;
+  vertical-align: middle;
 }
 /* Telegram paper-plane sits a hair off-centre; nudge it inside its badge */
 .s2s-toggle-telegram svg {

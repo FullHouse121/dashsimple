@@ -4905,7 +4905,7 @@ function TrackingLinksDashboard({ authUser }) {
               <input value={form.brand} onChange={updateForm("brand")} placeholder="ZLOTMX" />
             </div>
             <div className="field field-span-3 form-section-head">
-              <span className="form-section-label">{t("Keitaro routing")}</span>
+              <span className="form-section-label"><img className="brand-mark keitaro-label-mark" src={keitaroLogo} alt="Keitaro" /> {t("routing")}</span>
             </div>
             <div className="field">
               <label>{t("Tracking Domain")} <span className="field-pace-hint">{t("from Keitaro")}</span></label>
@@ -5553,7 +5553,7 @@ function MyFlowsDashboard({ authUser }) {
                           <span className={`flow-state-dot${isActive ? " is-active" : " is-off"}`} />
                           {seg.buyer || t("Unassigned")}
                         </span>
-                        {seg.tool ? <span className="flow-seg flow-seg-tool"><Megaphone size={11} /> {seg.tool}</span> : null}
+                        {seg.tool ? <span className="flow-seg flow-seg-tool">{resolveBrandLogo(seg.tool) ? <BrandMark value={seg.tool} height={13} /> : <><Megaphone size={11} /> {seg.tool}</>}</span> : null}
                         {(dom.game || seg.game) ? <span className="flow-seg flow-seg-game"><Target size={11} /> {dom.game || seg.game}</span> : null}
                         {geoList.length ? (
                           <span className="flow-seg flow-seg-geo">
@@ -5564,7 +5564,9 @@ function MyFlowsDashboard({ authUser }) {
                         {seg.brand ? <span className="flow-seg flow-seg-brand"><Tag size={11} /> {seg.brand}</span> : null}
                         <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`}>
                           <span className="flow-kt-dot" />
-                          {inKeitaro ? (link.keitaro_id ? `#${link.keitaro_id}` : t("Keitaro")) : t("Local")}
+                          {inKeitaro ? (
+                            <><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" />{link.keitaro_id ? ` #${link.keitaro_id}` : ""}</>
+                          ) : t("Local")}
                         </span>
                       </div>
 
@@ -5574,7 +5576,7 @@ function MyFlowsDashboard({ authUser }) {
                           <div className="flow-detail-card-head"><Link2 size={13} /> {t("Campaign")}</div>
                           <div className="flow-detail-list">
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Alias")}</span><span className="flow-detail-val is-mono">{link.alias || "—"}</span></div>
-                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Keitaro")}</span><span className="flow-detail-val">{link.keitaro_id ? <><span className="flow-detail-code">#{link.keitaro_id}</span> · {t(link.state || "active")}</> : t("Local only")}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Keitaro")}</span><span className="flow-detail-val">{link.keitaro_id ? <><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /> <span className="flow-detail-code">#{link.keitaro_id}</span> · {t(link.state || "active")}</> : t("Local only")}</span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Owner")}</span><span className="flow-detail-val">{link.owner_name || dom.owner_name || "—"}</span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Created")}</span><span className="flow-detail-val">{createdAt}</span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Filters")}</span><span className="flow-detail-val">{filterCount ? `${filterCount} ${filterCount === 1 ? t("rule") : t("rules")}` : t("None")}</span></div>
@@ -5584,7 +5586,7 @@ function MyFlowsDashboard({ authUser }) {
                           <div className="flow-detail-card-head"><Globe size={13} /> {t("Domain & targeting")}</div>
                           <div className="flow-detail-list">
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("PWA domain")}</span><span className="flow-detail-val is-mono">{dom.domain || "—"}</span></div>
-                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Platform")}</span><span className="flow-detail-val">{dom.platform || "—"}</span></div>
+                            <div className="flow-detail-row"><span className="flow-detail-key">{t("Platform")}</span><span className="flow-detail-val"><BrandMark value={dom.platform} height={14} /></span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Application / Game")}</span><span className="flow-detail-val">{dom.game || seg.game || "—"}</span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("GEO")}</span><span className="flow-detail-val flow-detail-geoval">{geoList.map((g) => <CountryFlag key={g} value={g} />)}{geoReadable}</span></div>
                             <div className="flow-detail-row"><span className="flow-detail-key">{t("Status")}</span><span className="flow-detail-val"><span className={`accounts-status-pill acc-st-${String(dom.status || "Active").toLowerCase()}`}>{t(dom.status || "Active")}</span></span></div>
@@ -5681,7 +5683,7 @@ function MyFlowsDashboard({ authUser }) {
                   {
                     key: "source", accent: "#36d07c", Icon: Megaphone,
                     title: t("Traffic Source"),
-                    value: link.tool || t("Your ad tool"),
+                    value: link.tool ? (resolveBrandLogo(link.tool) ? <BrandMark value={link.tool} height={18} /> : link.tool) : t("Your ad tool"),
                     desc: t("You buy traffic here and upload the PWA domain link to your ads."),
                   },
                   {
@@ -5851,13 +5853,17 @@ function MyFlowsDashboard({ authUser }) {
                       <span className={`flow-avatar${isActive ? " is-active" : ""}`} aria-hidden="true">{(seg.buyer || "?").trim().charAt(0).toUpperCase() || "?"}</span>
                       <span className="flow-buyer">{seg.buyer || t("Unassigned")}</span>
                       {(seg.tool || seg.game) ? (
-                        <span className="flow-card-campaign">{[seg.tool, seg.game].filter(Boolean).join(" · ")}</span>
+                        <span className="flow-card-campaign">
+                          {seg.tool ? (resolveBrandLogo(seg.tool) ? <BrandMark value={seg.tool} height={12} /> : seg.tool) : null}
+                          {seg.tool && seg.game ? <span className="flow-card-sep"> · </span> : null}
+                          {seg.game || null}
+                        </span>
                       ) : null}
                     </button>
                     <div className="flow-card-head-right">
                       <span className={`flow-status-pill flow-status-${isActive ? "on" : "off"}`}>{isActive ? t("Active") : t("Paused")}</span>
                       <span className={`flow-kt${inKeitaro ? " is-live" : " is-local"}`} title={inKeitaro ? t("Live in Keitaro") : t("Stored locally")}>
-                        <span className="flow-kt-dot" />{inKeitaro ? t("Keitaro") : t("Local")}
+                        <span className="flow-kt-dot" />{inKeitaro ? <img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /> : t("Local")}
                       </span>
                     </div>
                   </div>
@@ -5904,7 +5910,7 @@ function MyFlowsDashboard({ authUser }) {
                               <div className="flow-node-body">
                                 <span className="flow-node-icon"><Globe size={14} /></span>
                                 <span className="flow-node-name">{domain.domain}</span>
-                                {domain.platform ? <span className="flow-node-tag">{domain.platform}</span> : null}
+                                {domain.platform ? (resolveBrandLogo(domain.platform) ? <BrandMark value={domain.platform} height={13} /> : <span className="flow-node-tag">{domain.platform}</span>) : null}
                                 {dGeos.length ? (
                                   <span className="flow-node-geos" title={dGeos.join(", ")}>
                                     {dGeos.slice(0, 3).map((g) => <CountryFlag key={g} value={g} />)}
