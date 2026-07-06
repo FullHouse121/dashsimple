@@ -14391,7 +14391,7 @@ select option,
 .domain-registry-panel { --section-accent: #49e0c4; }
 .pixel-registry-panel { --section-accent: #f7c625; }
 .accounts-registry-panel { --section-accent: #a15bff; }
-.utm-registry-panel { --section-accent: #ff7da3; }
+.utm-registry-panel { --section-accent: var(--green, #36d07c); }
 
 /* ── Operations "add data" composer forms ───────────────────────────
    The .registry-dashboard-panel card rule above already gives these
@@ -14741,8 +14741,8 @@ select option,
    Scoped to .utm-registry-panel so it wins over the older .utm-* rules.
    ═══════════════════════════════════════════════════════════════════ */
 .utm-registry-panel {
-  --utm: #ff7da3;
-  --utm-strong: #ff9bb8;
+  --utm: var(--green, #36d07c);
+  --utm-strong: #7ce2a7;
   --utm-tint: color-mix(in srgb, var(--utm) 12%, transparent);
   --utm-line: color-mix(in srgb, var(--utm) 26%, rgba(255, 255, 255, 0.06));
   gap: 20px;
