@@ -15942,6 +15942,32 @@ function MetaTokenDashboard({ authUser }) {
       return;
     }
     try {
+      // One-step "fully ready": if this Meta ad-account isn't registered yet,
+      // register it in Accounts first (owned by the chosen buyer), then create
+      // the integration — which the server already wires (resolves cost + sets
+      // status/wired). No pre-trip to the Accounts section required.
+      const isKnownAccount = accountDropdownOptions.some(
+        (o) => String(o.value).trim() === accountNumber || String(o.label).trim() === accountNumber
+      );
+      if (!isKnownAccount) {
+        let ownerId;
+        if (canManage) {
+          const buyerUser = users.find(
+            (u) => String(u.username || "").trim().toLowerCase() === buyerName.toLowerCase()
+          );
+          ownerId = buyerUser?.id;
+        }
+        const acctRes = await apiFetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountNumber, ...(ownerId ? { ownerId } : {}) }),
+        });
+        if (!acctRes.ok) {
+          const d = await acctRes.json().catch(() => null);
+          throw new Error(d?.error || "Could not register the new account.");
+        }
+      }
+
       const response = await apiFetch("/api/meta-tokens", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -15957,7 +15983,7 @@ function MetaTokenDashboard({ authUser }) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to save integration.");
       }
-      await fetchIntegrations();
+      await Promise.all([fetchIntegrations(), fetchAccountOptions?.()]);
       resetForm();
     } catch (error) {
       setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });
@@ -16474,7 +16500,7 @@ function MetaTokenDashboard({ authUser }) {
 
         <form className="form-grid api-grid" onSubmit={handleCreate}>
           <div className="field">
-            <label>ACC Number</label>
+            <label>ACC Number <span className="field-pace-hint">pick a registered account or type a new one</span></label>
             <CountryDropdownPicker
               value={form.accountNumber}
               onChange={(accountNumber) => setForm((prev) => ({ ...prev, accountNumber }))}
@@ -16483,11 +16509,12 @@ function MetaTokenDashboard({ authUser }) {
                 accountOptionsState.loading
                   ? "Loading accounts..."
                   : accountDropdownOptions.length
-                    ? "Select account"
-                    : "No accounts available"
+                    ? "Select or type an account"
+                    : "Type a Meta ad-account number"
               }
-              searchPlaceholder="Type to find accounts"
+              searchPlaceholder="Search or paste a new account number…"
               emptyResultsLabel="No accounts found."
+              allowCustom
             />
           </div>
           <div className={`field${canManage ? "" : " field-span-2"}`}>
