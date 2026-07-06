@@ -12021,7 +12021,7 @@ function DomainsDashboard({ authUser }) {
             onClick={closeDomainEdit}
           >
             <motion.div
-              className="modal pixel-edit-modal"
+              className="modal pixel-edit-modal edit-modal-accent domain-edit-accent"
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -13140,7 +13140,7 @@ function PixelsDashboard({ authUser }) {
             onClick={closePixelEdit}
           >
             <motion.div
-              className="modal pixel-edit-modal"
+              className="modal pixel-edit-modal edit-modal-accent pixel-edit-accent"
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -14955,7 +14955,7 @@ function AccountsDashboard({ authUser }) {
             onClick={closeEditModal}
           >
             <motion.div
-              className="modal accounts-modal"
+              className="modal accounts-modal edit-modal-accent accounts-edit-accent"
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.98 }}

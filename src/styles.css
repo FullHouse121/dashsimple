@@ -14446,3 +14446,54 @@ select option,
 .accounts-form .field-pace-hint {
   color: color-mix(in srgb, var(--section-accent, #36d07c) 62%, var(--muted-strong, #a9adb7));
 }
+
+/* ── Edit modals: carry the section identity into the dialog ─────────
+   Each edit modal gets its section accent so Edit Domain/Pixel/Account
+   feel of a piece with their registries (and their add-forms). */
+.domain-edit-accent   { --section-accent: #49e0c4; }
+.pixel-edit-accent    { --section-accent: #f7c625; }
+.accounts-edit-accent { --section-accent: #a15bff; }
+
+/* Accent top edge on the dialog + a soft corner glow */
+.edit-modal-accent {
+  position: relative;
+  border-top: 2px solid color-mix(in srgb, var(--section-accent, #36d07c) 62%, transparent);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.5),
+    0 0 0 1px color-mix(in srgb, var(--section-accent, #36d07c) 14%, transparent);
+}
+.edit-modal-accent::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(90% 60% at 100% 0%,
+    color-mix(in srgb, var(--section-accent, #36d07c) 8%, transparent) 0%, transparent 44%);
+  z-index: 0;
+}
+.edit-modal-accent > * { position: relative; z-index: 1; }
+
+/* Header kicker + icon adopt the accent */
+.edit-modal-accent .modal-kicker {
+  color: color-mix(in srgb, var(--section-accent, #36d07c) 78%, #ffffff);
+}
+.edit-modal-accent .modal-head {
+  border-bottom-color: color-mix(in srgb, var(--section-accent, #36d07c) 20%, rgba(255, 255, 255, 0.07));
+}
+
+/* Inputs focus in the section accent instead of the global green */
+.edit-modal-accent .modal-body .field input:focus,
+.edit-modal-accent .modal-body .field input:focus-visible,
+.edit-modal-accent .modal-body .field textarea:focus,
+.edit-modal-accent .modal-body .field textarea:focus-visible,
+.edit-modal-accent .modal-body .country-select-trigger:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--section-accent, #36d07c) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--section-accent, #36d07c) 16%, transparent);
+}
+
+/* Label hint suffixes in the modal pick up the accent too */
+.edit-modal-accent .field-pace-hint {
+  color: color-mix(in srgb, var(--section-accent, #36d07c) 62%, var(--muted-strong, #a9adb7));
+}
