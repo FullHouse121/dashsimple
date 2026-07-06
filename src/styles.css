@@ -11703,6 +11703,8 @@ select option,
 .mono {
   font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .postback-params {

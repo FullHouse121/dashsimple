@@ -12734,6 +12734,14 @@ function PixelsDashboard({ authUser }) {
     return `${value.slice(0, 6)}••••${value.slice(-4)}`;
   };
 
+  const [revealedTokens, setRevealedTokens] = React.useState(() => new Set());
+  const toggleReveal = (id) =>
+    setRevealedTokens((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   const handleCopy = (value) => async (event) => {
     if (!value) return;
     const anchorRect = event?.currentTarget?.getBoundingClientRect?.() || null;
@@ -13542,7 +13550,21 @@ function PixelsDashboard({ authUser }) {
                     </td>
                     <td className="copy-cell token-cell">
                       <div className="copy-inline">
-                        <span className="copy-text mono">{maskToken(pixel.token_eaag)}</span>
+                        <span className="copy-text mono">
+                          {revealedTokens.has(pixel.id) ? pixel.token_eaag || "—" : maskToken(pixel.token_eaag)}
+                        </span>
+                        {pixel.token_eaag ? (
+                          <button
+                            className="icon-btn copy-btn"
+                            type="button"
+                            onClick={() => toggleReveal(pixel.id)}
+                            aria-label={revealedTokens.has(pixel.id) ? t("Hide token") : t("Reveal token")}
+                            aria-pressed={revealedTokens.has(pixel.id)}
+                            title={revealedTokens.has(pixel.id) ? t("Hide token") : t("Reveal token")}
+                          >
+                            {revealedTokens.has(pixel.id) ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        ) : null}
                         <button
                           className="icon-btn copy-btn"
                           type="button"
