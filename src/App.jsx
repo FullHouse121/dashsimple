@@ -15682,6 +15682,23 @@ function AccountsDashboard({ authUser }) {
   );
 }
 
+// Keitaro returns raw i18n error keys for Facebook-costs failures; map the
+// common ones to human-readable text (raw stays in the cell's tooltip).
+const KEITARO_ERROR_MAP = {
+  "third_party_integration.errors.token": "Invalid or expired Meta token",
+  "third_party_integration.errors.account": "Ad account not accessible by this token",
+  "third_party_integration.errors.permissions": "Token missing ad-account permissions",
+  "third_party_integration.errors.rate_limit": "Facebook rate limit — try again later",
+};
+const friendlyKeitaroError = (raw) => {
+  const key = String(raw || "").trim();
+  if (!key) return "";
+  if (KEITARO_ERROR_MAP[key]) return KEITARO_ERROR_MAP[key];
+  // Turn "third_party_integration.errors.something_here" into "Something here"
+  const tail = key.split(".").pop().replace(/_/g, " ");
+  return /errors?\b/i.test(key) ? tail.charAt(0).toUpperCase() + tail.slice(1) : key;
+};
+
 function MetaTokenDashboard({ authUser }) {
   const { t } = useLanguage();
   const canManage = isLeadershipRole(authUser?.role);
@@ -16648,7 +16665,7 @@ function MetaTokenDashboard({ authUser }) {
                       </td>
                       <td className="meta-cost-error" title={row.last_raw_error || row.last_error || ""}>
                         {row.last_error || row.last_raw_error ? (
-                          <span className="meta-cost-error-text"><AlertTriangle size={12} /> {row.last_error || row.last_raw_error}</span>
+                          <span className="meta-cost-error-text"><AlertTriangle size={12} /> {friendlyKeitaroError(row.last_error || row.last_raw_error)}</span>
                         ) : (
                           <span className="offer-muted">—</span>
                         )}
