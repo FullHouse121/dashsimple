@@ -15306,6 +15306,7 @@ select option,
 .ph-geo { color: #6ad6ff; background: rgba(106, 214, 255, 0.14); border-color: rgba(106, 214, 255, 0.3); }
 .ph-tool { color: #ff9bb8; background: rgba(255, 125, 163, 0.14); border-color: rgba(255, 125, 163, 0.3); }
 .ph-rank { color: #f7c625; background: rgba(247, 198, 37, 0.14); border-color: rgba(247, 198, 37, 0.32); }
+.ph-brand { color: #f7a63c; background: rgba(247, 166, 60, 0.14); border-color: rgba(247, 166, 60, 0.32); }
 .ph-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ph-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
 .ph-value { display: inline-flex; align-items: center; gap: 7px; font-size: 19px; font-weight: 700; color: var(--text); }

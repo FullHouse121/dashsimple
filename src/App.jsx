@@ -17893,6 +17893,7 @@ function ProfileDashboard({ authUser }) {
     let revenue = 0, ftds = 0, clicks = 0, redeposits = 0, registers = 0, spend = 0;
     const geoMap = new Map();
     const toolMap = new Map();
+    const brandMap = new Map();
     for (const r of statRows) {
       const rev = (Number(r.ftd_revenue) || 0) + (Number(r.redeposit_revenue) || 0);
       revenue += rev;
@@ -17916,13 +17917,22 @@ function ProfileDashboard({ authUser }) {
         tm.ftds += Number(r.ftds) || 0;
         toolMap.set(tool, tm);
       }
+      const brand = r.brand;
+      if (brand) {
+        const bm = brandMap.get(brand) || { revenue: 0, ftds: 0 };
+        bm.revenue += rev;
+        bm.ftds += Number(r.ftds) || 0;
+        brandMap.set(brand, bm);
+      }
     }
     const bestGeo = [...geoMap.entries()]
       .sort((a, b) => b[1].ftds - a[1].ftds || b[1].revenue - a[1].revenue)[0] || null;
     const preferredTool = [...toolMap.entries()]
       .sort((a, b) => b[1].clicks - a[1].clicks || b[1].ftds - a[1].ftds)[0] || null;
+    const topBrand = [...brandMap.entries()]
+      .sort((a, b) => b[1].revenue - a[1].revenue || b[1].ftds - a[1].ftds)[0] || null;
     const roi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
-    return { revenue, ftds, clicks, redeposits, registers, spend, roi, bestGeo, preferredTool, geoCount: geoMap.size };
+    return { revenue, ftds, clicks, redeposits, registers, spend, roi, bestGeo, preferredTool, topBrand, geoCount: geoMap.size };
   }, [statRows]);
 
   const badges = React.useMemo(
@@ -18021,12 +18031,18 @@ function ProfileDashboard({ authUser }) {
           </div>
         </div>
         <div className="profile-highlight">
-          <span className="ph-icon ph-rank"><Trophy size={18} /></span>
+          <span className="ph-icon ph-brand"><Tag size={18} /></span>
           <div className="ph-body">
-            <span className="ph-label">{t("Achievements")}</span>
-            <span className="ph-value">{earnedBadges.length} <span className="ph-of">/ {badges.length}</span></span>
+            <span className="ph-label">{t("Top brand")}</span>
+            {perf.topBrand ? (
+              <span className="ph-value">
+                {resolveBrandLogo(perf.topBrand[0]) ? <BrandMark value={perf.topBrand[0]} height={16} /> : perf.topBrand[0]}
+              </span>
+            ) : (
+              <span className="ph-value ph-empty">{t("No data yet")}</span>
+            )}
             <span className="ph-sub">
-              {nextBadge ? `${t("Next")}: ${t(nextBadge.label)} — ${Math.round(nextBadge.progress * 100)}%` : t("All badges unlocked — legend!")}
+              {perf.topBrand ? `${formatCurrency(perf.topBrand[1].revenue)} · ${fmtCount(perf.topBrand[1].ftds)} ${t("FTDs")}` : t("Your best-performing brand")}
             </span>
           </div>
         </div>
