@@ -16630,8 +16630,8 @@ function MetaTokenDashboard({ authUser }) {
         {buyerState.error ? <div className="empty-state error">{buyerState.error}</div> : null}
           <div className="meta-costs-head">
             <div>
-              <h4 className="meta-costs-title"><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /> {t("Facebook costs — live from Keitaro")}</h4>
-              <p className="meta-costs-sub">{t("Every account's cost integration and its status, assigned to each buyer.")}</p>
+              <h4 className="meta-costs-title"><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /></h4>
+              <p className="meta-costs-sub">{t("Facebook costs — live from Keitaro")}</p>
             </div>
             <button className="ghost" type="button" onClick={fetchKeitaroCosts} disabled={costsState.loading} title={t("Refresh from Keitaro")}>
               <RotateCcw size={14} /> {costsState.loading ? t("Syncing…") : t("Sync")}

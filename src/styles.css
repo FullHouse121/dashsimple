@@ -15413,8 +15413,8 @@ select option,
   display: flex; align-items: center; gap: 8px; margin: 0;
   font-size: 14px; font-weight: 650; color: var(--text);
 }
-.meta-costs-title .keitaro-mark { height: 14px; }
-.meta-costs-sub { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.meta-costs-title .keitaro-mark { height: 70px; }
+.meta-costs-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .meta-cost-name { font-weight: 600; color: var(--text); }
 .meta-cost-error { max-width: 320px; }
 .meta-cost-error-text {
