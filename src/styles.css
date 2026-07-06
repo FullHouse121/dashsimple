@@ -14675,12 +14675,18 @@ select option,
   vertical-align: -1px;
   /* the source is already brand green (#61C761) — no tint needed */
 }
-/* Larger in the My-Flows / detail status pills where it stands alone */
+/* Larger in the My-Flows / detail status pills where it stands alone —
+   the wordmark needs real height to stay legible. Trim the pill's vertical
+   padding so it doesn't tower over the neighbouring status pill. */
 .flow-kt .keitaro-mark {
-  height: 16px;
+  height: 20px;
+}
+.flow-kt:has(.keitaro-mark) {
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 .keitaro-chip .keitaro-mark {
-  height: 14px;
+  height: 15px;
 }
 /* Keitaro wordmark replacing the word in the "routing" section label */
 .keitaro-label-mark {
