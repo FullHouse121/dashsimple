@@ -14497,3 +14497,58 @@ select option,
 .edit-modal-accent .field-pace-hint {
   color: color-mix(in srgb, var(--section-accent, #36d07c) 62%, var(--muted-strong, #a9adb7));
 }
+
+/* ── Operations: mobile spacing refinements ─────────────────────────
+   The grids already collapse (KPI 4→1, forms → 1 col, toolbar auto-fits,
+   tables scroll). These rules reclaim the horizontal padding phones can't
+   spare and let the panel header wrap instead of squeezing. */
+@media (max-width: 640px) {
+  .main { padding: 18px 14px 28px; }
+
+  /* Registry / operations panels: tighter gutters so content keeps width */
+  .flows-registry-panel,
+  .utm-registry-panel,
+  .domain-registry-panel,
+  .pixel-registry-panel,
+  .accounts-registry-panel,
+  .tracking-registry-panel {
+    padding: 16px 14px 18px;
+  }
+
+  /* Panel header: count chip + primary button drop under the title */
+  .flows-registry-panel .panel-head,
+  .utm-registry-panel .panel-head,
+  .domain-registry-panel .panel-head,
+  .pixel-registry-panel .panel-head,
+  .accounts-registry-panel .panel-head,
+  .tracking-registry-panel .panel-head {
+    flex-wrap: wrap;
+  }
+  .flows-registry-panel .panel-head-actions,
+  .utm-registry-panel .panel-head-actions,
+  .domain-registry-panel .panel-head-actions,
+  .pixel-registry-panel .panel-head-actions,
+  .accounts-registry-panel .panel-head-actions,
+  .tracking-registry-panel .panel-head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Composer cards: pull the padding + hairline in to match */
+  .registry-dashboard-panel .domain-form,
+  .registry-dashboard-panel .pixel-form,
+  .registry-dashboard-panel .accounts-form {
+    padding: 16px 14px 14px;
+  }
+  .registry-dashboard-panel .domain-form::before,
+  .registry-dashboard-panel .pixel-form::before,
+  .registry-dashboard-panel .accounts-form::before {
+    left: 14px;
+    right: 14px;
+  }
+
+  /* Edit modals: sheet-like, tighter chrome on phones */
+  .edit-modal-accent { border-radius: 16px; }
+  .pixel-edit-modal,
+  .accounts-modal { width: 94vw; }
+}
