@@ -14678,3 +14678,29 @@ select option,
 .s2s-toggle-telegram svg {
   transform: translateX(-0.5px);
 }
+
+/* Platform / brand mark in table cells: logo replaces the text label */
+.platform-mark {
+  max-width: 96px;
+  opacity: 0.94;
+}
+/* Lettermark fallback for brands with no logo — keeps the column consistent */
+.brand-lettermark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text);
+}
+.brand-lettermark-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--section-accent, #8a93a3);
+  background: color-mix(in srgb, var(--section-accent, #8a93a3) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--section-accent, #8a93a3) 30%, transparent);
+}

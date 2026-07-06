@@ -81,6 +81,9 @@ import logo from "./assets/logo.png";
 import keitaroLogo from "./assets/brands/keitaro.svg";
 import zlotLogo from "./assets/brands/zlot-mx.svg";
 import jasinoLogo from "./assets/brands/jasino.svg";
+import pwaGroupLogo from "./assets/brands/pwa-group.svg";
+import zmAppsLogo from "./assets/brands/zm-apps.svg";
+import linkiLogo from "./assets/brands/linki-group.svg";
 
 // Canonical single-path Telegram glyph (tint-able via currentColor) — used in
 // place of the heavy multi-shade source logo for small inline UI.
@@ -89,6 +92,52 @@ const TelegramGlyph = ({ size = 14 }) => (
     <path d="M23.91 3.79L20.3 20.84c-.25 1.21-.98 1.5-2 .94l-5.5-4.07-2.66 2.57c-.3.3-.55.56-1.13.56l.41-5.75 10.42-9.42c.45-.4-.1-.63-.7-.23L6.36 12.79l-5.4-1.68c-1.16-.36-1.19-1.17.24-1.73L22.5 2.24c.98-.36 1.83.22 1.41 1.55z" />
   </svg>
 );
+
+// Meta infinity mark (lobehub mono, single path) — tint-able via currentColor.
+const MetaGlyph = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden="true">
+    <path d="M6.897 4c1.915 0 3.516.932 5.43 3.376l.282-.373c.19-.246.383-.484.58-.71l.313-.35C14.588 4.788 15.792 4 17.225 4c1.273 0 2.469.557 3.491 1.516l.218.213c1.73 1.765 2.917 4.71 3.053 8.026l.011.392.002.25c0 1.501-.28 2.759-.818 3.7l-.14.23-.108.153c-.301.42-.664.758-1.086 1.009l-.265.142-.087.04a3.493 3.493 0 01-.302.118 4.117 4.117 0 01-1.33.208c-.524 0-.996-.067-1.438-.215-.614-.204-1.163-.56-1.726-1.116l-.227-.235c-.753-.812-1.534-1.976-2.493-3.586l-1.43-2.41-.544-.895-1.766 3.13-.343.592C7.597 19.156 6.227 20 4.356 20c-1.21 0-2.205-.42-2.936-1.182l-.168-.184c-.484-.573-.837-1.311-1.043-2.189l-.067-.32a8.69 8.69 0 01-.136-1.288L0 14.468c.002-.745.06-1.49.174-2.23l.1-.573c.298-1.53.828-2.958 1.536-4.157l.209-.34c1.177-1.83 2.789-3.053 4.615-3.16L6.897 4zm-.033 2.615l-.201.01c-.83.083-1.606.673-2.252 1.577l-.138.199-.01.018c-.67 1.017-1.185 2.378-1.456 3.845l-.004.022a12.591 12.591 0 00-.207 2.254l.002.188c.004.18.017.36.04.54l.043.291c.092.503.257.908.486 1.208l.117.137c.303.323.698.492 1.17.492 1.1 0 1.796-.676 3.696-3.641l2.175-3.4.454-.701-.139-.198C9.11 7.3 8.084 6.616 6.864 6.616zm10.196-.552l-.176.007c-.635.048-1.223.359-1.82.933l-.196.198c-.439.462-.887 1.064-1.367 1.807l.266.398c.18.274.362.56.55.858l.293.475 1.396 2.335.695 1.114c.583.926 1.03 1.6 1.408 2.082l.213.262c.282.326.529.54.777.673l.102.05c.227.1.457.138.718.138.176.002.35-.023.518-.073.338-.104.61-.32.813-.637l.095-.163.077-.162c.194-.459.29-1.06.29-1.785l-.006-.449c-.08-2.871-.938-5.372-2.2-6.798l-.176-.189c-.67-.683-1.444-1.074-2.27-1.074z" />
+  </svg>
+);
+
+// Brand/traffic-source logo registry. Keys are normalized (lowercased, only
+// a-z0-9), so "PWA Group" / "PWA.GROUP" / "pwagroup" all resolve to one entry.
+const BRAND_LOGOS = {
+  pwagroup: { src: pwaGroupLogo, label: "PWA Group" },
+  zmapps: { src: zmAppsLogo, label: "ZM Apps" },
+  zmap: { src: zmAppsLogo, label: "ZM Apps" },
+  linkigroup: { src: linkiLogo, label: "Linki Group" },
+  linki: { src: linkiLogo, label: "Linki Group" },
+  zlotmx: { src: zlotLogo, label: "ZlotMX" },
+  zlot: { src: zlotLogo, label: "ZlotMX" },
+  jasino: { src: jasinoLogo, label: "Jasino" },
+};
+const normalizeBrandKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const resolveBrandLogo = (value) => {
+  const key = normalizeBrandKey(value);
+  if (!key) return null;
+  if (BRAND_LOGOS[key]) return BRAND_LOGOS[key];
+  // guarded prefix match so "pwagroupmx" still resolves, without false hits
+  for (const [k, v] of Object.entries(BRAND_LOGOS)) {
+    if (k.length >= 4 && (key.startsWith(k) || k.startsWith(key))) return v;
+  }
+  return null;
+};
+// Renders a matched brand logo, else a lettermark chip (never a broken image).
+const BrandMark = ({ value, height = 15 }) => {
+  const raw = String(value || "").trim();
+  if (!raw) return <span className="offer-muted">—</span>;
+  const hit = resolveBrandLogo(raw);
+  if (hit) {
+    return <img className="brand-mark platform-mark" src={hit.src} alt={hit.label} title={hit.label} style={{ height }} />;
+  }
+  return (
+    <span className="brand-lettermark" title={raw}>
+      <span className="brand-lettermark-badge" aria-hidden="true">{raw.slice(0, 1).toUpperCase()}</span>
+      {raw}
+    </span>
+  );
+};
 
 // Lazy-loaded dashboard views — each splits into its own chunk so the initial
 // bundle stays small. Add more dashboards here as they're extracted to /src/dashboards/
@@ -11910,7 +11959,7 @@ function DomainsDashboard({ authUser }) {
                       </span>
                     </td>
                     <td>{domain.game || "—"}</td>
-                    <td>{domain.platform || "—"}</td>
+                    <td><BrandMark value={domain.platform} /></td>
                     <td>
                       {countries.length ? (
                         <div className="geo-chip-row">
@@ -13275,7 +13324,7 @@ function PixelsDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><Zap size={20} /></span>
+            <span className="panel-icon-badge"><MetaGlyph size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Pixels Registry")}</h3>
               <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
