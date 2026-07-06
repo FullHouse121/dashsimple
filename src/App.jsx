@@ -17577,7 +17577,8 @@ function RolesDashboard({ authUser }) {
               <table className="entries-table team-table">
                 <thead>
                   <tr>
-                    <th>{t("Name")}</th>
+                    <th>{t("Name")} <span className="th-sub">{t("login")}</span></th>
+                    <th>{t("Keitaro name")}</th>
                     <th>{t("Tag")}</th>
                     <th>{t("Role")}</th>
                     <th>{t("Country")}</th>
@@ -17593,6 +17594,21 @@ function RolesDashboard({ authUser }) {
                   {buyers.map((member) => (
                     <tr key={member.id}>
                       <td>{member.name}</td>
+                      <td>
+                        {member.keitaro_name ? (
+                          <span
+                            className="keitaro-name-pill"
+                            title={`Campaigns for ${member.name} are named "${member.keitaro_name} | …" in Keitaro`}
+                          >
+                            <img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" />
+                            {member.keitaro_name}
+                          </span>
+                        ) : (
+                          <span className="offer-muted" title="Keitaro campaigns use the same name as the login">
+                            = {member.name}
+                          </span>
+                        )}
+                      </td>
                       <td>
                         {member.tag ? (
                           <span className="tag-pill">{member.tag}</span>

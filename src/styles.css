@@ -15245,3 +15245,26 @@ select option,
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Roles table — login ↔ Keitaro-name mapping */
+.th-sub {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--faint, #6b7079);
+  margin-left: 4px;
+}
+.keitaro-name-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9cf0c3;
+  background: rgba(54, 208, 124, 0.09);
+  border: 1px solid rgba(54, 208, 124, 0.28);
+}
+.keitaro-name-pill .keitaro-mark { height: 11px; }

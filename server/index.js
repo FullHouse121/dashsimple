@@ -4216,6 +4216,12 @@ const isMetaIntegrationWired = (payload) => {
 
 const resolveViewerBuyer = async (user) => {
   if (!user || isLeadership(user)) return null;
+  // Warm the DB name↔keitaro_name map so the explicit Keitaro name each buyer
+  // sets in Roles is authoritative when we filter their stats (self-guarded to
+  // a 60s cache, so this is effectively free per request). Without this the
+  // live-stats/behaviour/device endpoints filtered against a cold cache and the
+  // configured mapping was ignored.
+  await refreshBuyerAliases();
   if (user.buyerId) {
     const record = await selectMediaBuyerById(user.buyerId);
     if (record?.name) return record.name;
