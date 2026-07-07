@@ -15785,7 +15785,18 @@ function MetaTokenDashboard({ authUser }) {
   };
 
   const openEditCost = (row) =>
-    setEditCost({ open: true, id: row.id, name: row.name || "", account: row.account_id || "", token: "", saving: false, error: null });
+    setEditCost({
+      open: true,
+      id: row.id,
+      name: row.name || "",
+      account: row.account_id || "",
+      buyer: row.buyer || "",
+      status: row.status || "",
+      current: row.last_error || row.last_raw_error || "",
+      token: "",
+      saving: false,
+      error: null,
+    });
   const closeEditCost = () => setEditCost((s) => ({ ...s, open: false }));
   const handleSaveEditCost = async () => {
     const token = String(editCost.token || "").trim();
@@ -16727,32 +16738,50 @@ function MetaTokenDashboard({ authUser }) {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="modal-head">
-                  <div>
-                    <p className="modal-kicker">{t("Facebook cost integration")}</p>
-                    <h2>{editCost.name || t("Integration")}</h2>
+                  <div className="mc-edit-headtitle">
+                    <img className="brand-mark keitaro-mark mc-edit-logo" src={keitaroLogo} alt="Keitaro" />
+                    <div>
+                      <p className="modal-kicker">{t("Update cost integration")}</p>
+                      <h2>{editCost.name || t("Integration")}</h2>
+                    </div>
                   </div>
                   <button className="icon-btn" type="button" onClick={closeEditCost}><X size={18} /></button>
                 </div>
                 <div className="modal-body">
                   <div className="field field-span-2">
+                    <div className={`mc-edit-status ${editCost.status === "Error" ? "is-error" : "is-ok"}`}>
+                      {editCost.status === "Error" ? <AlertTriangle size={15} /> : <CheckCircle size={15} />}
+                      <span>
+                        {editCost.status === "Error"
+                          ? <>{t("Currently failing")} — <strong>{friendlyKeitaroError(editCost.current) || t("Invalid or expired Meta token")}</strong></>
+                          : t("Integration is healthy — update the token only if you need to.")}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>{t("Buyer")}</label>
+                    <input value={editCost.buyer || "—"} readOnly />
+                  </div>
+                  <div className="field">
                     <label>{t("Ad account")}</label>
-                    <input value={editCost.account} readOnly />
+                    <input value={editCost.account} readOnly className="mono" />
                   </div>
                   <div className="field field-span-2">
-                    <label>{t("New Meta token")} <span className="field-pace-hint">{t("paste a fresh token to replace an expired one")}</span></label>
+                    <label>{t("New Meta token")}</label>
                     <input
                       type="text"
                       value={editCost.token}
                       onChange={(e) => setEditCost((s) => ({ ...s, token: e.target.value }))}
-                      placeholder="Meta for developers token"
+                      placeholder="EAAG…"
                       autoFocus
                     />
+                    <p className="field-hint">{t("Paste a fresh long-lived token from Meta. It replaces the token on this integration in Keitaro — the account and buyer stay the same.")}</p>
                   </div>
                   {editCost.error ? <div className="field field-span-2"><div className="api-status error">{editCost.error}</div></div> : null}
                 </div>
                 <div className="modal-actions">
                   <button className="ghost" type="button" onClick={closeEditCost}>{t("Cancel")}</button>
-                  <button className="action-pill" type="button" onClick={handleSaveEditCost} disabled={editCost.saving}>
+                  <button className="action-pill" type="button" onClick={handleSaveEditCost} disabled={editCost.saving || !editCost.token.trim()}>
                     {editCost.saving ? t("Updating…") : t("Update token in Keitaro")}
                   </button>
                 </div>

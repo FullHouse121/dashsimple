@@ -15415,7 +15415,9 @@ select option,
 .meta-costs-title {
   display: block; margin: 0;
 }
-.meta-costs-title .keitaro-mark { height: 70px; display: block; }
+/* The Keitaro wordmark SVG carries ~122/1000 of left whitespace (no viewBox);
+   pull it left so the glyph edge lines up with the caption + NAME column. */
+.meta-costs-title .keitaro-mark { height: 70px; display: block; margin-left: -19px; }
 .meta-costs-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .meta-cost-name { font-weight: 600; color: var(--text); }
 .meta-cost-error { max-width: 320px; }
@@ -15425,3 +15427,15 @@ select option,
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
 }
 .status-pill.status-error { color: #ff9b8a; background: rgba(255, 138, 122, 0.12); border: 1px solid rgba(255, 138, 122, 0.3); }
+
+/* Update-cost-integration modal */
+.mc-edit-headtitle { display: flex; align-items: center; gap: 10px; }
+.mc-edit-logo { height: 30px; margin-left: -8px; flex-shrink: 0; }
+.mc-edit-status {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 14px; border-radius: 12px; font-size: 13px; line-height: 1.45;
+}
+.mc-edit-status strong { font-weight: 650; }
+.mc-edit-status.is-error { color: #ffb9ab; background: rgba(255, 138, 122, 0.1); border: 1px solid rgba(255, 138, 122, 0.28); }
+.mc-edit-status.is-error strong { color: #ff9b8a; }
+.mc-edit-status.is-ok { color: #9cf0c3; background: rgba(54, 208, 124, 0.09); border: 1px solid rgba(54, 208, 124, 0.26); }
