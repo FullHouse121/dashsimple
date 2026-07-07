@@ -7642,6 +7642,50 @@ app.delete("/api/keitaro/facebook-costs/:id", async (req, res) => {
   return res.json({ ok: true });
 });
 
+// Update a Keitaro Facebook cost integration — e.g. paste a fresh Meta token
+// when the old one expired. Preserves name/ad_account_id unless overridden.
+app.put("/api/keitaro/facebook-costs/:id", async (req, res) => {
+  const keitaroId = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(keitaroId)) {
+    return res.status(400).json({ error: "Invalid integration id." });
+  }
+  const { token, name, adAccountId } = req.body ?? {};
+  const current = await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`);
+  if (!current.ok) {
+    return res.status(502).json({ error: current.error || "Integration not found in Keitaro." });
+  }
+  const cur = current.data?.integration || current.data || {};
+  const curName = String(cur.name || "").trim();
+  if (!isLeadership(req.user)) {
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    if (!viewerBuyer || !keitaroNameMatchesBuyer(curName, viewerBuyer)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+  const body = {
+    name: String(name || curName || "").slice(0, 120),
+    ad_account_id: String(adAccountId || cur.ad_account_id || "").trim(),
+    token: String(token || cur.token || "").trim(),
+  };
+  if (!body.token) return res.status(400).json({ error: "Token is required." });
+  const upd = await keitaroAdminFetch(`/integrations/facebook/${keitaroId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  if (!upd.ok) {
+    return res.status(502).json({ error: upd.error || "Could not update the integration in Keitaro." });
+  }
+  const { lastError } = readKeitaroFbIntegration(upd);
+  // Keep any local mirror row in sync with the new token/status.
+  await query(
+    `UPDATE meta_token_integrations
+     SET meta_token = $2, keitaro_last_error = $3, last_checked_at = NOW()
+     WHERE keitaro_integration_id = $1`,
+    [keitaroId, body.token, lastError || null]
+  );
+  return res.json({ ok: true, id: keitaroId, lastError });
+});
+
 // ── Tracking Links ───────────────────────────────────────────────────
 // Campaign links composed in the dashboard following the
 // "Buyer | Tool | Game | Geo | Brand" convention. Optionally pushed to

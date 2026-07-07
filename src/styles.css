@@ -15408,12 +15408,14 @@ select option,
 .meta-costs-head {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   margin: 8px 0 12px;
+  /* line the logo + caption up with the table's first-column content
+     (table-wrap 1px border + 14px cell padding) */
+  padding-left: 15px;
 }
 .meta-costs-title {
-  display: flex; align-items: center; gap: 8px; margin: 0;
-  font-size: 14px; font-weight: 650; color: var(--text);
+  display: block; margin: 0;
 }
-.meta-costs-title .keitaro-mark { height: 70px; }
+.meta-costs-title .keitaro-mark { height: 70px; display: block; }
 .meta-costs-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
 .meta-cost-name { font-weight: 600; color: var(--text); }
 .meta-cost-error { max-width: 320px; }

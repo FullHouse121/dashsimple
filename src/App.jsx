@@ -15705,6 +15705,7 @@ function MetaTokenDashboard({ authUser }) {
   const [integrations, setIntegrations] = React.useState([]);
   const [integrationState, setIntegrationState] = React.useState({ loading: true, error: null });
   const [keitaroCosts, setKeitaroCosts] = React.useState([]);
+  const [editCost, setEditCost] = React.useState({ open: false, id: null, name: "", account: "", token: "", saving: false, error: null });
   const [costsState, setCostsState] = React.useState({ loading: true, error: null });
   const [accountOptionsState, setAccountOptionsState] = React.useState({ loading: true, error: null });
   const [accountOptions, setAccountOptions] = React.useState([]);
@@ -15780,6 +15781,33 @@ function MetaTokenDashboard({ authUser }) {
       await fetchKeitaroCosts();
     } catch (error) {
       setCostsState((s) => ({ ...s, error: error.message || "Failed to delete." }));
+    }
+  };
+
+  const openEditCost = (row) =>
+    setEditCost({ open: true, id: row.id, name: row.name || "", account: row.account_id || "", token: "", saving: false, error: null });
+  const closeEditCost = () => setEditCost((s) => ({ ...s, open: false }));
+  const handleSaveEditCost = async () => {
+    const token = String(editCost.token || "").trim();
+    if (!token) {
+      setEditCost((s) => ({ ...s, error: "Paste the new Meta token." }));
+      return;
+    }
+    try {
+      setEditCost((s) => ({ ...s, saving: true, error: null }));
+      const res = await apiFetch(`/api/keitaro/facebook-costs/${editCost.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.error || "Failed to update the integration.");
+      }
+      setEditCost({ open: false, id: null, name: "", account: "", token: "", saving: false, error: null });
+      await fetchKeitaroCosts();
+    } catch (error) {
+      setEditCost((s) => ({ ...s, saving: false, error: error.message || "Failed to update." }));
     }
   };
 
@@ -16672,6 +16700,9 @@ function MetaTokenDashboard({ authUser }) {
                       </td>
                       <td>
                         <div className="inline-actions">
+                          <button className="icon-btn" type="button" onClick={() => openEditCost(row)} title={t("Replace token / edit")}>
+                            <Pencil size={14} />
+                          </button>
                           <button className="icon-btn danger" type="button" onClick={() => handleDeleteKeitaroCost(row.id, row.name)} title={t("Delete from Keitaro")}>
                             <Trash2 size={14} />
                           </button>
@@ -16683,6 +16714,52 @@ function MetaTokenDashboard({ authUser }) {
               </tbody>
             </table>
           </div>
+
+        <AnimatePresence>
+          {editCost.open ? (
+            <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeEditCost}>
+              <motion.div
+                className="modal pixel-edit-modal edit-modal-accent"
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-head">
+                  <div>
+                    <p className="modal-kicker">{t("Facebook cost integration")}</p>
+                    <h2>{editCost.name || t("Integration")}</h2>
+                  </div>
+                  <button className="icon-btn" type="button" onClick={closeEditCost}><X size={18} /></button>
+                </div>
+                <div className="modal-body">
+                  <div className="field field-span-2">
+                    <label>{t("Ad account")}</label>
+                    <input value={editCost.account} readOnly />
+                  </div>
+                  <div className="field field-span-2">
+                    <label>{t("New Meta token")} <span className="field-pace-hint">{t("paste a fresh token to replace an expired one")}</span></label>
+                    <input
+                      type="text"
+                      value={editCost.token}
+                      onChange={(e) => setEditCost((s) => ({ ...s, token: e.target.value }))}
+                      placeholder="Meta for developers token"
+                      autoFocus
+                    />
+                  </div>
+                  {editCost.error ? <div className="field field-span-2"><div className="api-status error">{editCost.error}</div></div> : null}
+                </div>
+                <div className="modal-actions">
+                  <button className="ghost" type="button" onClick={closeEditCost}>{t("Cancel")}</button>
+                  <button className="action-pill" type="button" onClick={handleSaveEditCost} disabled={editCost.saving}>
+                    {editCost.saving ? t("Updating…") : t("Update token in Keitaro")}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </motion.div>
     </section>
   );
