@@ -15505,12 +15505,13 @@ select option,
 
 /* Meta Token — live Keitaro Facebook-costs table */
 .meta-costs-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  margin: 8px 0 12px;
-  /* line the logo + caption up with the table's first-column content
-     (table-wrap 1px border + 14px cell padding) */
-  padding-left: 15px;
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 14px;
+  margin: 8px 0 14px;
+  /* line the logo + caption up with the table's first-column content */
+  padding-left: 22px;
 }
+.meta-costs-head-left { display: block; }
+.meta-costs-head-right { display: flex; align-items: center; gap: 12px; }
 .meta-costs-title {
   display: block; margin: 0;
 }
@@ -15518,14 +15519,152 @@ select option,
    pull it left so the glyph edge lines up with the caption + NAME column. */
 .meta-costs-title .keitaro-mark { height: 70px; display: block; margin-left: -19px; }
 .meta-costs-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
-.meta-cost-name { font-weight: 600; color: var(--text); }
-.meta-cost-error { max-width: 320px; }
-.meta-cost-error-text {
+
+/* Summary chips in the header */
+.meta-costs-summary { display: flex; align-items: center; gap: 8px; }
+.mcs-stat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px;
+  font-size: 12px; color: var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--stroke);
+  font-variant-numeric: tabular-nums;
+}
+.mcs-stat b { color: var(--text); font-weight: 700; }
+.mcs-stat.is-error { color: #ff9b8a; background: rgba(255, 107, 107, 0.08); border-color: rgba(255, 107, 107, 0.28); }
+.mcs-stat.is-error b { color: #ff9b8a; }
+.mcs-stat.is-ok { color: #6fe3a4; background: rgba(54, 208, 124, 0.08); border-color: rgba(54, 208, 124, 0.28); }
+.mcs-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.14); }
+.mcs-stat.is-ok .mcs-dot { box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.14); }
+.mc-sync-btn { align-self: center; }
+.mc-spin { animation: mc-spin 0.9s linear infinite; }
+@keyframes mc-spin { to { transform: rotate(-360deg); } }
+
+/* ── Elevated Keitaro Facebook-costs table ─────────────────────────── */
+.mc-table-wrap {
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(54, 208, 124, 0.04), transparent 55%),
+    rgba(255, 255, 255, 0.012);
+}
+.mc-table { display: block; min-width: 720px; }
+.mc-table-wrap { overflow-x: auto; }
+.mc-thead, .mc-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.4fr) minmax(130px, 1fr) minmax(150px, 1fr) 118px minmax(180px, 1.3fr) 96px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+}
+.mc-thead {
+  height: 44px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.022);
+  border-bottom: 1px solid var(--stroke);
+}
+.mc-col-actions { text-align: right; justify-self: end; }
+.mc-row {
+  position: relative;
+  min-height: 62px;
+  padding-top: 12px; padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  transition: background 0.16s ease;
+}
+.mc-row:last-child { border-bottom: 0; }
+.mc-row:hover { background: rgba(255, 255, 255, 0.028); }
+/* severity stripe on failing rows */
+.mc-row.is-error::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, #ff8a7a, #ff6b6b);
+  opacity: 0.85;
+}
+.mc-cell { min-width: 0; font-size: 13px; color: var(--text); }
+
+/* NAME / integration identity cell */
+.mc-name { display: flex; align-items: center; gap: 12px; }
+.mc-brand-tile {
+  flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--stroke);
+  overflow: hidden;
+}
+.mc-brand-tile.is-generic {
+  background: linear-gradient(135deg, rgba(54, 208, 124, 0.16), rgba(54, 208, 124, 0.05));
+  border-color: rgba(54, 208, 124, 0.28);
+}
+.mc-brand-tile .brand-mark { max-width: 30px; max-height: 22px; }
+.mc-brand-initial { font-size: 15px; font-weight: 800; color: #6fe3a4; }
+.mc-name-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mc-name-primary {
+  font-size: 13.5px; font-weight: 650; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mc-name-sub {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--muted);
+}
+.mc-name-sub .deus-flag { border-radius: 3px; }
+.mc-name-sub.is-muted { opacity: 0.7; }
+
+/* BUYER cell — avatar + name */
+.mc-buyer { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.mc-avatar {
+  flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.02em;
+  color: #0c1f16;
+  background: linear-gradient(135deg, #4ee39c, #36d07c);
+  box-shadow: 0 2px 8px rgba(54, 208, 124, 0.22);
+}
+
+/* AD ACCOUNT cell */
+.mc-account {
+  display: inline-block;
+  padding: 4px 10px; border-radius: 8px;
+  font-size: 12px; color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--stroke);
+  font-variant-numeric: tabular-nums;
+}
+
+/* STATUS pill */
+.mc-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px 5px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.mc-status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; position: relative; }
+.mc-status.is-error { color: #ff8a7a; background: rgba(255, 107, 107, 0.1); border: 1px solid rgba(255, 107, 107, 0.3); }
+.mc-status.is-ok { color: #4ee39c; background: rgba(54, 208, 124, 0.1); border: 1px solid rgba(54, 208, 124, 0.3); }
+.mc-status.is-ok .mc-status-dot::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%;
+  border: 2px solid currentColor; opacity: 0.5;
+  animation: mc-pulse 1.8s ease-out infinite;
+}
+@keyframes mc-pulse { 0% { transform: scale(0.6); opacity: 0.6; } 100% { transform: scale(1.9); opacity: 0; } }
+
+/* DETAILS cell */
+.mc-details { min-width: 0; }
+.mc-error-text {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: #ff9b8a;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
-.status-pill.status-error { color: #ff9b8a; background: rgba(255, 138, 122, 0.12); border: 1px solid rgba(255, 138, 122, 0.3); }
+.mc-error-text svg { flex-shrink: 0; }
+.mc-ok-text {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #6fe3a4;
+}
+
+.mc-empty {
+  padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px;
+}
 
 /* Update-cost-integration modal */
 .mc-edit-headtitle { display: flex; align-items: center; gap: 10px; }

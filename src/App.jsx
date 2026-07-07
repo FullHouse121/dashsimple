@@ -16707,48 +16707,90 @@ function MetaTokenDashboard({ authUser }) {
         {pixelState.error ? <div className="empty-state error">{pixelState.error}</div> : null}
         {buyerState.error ? <div className="empty-state error">{buyerState.error}</div> : null}
           <div className="meta-costs-head">
-            <div>
+            <div className="meta-costs-head-left">
               <h4 className="meta-costs-title"><img className="brand-mark keitaro-mark" src={keitaroLogo} alt="Keitaro" /></h4>
               <p className="meta-costs-sub">{t("Facebook costs — live from Keitaro")}</p>
             </div>
-            <button className="ghost" type="button" onClick={fetchKeitaroCosts} disabled={costsState.loading} title={t("Refresh from Keitaro")}>
-              <RotateCcw size={14} /> {costsState.loading ? t("Syncing…") : t("Sync")}
-            </button>
+            <div className="meta-costs-head-right">
+              {keitaroCosts.length ? (
+                <div className="meta-costs-summary">
+                  <span className="mcs-stat"><b>{keitaroCosts.length}</b> {t("integrations")}</span>
+                  {keitaroCosts.filter((r) => r.status === "Error").length ? (
+                    <span className="mcs-stat is-error">
+                      <span className="mcs-dot" /><b>{keitaroCosts.filter((r) => r.status === "Error").length}</b> {t("failing")}
+                    </span>
+                  ) : (
+                    <span className="mcs-stat is-ok"><span className="mcs-dot" />{t("all healthy")}</span>
+                  )}
+                </div>
+              ) : null}
+              <button className="ghost mc-sync-btn" type="button" onClick={fetchKeitaroCosts} disabled={costsState.loading} title={t("Refresh from Keitaro")}>
+                <RotateCcw size={14} className={costsState.loading ? "mc-spin" : ""} /> {costsState.loading ? t("Syncing…") : t("Sync")}
+              </button>
+            </div>
           </div>
-          <div className="table-wrap meta-token-table">
-            <table className="entries-table">
-              <thead>
-                <tr>
-                  <th>{t("Name")}</th>
-                  <th>{t("Buyer")}</th>
-                  <th>{t("Ad account")}</th>
-                  <th>{t("Status")}</th>
-                  <th>{t("Error")}</th>
-                  <th>{t("Actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {costsState.loading ? (
-                  <tr><td colSpan={6} className="empty-state">{t("Loading Facebook costs from Keitaro…")}</td></tr>
-                ) : keitaroCosts.length === 0 ? (
-                  <tr><td colSpan={6} className="empty-state">{costsState.error || t("No Facebook cost integrations in Keitaro yet. Add one above.")}</td></tr>
-                ) : (
-                  keitaroCosts.map((row) => (
-                    <tr key={row.id}>
-                      <td className="meta-cost-name">{row.name || "—"}</td>
-                      <td>{row.buyer ? <span className="owner-pill"><span className="owner-pill-dot" />{row.buyer}</span> : <span className="offer-muted">—</span>}</td>
-                      <td className="mono">{row.account_id || "—"}</td>
-                      <td>
-                        <span className={`status-pill ${row.status === "Error" ? "status-error" : "status-success"}`}>{t(row.status)}</span>
-                      </td>
-                      <td className="meta-cost-error" title={row.last_raw_error || row.last_error || ""}>
+          <div className="mc-table-wrap">
+            <div className="mc-table" role="table">
+              <div className="mc-thead" role="row">
+                <span role="columnheader">{t("Integration")}</span>
+                <span role="columnheader">{t("Buyer")}</span>
+                <span role="columnheader">{t("Ad account")}</span>
+                <span role="columnheader">{t("Status")}</span>
+                <span role="columnheader">{t("Details")}</span>
+                <span role="columnheader" className="mc-col-actions">{t("Actions")}</span>
+              </div>
+              {costsState.loading ? (
+                <div className="mc-empty">{t("Loading Facebook costs from Keitaro…")}</div>
+              ) : keitaroCosts.length === 0 ? (
+                <div className="mc-empty">{costsState.error || t("No Facebook cost integrations in Keitaro yet. Add one above.")}</div>
+              ) : (
+                keitaroCosts.map((row) => {
+                  const isError = row.status === "Error";
+                  const parts = String(row.name || "").split("|").map((s) => s.trim()).filter(Boolean);
+                  const brand = parts.length >= 2 ? parts[1] : parts[0] || row.name || "—";
+                  const geo = parts.length >= 3 ? parts.slice(2).join(" ") : "";
+                  const brandHit = resolveBrandLogo(brand);
+                  const buyerLabel = row.buyer || (parts.length ? parts[0] : "");
+                  const initials = String(buyerLabel || "?").trim().slice(0, 2).toUpperCase();
+                  return (
+                    <div className={`mc-row${isError ? " is-error" : ""}`} role="row" key={row.id}>
+                      <div className="mc-cell mc-name" role="cell">
+                        <span className={`mc-brand-tile${brandHit ? "" : " is-generic"}`}>
+                          {brandHit ? <BrandMark value={brand} height={18} /> : <span className="mc-brand-initial">{String(brand).slice(0, 1).toUpperCase()}</span>}
+                        </span>
+                        <span className="mc-name-text">
+                          <span className="mc-name-primary">{brand}</span>
+                          {geo ? (
+                            <span className="mc-name-sub"><CountryFlag value={geo} /> {geo}</span>
+                          ) : (
+                            <span className="mc-name-sub is-muted">{t("Facebook cost source")}</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="mc-cell" role="cell">
+                        {buyerLabel ? (
+                          <span className="mc-buyer">
+                            <span className="mc-avatar" data-buyer={buyerLabel}>{initials}</span>
+                            {buyerLabel}
+                          </span>
+                        ) : <span className="offer-muted">{t("Unassigned")}</span>}
+                      </div>
+                      <div className="mc-cell" role="cell">
+                        <span className="mc-account mono">{row.account_id || "—"}</span>
+                      </div>
+                      <div className="mc-cell" role="cell">
+                        <span className={`mc-status ${isError ? "is-error" : "is-ok"}`}>
+                          <span className="mc-status-dot" />{isError ? t("Error") : t("Active")}
+                        </span>
+                      </div>
+                      <div className="mc-cell mc-details" role="cell" title={row.last_raw_error || row.last_error || ""}>
                         {row.last_error || row.last_raw_error ? (
-                          <span className="meta-cost-error-text"><AlertTriangle size={12} /> {friendlyKeitaroError(row.last_error || row.last_raw_error)}</span>
+                          <span className="mc-error-text"><AlertTriangle size={12} /> {friendlyKeitaroError(row.last_error || row.last_raw_error)}</span>
                         ) : (
-                          <span className="offer-muted">—</span>
+                          <span className="mc-ok-text"><CheckCircle size={12} /> {t("Receiving cost")}</span>
                         )}
-                      </td>
-                      <td>
+                      </div>
+                      <div className="mc-cell mc-col-actions" role="cell">
                         <div className="inline-actions">
                           <button className="icon-btn" type="button" onClick={() => openEditCost(row)} title={t("Replace token / edit")}>
                             <Pencil size={14} />
@@ -16757,12 +16799,12 @@ function MetaTokenDashboard({ authUser }) {
                             <Trash2 size={14} />
                           </button>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
         <AnimatePresence>
