@@ -348,6 +348,9 @@ function CountryDropdownPicker({
   values = [],
   onToggle = null,
   maxVisibleChips = 2,
+  // When true (multi mode), the open menu shows a bar of the currently
+  // selected values, each with a ✕ to remove it directly.
+  removable = false,
   // Combobox mode: when true, a non-matching search query can be committed
   // as a custom value (used by the UTM domain field for pasted URLs).
   allowCustom = false,
@@ -537,6 +540,40 @@ function CountryDropdownPicker({
             </button>
           ) : null}
         </div>
+        {multiple && removable && selectedOptions.length ? (
+          <div className="country-select-selected-bar">
+            <div className="country-select-selected-head">
+              <span>{selectedOptions.length} selected</span>
+              <button
+                type="button"
+                className="country-select-clear-all"
+                onClick={() => selectedOptions.forEach((item) => onToggle?.(item.value))}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="country-select-selected-chips">
+              {selectedOptions.map((item) => (
+                <span key={`sel-chip-${item.value}`} className="country-select-selected-chip">
+                  {item.dot ? (
+                    <span className="cs-dot" style={{ background: item.dot }} />
+                  ) : (
+                    <CountryFlag value={item.value} />
+                  )}
+                  <span className="country-select-selected-chip-label">{item.label}</span>
+                  <button
+                    type="button"
+                    className="country-select-selected-chip-remove"
+                    aria-label={`Remove ${item.label}`}
+                    onClick={() => onToggle?.(item.value)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="country-select-options">
           {filteredOptions.length ? (
             filteredOptions.map((item) => {
@@ -13443,6 +13480,7 @@ function PixelsDashboard({ authUser }) {
                   <label>{t("Domains")} <span className="field-pace-hint">{t("registered domains")}</span></label>
                   <CountryDropdownPicker
                     multiple
+                    removable
                     values={pixelEdit.form.flows}
                     onToggle={togglePixelEditFlow}
                     options={domains
@@ -13609,6 +13647,7 @@ function PixelsDashboard({ authUser }) {
               <label>{t("Domains")} <span className="field-pace-hint">{t("one pixel, many domains")}</span></label>
               <CountryDropdownPicker
                 multiple
+                removable
                 values={pixelForm.flows}
                 onToggle={togglePixelFlow}
                 options={flowDropdownOptions}
