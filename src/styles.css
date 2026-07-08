@@ -15540,6 +15540,28 @@ select option,
 .mc-spin { animation: mc-spin 0.9s linear infinite; }
 @keyframes mc-spin { to { transform: rotate(-360deg); } }
 
+/* Filter box in the header */
+.mc-search {
+  display: flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--stroke);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.mc-search:focus-within { border-color: rgba(54, 208, 124, 0.45); box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.1); }
+.mc-search-icon { color: var(--muted); flex-shrink: 0; }
+.mc-search input {
+  border: 0; background: transparent; outline: none;
+  color: var(--text); font-size: 12.5px; font-family: inherit;
+  width: 180px; min-width: 0;
+}
+.mc-search input::placeholder { color: var(--muted); }
+.mc-search-clear {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.mc-search-clear:hover { color: var(--text); }
+
 /* ── Elevated Keitaro Facebook-costs table ─────────────────────────── */
 .mc-table-wrap {
   border: 1px solid var(--stroke);
@@ -15553,7 +15575,7 @@ select option,
 .mc-table-wrap { overflow-x: auto; }
 .mc-thead, .mc-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.4fr) minmax(130px, 1fr) minmax(150px, 1fr) 118px minmax(180px, 1.3fr) 96px;
+  grid-template-columns: minmax(190px, 1.4fr) minmax(130px, 1fr) minmax(150px, 1fr) 108px minmax(170px, 1.2fr) 150px;
   align-items: center;
   gap: 12px;
   padding: 0 20px;
@@ -15623,15 +15645,37 @@ select option,
   box-shadow: 0 2px 8px rgba(54, 208, 124, 0.22);
 }
 
-/* AD ACCOUNT cell */
+/* AD ACCOUNT cell — copy-to-clipboard chip */
 .mc-account {
-  display: inline-block;
+  display: inline-flex; align-items: center; gap: 7px;
   padding: 4px 10px; border-radius: 8px;
   font-size: 12px; color: var(--text);
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--stroke);
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
+.mc-account svg { color: var(--muted); flex-shrink: 0; transition: color 0.16s ease; }
+.mc-account:hover:not(:disabled) { border-color: rgba(54, 208, 124, 0.4); background: rgba(54, 208, 124, 0.06); }
+.mc-account:hover:not(:disabled) svg { color: #6fe3a4; }
+.mc-account:disabled { cursor: default; }
+.mc-account.is-copied { border-color: rgba(54, 208, 124, 0.5); color: #6fe3a4; }
+.mc-account.is-copied svg { color: #6fe3a4; }
+
+/* Fix-token CTA on failing rows */
+.mc-fix-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 700;
+  color: #ffcabf;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.mc-fix-btn:hover { background: rgba(255, 107, 107, 0.2); border-color: rgba(255, 107, 107, 0.55); color: #fff; }
+.mc-fix-btn svg { flex-shrink: 0; }
 
 /* STATUS pill */
 .mc-status {

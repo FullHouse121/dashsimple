@@ -43,6 +43,7 @@ import {
   CheckCircle,
   Link2,
   Copy,
+  Wrench,
   RotateCcw,
   MousePointerClick,
   Plus,
@@ -15746,6 +15747,8 @@ function MetaTokenDashboard({ authUser }) {
   const [keitaroCosts, setKeitaroCosts] = React.useState([]);
   const [editCost, setEditCost] = React.useState({ open: false, id: null, name: "", account: "", token: "", saving: false, error: null });
   const [costsState, setCostsState] = React.useState({ loading: true, error: null });
+  const [costSearch, setCostSearch] = React.useState("");
+  const [copiedAccount, setCopiedAccount] = React.useState(null);
   const [accountOptionsState, setAccountOptionsState] = React.useState({ loading: true, error: null });
   const [accountOptions, setAccountOptions] = React.useState([]);
   const [pixels, setPixels] = React.useState([]);
@@ -15803,6 +15806,38 @@ function MetaTokenDashboard({ authUser }) {
       setCostsState({ loading: false, error: error.message || "Could not load Facebook costs." });
     }
   }, []);
+
+  // Deterministic avatar hue per buyer, so rows are easier to track.
+  const buyerHue = React.useCallback((name) => {
+    const s = String(name || "");
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+    return h;
+  }, []);
+
+  const copyAccount = React.useCallback(async (value, id) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard?.writeText(String(value));
+      setCopiedAccount(id);
+      setTimeout(() => setCopiedAccount(null), 1400);
+    } catch { /* clipboard blocked — no-op */ }
+  }, []);
+
+  // Filter (buyer / account / name) + errors-first sort for the costs table.
+  const visibleCosts = React.useMemo(() => {
+    const q = costSearch.trim().toLowerCase();
+    const filtered = q
+      ? keitaroCosts.filter((r) =>
+          [r.name, r.buyer, r.account_id].some((v) => String(v || "").toLowerCase().includes(q)))
+      : keitaroCosts;
+    return [...filtered].sort((a, b) => {
+      const ae = a.status === "Error" ? 0 : 1;
+      const be = b.status === "Error" ? 0 : 1;
+      if (ae !== be) return ae - be;
+      return String(a.buyer || a.name || "").localeCompare(String(b.buyer || b.name || ""));
+    });
+  }, [keitaroCosts, costSearch]);
 
   const handleDeleteKeitaroCost = async (keitaroId, name) => {
     const confirmed = await appConfirm({
@@ -16713,16 +16748,30 @@ function MetaTokenDashboard({ authUser }) {
             </div>
             <div className="meta-costs-head-right">
               {keitaroCosts.length ? (
-                <div className="meta-costs-summary">
-                  <span className="mcs-stat"><b>{keitaroCosts.length}</b> {t("integrations")}</span>
-                  {keitaroCosts.filter((r) => r.status === "Error").length ? (
-                    <span className="mcs-stat is-error">
-                      <span className="mcs-dot" /><b>{keitaroCosts.filter((r) => r.status === "Error").length}</b> {t("failing")}
-                    </span>
-                  ) : (
-                    <span className="mcs-stat is-ok"><span className="mcs-dot" />{t("all healthy")}</span>
-                  )}
-                </div>
+                <>
+                  <div className="mc-search">
+                    <Search size={14} className="mc-search-icon" />
+                    <input
+                      type="text"
+                      value={costSearch}
+                      onChange={(e) => setCostSearch(e.target.value)}
+                      placeholder={t("Filter buyer or account…")}
+                    />
+                    {costSearch ? (
+                      <button type="button" className="mc-search-clear" onClick={() => setCostSearch("")} aria-label={t("Clear filter")}>×</button>
+                    ) : null}
+                  </div>
+                  <div className="meta-costs-summary">
+                    <span className="mcs-stat"><b>{keitaroCosts.length}</b> {t("integrations")}</span>
+                    {keitaroCosts.filter((r) => r.status === "Error").length ? (
+                      <span className="mcs-stat is-error">
+                        <span className="mcs-dot" /><b>{keitaroCosts.filter((r) => r.status === "Error").length}</b> {t("failing")}
+                      </span>
+                    ) : (
+                      <span className="mcs-stat is-ok"><span className="mcs-dot" />{t("all healthy")}</span>
+                    )}
+                  </div>
+                </>
               ) : null}
               <button className="ghost mc-sync-btn" type="button" onClick={fetchKeitaroCosts} disabled={costsState.loading} title={t("Refresh from Keitaro")}>
                 <RotateCcw size={14} className={costsState.loading ? "mc-spin" : ""} /> {costsState.loading ? t("Syncing…") : t("Sync")}
@@ -16743,8 +16792,10 @@ function MetaTokenDashboard({ authUser }) {
                 <div className="mc-empty">{t("Loading Facebook costs from Keitaro…")}</div>
               ) : keitaroCosts.length === 0 ? (
                 <div className="mc-empty">{costsState.error || t("No Facebook cost integrations in Keitaro yet. Add one above.")}</div>
+              ) : visibleCosts.length === 0 ? (
+                <div className="mc-empty">{t("No integrations match")} “{costSearch}”.</div>
               ) : (
-                keitaroCosts.map((row) => {
+                visibleCosts.map((row) => {
                   const isError = row.status === "Error";
                   const parts = String(row.name || "").split("|").map((s) => s.trim()).filter(Boolean);
                   const brand = parts.length >= 2 ? parts[1] : parts[0] || row.name || "—";
@@ -16752,6 +16803,7 @@ function MetaTokenDashboard({ authUser }) {
                   const brandHit = resolveBrandLogo(brand);
                   const buyerLabel = row.buyer || (parts.length ? parts[0] : "");
                   const initials = String(buyerLabel || "?").trim().slice(0, 2).toUpperCase();
+                  const hue = buyerHue(buyerLabel);
                   return (
                     <div className={`mc-row${isError ? " is-error" : ""}`} role="row" key={row.id}>
                       <div className="mc-cell mc-name" role="cell">
@@ -16770,13 +16822,31 @@ function MetaTokenDashboard({ authUser }) {
                       <div className="mc-cell" role="cell">
                         {buyerLabel ? (
                           <span className="mc-buyer">
-                            <span className="mc-avatar" data-buyer={buyerLabel}>{initials}</span>
+                            <span
+                              className="mc-avatar"
+                              style={{
+                                background: `linear-gradient(135deg, hsl(${hue} 70% 58%), hsl(${(hue + 28) % 360} 68% 46%))`,
+                                boxShadow: `0 2px 8px hsl(${hue} 70% 50% / 0.28)`,
+                                color: "#0b1512",
+                              }}
+                            >
+                              {initials}
+                            </span>
                             {buyerLabel}
                           </span>
                         ) : <span className="offer-muted">{t("Unassigned")}</span>}
                       </div>
                       <div className="mc-cell" role="cell">
-                        <span className="mc-account mono">{row.account_id || "—"}</span>
+                        <button
+                          type="button"
+                          className={`mc-account mono${copiedAccount === row.id ? " is-copied" : ""}`}
+                          onClick={() => copyAccount(row.account_id, row.id)}
+                          disabled={!row.account_id}
+                          title={row.account_id ? t("Copy ad account") : ""}
+                        >
+                          {row.account_id || "—"}
+                          {row.account_id ? (copiedAccount === row.id ? <CheckCircle size={12} /> : <Copy size={12} />) : null}
+                        </button>
                       </div>
                       <div className="mc-cell" role="cell">
                         <span className={`mc-status ${isError ? "is-error" : "is-ok"}`}>
@@ -16792,9 +16862,15 @@ function MetaTokenDashboard({ authUser }) {
                       </div>
                       <div className="mc-cell mc-col-actions" role="cell">
                         <div className="inline-actions">
-                          <button className="icon-btn" type="button" onClick={() => openEditCost(row)} title={t("Replace token / edit")}>
-                            <Pencil size={14} />
-                          </button>
+                          {isError ? (
+                            <button className="mc-fix-btn" type="button" onClick={() => openEditCost(row)} title={t("Replace the expired token")}>
+                              <Wrench size={12} /> {t("Fix token")}
+                            </button>
+                          ) : (
+                            <button className="icon-btn" type="button" onClick={() => openEditCost(row)} title={t("Replace token / edit")}>
+                              <Pencil size={14} />
+                            </button>
+                          )}
                           <button className="icon-btn danger" type="button" onClick={() => handleDeleteKeitaroCost(row.id, row.name)} title={t("Delete from Keitaro")}>
                             <Trash2 size={14} />
                           </button>
