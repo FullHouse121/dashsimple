@@ -16882,8 +16882,9 @@ function MetaTokenDashboard({ authUser }) {
               )}
             </div>
           </div>
+      </motion.div>
 
-        <AnimatePresence>
+      <AnimatePresence>
           {editCost.open ? (
             <motion.div className="modal-overlay mc-edit-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeEditCost}>
               <motion.div
@@ -16945,8 +16946,7 @@ function MetaTokenDashboard({ authUser }) {
               </motion.div>
             </motion.div>
           ) : null}
-        </AnimatePresence>
-      </motion.div>
+      </AnimatePresence>
     </section>
   );
 }
