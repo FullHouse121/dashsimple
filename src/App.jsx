@@ -16885,7 +16885,7 @@ function MetaTokenDashboard({ authUser }) {
 
         <AnimatePresence>
           {editCost.open ? (
-            <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeEditCost}>
+            <motion.div className="modal-overlay mc-edit-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeEditCost}>
               <motion.div
                 className="modal pixel-edit-modal edit-modal-accent"
                 initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -16924,15 +16924,15 @@ function MetaTokenDashboard({ authUser }) {
                     <input value={editCost.account} readOnly className="mono" />
                   </div>
                   <div className="field field-span-2">
-                    <label>{t("New Meta token")}</label>
+                    <label>{t("New cost token")}</label>
                     <input
                       type="text"
                       value={editCost.token}
                       onChange={(e) => setEditCost((s) => ({ ...s, token: e.target.value }))}
-                      placeholder="EAAG…"
+                      placeholder={t("Paste the new cost integration token…")}
                       autoFocus
                     />
-                    <p className="field-hint">{t("Paste a fresh long-lived token from Meta. It replaces the token on this integration in Keitaro — the account and buyer stay the same.")}</p>
+                    <p className="field-hint">{t("This is the Facebook cost-integration token Keitaro uses to pull spend — not the pixel's EAAG token. Paste a fresh one to replace it; the account and buyer stay the same.")}</p>
                   </div>
                   {editCost.error ? <div className="field field-span-2"><div className="api-status error">{editCost.error}</div></div> : null}
                 </div>

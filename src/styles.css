@@ -15710,7 +15710,11 @@ select option,
   padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px;
 }
 
-/* Update-cost-integration modal */
+/* Update-cost-integration modal — darker backdrop to make the popup pop */
+.mc-edit-overlay {
+  background: rgba(3, 4, 6, 0.86);
+  backdrop-filter: blur(9px);
+}
 .mc-edit-headtitle { display: flex; align-items: center; gap: 10px; }
 .mc-edit-logo { height: 30px; margin-left: -8px; flex-shrink: 0; }
 .mc-edit-status {
