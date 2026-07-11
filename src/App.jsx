@@ -4076,7 +4076,7 @@ const trackingSourceShortcode = (name) => {
 };
 const TRACKING_GEO_PRESETS = [
   "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
-  "DE", "FR", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
+  "DE", "FR", "GB", "IT", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
 ];
 // Only these Keitaro tracking/redirect domains may back a tracking link
 // (everyone sees exactly this list). PWA landing domains are never used here.
