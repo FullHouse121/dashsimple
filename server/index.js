@@ -4321,7 +4321,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   if (!req.path.startsWith("/api/")) return next();
   if (req.path === "/api/auth/login") return next();
-  if (req.path.startsWith("/api/postbacks/")) return next();
+  // Postback *ingestion* webhooks are public (validated by POSTBACK_SECRET),
+  // but /api/postbacks/logs is a buyer-scoped READ endpoint and MUST require
+  // auth — otherwise resolveViewerBuyer(undefined)=null returns every buyer's
+  // conversion logs to an anonymous caller.
+  if (req.path.startsWith("/api/postbacks/") && req.path !== "/api/postbacks/logs") return next();
   if (req.path === "/api/keitaro/cron") return next();
 
   const header = req.headers.authorization || "";
