@@ -11086,29 +11086,19 @@ function GoalsDashboard({ authUser }) {
                           ) : null}
                         </div>
                       </div>
-                      <div className="goal-banner-metrics">
-                        <div className="goal-banner-item">
-                          <span>{t("FTDs Target")}</span>
-                          <strong>
-                            {goal.ftds_target && Number(goal.ftds_target) > 0
-                              ? Number(goal.ftds_target).toLocaleString()
-                              : "—"}
-                          </strong>
-                        </div>
-                        <div className="goal-banner-item">
-                          <span>{t("Reg2Dep Target (%)")}</span>
-                          <strong>
-                            {goal.r2d_target && Number(goal.r2d_target) > 0
-                              ? `${Number(goal.r2d_target).toFixed(2)}%`
-                              : "—"}
-                          </strong>
-                        </div>
-                        <div className="goal-banner-item">
-                          <span>{goal.is_global && !isLeadership ? t("Your Progress") : t("Progress")}</span>
-                          <strong>{overall === null ? "—" : `${overall.toFixed(1)}%`}</strong>
+                    </div>
+                    <div className="goal-body">
+                      <div
+                        className={`goal-ring${overall === null ? " is-empty" : ""}`}
+                        style={{ "--goal-pct": overall === null ? 0 : Math.max(0, Math.min(100, overall)) }}
+                        role="img"
+                        aria-label={overall === null ? t("No targets set") : `${Math.round(overall)}% ${t("progress")}`}
+                      >
+                        <div className="goal-ring-inner">
+                          <span className="goal-ring-pct">{overall === null ? "—" : `${Math.round(overall)}%`}</span>
+                          <span className="goal-ring-cap">{goal.is_global && !isLeadership ? t("Your Progress") : t("Progress")}</span>
                         </div>
                       </div>
-                    </div>
                     <div className="goal-metrics">
                       {[
                         {
@@ -11157,6 +11147,7 @@ function GoalsDashboard({ authUser }) {
                           </div>
                         );
                       })}
+                    </div>
                     </div>
                     {(() => {
                       // Pace + forecast widget — turns "set target" into "here's how to hit it"

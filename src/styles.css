@@ -6817,7 +6817,70 @@ select option,
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* Body row: overall-progress ring + the two metric bars */
+.goal-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.goal-ring {
+  --goal-pct: 0;
+  --ring-color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(
+    var(--ring-color) calc(var(--goal-pct) * 1%),
+    rgba(255, 255, 255, 0.07) 0
+  );
+  transition: --goal-pct 0.6s ease;
+}
+
+.goal-ring-inner {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  background: #13161b;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.4);
+}
+
+.goal-ring-pct {
+  font-size: 22px;
+  font-weight: 750;
+  color: var(--text);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-ring-cap {
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.goal-card.status-behind .goal-ring { --ring-color: var(--red); }
+.goal-card.status-at-risk .goal-ring { --ring-color: var(--yellow); }
+.goal-card.status-on-track .goal-ring { --ring-color: var(--green); }
+.goal-card.status-achieved .goal-ring {
+  --ring-color: var(--green);
+  box-shadow: 0 0 0 1px rgba(54, 208, 124, 0.25), 0 0 20px rgba(54, 208, 124, 0.22);
+}
+.goal-card.status-none .goal-ring,
+.goal-ring.is-empty { --ring-color: rgba(255, 255, 255, 0.14); }
+.goal-ring.is-empty .goal-ring-pct { color: var(--muted); }
+
 .goal-metrics {
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -6862,9 +6925,9 @@ select option,
 
 .goal-bar {
   width: 100%;
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
 }
 
@@ -15852,6 +15915,10 @@ select option,
   .deus-date-menu, .country-select-menu, .notifications-menu, .profile-menu {
     max-width: calc(100vw - 28px);
   }
+
+  /* Goals: ring stacks above its bars */
+  .goal-body { flex-direction: column; align-items: stretch; }
+  .goal-ring { align-self: center; }
 }
 
 @media (max-width: 430px) {
