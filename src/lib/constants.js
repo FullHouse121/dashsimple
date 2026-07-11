@@ -8,6 +8,7 @@ export const supportedCountryOptions = [
   "Nigeria", "Ukraine", "Poland", "Ecuador", "Paraguay", "Romania",
   "Albania", "Norway", "Morocco", "Algeria", "Tunisia", "South Korea",
   "Switzerland", "Sweden", "Canada", "Iran", "Iraq", "Azerbaijan",
+  "United Kingdom", "Italy",
 ];
 
 export const countryOptions = [...supportedCountryOptions];
