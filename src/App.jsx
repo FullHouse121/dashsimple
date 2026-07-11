@@ -38,6 +38,7 @@ import {
   Sparkles,
   Search,
   SlidersHorizontal,
+  Menu,
   X,
   Clock,
   CheckCircle,
@@ -19909,6 +19910,7 @@ function LoginScreen({ onLogin, loading, error }) {
 
 export default function App() {
   const [activeView, setActiveView] = React.useState("home");
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const initialFiltersRef = React.useRef(null);
   const [compareToPrev, setCompareToPrev] = React.useState(false);
@@ -20632,8 +20634,21 @@ export default function App() {
   return (
     <LanguageContext.Provider value={{ language, t }}>
       <ConfirmHost />
-      <div className="app">
-      <aside className="sidebar">
+      <div className={`app${mobileNavOpen ? " mobile-nav-open" : ""}`}>
+      <div
+        className="mobile-nav-backdrop"
+        onClick={() => setMobileNavOpen(false)}
+        aria-hidden="true"
+      />
+      <aside className={`sidebar${mobileNavOpen ? " is-open" : ""}`}>
+        <button
+          className="mobile-nav-close"
+          type="button"
+          onClick={() => setMobileNavOpen(false)}
+          aria-label={t("Close menu")}
+        >
+          <X size={20} />
+        </button>
         <div className="brand">
           <img src={logo} alt="Deus Affiliates" />
         </div>
@@ -20672,6 +20687,7 @@ export default function App() {
                       if (isExternal) return;
                       event.preventDefault();
                       setActiveView(item.key);
+                      setMobileNavOpen(false);
                     }}
                   >
                     <Icon size={18} />
@@ -20687,7 +20703,7 @@ export default function App() {
           <button
             className={`action-pill sidebar-docs${isDocs ? " is-active" : ""}`}
             type="button"
-            onClick={() => setActiveView("docs")}
+            onClick={() => { setActiveView("docs"); setMobileNavOpen(false); }}
           >
             <BookOpen size={16} />
             {t("Documentation")}
@@ -20698,6 +20714,14 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
+          <button
+            className="mobile-nav-toggle"
+            type="button"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label={t("Open menu")}
+          >
+            <Menu size={20} />
+          </button>
           {showFilters ? (
             (() => {
               let activeCount = 0;
