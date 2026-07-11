@@ -65,6 +65,18 @@ export const shiftIsoDate = (isoDate, deltaDays) => {
 export const getTodayIsoInTimezone = (timezone = DASHBOARD_TIMEZONE) =>
   toIsoFromParts(getTimezoneDateParts(new Date(), timezone));
 
+// Given a current {from,to} ISO range, return the immediately-preceding range
+// of the same length — powers "compare to previous period".
+export const previousRangeOf = (from, to) => {
+  const start = parseIsoToUtcDate(from);
+  const end = parseIsoToUtcDate(to);
+  if (!start || !end) return { from: null, to: null };
+  const days = Math.round((end - start) / 86400000) + 1;
+  const prevTo = shiftIsoDate(from, -1);
+  const prevFrom = shiftIsoDate(prevTo, -(days - 1));
+  return { from: prevFrom, to: prevTo };
+};
+
 export const getDefaultDateRange = () => {
   const todayIso = getTodayIsoInTimezone();
   return { from: shiftIsoDate(todayIso, -6), to: todayIso };

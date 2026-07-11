@@ -251,6 +251,7 @@ import {
   normalizeDateRange,
   getPeriodDateRange,
   isDateInRange,
+  previousRangeOf,
 } from "./lib/date.js";
 
 // API client moved to ./lib/api.js (Phase 1 extraction — retry, timeout, fallback all live there)
@@ -1515,10 +1516,19 @@ function HomeDashboard({
     const periodRangeInline = getPeriodDateRange(period, customRange);
     const fFrom = filters?.dateFrom || null;
     const fTo = filters?.dateTo || null;
-    const fetchFrom =
+    let fetchFrom =
       [periodRangeInline.from, fFrom].filter(Boolean).sort()[0] || null;
     const fetchTo =
       [periodRangeInline.to, fTo].filter(Boolean).sort().slice(-1)[0] || null;
+    // When "compare to previous period" is on, pull the fetch window back to
+    // the start of the previous period so both periods arrive in one request
+    // and can be bucketed client-side.
+    if (filters?.compareToPrev) {
+      const curFrom = fFrom || periodRangeInline.from;
+      const curTo = fTo || periodRangeInline.to;
+      const prev = previousRangeOf(curFrom, curTo);
+      if (prev.from) fetchFrom = [fetchFrom, prev.from].filter(Boolean).sort()[0] || fetchFrom;
+    }
     const isoRe = /^\d{4}-\d{2}-\d{2}$/;
     const qs = new URLSearchParams();
     if (isoRe.test(fetchFrom || "")) qs.set("from", fetchFrom);
@@ -1557,7 +1567,7 @@ function HomeDashboard({
         setHomeState({ loading: false, error: error.message || "Failed to load stats." });
       }
     }
-  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo, filters?.compareToPrev]);
 
   React.useEffect(() => {
     loadHomeStats();
@@ -1698,6 +1708,53 @@ function HomeDashboard({
         ? `${periodRange.from} → ${periodRange.to}`
         : t(period);
 
+  // ── Compare to previous period ──────────────────────────────────────────
+  // The fetch (loadHomeStats) already pulled the prior window's rows when the
+  // toggle is on, so we just bucket + aggregate them the same way.
+  const compareOn = Boolean(filters?.compareToPrev);
+  const prevRange = React.useMemo(
+    () => (compareOn ? previousRangeOf(effectiveRange.from, effectiveRange.to) : { from: null, to: null }),
+    [compareOn, effectiveRange.from, effectiveRange.to]
+  );
+  const prevTotals = React.useMemo(() => {
+    if (!compareOn || !prevRange.from) return null;
+    return homeRows
+      .filter(
+        (row) =>
+          matchesBuyer(row.buyer) &&
+          matchesCountry(row.country) &&
+          isDateInRange(row.date, prevRange)
+      )
+      .reduce(
+        (acc, row) => ({
+          spend: acc.spend + sum(row.spend),
+          clicks: acc.clicks + sum(row.clicks),
+          registers: acc.registers + sum(row.registers),
+          ftds: acc.ftds + sum(row.ftds),
+          revenue: acc.revenue + readFtdRevenue(row) + readRedepositRevenue(row),
+        }),
+        { spend: 0, clicks: 0, registers: 0, ftds: 0, revenue: 0 }
+      );
+  }, [compareOn, prevRange.from, prevRange.to, homeRows, buyerFilter, countryFilter, isLeadership, viewerBuyer]);
+
+  // Relative % change vs the previous period. `positiveIsGood` flips the
+  // good/bad colour for cost metrics (a drop in CPC is good).
+  const mkDelta = (curr, prev, positiveIsGood = true) => {
+    if (!compareOn || prev === null || prev === undefined) return null;
+    const p = Number(prev);
+    const c = Number(curr);
+    if (!Number.isFinite(p) || p === 0 || !Number.isFinite(c)) return null;
+    const pct = ((c - p) / Math.abs(p)) * 100;
+    if (!Number.isFinite(pct)) return null;
+    const up = pct >= 0;
+    return { pct, up, good: up === positiveIsGood };
+  };
+  const prevCpc = prevTotals ? safeDivide(prevTotals.spend, prevTotals.clicks) : null;
+  const prevCostPerRegister = prevTotals ? safeDivide(prevTotals.spend, prevTotals.registers) : null;
+  const prevCostPerFtd = prevTotals ? safeDivide(prevTotals.spend, prevTotals.ftds) : null;
+  const prevRoi =
+    prevTotals && prevTotals.spend > 0 ? ((prevTotals.revenue - prevTotals.spend) / prevTotals.spend) * 100 : null;
+
   const homePrimaryStats = [
     {
       label: "Clicks",
@@ -1705,36 +1762,41 @@ function HomeDashboard({
       icon: MousePointerClick,
       meta: periodLabel,
       sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
+      delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
     },
-    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click" },
-    { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel },
+    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click", delta: mkDelta(cpc, prevCpc, false) },
+    { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel, delta: mkDelta(totals.registers, prevTotals?.registers, true) },
     {
       label: "Cost per Register",
       value: costPerRegister === null ? "—" : formatCurrency(costPerRegister),
       icon: Wallet,
       meta: "Cost per register",
+      delta: mkDelta(costPerRegister, prevCostPerRegister, false),
     },
   ];
 
   const homeSecondaryStats = [
-    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel },
+    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel, delta: mkDelta(totals.ftds, prevTotals?.ftds, true) },
     {
       label: "Cost per FTD",
       value: costPerFtd === null ? "—" : formatCurrency(costPerFtd),
       icon: Wallet,
       meta: "Cost per FTD",
+      delta: mkDelta(costPerFtd, prevCostPerFtd, false),
     },
     {
       label: "Total Revenue",
       value: formatCurrency(totalRevenue),
       icon: Wallet,
       meta: "FTD + Redeposit",
+      delta: mkDelta(totalRevenue, prevTotals?.revenue, true),
     },
     {
       label: "ROI",
       value: fmtPercent(roi),
       icon: BarChart3,
       meta: "Revenue vs Spend",
+      delta: mkDelta(roi, prevRoi, true),
     },
   ];
 
@@ -2127,6 +2189,12 @@ function HomeDashboard({
               <div className="card-head">
                 <Icon size={20} />
                 {t(stat.label)}
+                {stat.delta ? (
+                  <span className={`kpi-delta${stat.delta.good ? " is-good" : " is-bad"}`} title={t("vs previous period")}>
+                    {stat.delta.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                    {Math.abs(stat.delta.pct).toFixed(1)}%
+                  </span>
+                ) : null}
               </div>
               <div className="card-value">{stat.value}</div>
               {stat.sub ? (
@@ -2156,6 +2224,12 @@ function HomeDashboard({
               <div className="card-head">
                 <Icon size={20} />
                 {t(stat.label)}
+                {stat.delta ? (
+                  <span className={`kpi-delta${stat.delta.good ? " is-good" : " is-bad"}`} title={t("vs previous period")}>
+                    {stat.delta.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                    {Math.abs(stat.delta.pct).toFixed(1)}%
+                  </span>
+                ) : null}
               </div>
               <div className="card-value">{stat.value}</div>
               <div className="card-meta">{t(stat.meta)}</div>
@@ -19904,7 +19978,6 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const initialFiltersRef = React.useRef(null);
-  const [compareToPrev, setCompareToPrev] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [rolePermissions, setRolePermissions] = React.useState(null);
   const [authUser, setAuthUser] = React.useState(() => {
@@ -19955,6 +20028,7 @@ export default function App() {
       category: "All",
       billing: "All",
       status: "All",
+      compareToPrev: false,
     };
   });
   const [period, setPeriod] = React.useState("This Month");
@@ -21327,9 +21401,9 @@ export default function App() {
                   })()}
                   <button
                     type="button"
-                    className={`compare-row${compareToPrev ? " is-on" : ""}`}
-                    onClick={() => setCompareToPrev((v) => !v)}
-                    aria-pressed={compareToPrev}
+                    className={`compare-row${filters.compareToPrev ? " is-on" : ""}`}
+                    onClick={() => setFilters((prev) => ({ ...prev, compareToPrev: !prev.compareToPrev }))}
+                    aria-pressed={filters.compareToPrev}
                   >
                     <span className="compare-toggle-track">
                       <span className="compare-toggle-thumb" />
@@ -21337,7 +21411,7 @@ export default function App() {
                     <span className="compare-toggle-text">
                       Compare to previous period
                     </span>
-                    {compareToPrev && filters.dateFrom && filters.dateTo ? (() => {
+                    {filters.compareToPrev && filters.dateFrom && filters.dateTo ? (() => {
                       const from = new Date(filters.dateFrom);
                       const to = new Date(filters.dateTo);
                       if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
@@ -21750,6 +21824,7 @@ export default function App() {
                       category: "All",
                       billing: "All",
                       status: "All",
+                      compareToPrev: false,
                     });
                     setCustomRange(defaultRange);
                     setPeriod("Custom range");
