@@ -3755,7 +3755,9 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                         strokeWidth={2.5}
                         fill={`url(#ltv-grad-${series.key})`}
                         connectNulls
-                        dot={false}
+                        /* Sparse ranges (few days) render dots so single-day
+                           series stay visible; dense ranges keep clean lines. */
+                        dot={ltvGrowthData.length <= 12 ? { r: 3.5, strokeWidth: 0, fill: series.color } : false}
                         activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}
@@ -3834,7 +3836,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                         strokeWidth={2.5}
                         fill={`url(#arppu-grad-${series.key})`}
                         connectNulls
-                        dot={false}
+                        dot={arppuGrowthData.length <= 12 ? { r: 3.5, strokeWidth: 0, fill: series.color } : false}
                         activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}

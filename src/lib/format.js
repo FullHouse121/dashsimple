@@ -36,7 +36,8 @@ export const formatCurrencyCompact = (value, rate = activeFxRate) => {
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
   if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
   if (abs >= 100) return `${sign}$${Math.round(abs)}`;
-  return `${sign}$${abs.toFixed(2)}`;
+  // Whole values stay clean ("$45", "$0"); only true cents get decimals.
+  return abs % 1 === 0 ? `${sign}$${abs}` : `${sign}$${abs.toFixed(2)}`;
 };
 
 export const formatAxis = (value) => {
