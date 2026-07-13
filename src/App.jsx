@@ -6330,11 +6330,13 @@ function UtmBuilder() {
   };
 
   // Selecting a country auto-fills the GEO sub (sub9) with the ISO code.
+  // Team convention: United Kingdom is tagged "UK" (not ISO-3166 "GB").
   const handleCountryChange = (country) => {
     const iso = (resolveCountryIso(country) || "").toUpperCase();
+    const geoTag = iso === "GB" ? "UK" : iso;
     setUtm((prev) => {
       const nextSubs = [...prev.subs];
-      if (iso) nextSubs[GEO_SUB_INDEX] = iso;
+      if (geoTag) nextSubs[GEO_SUB_INDEX] = geoTag;
       return { ...prev, country, subs: nextSubs };
     });
   };
@@ -6476,22 +6478,47 @@ function UtmBuilder() {
   const filledSubCount = utm.subs.filter((v) => String(v || "").trim()).length;
   const paramCount = filledSubCount + (utm.fbp ? 1 : 0);
 
-  // One-click standard Meta macro set. Fills only EMPTY fields, so it never
-  // overwrites a buyer's custom values — and it's explicit (a button), never
-  // applied silently.
+  // One-click team-standard macro set (fills only EMPTY fields, never silent).
+  // The team format is:
+  //   sub1={{placement}}  sub2=<buyer tag>  sub3={{campaign.name}}
+  //   sub4={{adset.name}} sub5={{ad.name}}  adset_id={{adset.id}}
+  //   sub7=<approach slot/crash>  sub8=<approach name>  sub9=<GEO ISO>
+  //   sub10=<ad account number>   sub11={{site_source_name}}
+  // Only the macro slots are auto-filled — buyer tag / approach / account
+  // stay manual because they vary per buyer and campaign.
   const fillMetaMacros = () => {
-    const defaults = [
-      "{{campaign.name}}", "{{adset.name}}", "{{ad.name}}",
-      "{{placement}}", "{{site_source_name}}", "{{adset.id}}",
-    ];
+    const defaults = {
+      0: "{{placement}}",        // sub1
+      2: "{{campaign.name}}",    // sub3
+      3: "{{adset.name}}",       // sub4
+      4: "{{ad.name}}",          // sub5
+      5: "{{adset.id}}",         // adset_id
+      10: "{{site_source_name}}", // sub11
+    };
     setUtm((prev) => {
       const nextSubs = [...prev.subs];
-      defaults.forEach((macro, i) => {
+      Object.entries(defaults).forEach(([i, macro]) => {
         if (!String(nextSubs[i] || "").trim()) nextSubs[i] = macro;
       });
       return { ...prev, subs: nextSubs };
     });
     setParamsOpen(true);
+  };
+
+  // Field meaning per the team's link format — shown as label hints +
+  // placeholders so buyers know exactly what goes where.
+  const SUB_HINTS = {
+    2: "buyer tag",
+    7: "approach — slot / crash",
+    8: "approach name",
+    9: "geo",
+    10: "ad account",
+  };
+  const SUB_PLACEHOLDERS = {
+    2: "e.g. DMTMX",
+    7: "slot / crash",
+    8: "e.g. SC",
+    10: "ad account number",
   };
 
   // Soft validation hints — never block, just flag likely mistakes.
@@ -6697,16 +6724,16 @@ function UtmBuilder() {
               ? utm.subs.map((value, index) => {
                   const labelText = subFieldAliases[index + 1] || `sub${index + 1}`;
                   const aliased = Boolean(subFieldAliases[index + 1]);
-                  const isGeo = index === GEO_SUB_INDEX;
+                  const hint = SUB_HINTS[index + 1];
                   return (
                     <div className={`field${aliased ? " utm-field-aliased" : ""}`} key={`sub-${index}`}>
                       <label>
                         {labelText}
-                        {isGeo ? <span className="field-pace-hint">geo</span> : null}
+                        {hint ? <span className="field-pace-hint">{hint}</span> : null}
                       </label>
                       <input
                         type="text"
-                        placeholder={labelText}
+                        placeholder={SUB_PLACEHOLDERS[index + 1] || labelText}
                         value={value}
                         onChange={updateSub(index)}
                         onFocus={() => setFocusedField(`sub-${index}`)}
@@ -6735,7 +6762,7 @@ function UtmBuilder() {
                 type="button"
                 className="utm-fill-macros"
                 onClick={fillMetaMacros}
-                title="Fill empty sub1–5 + adset_id with the standard Meta macros"
+                title="Fill the macro slots (sub1, sub3–5, adset_id, sub11) with the team-standard Meta macros — buyer tag, approach and account stay yours to fill"
               >
                 <Zap size={12} /> Fill Meta macros
               </button>
