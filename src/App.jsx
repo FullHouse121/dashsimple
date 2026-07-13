@@ -6269,9 +6269,10 @@ function UtmBuilder() {
   React.useEffect(() => {
     try { localStorage.setItem(UTM_HISTORY_KEY, JSON.stringify(utmHistory)); } catch { /* quota */ }
   }, [utmHistory]);
-  // Essentials-first: only Domain + Meta Pixel show by default; every sub
-  // param (sub1…sub15) lives behind one "Customize parameters" expander.
-  const [paramsOpen, setParamsOpen] = React.useState(false);
+  const [showAllSubs, setShowAllSubs] = React.useState(false);
+  // Keep the commonly-used params visible; collapse sub7→sub15 behind a toggle
+  // to cut the wall of empty inputs. Auto-expand if any hidden sub is filled.
+  const PRIMARY_SUB_COUNT = 6;
   // Inline (styled) replacement for window.prompt when saving a preset.
   const [presetDraft, setPresetDraft] = React.useState(null); // null = closed
   // sub9 is the GEO slot — auto-filled from the selected country (e.g. MX).
@@ -6388,8 +6389,6 @@ function UtmBuilder() {
       fbp: preset.fbp || "",
       subs: Array.from({ length: 15 }, (_, i) => preset.subs?.[i] ?? ""),
     }));
-    // Reveal what the preset filled so nothing changes invisibly.
-    if ((preset.subs || []).some((v) => String(v || "").trim())) setParamsOpen(true);
   };
 
   const deletePreset = (name) => {
@@ -6477,6 +6476,12 @@ function UtmBuilder() {
   // How many params the link actually carries (pixel + filled subs)
   const filledSubCount = utm.subs.filter((v) => String(v || "").trim()).length;
   const paramCount = filledSubCount + (utm.fbp ? 1 : 0);
+  // Any hidden sub (index >= PRIMARY_SUB_COUNT) carries a value?
+  const hasHiddenFilled = utm.subs
+    .slice(PRIMARY_SUB_COUNT)
+    .some((v) => String(v || "").trim());
+  const subsExpanded = showAllSubs || hasHiddenFilled;
+  const visibleSubCount = subsExpanded ? utm.subs.length : PRIMARY_SUB_COUNT;
 
   // One-click team-standard macro set (fills only EMPTY fields, never silent).
   // The team format is:
@@ -6502,7 +6507,42 @@ function UtmBuilder() {
       });
       return { ...prev, subs: nextSubs };
     });
-    setParamsOpen(true);
+    // sub11 lives in the collapsed range — expand so the fill is visible.
+    setShowAllSubs(true);
+  };
+
+  // Load a saved link back into the builder: parse its params into the
+  // pixel/sub fields and restore tool + country from the record metadata.
+  const editHistoryLink = (record) => {
+    const raw = typeof record === "string" ? { url: record } : record;
+    if (!raw.url) return;
+    try {
+      const url = new URL(raw.url);
+      const subs = Array.from({ length: 15 }, () => "");
+      let fbp = "";
+      const foreign = [];
+      url.searchParams.forEach((value, key) => {
+        if (key === "fbp" || key === "pixel_fb") { fbp = value; return; }
+        if (key === "adset_id") { subs[5] = value; return; }
+        const m = key.match(/^sub(\d+)$/);
+        if (m) {
+          const idx = Number(m[1]) - 1;
+          if (idx >= 0 && idx < subs.length) { subs[idx] = value; return; }
+        }
+        foreign.push(`${key}=${value}`);
+      });
+      // Params we don't manage stay glued to the domain so they survive rebuild.
+      const domain = `${url.origin}${url.pathname}${foreign.length ? `?${foreign.join("&")}` : ""}`;
+      setUtm((prev) => ({
+        tool: raw.tool || prev.tool,
+        country: raw.country || "",
+        domain,
+        fbp,
+        subs,
+      }));
+      setCopyState("idle");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch { /* malformed stored URL — ignore */ }
   };
 
   // Field meaning per the team's link format — shown as label hints +
@@ -6648,7 +6688,98 @@ function UtmBuilder() {
             </p>
           </div>
 
-          {/* Presets first — one click fills the whole form (tool, pixel, subs) */}
+          {/* Macro quick-insert — inserts into the last focused field */}
+          <div className="utm-macros">
+            <span className="utm-macros-label">Insert macro</span>
+            <div className="utm-macros-chips">
+              {UTM_MACROS.map((macro) => (
+                <button
+                  key={macro}
+                  type="button"
+                  className="utm-macro-chip"
+                  disabled={!focusedField}
+                  title={focusedField ? `Insert into ${focusedField === "fbp" ? "Meta Pixel" : focusedField === "domain" ? "Domain" : (() => { const idx = Number(focusedField.slice(4)); return subFieldAliases[idx + 1] || `sub${idx + 1}`; })()}` : "Focus a field first"}
+                  onMouseDown={(e) => { e.preventDefault(); insertMacro(macro); }}
+                >
+                  {macro}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="utm-fill-macros"
+              onClick={fillMetaMacros}
+              title="Fill the macro slots (sub1, sub3–5, adset_id, sub11) with the team-standard Meta macros — buyer tag, approach and account stay yours to fill"
+            >
+              <Zap size={12} /> Fill Meta macros
+            </button>
+          </div>
+
+          <div className="utm-grid">
+            <div className="field">
+              <label>Domain <span className="field-pace-hint">pick a registered domain or type a URL</span></label>
+              <CountryDropdownPicker
+                value={utm.domain}
+                onChange={(v) => setUtm((prev) => ({ ...prev, domain: v }))}
+                options={domainOptions.map((d) => {
+                  const url = d.startsWith("http") ? d : `https://${d}`;
+                  return { value: url, label: d };
+                })}
+                placeholder="https://example.com"
+                searchPlaceholder="Search or paste a URL…"
+                emptyResultsLabel="No registered domains."
+                allowCustom
+              />
+            </div>
+            <div className="field utm-pixel-field">
+              <label><span className="utm-label-meta"><MetaGlyph size={13} /></span>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
+              <input
+                type="text"
+                placeholder="{meta_pixel} or pixel id"
+                value={utm.fbp}
+                onChange={updateUtm("fbp")}
+                onFocus={() => setFocusedField("fbp")}
+              />
+            </div>
+            {utm.subs.slice(0, visibleSubCount).map((value, index) => {
+              const labelText = subFieldAliases[index + 1] || `sub${index + 1}`;
+              const aliased = Boolean(subFieldAliases[index + 1]);
+              const hint = SUB_HINTS[index + 1];
+              return (
+                <div className={`field${aliased ? " utm-field-aliased" : ""}`} key={`sub-${index}`}>
+                  <label>
+                    {labelText}
+                    {hint ? <span className="field-pace-hint">{hint}</span> : null}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={SUB_PLACEHOLDERS[index + 1] || labelText}
+                    value={value}
+                    onChange={updateSub(index)}
+                    onFocus={() => setFocusedField(`sub-${index}`)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {utm.subs.length > PRIMARY_SUB_COUNT ? (
+            <button
+              type="button"
+              className="utm-subs-toggle"
+              onClick={() => setShowAllSubs((v) => !v)}
+              disabled={hasHiddenFilled}
+              title={hasHiddenFilled ? "Some of these parameters have values" : undefined}
+            >
+              {hasHiddenFilled
+                ? `Extra parameters in use (sub7–sub${utm.subs.length})`
+                : subsExpanded
+                  ? "Hide extra parameters"
+                  : `Show all parameters (+${utm.subs.length - PRIMARY_SUB_COUNT})`}
+            </button>
+          ) : null}
+
+          {/* Presets — save the current param structure, reload it later */}
           <div className="utm-presets">
             {presetDraft === null ? (
               <button type="button" className="utm-preset-save" onClick={() => setPresetDraft("")}>
@@ -6689,113 +6820,9 @@ function UtmBuilder() {
                 ))}
               </div>
             ) : (
-              <span className="utm-presets-empty">Save a preset once — reload the whole setup in one click.</span>
+              <span className="utm-presets-empty">No saved presets yet.</span>
             )}
           </div>
-
-          <div className="utm-grid">
-            <div className="field">
-              <label>Domain <span className="field-pace-hint">pick a registered domain or type a URL</span></label>
-              <CountryDropdownPicker
-                value={utm.domain}
-                onChange={(v) => setUtm((prev) => ({ ...prev, domain: v }))}
-                options={domainOptions.map((d) => {
-                  const url = d.startsWith("http") ? d : `https://${d}`;
-                  return { value: url, label: d };
-                })}
-                placeholder="https://example.com"
-                searchPlaceholder="Search or paste a URL…"
-                emptyResultsLabel="No registered domains."
-                allowCustom
-              />
-            </div>
-            <div className="field utm-pixel-field">
-              <label><span className="utm-label-meta"><MetaGlyph size={13} /></span>Meta Pixel <span className="field-pace-hint">→ {pixelParamKey}</span></label>
-              <input
-                type="text"
-                placeholder="{meta_pixel} or pixel id"
-                value={utm.fbp}
-                onChange={updateUtm("fbp")}
-                onFocus={() => setFocusedField("fbp")}
-                onBlur={() => setFocusedField(null)}
-              />
-            </div>
-            {paramsOpen
-              ? utm.subs.map((value, index) => {
-                  const labelText = subFieldAliases[index + 1] || `sub${index + 1}`;
-                  const aliased = Boolean(subFieldAliases[index + 1]);
-                  const hint = SUB_HINTS[index + 1];
-                  return (
-                    <div className={`field${aliased ? " utm-field-aliased" : ""}`} key={`sub-${index}`}>
-                      <label>
-                        {labelText}
-                        {hint ? <span className="field-pace-hint">{hint}</span> : null}
-                      </label>
-                      <input
-                        type="text"
-                        placeholder={SUB_PLACEHOLDERS[index + 1] || labelText}
-                        value={value}
-                        onChange={updateSub(index)}
-                        onFocus={() => setFocusedField(`sub-${index}`)}
-                        onBlur={() => setFocusedField(null)}
-                      />
-                    </div>
-                  );
-                })
-              : null}
-          </div>
-
-          {/* One expander for everything beyond the essentials */}
-          <div className="utm-customize-row">
-            <button
-              type="button"
-              className="utm-subs-toggle"
-              onClick={() => setParamsOpen((v) => !v)}
-            >
-              {paramsOpen ? "Hide parameters" : "Customize parameters"}
-              {!paramsOpen && filledSubCount > 0 ? (
-                <span className="utm-customize-badge">{filledSubCount} filled</span>
-              ) : null}
-            </button>
-            {paramsOpen ? (
-              <button
-                type="button"
-                className="utm-fill-macros"
-                onClick={fillMetaMacros}
-                title="Fill the macro slots (sub1, sub3–5, adset_id, sub11) with the team-standard Meta macros — buyer tag, approach and account stay yours to fill"
-              >
-                <Zap size={12} /> Fill Meta macros
-              </button>
-            ) : null}
-          </div>
-
-          {/* Macro chips appear only while a field is focused — right where
-              they're useful, invisible the rest of the time. */}
-          {focusedField ? (
-            <div className="utm-macros">
-              <span className="utm-macros-label">
-                Insert into {focusedField === "fbp"
-                  ? "Meta Pixel"
-                  : (() => {
-                      // focusedField is "sub-<zero-based index>" — display name is 1-based
-                      const idx = Number(focusedField.slice(4));
-                      return subFieldAliases[idx + 1] || `sub${idx + 1}`;
-                    })()}
-              </span>
-              <div className="utm-macros-chips">
-                {UTM_MACROS.map((macro) => (
-                  <button
-                    key={macro}
-                    type="button"
-                    className="utm-macro-chip"
-                    onMouseDown={(e) => { e.preventDefault(); insertMacro(macro); }}
-                  >
-                    {macro}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
 
           <div className="utm-preview">
             <div className="utm-preview-body">
@@ -6942,6 +6969,14 @@ function UtmBuilder() {
                         </div>
                         <span className="utm-history-url" title={record.url}>{record.url}</span>
                       </div>
+                      <button
+                        className="utm-history-copy"
+                        type="button"
+                        onClick={() => editHistoryLink(record)}
+                        title="Edit in builder — loads this link's params back into the form"
+                      >
+                        <Pencil size={14} />
+                      </button>
                       <button
                         className="utm-history-copy"
                         type="button"
