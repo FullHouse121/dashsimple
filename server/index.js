@@ -2027,6 +2027,8 @@ const accountCountryOptions = [
   "Iran",
   "Iraq",
   "Azerbaijan",
+  "United Kingdom",
+  "Italy",
 ];
 
 const normalizeCountryKey = (value) =>
