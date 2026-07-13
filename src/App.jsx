@@ -190,6 +190,8 @@ import {
   toGradientId,
   axisTickStyle,
   tooltipStyle,
+  tooltipItemStyle,
+  tooltipLabelStyle,
 } from "./lib/format.js";
 
 // Resilient API client with retry, timeout, fallback (Phase 1 extraction)
@@ -3524,6 +3526,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <Tooltip
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={tooltipLabelStyle}
                       formatter={(value) => [formatCurrency(value), t("Revenue")]}
                     />
                     <Bar dataKey="revenue" radius={[0, 8, 8, 0]} maxBarSize={26}>
@@ -3603,6 +3607,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <Tooltip
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={tooltipLabelStyle}
                       formatter={(value) => [formatCurrency(value), t("ARPPU")]}
                     />
                     <Bar dataKey="arppu" fill="url(#geoArppu)" radius={[10, 10, 0, 0]}>
@@ -3658,6 +3664,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <Tooltip
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={tooltipLabelStyle}
                       formatter={(value) => [formatCurrency(value), t("LTV")]}
                     />
                     <Bar dataKey="ltv" radius={[0, 8, 8, 0]} maxBarSize={26}>
@@ -3737,6 +3745,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
+                      labelStyle={tooltipLabelStyle}
                       labelFormatter={(label) => label}
                       formatter={(value, name) => [formatCurrency(value), name]}
                     />
@@ -3818,6 +3827,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
+                      labelStyle={tooltipLabelStyle}
                       labelFormatter={(label) => label}
                       formatter={(value, name) => [formatCurrency(value), name]}
                     />
@@ -3898,6 +3908,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   <Tooltip
                     cursor={{ fill: "rgba(255,255,255,0.04)" }}
                     contentStyle={tooltipStyle}
+                    itemStyle={tooltipItemStyle}
+                    labelStyle={tooltipLabelStyle}
                     formatter={(value) => [formatCurrency(value), t("Revenue")]}
                   />
                   <Bar dataKey="revenue" fill="url(#geoCityRevenue)" radius={[10, 10, 0, 0]}>

@@ -56,6 +56,11 @@ export const toGradientId = (label) => label.toLowerCase().replace(/[^a-z0-9]+/g
 // Shared Recharts styling tokens
 export const axisTickStyle = { fill: "#8b909a", fontSize: 11 };
 
+// Recharts colours each tooltip row from the series' fill; with Cell-based or
+// gradient fills that resolves to nothing readable — force light text.
+export const tooltipItemStyle = { color: "#f2f2f4" };
+export const tooltipLabelStyle = { color: "#9aa0aa", fontWeight: 600, marginBottom: 4 };
+
 export const tooltipStyle = {
   background: "linear-gradient(180deg, rgba(33, 35, 41, 0.96), rgba(25, 27, 32, 0.98))",
   border: "1px solid rgba(255, 255, 255, 0.08)",
