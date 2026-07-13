@@ -183,6 +183,7 @@ import {
   setActiveFxRate,
   currencyFormatter,
   formatCurrency,
+  formatCurrencyCompact,
   formatAxis,
   formatVolumeAxis,
   formatValue,
@@ -3506,41 +3507,39 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   <BarChart
                     data={geoRevenueData}
                     layout="vertical"
-                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                    barCategoryGap={12}
+                    margin={{ top: 4, right: 64, left: 0, bottom: 4 }}
+                    barCategoryGap={10}
                   >
-                    <defs>
-                      <linearGradient id="geoRevenue" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
-                        <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={axisTickStyle}
-                      tickFormatter={(value) => formatCurrency(value)}
-                    />
+                    {/* The value labels ride each bar, so the numeric axis +
+                        grid would only duplicate ink — hide them. */}
+                    <XAxis type="number" hide />
                     <YAxis
                       type="category"
                       dataKey="country"
                       tickLine={false}
                       axisLine={false}
-                      tick={axisTickStyle}
-                      width={110}
+                      tick={{ ...axisTickStyle, fontSize: 12, fontWeight: 600, fill: "#c9cdd6" }}
+                      width={104}
                     />
                     <Tooltip
+                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("Revenue")]}
                     />
-                    <Bar dataKey="revenue" fill="url(#geoRevenue)" radius={[0, 8, 8, 0]}>
+                    <Bar dataKey="revenue" radius={[0, 8, 8, 0]} maxBarSize={26}>
+                      {/* Rank-shaded: the leader reads strongest, the tail fades */}
+                      {geoRevenueData.map((entry, i) => (
+                        <Cell
+                          key={`geo-rev-${entry.country}`}
+                          fill="var(--green)"
+                          fillOpacity={Math.max(0.25, 0.95 - i * 0.14)}
+                        />
+                      ))}
                       <LabelList
                         dataKey="revenue"
                         position="right"
-                        formatter={(value) => formatCurrency(value)}
-                        style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                        formatter={(value) => formatCurrencyCompact(value)}
+                        style={{ fill: "#e8ebf0", fontSize: 12, fontWeight: 700 }}
                       />
                     </Bar>
                   </BarChart>
@@ -3585,22 +3584,24 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                         <stop offset="100%" stopColor="#ff9357" stopOpacity={0.35} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                    <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
                     <XAxis
                       dataKey="country"
                       tickLine={false}
                       axisLine={false}
-                      tick={axisTickStyle}
+                      tick={{ ...axisTickStyle, fontSize: 12, fontWeight: 600, fill: "#c9cdd6" }}
                       interval={0}
                       height={32}
                     />
                     <YAxis
                       tickLine={false}
                       axisLine={false}
+                      width={52}
                       tick={axisTickStyle}
-                      tickFormatter={(value) => formatCurrency(value)}
+                      tickFormatter={(value) => formatCurrencyCompact(value)}
                     />
                     <Tooltip
+                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("ARPPU")]}
                     />
@@ -3608,9 +3609,10 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       <LabelList
                         dataKey="arppu"
                         position="top"
-                        formatter={(value) => formatCurrency(value)}
-                        fill="rgba(255,255,255,0.9)"
-                        fontSize={11}
+                        formatter={(value) => formatCurrencyCompact(value)}
+                        fill="#e8ebf0"
+                        fontSize={12}
+                        fontWeight={700}
                       />
                     </Bar>
                   </BarChart>
@@ -3641,41 +3643,36 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   <BarChart
                     data={geoLtvData}
                     layout="vertical"
-                    margin={{ top: 8, right: 24, left: 90, bottom: 8 }}
-                    barCategoryGap={12}
+                    margin={{ top: 4, right: 64, left: 0, bottom: 4 }}
+                    barCategoryGap={10}
                   >
-                    <defs>
-                      <linearGradient id="geoLtv" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
-                        <stop offset="95%" stopColor="var(--orange)" stopOpacity={0.25} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tickLine={false}
-                      axisLine={false}
-                      tick={axisTickStyle}
-                      tickFormatter={(value) => formatCurrency(value)}
-                    />
+                    <XAxis type="number" hide />
                     <YAxis
                       type="category"
                       dataKey="country"
                       tickLine={false}
                       axisLine={false}
-                      tick={axisTickStyle}
-                      width={110}
+                      tick={{ ...axisTickStyle, fontSize: 12, fontWeight: 600, fill: "#c9cdd6" }}
+                      width={104}
                     />
                     <Tooltip
+                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       contentStyle={tooltipStyle}
                       formatter={(value) => [formatCurrency(value), t("LTV")]}
                     />
-                    <Bar dataKey="ltv" fill="url(#geoLtv)" radius={[0, 8, 8, 0]}>
+                    <Bar dataKey="ltv" radius={[0, 8, 8, 0]} maxBarSize={26}>
+                      {geoLtvData.map((entry, i) => (
+                        <Cell
+                          key={`geo-ltv-${entry.country}`}
+                          fill="var(--orange)"
+                          fillOpacity={Math.max(0.25, 0.95 - i * 0.14)}
+                        />
+                      ))}
                       <LabelList
                         dataKey="ltv"
                         position="right"
-                        formatter={(value) => formatCurrency(value)}
-                        style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                        formatter={(value) => formatCurrencyCompact(value)}
+                        style={{ fill: "#e8ebf0", fontSize: 12, fontWeight: 700 }}
                       />
                     </Bar>
                   </BarChart>
@@ -3716,8 +3713,10 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                           x2="0"
                           y2="1"
                         >
-                          <stop offset="5%" stopColor={series.color} stopOpacity={0.45} />
-                          <stop offset="95%" stopColor={series.color} stopOpacity={0.05} />
+                          {/* Fills stay a whisper so crossing series never go muddy —
+                              the strokes carry the reading. */}
+                          <stop offset="5%" stopColor={series.color} stopOpacity={0.16} />
+                          <stop offset="95%" stopColor={series.color} stopOpacity={0.02} />
                         </linearGradient>
                       ))}
                     </defs>
@@ -3732,9 +3731,9 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      width={70}
+                      width={52}
                       tick={axisTickStyle}
-                      tickFormatter={(value) => formatCurrency(value)}
+                      tickFormatter={(value) => formatCurrencyCompact(value)}
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
@@ -3743,21 +3742,21 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     />
                     <Legend
                       iconType="circle"
-                      wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                      iconSize={9}
+                      wrapperStyle={{ paddingTop: 10, color: "#9aa0aa", fontSize: 12 }}
                     />
-                    {ltvGrowthSeries.map((series, index) => (
+                    {ltvGrowthSeries.map((series) => (
                       <Area
                         key={series.key}
                         type="monotone"
                         dataKey={series.key}
                         name={series.label}
                         stroke={series.color}
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         fill={`url(#ltv-grad-${series.key})`}
-                        fillOpacity={0.9}
                         connectNulls
-                        dot={index === 0 ? { r: 2.5 } : false}
-                        activeDot={{ r: 4 }}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}
                   </AreaChart>
@@ -3795,8 +3794,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                           x2="0"
                           y2="1"
                         >
-                          <stop offset="5%" stopColor={series.color} stopOpacity={0.45} />
-                          <stop offset="95%" stopColor={series.color} stopOpacity={0.05} />
+                          <stop offset="5%" stopColor={series.color} stopOpacity={0.16} />
+                          <stop offset="95%" stopColor={series.color} stopOpacity={0.02} />
                         </linearGradient>
                       ))}
                     </defs>
@@ -3811,9 +3810,9 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <YAxis
                       tickLine={false}
                       axisLine={false}
-                      width={70}
+                      width={52}
                       tick={axisTickStyle}
-                      tickFormatter={(value) => formatCurrency(value)}
+                      tickFormatter={(value) => formatCurrencyCompact(value)}
                     />
                     <Tooltip
                       contentStyle={tooltipStyle}
@@ -3822,21 +3821,21 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     />
                     <Legend
                       iconType="circle"
-                      wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                      iconSize={9}
+                      wrapperStyle={{ paddingTop: 10, color: "#9aa0aa", fontSize: 12 }}
                     />
-                    {arppuGrowthSeries.map((series, index) => (
+                    {arppuGrowthSeries.map((series) => (
                       <Area
                         key={series.key}
                         type="monotone"
                         dataKey={series.key}
                         name={series.label}
                         stroke={series.color}
-                        strokeWidth={2}
+                        strokeWidth={2.5}
                         fill={`url(#arppu-grad-${series.key})`}
-                        fillOpacity={0.9}
                         connectNulls
-                        dot={index === 0 ? { r: 2.5 } : false}
-                        activeDot={{ r: 4 }}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}
                   </AreaChart>
@@ -3878,22 +3877,24 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       <stop offset="100%" stopColor="var(--green)" stopOpacity={0.25} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
+                  <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis
                     dataKey="city"
                     tickLine={false}
                     axisLine={false}
-                    tick={{ ...axisTickStyle, fontSize: 10 }}
+                    tick={{ ...axisTickStyle, fontSize: 11, fontWeight: 600, fill: "#c9cdd6" }}
                     interval={0}
                     height={36}
                   />
                   <YAxis
                     tickLine={false}
                     axisLine={false}
+                    width={52}
                     tick={axisTickStyle}
-                    tickFormatter={(value) => formatCurrency(value)}
+                    tickFormatter={(value) => formatCurrencyCompact(value)}
                   />
                   <Tooltip
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
                     contentStyle={tooltipStyle}
                     formatter={(value) => [formatCurrency(value), t("Revenue")]}
                   />
@@ -3901,9 +3902,10 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <LabelList
                       dataKey="revenue"
                       position="top"
-                      formatter={(value) => formatCurrency(value)}
-                      fill="rgba(255,255,255,0.9)"
-                      fontSize={11}
+                      formatter={(value) => formatCurrencyCompact(value)}
+                      fill="#e8ebf0"
+                      fontSize={12}
+                      fontWeight={700}
                     />
                   </Bar>
                 </BarChart>
@@ -3928,38 +3930,32 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                 <BarChart
                   data={cityLtvData}
                   layout="vertical"
-                  margin={{ top: 8, right: 60, left: 8, bottom: 8 }}
+                  margin={{ top: 4, right: 64, left: 0, bottom: 4 }}
+                  barCategoryGap={10}
                 >
-                  <defs>
-                    <linearGradient id="region-ltv-grad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#ff9357" stopOpacity={0.95} />
-                      <stop offset="100%" stopColor="#ff9357" stopOpacity={0.45} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    tickFormatter={(value) => formatCurrency(value)}
-                    domain={[0, 'dataMax']}
-                  />
+                  <XAxis type="number" hide domain={[0, 'dataMax']} />
                   <YAxis
                     type="category"
                     dataKey="city"
                     tickLine={false}
                     axisLine={false}
-                    tick={axisTickStyle}
+                    tick={{ ...axisTickStyle, fontSize: 12, fontWeight: 600, fill: "#c9cdd6" }}
                     width={110}
                   />
-                  <Tooltip content={renderMetricTooltip("city", "ltv", t("LTV"))} />
-                  <Bar dataKey="ltv" name={t("LTV")} fill="url(#region-ltv-grad)" radius={[0, 6, 6, 0]} barSize={18}>
+                  <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={renderMetricTooltip("city", "ltv", t("LTV"))} />
+                  <Bar dataKey="ltv" name={t("LTV")} radius={[0, 6, 6, 0]} maxBarSize={22}>
+                    {cityLtvData.map((entry, i) => (
+                      <Cell
+                        key={`city-ltv-${entry.city}`}
+                        fill="#ff9357"
+                        fillOpacity={Math.max(0.3, 0.95 - i * 0.12)}
+                      />
+                    ))}
                     <LabelList
                       dataKey="ltv"
                       position="right"
-                      formatter={(value) => formatCurrency(value)}
-                      style={{ fill: "#a9adb7", fontSize: 11, fontWeight: 600 }}
+                      formatter={(value) => formatCurrencyCompact(value)}
+                      style={{ fill: "#e8ebf0", fontSize: 12, fontWeight: 700 }}
                     />
                   </Bar>
                 </BarChart>

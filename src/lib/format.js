@@ -25,6 +25,20 @@ export const formatCurrency = (value, rate = activeFxRate) => {
   return currencyFormatter.format(numeric * fxRate);
 };
 
+// Short currency for axis ticks and on-bar labels: "$1.2k" / "$45" / "$0.15".
+// Full precision stays in tooltips via formatCurrency.
+export const formatCurrencyCompact = (value, rate = activeFxRate) => {
+  if (value === null || value === undefined || value === "" || Number.isNaN(value)) return "—";
+  const numeric = Number(value) * (Number.isFinite(rate) ? rate : 1);
+  if (!Number.isFinite(numeric)) return "—";
+  const abs = Math.abs(numeric);
+  const sign = numeric < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+  if (abs >= 100) return `${sign}$${Math.round(abs)}`;
+  return `${sign}$${abs.toFixed(2)}`;
+};
+
 export const formatAxis = (value) => {
   if (value === 0) return "0k";
   const thousands = value / 1000;
