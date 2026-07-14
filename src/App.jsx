@@ -215,6 +215,7 @@ import { LanguageContext, useLanguage, makeT } from "./lib/i18n/language.jsx";
 
 // Static option arrays + country/domain normalizers (Phase 1)
 import {
+  ALL_COUNTRIES,
   supportedCountryOptions,
   countryOptions,
   accountRegistryCountryOptions,
@@ -4159,10 +4160,20 @@ const trackingSourceShortcode = (name) => {
   const key = String(name || "").trim().toLowerCase();
   return TRACKING_SOURCE_SHORTCODES[key] || String(name || "").trim().toUpperCase();
 };
-const TRACKING_GEO_PRESETS = [
+// Frequent geos stay pinned on top; every other country follows alphabetically.
+const TRACKING_GEO_PRIORITY = [
   "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
   "DE", "FR", "GB", "IT", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
 ];
+const TRACKING_GEO_PRESETS = [
+  ...TRACKING_GEO_PRIORITY,
+  ...ALL_COUNTRIES.map(([, iso]) => iso.toUpperCase())
+    .filter((code) => !TRACKING_GEO_PRIORITY.includes(code))
+    .sort(),
+];
+const TRACKING_GEO_NAMES = Object.fromEntries(
+  ALL_COUNTRIES.map(([name, iso]) => [iso.toUpperCase(), name])
+);
 // Only these Keitaro tracking/redirect domains may back a tracking link
 // (everyone sees exactly this list). PWA landing domains are never used here.
 const ALLOWED_TRACKING_DOMAINS = [
@@ -5171,7 +5182,11 @@ function TrackingLinksDashboard({ authUser }) {
               <CountryDropdownPicker
                 value={form.geo}
                 onChange={(geo) => setForm((prev) => ({ ...prev, geo }))}
-                options={TRACKING_GEO_PRESETS.map((value) => ({ value, label: value, search: value }))}
+                options={TRACKING_GEO_PRESETS.map((value) => ({
+                  value,
+                  label: value,
+                  search: `${value} ${TRACKING_GEO_NAMES[value] || ""}`.trim(),
+                }))}
                 allowCustom
                 placeholder={t("Select or type")}
                 searchPlaceholder={t("ISO-2 or GLOBAL")}
