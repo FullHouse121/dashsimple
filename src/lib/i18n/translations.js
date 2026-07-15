@@ -527,5 +527,210 @@ export const translations = {
     "Reg2Dep rate": "Reg2Dep oranı",
     "Top performers": "En iyi performans",
     "Active GEO": "Aktif GEO",
+
+    // ── Documentation page ──────────────────────────────────────────────
+    Dashboard: "Panel",
+    "Daily operations overview: clicks, installs, registers, FTDs and conversion rates at a glance.":
+      "Günlük operasyon özeti: tıklamalar, kurulumlar, kayıtlar, FTD'ler ve dönüşüm oranları tek bakışta.",
+    "KPI cards track the full funnel; charts show conversion-rate trends and top GEO distribution.":
+      "KPI kartları tüm huniyi takip eder; grafikler dönüşüm oranı trendlerini ve en iyi GEO dağılımını gösterir.",
+    "The period selector supports presets (today, 7/30 days, month) and custom ranges.":
+      "Dönem seçici hazır aralıkları (bugün, 7/30 gün, ay) ve özel tarih aralıklarını destekler.",
+    "Global buyer and GEO filters in the top bar scope every widget on the page.":
+      "Üst bardaki genel alıcı ve GEO filtreleri sayfadaki tüm bileşenleri kapsar.",
+    "Country-level performance: where the traffic comes from and where deposits happen.":
+      "Ülke bazında performans: trafiğin nereden geldiği ve depozitlerin nerede gerçekleştiği.",
+    "Interactive world map plus a per-country table with funnel and revenue columns.":
+      "Etkileşimli dünya haritası ve huni ile gelir sütunlarını içeren ülke bazlı tablo.",
+    "Charts handle sparse data gracefully — days without traffic stay visible in tooltips.":
+      "Grafikler seyrek veriyi düzgün işler — trafiksiz günler ipuçlarında görünür kalır.",
+    "Respects the global filters and your role's buyer scope.":
+      "Genel filtrelere ve rolünüzün alıcı kapsamına uyar.",
+    "Set FTD and Reg2Dep targets per media buyer, country and period.":
+      "Medya alıcısı, ülke ve dönem bazında FTD ve Reg2Dep hedefleri belirleyin.",
+    "Choose a preset period or a custom date range per goal.":
+      "Her hedef için hazır bir dönem veya özel tarih aralığı seçin.",
+    "The overview banner summarizes progress across all active goals.":
+      "Özet bandı tüm aktif hedeflerdeki ilerlemeyi özetler.",
+    "Statuses: achieved, on track, or behind — computed from live synced data.":
+      "Durumlar: başarıldı, yolunda veya geride — canlı senkronize veriden hesaplanır.",
+    "Daily performance per media buyer and country; the system derives every funnel and cost metric.":
+      "Medya alıcısı ve ülke bazında günlük performans; sistem tüm huni ve maliyet metriklerini türetir.",
+    "Rows come from the Keitaro sync; manual entry is available for corrections.":
+      "Satırlar Keitaro senkronizasyonundan gelir; düzeltmeler için manuel giriş de mümkündür.",
+    Metric: "Metrik",
+    Meaning: "Anlamı",
+    "share of clicks that install the app": "uygulamayı kuran tıklamaların oranı",
+    "share of clicks that register": "kayıt olan tıklamaların oranı",
+    "share of installs that register": "kayıt olan kurulumların oranı",
+    "share of registrations that deposit (FTD)": "depozit yapan kayıtların oranı (FTD)",
+    "spend divided by clicks / installs / registers / FTDs":
+      "harcamanın tıklama / kurulum / kayıt / FTD sayısına bölümü",
+    Campaigns: "Kampanyalar",
+    "Per-campaign results, with the campaign name decoded into its segments.":
+      "Kampanya bazında sonuçlar; kampanya adı segmentlerine ayrıştırılır.",
+    "Names following “Buyer | Tool | Game | Geo | Brand” are split into filterable columns.":
+      "“Alıcı | Araç | Oyun | Geo | Marka” biçimindeki adlar filtrelenebilir sütunlara ayrılır.",
+    "Columns include installs, registers, FTDs, redeposits, ARPPU, LTV, C2R, C2F, R2D.":
+      "Sütunlar: kurulum, kayıt, FTD, redepozit, ARPPU, LTV, C2R, C2F, R2D.",
+    "Known tools and brands render with their logos automatically.":
+      "Bilinen araç ve markalar otomatik olarak logolarıyla gösterilir.",
+    Placement: "Yerleşim",
+    "Performance grouped by ad placement (feed, stories, reels, …).":
+      "Reklam yerleşimine göre gruplanmış performans (akış, hikayeler, reels, …).",
+    "Placement is read from Keitaro sub_id_1 — make sure your links pass it.":
+      "Yerleşim Keitaro sub_id_1 alanından okunur — bağlantılarınızın bunu ilettiğinden emin olun.",
+    "Filter down to a single placement to compare creatives fairly.":
+      "Kreatifleri adil karşılaştırmak için tek bir yerleşime filtreleyin.",
+    "Same funnel measures as Statistics, sliced by placement.":
+      "İstatistikler ile aynı huni ölçümleri, yerleşime göre dilimlenmiş.",
+    "User Behavior": "Kullanıcı Davranışı",
+    "Player-level view keyed by external_id — from first click to redeposits.":
+      "external_id ile anahtarlanan oyuncu bazlı görünüm — ilk tıklamadan redepozitlere kadar.",
+    "Each row is one player: clicks, registration, FTD and redeposit history with GEO and device context.":
+      "Her satır bir oyuncudur: tıklamalar, kayıt, FTD ve redepozit geçmişi; GEO ve cihaz bağlamıyla.",
+    "Useful for time-to-deposit questions and verifying that postbacks attribute correctly.":
+      "Depozite kadar geçen süre soruları ve postback atıflarının doğruluğunu kontrol etmek için kullanışlıdır.",
+    "This report only works when the tool sends its click/user ID. The Tracking Links builder wires the right external_id macro automatically.":
+      "Bu rapor yalnızca araç kendi tıklama/kullanıcı kimliğini gönderdiğinde çalışır. Takip Bağlantıları oluşturucu doğru external_id makrosunu otomatik bağlar.",
+    "Device, OS and model breakdown for clicks, installs, revenue and CR.":
+      "Tıklama, kurulum, gelir ve CR için cihaz, işletim sistemi ve model kırılımı.",
+    "Synced from the Keitaro device report (separate payload from the main sync).":
+      "Keitaro cihaz raporundan senkronize edilir (ana senkrondan ayrı bir yük).",
+    "Installs arrive through the postback receiver, not the report.":
+      "Kurulumlar rapordan değil, postback alıcısından gelir.",
+    "Compare conversion rates and revenue per device class before scaling a creative.":
+      "Bir kreatifi ölçeklendirmeden önce cihaz sınıfına göre dönüşüm oranlarını ve geliri karşılaştırın.",
+    "My Flows": "Akışlarım",
+    "Each tracking link as a flow card: segments, domains and pixels in one place.":
+      "Her takip bağlantısı bir akış kartı olarak: segmentler, alan adları ve pikseller tek yerde.",
+    "Shows the decoded campaign segments (buyer, tool, game, GEO, brand) per link.":
+      "Bağlantı başına ayrıştırılmış kampanya segmentlerini gösterir (alıcı, araç, oyun, GEO, marka).",
+    "Lists the landing domains bound to the link and every attached pixel.":
+      "Bağlantıya bağlı iniş alan adlarını ve ekli tüm pikselleri listeler.",
+    "Sort by recency or by pixel count; expand a card for full parameter details.":
+      "Yeniliğe veya piksel sayısına göre sıralayın; tüm parametre ayrıntıları için kartı genişletin.",
+    "Tracking Links": "Takip Bağlantıları",
+    "Compose Keitaro campaigns without leaving the dashboard — naming, params and push in one form.":
+      "Panelden ayrılmadan Keitaro kampanyaları oluşturun — adlandırma, parametreler ve gönderim tek formda.",
+    "Campaign names follow “Buyer | Tool | Game | Geo | Brand”; use “-” for an intentionally empty slot.":
+      "Kampanya adları “Alıcı | Araç | Oyun | Geo | Marka” biçimindedir; bilinçli boş alan için “-” kullanın.",
+    "The Tool must be picked from the Keitaro traffic-source list — free-typed tools are disabled on purpose.":
+      "Araç, Keitaro trafik kaynağı listesinden seçilmelidir — elle yazılan araçlar bilinçli olarak devre dışıdır.",
+    "Only the approved tracking domains can back a link; PWA landing domains are never used here.":
+      "Bir bağlantıyı yalnızca onaylı takip alan adları destekleyebilir; PWA iniş alan adları burada asla kullanılmaz.",
+    "Push creates the campaign and stream in Keitaro; editing a link renames the campaign there too.":
+      "Gönderim, kampanyayı ve akışı Keitaro'da oluşturur; bağlantıyı düzenlemek kampanyayı orada da yeniden adlandırır.",
+    "Optional stream filters (GEO, device, bot and more) are applied on push.":
+      "İsteğe bağlı akış filtreleri (GEO, cihaz, bot ve daha fazlası) gönderimde uygulanır.",
+    Tool: "Araç",
+    "The source of truth for these macros is each traffic source's config in Keitaro — the builder reads it live, so a change there applies here with no code change.":
+      "Bu makroların doğruluk kaynağı, her trafik kaynağının Keitaro'daki yapılandırmasıdır — oluşturucu bunu canlı okur; oradaki bir değişiklik kod değişikliği olmadan burada geçerli olur.",
+    "Generate ad-side URLs with the pixel and sub1–sub15 parameters per tool.":
+      "Araç bazında piksel ve sub1–sub15 parametreleriyle reklam tarafı URL'leri oluşturun.",
+    "sub9 is the GEO slot and auto-fills from the selected country; sub7–sub15 stay collapsed until used.":
+      "sub9 GEO alanıdır ve seçilen ülkeden otomatik dolar; sub7–sub15 kullanılana kadar gizli kalır.",
+    "Macro chips ({{campaign.name}}, {{adset.id}}, …) insert into whichever field is focused.":
+      "Makro çipleri ({{campaign.name}}, {{adset.id}}, …) odaklanılan alana eklenir.",
+    "Save presets per buyer; history is kept locally and exports to CSV.":
+      "Alıcı bazında hazır ayarlar kaydedin; geçmiş yerel olarak tutulur ve CSV'ye aktarılır.",
+    "Only filled parameters are appended to the final URL.":
+      "Yalnızca doldurulan parametreler nihai URL'ye eklenir.",
+    "Pixel parameter": "Piksel parametresi",
+    Position: "Konum",
+    first: "ilk",
+    last: "son",
+    "The builder enforces the pixel position automatically — just pick the tool.":
+      "Oluşturucu piksel konumunu otomatik uygular — sadece aracı seçin.",
+    "Registry of landing domains with status, notes and health tooling.":
+      "Durum, not ve sağlık araçlarıyla iniş alan adları kaydı.",
+    "Statuses: active, pending, paused, expired, blocked — keep them current.":
+      "Durumlar: aktif, beklemede, duraklatıldı, süresi doldu, engellendi — güncel tutun.",
+    "Run the Meta Sharing Debugger check on a domain before sending paid traffic to it.":
+      "Bir alan adına ücretli trafik göndermeden önce Meta Paylaşım Hata Ayıklayıcı kontrolünü çalıştırın.",
+    "Domains can be bound to tracking links so flows show where traffic lands.":
+      "Alan adları takip bağlantılarına bağlanabilir; böylece akışlar trafiğin nereye indiğini gösterir.",
+    Pixels: "Pikseller",
+    "Meta pixel registry: IDs, tokens, owners and where each pixel is used.":
+      "Meta piksel kaydı: kimlikler, tokenlar, sahipler ve her pikselin nerede kullanıldığı.",
+    "Store the pixel ID together with its access token; both are required.":
+      "Piksel kimliğini erişim tokenıyla birlikte saklayın; ikisi de zorunludur.",
+    "Assign an owner and buyer so responsibility stays clear.":
+      "Sorumluluk net kalsın diye bir sahip ve alıcı atayın.",
+    "Filter by pixel ID, buyer or status; pixels attach to tracking links / flows.":
+      "Piksel kimliği, alıcı veya duruma göre filtreleyin; pikseller takip bağlantılarına / akışlara eklenir.",
+    Accounts: "Hesaplar",
+    "Ad-account registry with statuses, search and per-buyer filters.":
+      "Durumlar, arama ve alıcı bazlı filtrelerle reklam hesabı kaydı.",
+    "Track account state over its lifecycle (active → paused/blocked).":
+      "Hesap durumunu yaşam döngüsü boyunca izleyin (aktif → duraklatıldı/engellendi).",
+    "Search and filters mirror the pixels view for consistency.":
+      "Arama ve filtreler tutarlılık için pikseller görünümünü yansıtır.",
+    "Administration & Account": "Yönetim ve Hesap",
+    "Role-based access: what each user can see and edit.":
+      "Rol tabanlı erişim: her kullanıcının neyi görüp düzenleyebileceği.",
+    "Permission toggles mirror the sidebar sections, so scoping stays intuitive.":
+      "İzin anahtarları kenar çubuğu bölümlerini yansıtır; böylece kapsam sezgisel kalır.",
+    "Assign a role when creating a user; only verified users can sign in.":
+      "Kullanıcı oluştururken bir rol atayın; yalnızca doğrulanmış kullanıcılar giriş yapabilir.",
+    "Media buyers are automatically scoped to their own campaigns and stats.":
+      "Medya alıcıları otomatik olarak kendi kampanya ve istatistikleriyle sınırlandırılır.",
+    "Your own account: credentials and preferences.":
+      "Kendi hesabınız: kimlik bilgileri ve tercihler.",
+    "Update your password and personal details.":
+      "Şifrenizi ve kişisel bilgilerinizi güncelleyin.",
+    "The language switcher (EN / TR) lives at the bottom of the sidebar.":
+      "Dil değiştirici (EN / TR) kenar çubuğunun altındadır.",
+    "Meta Token $": "Meta Token $",
+    "Meta access tokens per ad account, with costs and notes.":
+      "Reklam hesabı bazında Meta erişim tokenları; maliyet ve notlarla birlikte.",
+    "Store the token against its ad-account number; copy the account with one click.":
+      "Tokenı reklam hesabı numarasıyla eşleştirerek saklayın; hesabı tek tıkla kopyalayın.",
+    "Track token cost and leave comments for the next buyer using the account.":
+      "Token maliyetini takip edin ve hesabı kullanacak sonraki alıcı için yorum bırakın.",
+    "API (Keitaro)": "API (Keitaro)",
+    "The Keitaro connection that feeds Statistics, Devices and User Behavior.":
+      "İstatistikler, Cihazlar ve Kullanıcı Davranışını besleyen Keitaro bağlantısı.",
+    "Endpoint, API key and payload mapping are configured server-side — the key never reaches the browser.":
+      "Uç nokta, API anahtarı ve yük eşlemesi sunucu tarafında yapılandırılır — anahtar asla tarayıcıya ulaşmaz.",
+    "Registrations, FTDs and redeposits come from Keitaro reports; installs come via the postback receiver.":
+      "Kayıtlar, FTD'ler ve redepozitler Keitaro raporlarından gelir; kurulumlar postback alıcısı üzerinden gelir.",
+    "Use Sync to fetch on demand; the status panel shows the last successful sync per target.":
+      "İstek üzerine veri çekmek için Senkronize'yi kullanın; durum paneli her hedef için son başarılı senkronu gösterir.",
+    Signal: "Sinyal",
+    "Comes from": "Kaynağı",
+    "Clicks, registers": "Tıklamalar, kayıtlar",
+    "Keitaro report sync": "Keitaro rapor senkronizasyonu",
+    Redeposit: "Redepozit",
+    Installs: "Kurulumlar",
+    "postback receiver": "postback alıcısı",
+    Playbook: "El Kitabı",
+    "Naming Conventions": "Adlandırma Kuralları",
+    "Reports attribute by parsing campaign names, so spelling is data — not cosmetics.":
+      "Raporlar kampanya adlarını ayrıştırarak atıf yapar; yani yazım bir veridir — süs değildir.",
+    "Campaign names must follow “Buyer | Tool | Game | Geo | Brand” — use “-” for an empty slot.":
+      "Kampanya adları “Alıcı | Araç | Oyun | Geo | Marka” biçiminde olmalıdır — boş alan için “-” kullanın.",
+    "Off-format names still attribute the buyer, but lose the tool/game/geo/brand columns.":
+      "Biçim dışı adlar alıcıya yine atıf yapar ama araç/oyun/geo/marka sütunlarını kaybeder.",
+    "Tool names are counted verbatim: “PWA” and “PWA PARTNERS” are two different tools in every report.":
+      "Araç adları birebir sayılır: “PWA” ve “PWA PARTNERS” her raporda iki farklı araçtır.",
+    "Buyer short names resolve through aliases (e.g. “Leo” → “Leomarketing”), so both spellings roll up to one buyer.":
+      "Alıcı kısa adları takma adlarla çözülür (örn. “Leo” → “Leomarketing”); iki yazım da tek alıcıda toplanır.",
+    "Small habits that keep attribution and reporting trustworthy.":
+      "Atıf ve raporlamayı güvenilir tutan küçük alışkanlıklar.",
+    "Always pick the Tool from the dropdown in Tracking Links — never retype it by hand.":
+      "Takip Bağlantılarında Aracı her zaman açılır listeden seçin — asla elle yeniden yazmayın.",
+    "Use UTM presets per buyer to avoid parameter mistakes across launches.":
+      "Lansmanlar arasında parametre hatalarını önlemek için alıcı bazında UTM hazır ayarları kullanın.",
+    "Review goals weekly and adjust caps to the current FTD pace.":
+      "Hedefleri haftalık gözden geçirin ve limitleri güncel FTD hızına göre ayarlayın.",
+    "Keep domain statuses current and run the Meta debugger check before scaling traffic to a domain.":
+      "Alan adı durumlarını güncel tutun ve bir alan adına trafiği ölçeklendirmeden önce Meta hata ayıklayıcı kontrolünü çalıştırın.",
+    "After a big campaign push, open API and confirm the last sync succeeded for every target.":
+      "Büyük bir kampanya gönderiminden sonra API'yi açın ve her hedef için son senkronun başarılı olduğunu doğrulayın.",
+    "Postgres · Supabase": "Postgres · Supabase",
+    Tracker: "Takipçi",
+    "Search the docs": "Dokümanlarda ara",
+    "Nothing matches your search.": "Aramanızla eşleşen bir şey yok.",
   },
 };
