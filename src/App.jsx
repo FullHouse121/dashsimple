@@ -4192,7 +4192,10 @@ const DEFAULT_TRACKING_PARAMS =
 const DEFAULT_EXTERNAL_ID_MACRO = "{exid}";
 const TRACKING_TOOL_EXTERNAL_ID = {
   "PWA.GROUP": "{USER_ID}",
+  "PWA PARTNERS": "{user_id}",
+  "LINKI.GROUP": "{client_id}",
   "ZMAPPS": "{exid}",
+  "SKAK": "{clickId}",
 };
 const externalIdMacroForTool = (tool) =>
   TRACKING_TOOL_EXTERNAL_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_EXTERNAL_ID_MACRO;
@@ -5138,37 +5141,29 @@ function TrackingLinksDashboard({ authUser }) {
               <CountryDropdownPicker
                 value={form.trafficSourceId || form.tool}
                 onChange={(value) => {
+                  // Keitaro traffic sources only — free-typed tools are not allowed,
+                  // so external_id/params always come from the source's real config.
                   const source = resources.trafficSources.find((s) => String(s.id) === String(value));
-                  if (source) {
-                    const shortcode = trackingSourceShortcode(source.name);
-                    // Prefer the full template Keitaro reports for this source;
-                    // fall back to swapping the external_id macro if unavailable
-                    // (e.g. backend not yet redeployed).
-                    const macro = source.externalId || externalIdMacroForTool(shortcode);
-                    setForm((prev) => ({
-                      ...prev,
-                      trafficSourceId: String(source.id),
-                      tool: shortcode,
-                      externalIdMacro: macro,
-                      params: source.params || applyExternalIdMacro(prev.params, shortcode),
-                    }));
-                  } else {
-                    setForm((prev) => ({
-                      ...prev,
-                      trafficSourceId: "",
-                      tool: value,
-                      externalIdMacro: externalIdMacroForTool(value),
-                      params: applyExternalIdMacro(prev.params, value),
-                    }));
-                  }
+                  if (!source) return;
+                  const shortcode = trackingSourceShortcode(source.name);
+                  // Prefer the full template Keitaro reports for this source;
+                  // fall back to swapping the external_id macro if unavailable
+                  // (e.g. backend not yet redeployed).
+                  const macro = source.externalId || externalIdMacroForTool(shortcode);
+                  setForm((prev) => ({
+                    ...prev,
+                    trafficSourceId: String(source.id),
+                    tool: shortcode,
+                    externalIdMacro: macro,
+                    params: source.params || applyExternalIdMacro(prev.params, shortcode),
+                  }));
                 }}
                 options={resources.trafficSources.map((s) => ({
                   value: String(s.id),
                   label: `${trackingSourceShortcode(s.name)} · ${s.name}`,
                   search: `${s.name} ${trackingSourceShortcode(s.name)}`,
                 }))}
-                allowCustom
-                placeholder={resources.trafficSources.length ? t("Select or type") : t("Type a tool")}
+                placeholder={t("Select or type")}
                 searchPlaceholder={t("Type a tool")}
                 emptyResultsLabel={t("No tools found.")}
               />
