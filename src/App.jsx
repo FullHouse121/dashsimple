@@ -16081,46 +16081,69 @@ function LogsDashboard({ authUser }) {
         </div>
       </div>
 
-      <div className="logs-toolbar">
-        <div className="logs-search">
-          <Search size={13} />
-          <input
-            value={searchDraft}
-            onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder={t("Search actor, action, entity or payload")}
+      <div className="pixel-table-toolbar">
+        <div className="field registry-search-field">
+          <label>{t("Search")}</label>
+          <div className="registry-search">
+            <Search size={14} aria-hidden="true" />
+            <input
+              type="text"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              placeholder={t("Search actor, action, entity or payload")}
+            />
+            {searchDraft ? (
+              <button
+                type="button"
+                className="registry-search-clear"
+                onClick={() => setSearchDraft("")}
+                aria-label={t("Clear search")}
+              >
+                <X size={13} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="field">
+          <label>{t("Method")}</label>
+          <CountryDropdownPicker
+            value={filters.method}
+            onChange={(value) => setFilters((prev) => ({ ...prev, method: value || "all" }))}
+            options={[
+              { value: "all", label: t("All methods") },
+              { value: "POST", label: "POST" },
+              { value: "PUT", label: "PUT" },
+              { value: "PATCH", label: "PATCH" },
+              { value: "DELETE", label: "DELETE" },
+            ]}
+            placeholder={t("All methods")}
           />
         </div>
-        <CountryDropdownPicker
-          value={filters.method}
-          onChange={(value) => setFilters((prev) => ({ ...prev, method: value || "all" }))}
-          options={[
-            { value: "all", label: t("All methods") },
-            { value: "POST", label: "POST" },
-            { value: "PUT", label: "PUT" },
-            { value: "PATCH", label: "PATCH" },
-            { value: "DELETE", label: "DELETE" },
-          ]}
-          placeholder={t("All methods")}
-        />
-        <CountryDropdownPicker
-          value={filters.entityType}
-          onChange={(value) => setFilters((prev) => ({ ...prev, entityType: value || "all" }))}
-          options={[
-            { value: "all", label: t("All entities") },
-            ...meta.entityTypes.map((entity) => ({ value: entity, label: entity })),
-          ]}
-          placeholder={t("All entities")}
-        />
-        <CountryDropdownPicker
-          value={filters.outcome}
-          onChange={(value) => setFilters((prev) => ({ ...prev, outcome: value || "all" }))}
-          options={[
-            { value: "all", label: t("All results") },
-            { value: "success", label: t("Success") },
-            { value: "error", label: t("Errors") },
-          ]}
-          placeholder={t("All results")}
-        />
+        <div className="field">
+          <label>{t("Entity")}</label>
+          <CountryDropdownPicker
+            value={filters.entityType}
+            onChange={(value) => setFilters((prev) => ({ ...prev, entityType: value || "all" }))}
+            options={[
+              { value: "all", label: t("All entities") },
+              ...meta.entityTypes.map((entity) => ({ value: entity, label: entity })),
+            ]}
+            placeholder={t("All entities")}
+          />
+        </div>
+        <div className="field">
+          <label>{t("Result")}</label>
+          <CountryDropdownPicker
+            value={filters.outcome}
+            onChange={(value) => setFilters((prev) => ({ ...prev, outcome: value || "all" }))}
+            options={[
+              { value: "all", label: t("All results") },
+              { value: "success", label: t("Success") },
+              { value: "error", label: t("Errors") },
+            ]}
+            placeholder={t("All results")}
+          />
+        </div>
       </div>
 
       {logState.error ? <p className="logs-error">{logState.error}</p> : null}
