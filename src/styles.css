@@ -16183,3 +16183,165 @@ select option,
   .docs-shell { grid-template-columns: minmax(0, 1fr); }
   .docs-toc { position: static; max-height: none; }
 }
+
+/* ── Audit Logs ───────────────────────────────────────────────────────── */
+.logs-panel { display: grid; gap: 14px; }
+
+.logs-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.logs-head .panel-title { display: flex; align-items: center; gap: 8px; }
+.logs-sub { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+
+.logs-head-meta { display: flex; align-items: center; gap: 10px; }
+.logs-count { font-size: 12px; color: var(--muted-strong); white-space: nowrap; }
+
+.logs-purge {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s var(--ease-smooth);
+}
+
+.logs-purge:hover { border-color: rgba(255, 138, 122, 0.4); color: #ff8a7a; }
+.logs-purge.is-armed { border-color: #ff8a7a; background: rgba(255, 138, 122, 0.1); color: #ff8a7a; }
+
+.logs-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 150px 190px 150px;
+  gap: 10px;
+  align-items: center;
+}
+
+.logs-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: rgba(11, 12, 14, 0.7);
+  color: var(--muted);
+}
+
+.logs-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  width: 100%;
+}
+
+.logs-search input::placeholder { color: var(--faint); }
+
+.logs-error { margin: 0; font-size: 12.5px; color: #ff8a7a; }
+
+.logs-table td { vertical-align: top; }
+.logs-time { white-space: nowrap; color: var(--muted-strong); font-size: 12px; }
+.logs-actor { color: var(--text); font-weight: 600; font-size: 12.5px; }
+
+.logs-role {
+  display: block;
+  font-size: 10.5px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.log-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.log-badge.m-post { background: rgba(54, 208, 124, 0.12); color: var(--green); }
+.log-badge.m-put, .log-badge.m-patch { background: rgba(247, 198, 37, 0.12); color: var(--yellow); }
+.log-badge.m-delete { background: rgba(255, 138, 122, 0.12); color: #ff8a7a; }
+
+.logs-action { font-size: 12.5px; color: var(--muted-strong); }
+.logs-entity { font-size: 12.5px; color: var(--text); }
+.logs-entity-id { color: var(--muted); }
+
+.logs-path {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs-status {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+.logs-status.is-ok { color: var(--green); background: rgba(54, 208, 124, 0.08); }
+.logs-status.is-error { color: #ff8a7a; background: rgba(255, 138, 122, 0.1); }
+
+.logs-row-failed td { background: rgba(255, 138, 122, 0.03); }
+
+.logs-details-row td { padding: 0 12px 12px; }
+
+.logs-details {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: rgba(11, 12, 14, 0.6);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.logs-details-meta { display: flex; gap: 14px; font-size: 11.5px; color: var(--muted); }
+
+.logs-details pre {
+  margin: 0;
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.logs-empty { color: var(--faint); font-size: 12.5px; text-align: center; padding: 18px 0; }
+
+.logs-load-more {
+  justify-self: center;
+  padding: 7px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.logs-load-more:hover { color: var(--text); border-color: var(--stroke-strong); }
+
+@media (max-width: 900px) {
+  .logs-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .logs-path { max-width: 140px; }
+}

@@ -252,6 +252,22 @@ const initDb = async () => {
       read_by TEXT NOT NULL DEFAULT '[]',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id SERIAL PRIMARY KEY,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      actor_id INTEGER,
+      actor_name TEXT,
+      actor_role TEXT,
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      action TEXT,
+      entity_type TEXT,
+      entity_id TEXT,
+      status INTEGER,
+      duration_ms INTEGER,
+      ip TEXT,
+      details TEXT
+    );`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -506,6 +522,14 @@ const initDb = async () => {
       ON system_notifications (event_type);`,
     `CREATE INDEX IF NOT EXISTS idx_system_notifications_entity_type
       ON system_notifications (entity_type);`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+      ON audit_logs (created_at DESC, id DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_entity_type
+      ON audit_logs (entity_type);`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_name
+      ON audit_logs (actor_name);`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_method
+      ON audit_logs (method);`,
 
     // ── Offers / Brands / Banners ──────────────────────────────────────────
     `CREATE TABLE IF NOT EXISTS brands (
@@ -4592,6 +4616,101 @@ app.use((req, res, next) => {
   return next();
 });
 
+// ── Audit log ─────────────────────────────────────────────────────────
+// Every mutating /api call is recorded automatically (who, what, on which
+// resource, and how it ended) — the Logs view reads this. Fire-and-forget:
+// an insert failure never breaks the request itself.
+// Machine traffic (postback ingestion, cron, the logs/notifications views
+// themselves) is excluded so the trail stays about human actions.
+const AUDIT_SKIP_PATHS = [
+  /^\/api\/notifications(\/|$)/,
+  /^\/api\/postbacks(\/|$)/,
+  /^\/api\/keitaro\/cron(\/|$)/,
+];
+const AUDIT_REDACT_PATTERN = /pass|token|secret|api_?key|authorization|hash/i;
+const AUDIT_ACTION_BY_METHOD = { POST: "created", PUT: "updated", PATCH: "updated", DELETE: "deleted" };
+
+// Strip credentials and cap size so details stay safe + cheap to store.
+const sanitizeAuditPayload = (value, depth = 0) => {
+  if (value === null || value === undefined || depth > 3) return undefined;
+  if (Array.isArray(value)) {
+    return value.slice(0, 20).map((item) => sanitizeAuditPayload(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [key, val] of Object.entries(value).slice(0, 40)) {
+      if (AUDIT_REDACT_PATTERN.test(key)) {
+        out[key] = "[redacted]";
+        continue;
+      }
+      const clean = sanitizeAuditPayload(val, depth + 1);
+      if (clean !== undefined) out[key] = clean;
+    }
+    return out;
+  }
+  if (typeof value === "string") return value.length > 300 ? `${value.slice(0, 300)}…` : value;
+  return value;
+};
+
+// "/api/tracking-links/12/push" → entity tracking_links #12, action "push";
+// plain "/api/domains" POST → entity domains, action "created".
+const deriveAuditEvent = (method, path) => {
+  const segments = path.replace(/^\/api\//, "").split("/").filter(Boolean);
+  const entityType = (segments[0] || "api").replace(/-/g, "_").toLowerCase();
+  const entityId = segments.find((seg) => /^\d+$/.test(seg)) || null;
+  const tail = (segments[segments.length - 1] || "").toLowerCase();
+  let action = AUDIT_ACTION_BY_METHOD[method] || method.toLowerCase();
+  if (method === "POST" && segments.length > 1 && !/^\d+$/.test(tail)) {
+    action = tail.replace(/-/g, "_");
+  }
+  return { entityType, entityId, action };
+};
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/")) return next();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) return next();
+  if (AUDIT_SKIP_PATHS.some((pattern) => pattern.test(req.path))) return next();
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    try {
+      const { entityType, entityId, action } = deriveAuditEvent(req.method, req.path);
+      const details = sanitizeAuditPayload(req.body);
+      const detailsJson =
+        details && typeof details === "object" && Object.keys(details).length
+          ? JSON.stringify(details).slice(0, 4000)
+          : null;
+      // Failed logins have no req.user — keep the attempted username visible.
+      const actorName =
+        req.user?.username ||
+        (req.path === "/api/auth/login" ? String(req.body?.username || "").slice(0, 80) : "") ||
+        null;
+      query(
+        `INSERT INTO audit_logs
+           (actor_id, actor_name, actor_role, method, path, action,
+            entity_type, entity_id, status, duration_ms, ip, details)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          req.user?.id ?? null,
+          actorName,
+          req.user?.role || null,
+          req.method,
+          req.path.slice(0, 300),
+          action,
+          entityType,
+          entityId,
+          res.statusCode,
+          Date.now() - startedAt,
+          String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 60) || null,
+          detailsJson,
+        ]
+      ).catch((error) => console.warn("Audit log insert failed:", error?.message || error));
+    } catch (error) {
+      console.warn("Audit log capture failed:", error?.message || error);
+    }
+  });
+  return next();
+});
+
 app.get("/api/notifications", async (req, res) => {
   if (!isLeadership(req.user)) {
     return res.status(403).json({ error: "Forbidden." });
@@ -4785,6 +4904,91 @@ app.delete("/api/notifications/:id", async (req, res) => {
       entityType: "notification",
     });
     return res.status(500).json({ error: "Failed to delete notification." });
+  }
+});
+
+// ── Audit logs (Big Boss + Team Leader only) ──────────────────────────
+app.get("/api/logs", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const limitRaw = Number.parseInt(req.query.limit ?? "100", 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 300) : 100;
+    const offsetRaw = Number.parseInt(req.query.offset ?? "0", 10);
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+
+    const clauses = [];
+    const params = [];
+    const addClause = (sql, value) => {
+      params.push(value);
+      clauses.push(sql.replaceAll("?", `$${params.length}`));
+    };
+
+    const method = String(req.query.method || "").trim().toUpperCase();
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) addClause("method = ?", method);
+    const entityType = String(req.query.entityType ?? req.query.entity_type ?? "").trim().toLowerCase();
+    if (entityType) addClause("entity_type = ?", entityType);
+    const actor = String(req.query.actor || "").trim().toLowerCase();
+    if (actor) addClause("LOWER(COALESCE(actor_name, '')) LIKE ?", `%${actor}%`);
+    const outcome = String(req.query.outcome || "").trim().toLowerCase();
+    if (outcome === "success") clauses.push("COALESCE(status, 0) < 400");
+    if (outcome === "error") clauses.push("COALESCE(status, 0) >= 400");
+    const q = String(req.query.q ?? req.query.search ?? "").trim().toLowerCase();
+    if (q) {
+      addClause(
+        `(LOWER(COALESCE(actor_name, '')) LIKE ?
+          OR LOWER(path) LIKE ?
+          OR LOWER(COALESCE(action, '')) LIKE ?
+          OR LOWER(COALESCE(entity_type, '')) LIKE ?
+          OR LOWER(COALESCE(details, '')) LIKE ?)`,
+        `%${q}%`
+      );
+    }
+    const from = String(req.query.from || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) addClause("created_at >= ?::date", from);
+    const to = String(req.query.to || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) addClause("created_at < (?::date + INTERVAL '1 day')", to);
+
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const items = await getRows(
+      `SELECT * FROM audit_logs ${where} ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+    const totalRow = await getRow(`SELECT COUNT(*)::int AS count FROM audit_logs ${where}`, params);
+    const entityRows = await getRows(
+      `SELECT DISTINCT entity_type FROM audit_logs WHERE entity_type IS NOT NULL ORDER BY entity_type LIMIT 100`
+    );
+    const total = Number(totalRow?.count) || 0;
+    return res.json({
+      items,
+      total,
+      hasMore: offset + items.length < total,
+      limit,
+      offset,
+      entityTypes: entityRows.map((row) => row.entity_type).filter(Boolean),
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load logs." });
+  }
+});
+
+// Purge old entries. Kept deliberately manual — the trail never expires on
+// its own; leadership decides when to trim it.
+app.delete("/api/logs", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  try {
+    const daysRaw = Number.parseInt(req.query.olderThanDays ?? "90", 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 7), 3650) : 90;
+    const result = await query(
+      `DELETE FROM audit_logs WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
+      [days]
+    );
+    return res.json({ ok: true, deleted: result.rowCount || 0, olderThanDays: days });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to purge logs." });
   }
 });
 
