@@ -4187,12 +4187,13 @@ const ALLOWED_TRACKING_DOMAINS = [
 const normalizeTrackingHost = (name) =>
   String(name || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 const DEFAULT_TRACKING_PARAMS =
-  "external_id={exid}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
+  "external_id={external_id}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
 
 // Each traffic tool passes its click identifier under a different macro, so the
 // external_id value must follow the selected tool (keyed by shortcode).
-// Add new tools here as they're confirmed; anything unlisted keeps {exid}.
-const DEFAULT_EXTERNAL_ID_MACRO = "{exid}";
+// Before a tool is picked, the neutral {external_id} placeholder stays put —
+// picking a tool swaps in that source's real macro from its Keitaro config.
+const DEFAULT_EXTERNAL_ID_MACRO = "{external_id}";
 const TRACKING_TOOL_EXTERNAL_ID = {
   "PWA.GROUP": "{USER_ID}",
   "PWA PARTNERS": "{user_id}",
