@@ -9038,6 +9038,10 @@ select option,
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   align-items: end;
+  /* Own stacking layer above sticky table headers, so open dropdown
+     menus never paint underneath the table (campaigns scroll table). */
+  position: relative;
+  z-index: 5;
 }
 
 .pixel-table-toolbar .field {
