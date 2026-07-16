@@ -15975,7 +15975,7 @@ function LogsDashboard({ authUser }) {
       try {
         if (!silent && !append) setLogState({ loading: true, error: null });
         const params = new URLSearchParams();
-        params.set("limit", "100");
+        params.set("limit", "50");
         if (offset > 0) params.set("offset", String(offset));
         if (filters.q.trim()) params.set("q", filters.q.trim());
         if (filters.method !== "all") params.set("method", filters.method);
@@ -15989,7 +15989,9 @@ function LogsDashboard({ authUser }) {
         const data = await response.json();
         const items = Array.isArray(data?.items) ? data.items : [];
         setLogs((prev) => {
-          if (!append) return items;
+          // Silent background refreshes merge new entries in, so an expanded
+          // list ("See more") isn't collapsed back to the first page.
+          if (!append && !silent) return items;
           const merged = new Map(prev.map((item) => [item.id, item]));
           items.forEach((item) => merged.set(item.id, item));
           return Array.from(merged.values()).sort((a, b) => b.id - a.id);
