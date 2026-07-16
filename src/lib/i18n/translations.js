@@ -799,5 +799,13 @@ export const translations = {
     Fair: "Orta",
     Strong: "Güçlü",
     "Very strong": "Çok güçlü",
+    Usage: "Kullanım",
+    "Where and how this account is used.": "Bu hesabın nerede ve nasıl kullanıldığı.",
+    Device: "Cihaz",
+    "Login IP": "Giriş IP'si",
+    Timezone: "Saat dilimi",
+    "Actions this week": "Bu haftaki işlemler",
+    "Actions recorded": "Kayıtlı işlemler",
+    current: "geçerli",
   },
 };

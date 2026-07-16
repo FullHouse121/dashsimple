@@ -268,6 +268,7 @@ const initDb = async () => {
       ip TEXT,
       details TEXT
     );`,
+    `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_agent TEXT;`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -4687,8 +4688,8 @@ app.use((req, res, next) => {
       query(
         `INSERT INTO audit_logs
            (actor_id, actor_name, actor_role, method, path, action,
-            entity_type, entity_id, status, duration_ms, ip, details)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            entity_type, entity_id, status, duration_ms, ip, details, user_agent)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [
           req.user?.id ?? null,
           actorName,
@@ -4702,6 +4703,7 @@ app.use((req, res, next) => {
           Date.now() - startedAt,
           String(req.headers["x-forwarded-for"] || req.ip || "").split(",")[0].trim().slice(0, 60) || null,
           detailsJson,
+          String(req.headers["user-agent"] || "").slice(0, 220) || null,
         ]
       ).catch((error) => console.warn("Audit log insert failed:", error?.message || error));
     } catch (error) {
@@ -4921,7 +4923,7 @@ app.get("/api/profile/activity", async (req, res) => {
     );
     // Successful logins carry no actor_id (auth runs after login) — match by name.
     const lastLogin = await getRow(
-      `SELECT created_at
+      `SELECT created_at, ip, user_agent
        FROM audit_logs
        WHERE action = 'login' AND COALESCE(status, 500) < 400
          AND LOWER(COALESCE(actor_name, '')) = LOWER($1)
@@ -4929,7 +4931,20 @@ app.get("/api/profile/activity", async (req, res) => {
        LIMIT 1`,
       [String(req.user.username || "")]
     );
-    return res.json({ items, lastLogin: lastLogin?.created_at || null });
+    const counts = await getRow(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS week
+       FROM audit_logs
+       WHERE actor_id = $1`,
+      [req.user.id]
+    );
+    return res.json({
+      items,
+      lastLogin: lastLogin?.created_at || null,
+      lastLoginIp: lastLogin?.ip || null,
+      lastLoginAgent: lastLogin?.user_agent || null,
+      actions: { total: Number(counts?.total) || 0, week: Number(counts?.week) || 0 },
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to load activity." });
   }

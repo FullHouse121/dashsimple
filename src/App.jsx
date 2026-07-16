@@ -17525,6 +17525,36 @@ const RoleChip = ({ role, label }) => (
   </span>
 );
 
+// "Chrome · macOS" from a raw user-agent string — order matters (Edge/Opera
+// embed "Chrome", Chrome embeds "Safari").
+const describeUserAgent = (ua) => {
+  const s = String(ua || "");
+  if (!s) return "";
+  const os = /iPhone|iPad/i.test(s)
+    ? "iOS"
+    : /Android/i.test(s)
+      ? "Android"
+      : /Mac OS X|Macintosh/i.test(s)
+        ? "macOS"
+        : /Windows/i.test(s)
+          ? "Windows"
+          : /Linux/i.test(s)
+            ? "Linux"
+            : "";
+  const browser = /Edg\//.test(s)
+    ? "Edge"
+    : /OPR\//.test(s)
+      ? "Opera"
+      : /Chrome\//.test(s)
+        ? "Chrome"
+        : /Safari\//.test(s) && /Version\//.test(s)
+          ? "Safari"
+          : /Firefox\//.test(s)
+            ? "Firefox"
+            : "";
+  return [browser, os].filter(Boolean).join(" · ");
+};
+
 // Password quality scoring + generation — shared by the Roles reset modal
 // and the Profile security panel.
 const scorePassword = (pw) => {
@@ -18879,8 +18909,15 @@ function ProfileDashboard({ authUser }) {
     success: null,
   });
   const [showNewPw, setShowNewPw] = React.useState(false);
-  // Own audit trail (any role sees only their own actions) + last login.
-  const [activity, setActivity] = React.useState({ items: [], lastLogin: null, loading: true });
+  // Own audit trail (any role sees only their own actions) + usage facts.
+  const [activity, setActivity] = React.useState({
+    items: [],
+    lastLogin: null,
+    lastLoginIp: null,
+    lastLoginAgent: null,
+    actions: { total: 0, week: 0 },
+    loading: true,
+  });
 
   React.useEffect(() => {
     let cancelled = false;
@@ -18893,11 +18930,14 @@ function ProfileDashboard({ authUser }) {
           setActivity({
             items: Array.isArray(data?.items) ? data.items : [],
             lastLogin: data?.lastLogin || null,
+            lastLoginIp: data?.lastLoginIp || null,
+            lastLoginAgent: data?.lastLoginAgent || null,
+            actions: { total: Number(data?.actions?.total) || 0, week: Number(data?.actions?.week) || 0 },
             loading: false,
           });
         }
       } catch {
-        if (!cancelled) setActivity({ items: [], lastLogin: null, loading: false });
+        if (!cancelled) setActivity((prev) => ({ ...prev, loading: false }));
       }
     })();
     return () => { cancelled = true; };
@@ -19345,6 +19385,53 @@ function ProfileDashboard({ authUser }) {
               ))}
             </div>
           )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Usage")}</h3>
+              <p className="panel-subtitle">{t("Where and how this account is used.")}</p>
+            </div>
+          </div>
+          <div className="profile-info-grid">
+            <div className="profile-info">
+              <span>{t("Last login")}</span>
+              <strong>
+                {activity.lastLogin
+                  ? new Date(activity.lastLogin).toLocaleString(undefined, {
+                      day: "2-digit",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "—"}
+              </strong>
+            </div>
+            <div className="profile-info">
+              <span>{t("Device")}</span>
+              <strong>
+                {describeUserAgent(activity.lastLoginAgent) ||
+                  `${describeUserAgent(navigator.userAgent)} (${t("current")})`}
+              </strong>
+            </div>
+            <div className="profile-info">
+              <span>{t("Login IP")}</span>
+              <strong>{activity.lastLoginIp || "—"}</strong>
+            </div>
+            <div className="profile-info">
+              <span>{t("Timezone")}</span>
+              <strong>{Intl.DateTimeFormat().resolvedOptions().timeZone || "—"}</strong>
+            </div>
+            <div className="profile-info">
+              <span>{t("Actions this week")}</span>
+              <strong>{activity.actions.week.toLocaleString()}</strong>
+            </div>
+            <div className="profile-info">
+              <span>{t("Actions recorded")}</span>
+              <strong>{activity.actions.total.toLocaleString()}</strong>
+            </div>
+          </div>
         </div>
       </section>
     </>
