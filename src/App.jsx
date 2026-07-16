@@ -4618,7 +4618,13 @@ function TrackingLinksDashboard({ authUser }) {
       link,
       saving: false,
       error: null,
-      form: { buyer: link.buyer || "", game: link.game || "", geo: link.geo || "", brand: link.brand || "" },
+      form: {
+        buyer: link.buyer || "",
+        game: link.game || "",
+        geo: link.geo || "",
+        brand: link.brand || "",
+        offerId: String(link.offerId ?? link.offer_id ?? ""),
+      },
     });
   };
   const saveEdit = async () => {
@@ -5050,6 +5056,24 @@ function TrackingLinksDashboard({ authUser }) {
                 <div className="field">
                   <label>{t("Brand")}</label>
                   <input value={editModal.form.brand} onChange={(e) => setEditModal((p) => ({ ...p, form: { ...p.form, brand: e.target.value } }))} />
+                </div>
+                <div className="field field-span-2">
+                  <label>{t("Keitaro Offer")}</label>
+                  <CountryDropdownPicker
+                    value={editModal.form.offerId}
+                    onChange={(v) => setEditModal((p) => ({ ...p, form: { ...p.form, offerId: v || "" } }))}
+                    options={resources.offers.map((offer) => ({
+                      value: String(offer.id),
+                      label: offer.country ? `${offer.name} · ${offer.country}` : offer.name,
+                      search: `${offer.name} ${offer.country || ""} ${offer.id}`,
+                    }))}
+                    placeholder={resources.offers.length ? t("Select an offer") : t("No offers loaded from Keitaro")}
+                    searchPlaceholder={t("Type to find offers")}
+                    emptyResultsLabel={t("No offers found.")}
+                  />
+                  <p className="field-hint">
+                    {t("Saving rebinds the campaign's stream in Keitaro to this offer. Traffic follows it immediately.")}
+                  </p>
                 </div>
                 {editModal.error ? <div className="field field-span-2"><div className="api-status error">{editModal.error}</div></div> : null}
               </div>

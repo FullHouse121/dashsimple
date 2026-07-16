@@ -8926,7 +8926,7 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
     return res.status(403).json({ error: "Forbidden." });
   }
   const body = req.body ?? {};
-  const isEdit = ["buyer", "game", "geo", "brand", "tool"].some((k) => body[k] !== undefined);
+  const isEdit = ["buyer", "game", "geo", "brand", "tool", "offerId"].some((k) => body[k] !== undefined);
 
   // Edit path: recompose the campaign name from segments + push to Keitaro.
   if (isEdit) {
@@ -8937,7 +8937,7 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
     const brand = body.brand !== undefined ? body.brand : row.brand;
     const tool = body.tool !== undefined ? body.tool : row.tool;
     const name = [seg(buyer), seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
-    if (row.keitaro_id) {
+    if (row.keitaro_id && name !== row.name) {
       const upd = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, {
         method: "PUT",
         body: JSON.stringify({ name }),
@@ -8946,11 +8946,69 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
         return res.status(502).json({ error: `Keitaro name update failed: ${upd.error}` });
       }
     }
+
+    // Offer rebind: point the campaign's stream at a different Keitaro offer.
+    const offerIdRaw = body.offerId !== undefined ? String(body.offerId ?? "").trim() : "";
+    const wantsOfferChange = offerIdRaw !== "" && offerIdRaw !== String(row.offer_id || "");
+    if (wantsOfferChange) {
+      const offerId = Number(offerIdRaw);
+      if (!Number.isFinite(offerId) || offerId <= 0) {
+        return res.status(400).json({ error: "Invalid offer id." });
+      }
+      if (row.keitaro_id) {
+        const streamsRes = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}/streams`);
+        const streams = streamsRes.ok && Array.isArray(streamsRes.data) ? streamsRes.data : [];
+        // Prefer the stream that already carries offers; fall back to the first.
+        const target = streams.find((s) => Array.isArray(s.offers) && s.offers.length) || streams[0] || null;
+        const offers = [{ offer_id: offerId, share: 100, state: "active" }];
+        if (target) {
+          const upd = await keitaroAdminFetch(`/streams/${target.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ offers }),
+          });
+          if (!upd.ok) {
+            return res.status(502).json({ error: `Keitaro offer update failed: ${upd.error}` });
+          }
+        } else {
+          // Campaign was created without a stream — add one bound to the
+          // offer, mirroring the create flow's stream shape.
+          const created = await keitaroAdminFetch("/streams", {
+            method: "POST",
+            body: JSON.stringify({
+              campaign_id: Number(row.keitaro_id),
+              type: "regular",
+              name: `${String(buyer || "Stream").split(" ")[0]}_Offer`,
+              schema: "landings",
+              action_type: "http",
+              collect_clicks: true,
+              filter_or: false,
+              weight: 100,
+              state: "active",
+              offer_selection: "before_click",
+              offers,
+            }),
+          });
+          if (!created.ok) {
+            return res.status(502).json({ error: `Keitaro stream create failed: ${created.error}` });
+          }
+        }
+      }
+    }
+
     await query(
-      `UPDATE tracking_links SET name=$1, buyer=$2, tool=$3, game=$4, geo=$5, brand=$6 WHERE id=$7`,
-      [name, String(buyer || "").trim() || null, String(tool || "").trim() || null, String(game || "").trim() || null, String(geo || "").trim() || null, String(brand || "").trim() || null, id]
+      `UPDATE tracking_links SET name=$1, buyer=$2, tool=$3, game=$4, geo=$5, brand=$6, offer_id = COALESCE($7, offer_id) WHERE id=$8`,
+      [
+        name,
+        String(buyer || "").trim() || null,
+        String(tool || "").trim() || null,
+        String(game || "").trim() || null,
+        String(geo || "").trim() || null,
+        String(brand || "").trim() || null,
+        wantsOfferChange ? offerIdRaw : null,
+        id,
+      ]
     );
-    return res.json({ ok: true, name });
+    return res.json({ ok: true, name, offerId: wantsOfferChange ? offerIdRaw : row.offer_id || null });
   }
 
   // State toggle path.

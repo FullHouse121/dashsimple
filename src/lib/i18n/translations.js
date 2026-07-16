@@ -773,5 +773,14 @@ export const translations = {
     "Filter status": "Duruma göre filtrele",
     "No statuses found.": "Durum bulunamadı.",
     "Clear search": "Aramayı temizle",
+
+    // ── Tracking link offer editing ─────────────────────────────────────
+    "Keitaro Offer": "Keitaro Teklifi",
+    "Select an offer": "Bir teklif seçin",
+    "No offers loaded from Keitaro": "Keitaro'dan teklif yüklenmedi",
+    "Type to find offers": "Teklif aramak için yazın",
+    "No offers found.": "Teklif bulunamadı.",
+    "Saving rebinds the campaign's stream in Keitaro to this offer. Traffic follows it immediately.":
+      "Kaydetmek, kampanyanın Keitaro'daki akışını bu teklife yeniden bağlar. Trafik hemen bunu izler.",
   },
 };
