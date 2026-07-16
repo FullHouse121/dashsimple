@@ -16658,6 +16658,12 @@ select option,
 .campaign-row-paused td.col-actions { opacity: 1; }
 
 .campaign-table-scroll { max-height: 74vh; overflow: auto; }
+/* Sticky thead/tfoot cells glitch under border-collapse: collapse (they
+   overlap the last row at scroll-bottom) — separate borders fix geometry. */
+.campaign-table-scroll .campaigns-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
 .campaign-table-scroll thead th {
   position: sticky;
   top: 0;
