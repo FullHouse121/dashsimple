@@ -782,5 +782,22 @@ export const translations = {
     "No offers found.": "Teklif bulunamadı.",
     "Saving rebinds the campaign's stream in Keitaro to this offer. Traffic follows it immediately.":
       "Kaydetmek, kampanyanın Keitaro'daki akışını bu teklife yeniden bağlar. Trafik hemen bunu izler.",
+
+    // ── Profile ─────────────────────────────────────────────────────────
+    "Member since": "Üyelik başlangıcı",
+    "Last login": "Son giriş",
+    Language: "Dil",
+    "My Recent Activity": "Son İşlemlerim",
+    "Your last actions in the dashboard — links, edits, logins.":
+      "Paneldeki son işlemleriniz — bağlantılar, düzenlemeler, girişler.",
+    "No activity recorded yet — your actions will show up here.":
+      "Henüz kayıtlı işlem yok — işlemleriniz burada görünecek.",
+    "Generate strong password": "Güçlü şifre oluştur",
+    "Passwords do not match yet.": "Şifreler henüz eşleşmiyor.",
+    "Very weak": "Çok zayıf",
+    Weak: "Zayıf",
+    Fair: "Orta",
+    Strong: "Güçlü",
+    "Very strong": "Çok güçlü",
   },
 };

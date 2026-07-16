@@ -2948,7 +2948,7 @@ const insertUser = async (payload) => {
 
 const selectUsers = async (limit) =>
   getRows(
-    `SELECT id, username, role, buyer_id, verified
+    `SELECT id, username, role, buyer_id, verified, created_at
      FROM users
      ORDER BY id DESC
      LIMIT $1`,
@@ -2957,7 +2957,7 @@ const selectUsers = async (limit) =>
 
 const selectUserById = async (id) =>
   getRow(
-    `SELECT id, username, role, buyer_id, verified
+    `SELECT id, username, role, buyer_id, verified, created_at
      FROM users
      WHERE id = $1`,
     [id]
@@ -4904,6 +4904,34 @@ app.delete("/api/notifications/:id", async (req, res) => {
       entityType: "notification",
     });
     return res.status(500).json({ error: "Failed to delete notification." });
+  }
+});
+
+// Own audit trail — any authenticated user, strictly their own actions.
+// Powers the Profile page's "My Recent Activity" + last-login display.
+app.get("/api/profile/activity", async (req, res) => {
+  try {
+    const items = await getRows(
+      `SELECT id, created_at, method, path, action, entity_type, entity_id, status
+       FROM audit_logs
+       WHERE actor_id = $1
+       ORDER BY id DESC
+       LIMIT 15`,
+      [req.user.id]
+    );
+    // Successful logins carry no actor_id (auth runs after login) — match by name.
+    const lastLogin = await getRow(
+      `SELECT created_at
+       FROM audit_logs
+       WHERE action = 'login' AND COALESCE(status, 500) < 400
+         AND LOWER(COALESCE(actor_name, '')) = LOWER($1)
+       ORDER BY id DESC
+       LIMIT 1`,
+      [String(req.user.username || "")]
+    );
+    return res.json({ items, lastLogin: lastLogin?.created_at || null });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load activity." });
   }
 });
 

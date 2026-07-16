@@ -17525,6 +17525,49 @@ const RoleChip = ({ role, label }) => (
   </span>
 );
 
+// Password quality scoring + generation — shared by the Roles reset modal
+// and the Profile security panel.
+const scorePassword = (pw) => {
+  const v = String(pw || "");
+  if (!v) return { score: 0, label: "", tone: "" };
+  let score = 0;
+  if (v.length >= 8) score += 1;
+  if (v.length >= 12) score += 1;
+  if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
+  if (/\d/.test(v)) score += 1;
+  if (/[^A-Za-z0-9]/.test(v)) score += 1;
+  score = Math.min(4, score);
+  const labels = ["Very weak", "Weak", "Fair", "Strong", "Very strong"];
+  const tones = ["danger", "danger", "warning", "success", "success"];
+  return { score, label: labels[score], tone: tones[score] };
+};
+
+// Cryptographically-random 16-char password with all character classes.
+const generatePasswordValue = () => {
+  const sets = [
+    "abcdefghijkmnpqrstuvwxyz",
+    "ABCDEFGHJKLMNPQRSTUVWXYZ",
+    "23456789",
+    "!@#$%^&*-_=+",
+  ];
+  const all = sets.join("");
+  const rand = (n) => {
+    if (window.crypto?.getRandomValues) {
+      const a = new Uint32Array(1);
+      window.crypto.getRandomValues(a);
+      return a[0] % n;
+    }
+    return Math.floor(Math.random() * n);
+  };
+  let chars = sets.map((s) => s[rand(s.length)]);
+  while (chars.length < 16) chars.push(all[rand(all.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = rand(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+};
+
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
   // Sub-tab navigation inside the section — keeps the page from being one
@@ -17831,48 +17874,9 @@ function RolesDashboard({ authUser }) {
     setPwState({ saving: false, error: null, done: false });
   };
 
-  // Strength scoring → { score 0-4, label, tone }
-  const scorePassword = (pw) => {
-    const v = String(pw || "");
-    if (!v) return { score: 0, label: "", tone: "" };
-    let score = 0;
-    if (v.length >= 8) score += 1;
-    if (v.length >= 12) score += 1;
-    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
-    if (/\d/.test(v)) score += 1;
-    if (/[^A-Za-z0-9]/.test(v)) score += 1;
-    score = Math.min(4, score);
-    const labels = ["Very weak", "Weak", "Fair", "Strong", "Very strong"];
-    const tones = ["danger", "danger", "warning", "success", "success"];
-    return { score, label: labels[score], tone: tones[score] };
-  };
-
-  // Cryptographically-random 16-char password with mixed classes
+  // Score + generator now live at module scope (shared with Profile).
   const generatePassword = () => {
-    const sets = [
-      "abcdefghijkmnpqrstuvwxyz",
-      "ABCDEFGHJKLMNPQRSTUVWXYZ",
-      "23456789",
-      "!@#$%^&*-_=+",
-    ];
-    const all = sets.join("");
-    const rand = (n) => {
-      if (window.crypto?.getRandomValues) {
-        const a = new Uint32Array(1);
-        window.crypto.getRandomValues(a);
-        return a[0] % n;
-      }
-      return Math.floor(Math.random() * n);
-    };
-    // Guarantee at least one of each class, then fill to 16
-    let chars = sets.map((s) => s[rand(s.length)]);
-    while (chars.length < 16) chars.push(all[rand(all.length)]);
-    // Shuffle
-    for (let i = chars.length - 1; i > 0; i--) {
-      const j = rand(i + 1);
-      [chars[i], chars[j]] = [chars[j], chars[i]];
-    }
-    const pw = chars.join("");
+    const pw = generatePasswordValue();
     setPwForm({ next: pw, confirm: pw, show: true });
   };
 
@@ -18858,7 +18862,7 @@ const BadgeMedal = ({ badgeId, tier, locked }) => {
 };
 
 function ProfileDashboard({ authUser }) {
-  const { t } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const [profileState, setProfileState] = React.useState({ loading: true, error: null });
   const [userRecord, setUserRecord] = React.useState(null);
   const [roleRecord, setRoleRecord] = React.useState(null);
@@ -18874,6 +18878,30 @@ function ProfileDashboard({ authUser }) {
     error: null,
     success: null,
   });
+  const [showNewPw, setShowNewPw] = React.useState(false);
+  // Own audit trail (any role sees only their own actions) + last login.
+  const [activity, setActivity] = React.useState({ items: [], lastLogin: null, loading: true });
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/profile/activity");
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        if (!cancelled) {
+          setActivity({
+            items: Array.isArray(data?.items) ? data.items : [],
+            lastLogin: data?.lastLogin || null,
+            loading: false,
+          });
+        }
+      } catch {
+        if (!cancelled) setActivity({ items: [], lastLogin: null, loading: false });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const loadProfile = React.useCallback(async () => {
     try {
@@ -19016,6 +19044,53 @@ function ProfileDashboard({ authUser }) {
 
   return (
     <>
+      {/* Identity hero — who you are, at the top, once. */}
+      <section className="panel profile-hero">
+        <div className="profile-hero-ident">
+          <span
+            className="user-avatar user-avatar--xl"
+            style={{ borderColor: roleIdentColor(roleName), color: roleIdentColor(roleName) }}
+          >
+            {initialsOf(username)}
+          </span>
+          <div className="profile-hero-text">
+            <h2 className="profile-hero-name">{username}</h2>
+            <div className="profile-hero-chips">
+              <RoleChip role={roleName} label={t(roleName)} />
+              {buyerRecord?.tag ? <span className="tag-pill">{buyerRecord.tag}</span> : null}
+              <span className={`role-chip profile-verified${verified === t("Verified") || verified === "Verified" ? " is-ok" : ""}`}>
+                <CheckCircle size={12} /> {verified}
+              </span>
+            </div>
+            <p className="profile-hero-meta">
+              {t("User ID")} #{userRecord?.id ?? authUser?.id ?? "—"}
+              {userRecord?.created_at ? (
+                <> · {t("Member since")} {new Date(userRecord.created_at).toLocaleDateString(undefined, { month: "short", year: "numeric" })}</>
+              ) : null}
+              {activity.lastLogin ? (
+                <> · {t("Last login")} {new Date(activity.lastLogin).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</>
+              ) : null}
+              {buyerName && buyerName !== "—" ? <> · {buyerName}</> : null}
+            </p>
+          </div>
+        </div>
+        <div className="profile-hero-side">
+          <span className="profile-pref-label">{t("Language")}</span>
+          <div className="lang-segment">
+            {["EN", "TR"].map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={`lang-segment-btn${language === code ? " is-active" : ""}`}
+                onClick={() => setLanguage(code)}
+              >
+                {code}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Performance — lifetime totals across all of this buyer's links */}
       <section className="cards">
         {[
@@ -19122,67 +19197,39 @@ function ProfileDashboard({ authUser }) {
         </div>
       </section>
 
-      {/* Account overview */}
-      <section className="cards">
-        {[
-          { label: "Username", value: username, meta: "Account Overview", icon: User },
-          { label: "Role", value: t(roleName), meta: "Access Level", icon: ShieldCheck },
-          { label: "Media Buyer", value: buyerName, meta: "Assigned Media Buyer", icon: Target },
-          { label: "Status", value: verified, meta: "Account Status", icon: CheckCircle },
-        ].map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.label} className="card">
-              <div className="card-head">
-                <Icon size={18} />
-                {t(stat.label)}
-              </div>
-              <div className="card-value">{stat.value}</div>
-              <div className="card-meta">{t(stat.meta)}</div>
-            </div>
-          );
-        })}
-      </section>
-
       <section className="panels profile-panels">
         <div className="panel">
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Profile Details")}</h3>
-              <p className="panel-subtitle">{t("Your profile in the top right shows the active user and role.")}</p>
+              <h3 className="panel-title">{t("My Recent Activity")}</h3>
+              <p className="panel-subtitle">{t("Your last actions in the dashboard — links, edits, logins.")}</p>
             </div>
           </div>
-          {profileState.loading ? (
-            <div className="empty-state">{t("Loading profile…")}</div>
-          ) : profileState.error ? (
-            <div className="empty-state error">{profileState.error}</div>
+          {activity.loading ? (
+            <div className="empty-state">{t("Loading…")}</div>
+          ) : activity.items.length === 0 ? (
+            <div className="empty-state">{t("No activity recorded yet — your actions will show up here.")}</div>
           ) : (
-            <div className="profile-info-grid">
-              <div className="profile-info">
-                <span>{t("User ID")}</span>
-                <strong>{userRecord?.id ?? authUser?.id ?? "—"}</strong>
-              </div>
-              <div className="profile-info">
-                <span>{t("Username")}</span>
-                <strong>{username}</strong>
-              </div>
-              <div className="profile-info">
-                <span>{t("Role")}</span>
-                <strong>{t(roleName)}</strong>
-              </div>
-              <div className="profile-info">
-                <span>{t("Buyer ID")}</span>
-                <strong>{buyerRecord?.id ?? authUser?.buyerId ?? "—"}</strong>
-              </div>
-              <div className="profile-info">
-                <span>{t("Media Buyer")}</span>
-                <strong>{buyerName}</strong>
-              </div>
-              <div className="profile-info">
-                <span>{t("Account Status")}</span>
-                <strong>{verified}</strong>
-              </div>
-            </div>
+            <ul className="profile-activity">
+              {activity.items.map((item) => {
+                const failed = Number(item.status) >= 400;
+                return (
+                  <li key={item.id} className="profile-activity-row">
+                    <span className={`log-badge m-${String(item.method || "").toLowerCase()}`}>{item.method}</span>
+                    <span className="profile-activity-text">
+                      <span className="profile-activity-action">
+                        {String(item.action || "").replace(/_/g, " ")} · {String(item.entity_type || "").replace(/_/g, " ")}
+                        {item.entity_id ? ` #${item.entity_id}` : ""}
+                      </span>
+                      <span className="profile-activity-time">
+                        {new Date(item.created_at).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </span>
+                    <span className={`logs-status${failed ? " is-error" : " is-ok"}`}>{item.status ?? "—"}</span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 
@@ -19207,27 +19254,64 @@ function ProfileDashboard({ authUser }) {
             </div>
             <div className="field">
               <label>{t("New Password")}</label>
-              <input
-                type="password"
-                value={passwordForm.next}
-                onChange={(event) =>
-                  setPasswordForm((prev) => ({ ...prev, next: event.target.value }))
-                }
-                required
-              />
+              <div className="pw-input-wrap">
+                <input
+                  type={showNewPw ? "text" : "password"}
+                  value={passwordForm.next}
+                  onChange={(event) =>
+                    setPasswordForm((prev) => ({ ...prev, next: event.target.value }))
+                  }
+                  required
+                />
+                <button
+                  type="button"
+                  className="pw-eye"
+                  onClick={() => setShowNewPw((v) => !v)}
+                  title={showNewPw ? t("Hide") : t("Show")}
+                >
+                  {showNewPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              {passwordForm.next ? (() => {
+                const s = scorePassword(passwordForm.next);
+                return (
+                  <div className="pw-strength">
+                    <div className="pw-strength-bars">
+                      {[0, 1, 2, 3].map((i) => (
+                        <span key={i} className={`pw-strength-bar${i < s.score ? ` is-${s.tone}` : ""}`} />
+                      ))}
+                    </div>
+                    <span className={`pw-strength-label tone-${s.tone}`}>{t(s.label)}</span>
+                  </div>
+                );
+              })() : null}
             </div>
             <div className="field">
               <label>{t("Confirm Password")}</label>
               <input
-                type="password"
+                type={showNewPw ? "text" : "password"}
                 value={passwordForm.confirm}
                 onChange={(event) =>
                   setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))
                 }
                 required
               />
+              {passwordForm.confirm && passwordForm.confirm !== passwordForm.next ? (
+                <p className="field-hint pw-mismatch">{t("Passwords do not match yet.")}</p>
+              ) : null}
             </div>
-            <div className="form-actions">
+            <div className="form-actions profile-pw-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  const pw = generatePasswordValue();
+                  setPasswordForm((prev) => ({ ...prev, next: pw, confirm: pw }));
+                  setShowNewPw(true);
+                }}
+              >
+                <RefreshCw size={13} /> {t("Generate strong password")}
+              </button>
               <button className="action-pill" type="submit" disabled={passwordState.loading}>
                 {passwordState.loading ? t("Saving...") : t("Update Password")}
               </button>
@@ -21336,7 +21420,7 @@ export default function App() {
 
   if (!authUser) {
     return (
-      <LanguageContext.Provider value={{ language, t }}>
+      <LanguageContext.Provider value={{ language, setLanguage, t }}>
         <LoginScreen onLogin={handleLogin} loading={authState.loading} error={authState.error} />
       </LanguageContext.Provider>
     );
@@ -21347,7 +21431,7 @@ export default function App() {
   const profileInitials = profileName.slice(0, 2).toUpperCase();
 
   return (
-    <LanguageContext.Provider value={{ language, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t }}>
       <ConfirmHost />
       <div className={`app${mobileNavOpen ? " mobile-nav-open" : ""}`}>
       <div
