@@ -862,6 +862,35 @@ export const translations = {
     "Resume campaign": "Kampanyayı sürdür",
     "Open in Tracking Links (edit offer)": "Takip Bağlantılarında aç (teklifi düzenle)",
     Date: "Tarih",
+    "Market ROI": "Piyasa ROI",
+    "Performance is what Keitaro pays; Market ROI values every FTD at your per-country market CPA.":
+      "Performans, Keitaro'nun ödediğidir; Piyasa ROI her FTD'yi ülke bazlı piyasa CPA'nızla değerler.",
+    "Market Revenue": "Piyasa Geliri",
+    "FTDs × market CPA": "FTD × piyasa CPA",
+    "Market Profit": "Piyasa Kârı",
+    "Market revenue − spend": "Piyasa geliri − harcama",
+    "At market CPA rates": "Piyasa CPA oranlarıyla",
+    "Missing rates": "Eksik oranlar",
+    "FTDs in countries without a CPA rate": "CPA oranı olmayan ülkelerde FTD",
+    "They count as $0 below — fill the rate card to value them.":
+      "Aşağıda $0 sayılırlar — değerlemek için oran kartını doldurun.",
+    "Market CPA rates": "Piyasa CPA oranları",
+    "What one FTD sells for on the market, per country (USD). Only Boss and Team Leader see this.":
+      "Bir FTD'nin piyasada ülke bazında satış fiyatı (USD). Bunu yalnızca Boss ve Takım Lideri görür.",
+    "Save rates": "Oranları kaydet",
+    "Market ROI by campaign": "Kampanya bazında Piyasa ROI",
+    "Sorted by market profit. Rated FTDs are the ones covered by your rate card.":
+      "Piyasa kârına göre sıralı. Oranlı FTD'ler oran kartınızın kapsadıklarıdır.",
+    "Rated FTD": "Oranlı FTD",
+    unrated: "oransız",
+    "No countries in this period yet.": "Bu dönemde henüz ülke yok.",
+    auto: "oto",
+    "Cost flows automatically from the Meta account via Keitaro":
+      "Maliyet, Meta hesabından Keitaro aracılığıyla otomatik akar",
+    "Enter spend manually (no wired Meta account)":
+      "Harcamayı manuel girin (bağlı Meta hesabı yok)",
+    "Auto from Meta via Keitaro · manual fallback":
+      "Meta'dan Keitaro ile otomatik · manuel yedek",
     "Top Campaign": "En İyi Kampanya",
     "Top CR": "En İyi CR",
     "Needs ≥50 uniques and ≥20 regs": "≥50 benzersiz ve ≥20 kayıt gerekir",

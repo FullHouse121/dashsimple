@@ -269,6 +269,12 @@ const initDb = async () => {
       details TEXT
     );`,
     `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_agent TEXT;`,
+    `CREATE TABLE IF NOT EXISTS market_cpa_rates (
+      country TEXT PRIMARY KEY,
+      cpa NUMERIC NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS campaign_spend (
       id SERIAL PRIMARY KEY,
       campaign TEXT NOT NULL,
@@ -8896,6 +8902,47 @@ app.post("/api/campaign-spend", async (req, res) => {
     return res.json({ ok: true, campaign, date, amount });
   } catch (error) {
     return res.status(500).json({ error: "Failed to save spend." });
+  }
+});
+
+// ── Market CPA rate card (Boss + Team Leader only) ─────────────────────
+// Each country trades at a different CPA on the open market; leadership
+// values FTDs against these rates to compute the market-price ROI.
+app.get("/api/market-cpa", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  try {
+    const rows = await getRows(`SELECT country, cpa FROM market_cpa_rates ORDER BY country`);
+    return res.json(rows.map((row) => ({ country: row.country, cpa: Number(row.cpa) || 0 })));
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load CPA rates." });
+  }
+});
+
+app.put("/api/market-cpa", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const rates = Array.isArray(req.body?.rates) ? req.body.rates : [];
+  if (rates.length > 300) return res.status(400).json({ error: "Too many rates." });
+  try {
+    for (const rate of rates) {
+      const country = String(rate?.country || "").trim().slice(0, 80);
+      const cpa = Number(rate?.cpa);
+      if (!country || !Number.isFinite(cpa) || cpa < 0 || cpa > 100000) continue;
+      if (cpa === 0) {
+        await query(`DELETE FROM market_cpa_rates WHERE country = $1`, [country]);
+      } else {
+        await query(
+          `INSERT INTO market_cpa_rates (country, cpa, updated_by, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (country)
+           DO UPDATE SET cpa = EXCLUDED.cpa, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+          [country, cpa, req.user?.username || null]
+        );
+      }
+    }
+    const rows = await getRows(`SELECT country, cpa FROM market_cpa_rates ORDER BY country`);
+    return res.json(rows.map((row) => ({ country: row.country, cpa: Number(row.cpa) || 0 })));
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to save CPA rates." });
   }
 });
 

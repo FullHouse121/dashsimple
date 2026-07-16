@@ -8947,8 +8947,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         spark.length >= 2
           ? spark.slice(half).reduce((s, v) => s + v, 0) - spark.slice(0, half).reduce((s, v) => s + v, 0)
           : 0;
-      // Keitaro cost (if the tracker ever carries it) + manual entries.
-      const totalSpend = row.spend + (spendByCampaign.get(row.campaign) || 0);
+      // Auto cost (Meta integrations → Keitaro) is authoritative; manual
+      // entries only fill the gap for campaigns without a wired account.
+      const manualSpend = spendByCampaign.get(row.campaign) || 0;
+      const totalSpend = row.spend > 0 ? row.spend : manualSpend;
+      const spendSource = row.spend > 0 ? "auto" : manualSpend > 0 ? "manual" : null;
       return {
         ...row,
         click2reg: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
@@ -8956,6 +8959,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         r2d: row.registers > 0 ? (row.ftds / row.registers) * 100 : 0,
         ftd2red: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
         totalSpend,
+        spendSource,
         cpa: row.ftds > 0 && totalSpend > 0 ? totalSpend / row.ftds : 0,
         roi: totalSpend > 0 ? ((row.revenue - totalSpend) / totalSpend) * 100 : null,
         profit: row.revenue - totalSpend,
@@ -9238,6 +9242,108 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   }, [visibleCampaigns, toolMedians, t]);
 
   const [actionError, setActionError] = React.useState(null);
+  // Market ROI (Boss + Team Leader only): FTDs valued at per-country CPA rates.
+  const [campaignTab, setCampaignTab] = React.useState("performance");
+  const [cpaRates, setCpaRates] = React.useState([]); // [{country, cpa}]
+  const [cpaDraft, setCpaDraft] = React.useState({});
+  const [cpaState, setCpaState] = React.useState({ loading: false, saving: false, error: null, loaded: false });
+
+  const fetchCpaRates = React.useCallback(async () => {
+    if (!isLeadership) return;
+    try {
+      setCpaState((prev) => ({ ...prev, loading: true, error: null }));
+      const response = await apiFetch("/api/market-cpa");
+      if (!response.ok) throw new Error("Failed to load CPA rates.");
+      const data = await response.json();
+      const rows = Array.isArray(data) ? data : [];
+      setCpaRates(rows);
+      setCpaDraft(Object.fromEntries(rows.map((row) => [row.country, String(row.cpa)])));
+      setCpaState({ loading: false, saving: false, error: null, loaded: true });
+    } catch (error) {
+      setCpaState({ loading: false, saving: false, error: error.message, loaded: true });
+    }
+  }, [isLeadership]);
+
+  React.useEffect(() => {
+    if (campaignTab === "marketroi" && !cpaState.loaded) fetchCpaRates();
+  }, [campaignTab, cpaState.loaded, fetchCpaRates]);
+
+  const saveCpaRates = async () => {
+    try {
+      setCpaState((prev) => ({ ...prev, saving: true, error: null }));
+      const rates = Object.entries(cpaDraft).map(([country, cpa]) => ({ country, cpa: Number(cpa) || 0 }));
+      const response = await apiFetch("/api/market-cpa", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rates }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to save CPA rates.");
+      }
+      const data = await response.json();
+      setCpaRates(Array.isArray(data) ? data : []);
+      setCpaState((prev) => ({ ...prev, saving: false }));
+    } catch (error) {
+      setCpaState((prev) => ({ ...prev, saving: false, error: error.message }));
+    }
+  };
+
+  const cpaRateMap = React.useMemo(
+    () => new Map(cpaRates.map((row) => [row.country, Number(row.cpa) || 0])),
+    [cpaRates]
+  );
+
+  // Every country seen in the current data — the rate card grows with reality.
+  const marketCountries = React.useMemo(() => {
+    const set = new Set(cpaRates.map((row) => row.country));
+    visibleCampaigns.forEach((row) => row.countryRows.forEach((c) => set.add(c.country)));
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [visibleCampaigns, cpaRates]);
+
+  // FTDs × market CPA per country — what the traffic is worth at market price.
+  const marketRows = React.useMemo(
+    () =>
+      visibleCampaigns
+        .map((row) => {
+          let marketRevenue = 0;
+          let ratedFtds = 0;
+          row.countryRows.forEach((c) => {
+            const rate = cpaRateMap.get(c.country) || 0;
+            if (rate > 0) {
+              marketRevenue += c.ftds * rate;
+              ratedFtds += c.ftds;
+            }
+          });
+          const marketProfit = marketRevenue - row.totalSpend;
+          return {
+            ...row,
+            marketRevenue,
+            ratedFtds,
+            unratedFtds: row.ftds - ratedFtds,
+            marketProfit,
+            marketRoi: row.totalSpend > 0 ? (marketProfit / row.totalSpend) * 100 : null,
+          };
+        })
+        .filter((row) => row.ftds > 0 || row.totalSpend > 0)
+        .sort((a, b) => b.marketProfit - a.marketProfit),
+    [visibleCampaigns, cpaRateMap]
+  );
+
+  const marketTotals = React.useMemo(
+    () =>
+      marketRows.reduce(
+        (acc, row) => {
+          acc.revenue += row.marketRevenue;
+          acc.spend += row.totalSpend;
+          acc.ftds += row.ftds;
+          acc.unrated += row.unratedFtds;
+          return acc;
+        },
+        { revenue: 0, spend: 0, ftds: 0, unrated: 0 }
+      ),
+    [marketRows]
+  );
 
   const toggleCampaignState = async (row) => {
     if (row.campaignId == null) return;
@@ -9332,7 +9438,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     { label: "Registrations", value: fmtInt(totals.registers), meta: "Sign-ups", icon: UserPlus, delta: deltaFor("registers") },
     { label: "FTD", value: fmtInt(totals.ftds), meta: "First-time deposits", icon: CreditCard, delta: deltaFor("ftds") },
     { label: "Redeposit", value: fmtInt(totals.redeposits), meta: "Repeat deposits", icon: TrendingUp, delta: deltaFor("redeposits") },
-    { label: "Spend", value: formatCurrency(totals.spend), meta: "Keitaro cost + manual entries", icon: CreditCard, neutralDelta: true },
+    { label: "Spend", value: formatCurrency(totals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard, neutralDelta: true },
     {
       label: "Profit",
       value: formatCurrency(profitTotal),
@@ -9393,6 +9499,211 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
 
   return (
     <>
+      {isLeadership ? (
+        <section className="panels panels-single offers-tabs-panel">
+          <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Campaigns")}</h3>
+                <p className="panel-subtitle">
+                  {t("Performance is what Keitaro pays; Market ROI values every FTD at your per-country market CPA.")}
+                </p>
+              </div>
+              <div className="offers-tabs">
+                <button
+                  type="button"
+                  className={`offers-tab${campaignTab === "performance" ? " is-active" : ""}`}
+                  onClick={() => setCampaignTab("performance")}
+                >
+                  <BarChart3 size={14} />
+                  <span>{t("Performance")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`offers-tab${campaignTab === "marketroi" ? " is-active" : ""}`}
+                  onClick={() => setCampaignTab("marketroi")}
+                >
+                  <DollarSign size={14} />
+                  <span>{t("Market ROI")}</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+      ) : null}
+
+      {campaignTab === "marketroi" && isLeadership ? (
+        <>
+          <section className="cards">
+            {[
+              { label: "Market Revenue", value: formatCurrency(marketTotals.revenue), meta: "FTDs × market CPA", icon: DollarSign },
+              { label: "Spend", value: formatCurrency(marketTotals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard },
+              {
+                label: "Market Profit",
+                value: formatCurrency(marketTotals.revenue - marketTotals.spend),
+                meta: "Market revenue − spend",
+                icon: TrendingUp,
+                accent: marketTotals.revenue - marketTotals.spend >= 0,
+                negative: marketTotals.revenue - marketTotals.spend < 0,
+              },
+              {
+                label: "Market ROI",
+                value: marketTotals.spend > 0 ? `${(((marketTotals.revenue - marketTotals.spend) / marketTotals.spend) * 100).toFixed(0)}%` : "—",
+                meta: "At market CPA rates",
+                icon: Target,
+              },
+            ].map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}${stat.negative ? " card-negative" : ""}`}>
+                  <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
+                  <div className="card-value">{stat.value}</div>
+                  <div className="card-meta">{t(stat.meta)}</div>
+                </div>
+              );
+            })}
+          </section>
+
+          {marketTotals.unrated > 0 ? (
+            <section className="campaign-signals">
+              <div className="campaign-signal tone-warn">
+                <span className="campaign-signal-icon"><AlertTriangle size={15} /></span>
+                <div className="campaign-signal-body">
+                  <span className="campaign-signal-title">{t("Missing rates")}</span>
+                  <span className="campaign-signal-campaign">
+                    {marketTotals.unrated.toLocaleString()} {t("FTDs in countries without a CPA rate")}
+                  </span>
+                  <span className="campaign-signal-detail">{t("They count as $0 below — fill the rate card to value them.")}</span>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="panels panels-single">
+            <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("Market CPA rates")}</h3>
+                  <p className="panel-subtitle">{t("What one FTD sells for on the market, per country (USD). Only Boss and Team Leader see this.")}</p>
+                </div>
+                <button className="action-pill" type="button" onClick={saveCpaRates} disabled={cpaState.saving}>
+                  {cpaState.saving ? t("Saving…") : t("Save rates")}
+                </button>
+              </div>
+              {cpaState.error ? <p className="logs-error">{cpaState.error}</p> : null}
+              {cpaState.loading ? (
+                <div className="empty-state">{t("Loading…")}</div>
+              ) : (
+                <div className="cpa-grid">
+                  {marketCountries.map((country) => (
+                    <label key={country} className="cpa-item">
+                      <span className="cpa-item-country"><CountryFlag value={country} size={12} /> {country}</span>
+                      <span className="cpa-item-input">
+                        <span className="cpa-currency">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={cpaDraft[country] ?? ""}
+                          placeholder="0"
+                          onChange={(e) => setCpaDraft((prev) => ({ ...prev, [country]: e.target.value }))}
+                        />
+                      </span>
+                    </label>
+                  ))}
+                  {!marketCountries.length ? <div className="empty-state">{t("No countries in this period yet.")}</div> : null}
+                </div>
+              )}
+            </motion.div>
+          </section>
+
+          <section className="panels panels-single">
+            <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}>
+              <div className="panel-head">
+                <div>
+                  <h3 className="panel-title">{t("Market ROI by campaign")}</h3>
+                  <p className="panel-subtitle">{t("Sorted by market profit. Rated FTDs are the ones covered by your rate card.")}</p>
+                </div>
+                <span className="roles-count">{marketRows.length} {t("campaigns")}</span>
+              </div>
+              {marketRows.length === 0 ? (
+                <div className="empty-state">{t("No campaigns match this period or filter.")}</div>
+              ) : (
+                <div className="table-wrap">
+                  <table className="entries-table campaigns-table">
+                    <thead>
+                      <tr>
+                        <th>{t("Campaign")}</th>
+                        <th>{t("FTD")}</th>
+                        <th>{t("Rated FTD")}</th>
+                        <th>{t("Market Revenue")}</th>
+                        <th>{t("Spend")}</th>
+                        <th>{t("Market Profit")}</th>
+                        <th>{t("Market ROI")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {marketRows.map((row) => (
+                        <tr key={row.campaign}>
+                          <td>
+                            <div className="campaign-cell">
+                              <span className="campaign-cell-name" title={row.campaign}>{row.campaign}</span>
+                              <span className="campaign-cell-chips">
+                                {row.geo ? <span className="campaign-chip"><CountryFlag value={row.geo} size={11} /> {row.geo}</span> : null}
+                                {row.brand ? <span className="campaign-chip">{row.brand}</span> : null}
+                              </span>
+                            </div>
+                          </td>
+                          <td>{fmtInt(row.ftds)}</td>
+                          <td className={row.unratedFtds > 0 ? "campaign-dim" : ""}>
+                            {fmtInt(row.ratedFtds)}
+                            {row.unratedFtds > 0 ? <span className="campaign-unrated"> (+{fmtInt(row.unratedFtds)} {t("unrated")})</span> : null}
+                          </td>
+                          <td className="campaign-strong">{formatCurrency(row.marketRevenue)}</td>
+                          <td>{row.totalSpend > 0 ? formatCurrency(row.totalSpend) : "—"}</td>
+                          <td className={row.marketProfit >= 0 ? "campaign-strong" : "campaign-loss"}>{formatCurrency(row.marketProfit)}</td>
+                          <td>
+                            {row.marketRoi === null ? (
+                              <span className="offer-muted">—</span>
+                            ) : (
+                              <span className={`campaign-roi${row.marketRoi >= 0 ? " is-up" : " is-down"}`}>
+                                {row.marketRoi >= 0 ? "+" : ""}{row.marketRoi.toFixed(0)}%
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="campaign-totals-row">
+                        <td>{t("Total")}</td>
+                        <td>{fmtInt(marketTotals.ftds)}</td>
+                        <td>{fmtInt(marketTotals.ftds - marketTotals.unrated)}</td>
+                        <td className="campaign-strong">{formatCurrency(marketTotals.revenue)}</td>
+                        <td>{formatCurrency(marketTotals.spend)}</td>
+                        <td className={marketTotals.revenue - marketTotals.spend >= 0 ? "campaign-strong" : "campaign-loss"}>
+                          {formatCurrency(marketTotals.revenue - marketTotals.spend)}
+                        </td>
+                        <td>
+                          {marketTotals.spend > 0 ? (
+                            <span className={`campaign-roi${marketTotals.revenue - marketTotals.spend >= 0 ? " is-up" : " is-down"}`}>
+                              {marketTotals.revenue - marketTotals.spend >= 0 ? "+" : ""}
+                              {(((marketTotals.revenue - marketTotals.spend) / marketTotals.spend) * 100).toFixed(0)}%
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </motion.div>
+          </section>
+        </>
+      ) : (
+        <>
       {/* Period totals for everything currently visible */}
       <section className="cards campaigns-kpis">
         {kpiCards.map((stat) => {
@@ -9752,22 +10063,28 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                           <td>
                             <span className="campaign-spend-cell">
                               {row.totalSpend > 0 ? formatCurrency(row.totalSpend) : <span className="offer-muted">—</span>}
-                              <button
-                                type="button"
-                                className="icon-btn campaign-spend-edit"
-                                title={t("Enter spend")}
-                                onClick={() =>
-                                  setSpendEditor({
-                                    campaign: row.campaign,
-                                    date: new Date().toISOString().slice(0, 10),
-                                    amount: "",
-                                    saving: false,
-                                    error: null,
-                                  })
-                                }
-                              >
-                                <Pencil size={11} />
-                              </button>
+                              {row.spendSource === "auto" ? (
+                                <span className="campaign-chip campaign-chip-auto" title={t("Cost flows automatically from the Meta account via Keitaro")}>
+                                  {t("auto")}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="icon-btn campaign-spend-edit"
+                                  title={t("Enter spend manually (no wired Meta account)")}
+                                  onClick={() =>
+                                    setSpendEditor({
+                                      campaign: row.campaign,
+                                      date: new Date().toISOString().slice(0, 10),
+                                      amount: "",
+                                      saving: false,
+                                      error: null,
+                                    })
+                                  }
+                                >
+                                  <Pencil size={11} />
+                                </button>
+                              )}
                             </span>
                           </td>
                           <td className="campaign-dim">{row.cpa > 0 ? formatCurrency(row.cpa) : "—"}</td>
@@ -9805,7 +10122,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                               {row.campaignId != null && campaignStates[String(row.campaignId)] ? (
                                 <button
                                   type="button"
-                                  className="icon-btn"
+                                  className={`icon-btn campaign-state-btn${campaignStates[String(row.campaignId)] === "disabled" ? " is-resume" : ""}`}
                                   disabled={stateBusyId === row.campaignId}
                                   title={campaignStates[String(row.campaignId)] === "disabled" ? t("Resume campaign") : t("Pause campaign")}
                                   onClick={() => toggleCampaignState(row)}
@@ -9815,7 +10132,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                               ) : null}
                               <button
                                 type="button"
-                                className="icon-btn"
+                                className="icon-btn campaign-editoffer-btn"
                                 title={t("Open in Tracking Links (edit offer)")}
                                 onClick={() => {
                                   try {
@@ -9829,7 +10146,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                               {row.countryRows.length ? (
                                 <button
                                   type="button"
-                                  className="icon-btn"
+                                  className="icon-btn campaign-expand-btn"
                                   title={t("GEO breakdown")}
                                   onClick={() => setExpandedCampaign(isOpen ? null : row.campaign)}
                                 >
@@ -9893,6 +10210,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           )}
         </motion.div>
       </section>
+        </>
+      )}
 
       <AnimatePresence>
         {spendEditor ? (
