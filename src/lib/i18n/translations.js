@@ -799,6 +799,26 @@ export const translations = {
     Fair: "Orta",
     Strong: "Güçlü",
     "Very strong": "Çok güçlü",
+    // ── Campaigns (Keitaro-first) ──────────────────────────────────────
+    "Unique Clicks": "Benzersiz Tıklamalar",
+    "Campaign Trend": "Kampanya Trendi",
+    "Daily clicks, registrations and FTDs across the selected campaigns.":
+      "Seçili kampanyalarda günlük tıklamalar, kayıtlar ve FTD'ler.",
+    "Keitaro Campaigns": "Keitaro Kampanyaları",
+    "One row per campaign in the tracker — expand a row for its GEO breakdown.":
+      "Takipçideki her kampanya için bir satır — GEO kırılımı için satırı genişletin.",
+    "Search campaign, tool, game, geo, brand…": "Kampanya, araç, oyun, geo, marka ara…",
+    "No campaigns match this period or filter.": "Bu dönem veya filtreyle eşleşen kampanya yok.",
+    "No Keitaro traffic in this period yet.": "Bu dönemde henüz Keitaro trafiği yok.",
+    "GEO breakdown": "GEO kırılımı",
+    campaigns: "kampanya",
+    regs: "kayıt",
+    rdp: "rdp",
+    "Deduplicated by campaign": "Kampanya bazında benzersiz",
+    "Sign-ups": "Kayıtlar",
+    "Loading campaign stats…": "Kampanya istatistikleri yükleniyor…",
+    Registrations: "Kayıtlar",
+
     Usage: "Kullanım",
     "Where and how this account is used.": "Bu hesabın nerede ve nasıl kullanıldığı.",
     Device: "Cihaz",
