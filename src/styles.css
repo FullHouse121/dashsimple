@@ -16630,7 +16630,9 @@ select option,
   border-top: 1px solid var(--stroke-strong);
   font-weight: 700;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.02);
+  /* Solid — this row sticks over scrolling rows; any translucency lets the
+     row underneath bleed through as interleaved text. */
+  background: #202227;
 }
 
 /* Campaigns 10/10: deltas, money columns, actions, sticky table */
