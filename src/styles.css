@@ -16680,3 +16680,12 @@ select option,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Campaign KPI cards that hold names instead of big numbers */
+.card-value--sm {
+  font-size: 16px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

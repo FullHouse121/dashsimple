@@ -9322,6 +9322,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const fmtPct = (value) => `${(Number(value) || 0).toFixed(1)}%`;
 
   const profitTotal = totals.revenue - totals.spend;
+  const topCampaign = [...visibleCampaigns].sort((a, b) => b.ftds - a.ftds)[0] || null;
+  const topCr = visibleCampaigns
+    .filter((row) => row.uniqueClicks >= 50 && row.registers >= 20)
+    .sort((a, b) => b.r2d - a.r2d)[0] || null;
   const kpiCards = [
     { label: "Unique Clicks", value: fmtInt(totals.uniqueClicks), meta: "Deduplicated by campaign", icon: MousePointerClick, delta: deltaFor("uniqueClicks") },
     { label: "Registrations", value: fmtInt(totals.registers), meta: "Sign-ups", icon: UserPlus, delta: deltaFor("registers") },
@@ -9336,6 +9340,22 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       accent: profitTotal >= 0,
       negative: profitTotal < 0,
       delta: deltaFor("revenue"),
+    },
+    {
+      label: "Top Campaign",
+      value: topCampaign && topCampaign.ftds > 0 ? shortCampaignLabel(topCampaign) : "—",
+      meta: topCampaign && topCampaign.ftds > 0
+        ? `${fmtInt(topCampaign.ftds)} FTD · ${formatCurrency(topCampaign.revenue)}`
+        : "No FTDs in this period yet.",
+      icon: Trophy,
+      small: true,
+    },
+    {
+      label: "Top CR",
+      value: topCr ? `${topCr.r2d.toFixed(1)}%` : "—",
+      meta: topCr ? `Reg2Dep · ${shortCampaignLabel(topCr)}` : "Needs ≥50 uniques and ≥20 regs",
+      icon: Target,
+      small: true,
     },
   ];
   const renderDelta = (delta) => {
@@ -9379,7 +9399,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           return (
             <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}${stat.negative ? " card-negative" : ""}`}>
               <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
-              <div className="card-value">{stat.value}</div>
+              <div className={`card-value${stat.small ? " card-value--sm" : ""}`} title={stat.small ? String(stat.value) : undefined}>{stat.value}</div>
               <div className="card-meta">
                 {t(stat.meta)}
                 {stat.neutralDelta ? null : renderDelta(stat.delta)}

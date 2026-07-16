@@ -187,6 +187,9 @@ export const translations = {
     "Track expenses by date, country, category, and billing type.":
       "Giderleri tarih, ülke, kategori ve faturalandırma türüne göre takip edin.",
     Date: "Tarih",
+    "Top Campaign": "En İyi Kampanya",
+    "Top CR": "En İyi CR",
+    "Needs ≥50 uniques and ≥20 regs": "≥50 benzersiz ve ≥20 kayıt gerekir",
     Category: "Kategori",
     Reference: "Referans",
     "Tool, vendor, or invoice reference": "Araç, tedarikçi veya fatura referansı",
@@ -859,6 +862,9 @@ export const translations = {
     "Resume campaign": "Kampanyayı sürdür",
     "Open in Tracking Links (edit offer)": "Takip Bağlantılarında aç (teklifi düzenle)",
     Date: "Tarih",
+    "Top Campaign": "En İyi Kampanya",
+    "Top CR": "En İyi CR",
+    "Needs ≥50 uniques and ≥20 regs": "≥50 benzersiz ve ≥20 kayıt gerekir",
     "Unique Clicks": "Benzersiz Tıklamalar",
     "Campaign Trend": "Kampanya Trendi",
     "Daily clicks, registrations and FTDs across the selected campaigns.":
