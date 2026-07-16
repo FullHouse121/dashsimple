@@ -9072,9 +9072,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       }
       const date = String(row.date || "").trim();
       if (!date) return;
-      if (!map.has(date)) map.set(date, { date, clicks: 0, registers: 0, ftds: 0, redeposits: 0 });
+      if (!map.has(date)) map.set(date, { date, clicks: 0, uniqueClicks: 0, registers: 0, ftds: 0, redeposits: 0 });
       const current = map.get(date);
       current.clicks += sum(row.clicks);
+      current.uniqueClicks += sum(row.unique_clicks);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
@@ -9432,7 +9433,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Daily Traffic")}</h3>
-              <p className="panel-subtitle">{t("Clicks per day across the selected campaigns.")}</p>
+              <p className="panel-subtitle">{t("Unique clicks per day across the selected campaigns.")}</p>
             </div>
             <div className="panel-actions">
               <PeriodSelect value={period} onChange={setPeriod} customRange={customRange} onCustomChange={onCustomChange} />
@@ -9458,7 +9459,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                   <XAxis dataKey="date" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
                   <YAxis tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                  <Area type="monotone" dataKey="clicks" name={t("Clicks")} stroke={SERIES_COLORS.clicks} strokeWidth={2} fill="url(#campClicksFill)" />
+                  <Area type="monotone" dataKey="uniqueClicks" name={t("Unique Clicks")} stroke={SERIES_COLORS.clicks} strokeWidth={2} fill="url(#campClicksFill)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

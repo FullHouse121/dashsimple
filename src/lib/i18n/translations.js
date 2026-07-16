@@ -804,7 +804,7 @@ export const translations = {
     "Very strong": "Çok güçlü",
     // ── Campaigns (Keitaro-first) ──────────────────────────────────────
     "Daily Traffic": "Günlük Trafik",
-    "Clicks per day across the selected campaigns.": "Seçili kampanyalarda günlük tıklamalar.",
+    "Unique clicks per day across the selected campaigns.": "Seçili kampanyalarda günlük benzersiz tıklamalar.",
     "Daily Conversions": "Günlük Dönüşümler",
     "Registrations, FTDs and redeposits per day — one shared axis.":
       "Günlük kayıtlar, FTD'ler ve redepozitler — tek ortak eksen.",
