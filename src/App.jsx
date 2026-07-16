@@ -17463,6 +17463,44 @@ function MetaTokenDashboard({ authUser }) {
   );
 }
 
+// Role identity colors — one hue per role tier, shared by avatars, chips and
+// the role rows so a role is recognizable at a glance across the section.
+const ROLE_IDENT_COLORS = {
+  boss: "#f7c625",
+  teamleader: "#36d07c",
+  mediabuyersenior: "#64b8ff",
+  mediabuyer: "#49e0c4",
+  mediabuyerjunior: "#a15bff",
+};
+const roleIdentColor = (role) => ROLE_IDENT_COLORS[normalizeRoleKey(role)] || "#8b8f98";
+
+const initialsOf = (name) => {
+  const raw = String(name || "").trim();
+  if (!raw) return "?";
+  const parts = raw.split(/\s+/);
+  return ((parts[0][0] || "") + (parts[1]?.[0] || parts[0][1] || "")).toUpperCase();
+};
+
+// Avatar + name, tinted by role — the visual identity used in Users/Team tables.
+const UserIdent = ({ name, role, sub }) => (
+  <span className="user-ident">
+    <span className="user-avatar" style={{ borderColor: roleIdentColor(role), color: roleIdentColor(role) }}>
+      {initialsOf(name)}
+    </span>
+    <span className="user-ident-text">
+      <span className="user-ident-name">{name}</span>
+      {sub ? <span className="user-ident-sub">{sub}</span> : null}
+    </span>
+  </span>
+);
+
+const RoleChip = ({ role, label }) => (
+  <span className="role-chip">
+    <span className="role-chip-dot" style={{ background: roleIdentColor(role) }} />
+    {label}
+  </span>
+);
+
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
   // Sub-tab navigation inside the section — keeps the page from being one
@@ -17495,6 +17533,13 @@ function RolesDashboard({ authUser }) {
   const [roles, setRoles] = React.useState([]);
   const [roleState, setRoleState] = React.useState({ loading: true, error: null });
   const [savingId, setSavingId] = React.useState(null);
+  // Registry-style filtering for the Users / Media Buyers tables.
+  const [userSearch, setUserSearch] = React.useState("");
+  const [userRoleFilter, setUserRoleFilter] = React.useState([]);
+  const [teamSearch, setTeamSearch] = React.useState("");
+  const [teamStatusFilter, setTeamStatusFilter] = React.useState([]);
+  const toggleFilterValue = (setter) => (value) =>
+    setter((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
   const [users, setUsers] = React.useState([]);
   const [userState, setUserState] = React.useState({ loading: true, error: null });
   const [buyers, setBuyers] = React.useState([]);
@@ -17987,14 +18032,29 @@ function RolesDashboard({ authUser }) {
             <div className="empty-state">{t("No roles found.")}</div>
           ) : (
             <>
-              <div className="roles-toolbar">
-                <input
-                  type="text"
-                  className="log-search"
-                  placeholder={t("Search role name…")}
-                  value={roleSearch}
-                  onChange={(e) => setRoleSearch(e.target.value)}
-                />
+              <div className="pixel-table-toolbar roles-toolbar">
+                <div className="field registry-search-field">
+                  <label>{t("Search")}</label>
+                  <div className="registry-search">
+                    <Search size={14} aria-hidden="true" />
+                    <input
+                      type="text"
+                      placeholder={t("Search role name…")}
+                      value={roleSearch}
+                      onChange={(e) => setRoleSearch(e.target.value)}
+                    />
+                    {roleSearch ? (
+                      <button
+                        type="button"
+                        className="registry-search-clear"
+                        onClick={() => setRoleSearch("")}
+                        aria-label={t("Clear search")}
+                      >
+                        <X size={13} />
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
               <div className="role-rows">
                 {(() => {
@@ -18025,6 +18085,7 @@ function RolesDashboard({ authUser }) {
                         >
                           <span className="role-row-chevron">▸</span>
                           <span className="role-row-identity">
+                            <span className="role-chip-dot" style={{ background: roleIdentColor(role.name) }} />
                             <span className="role-row-name">{t(role.name)}</span>
                             {isLocked ? <Lock size={11} className="role-row-lock" aria-label={t("Built-in")} /> : null}
                           </span>
@@ -18203,7 +18264,56 @@ function RolesDashboard({ authUser }) {
             <div className="empty-state error">{userState.error}</div>
           ) : users.length === 0 ? (
             <div className="empty-state">{t("No users found.")}</div>
-          ) : (
+          ) : (() => {
+            const q = userSearch.trim().toLowerCase();
+            const visibleUsers = users.filter((user) => {
+              if (userRoleFilter.length && !userRoleFilter.includes(user.role)) return false;
+              if (!q) return true;
+              const linked = user.buyer_id ? buyers.find((b) => b.id === user.buyer_id) : null;
+              const hay = `${user.username} ${user.role} ${linked?.name || ""} ${linked?.tag || ""}`.toLowerCase();
+              return hay.includes(q);
+            });
+            return (
+            <>
+            <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder={t("Search username or buyer…")}
+                  />
+                  {userSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setUserSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="field">
+                <label>{t("Role")}</label>
+                <CountryDropdownPicker
+                  multiple
+                  values={userRoleFilter}
+                  onToggle={toggleFilterValue(setUserRoleFilter)}
+                  options={roleNameOptions.map((r) => ({ value: r, label: t(r), dot: roleIdentColor(r) }))}
+                  placeholder={t("All")}
+                  searchPlaceholder={t("Type to find roles")}
+                  emptyResultsLabel={t("No roles found.")}
+                />
+              </div>
+            </div>
+            {visibleUsers.length === 0 ? (
+              <div className="empty-state">{t("No users match.")}</div>
+            ) : (
             <div className="table-wrap">
               <table className="entries-table user-table">
                 <thead>
@@ -18215,14 +18325,14 @@ function RolesDashboard({ authUser }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => {
+                  {visibleUsers.map((user) => {
                     const buyerName = user.buyer_id ? buyerMap[user.buyer_id] || "" : "";
                     const linkedBuyer = user.buyer_id ? buyers.find((b) => b.id === user.buyer_id) : null;
                     const buyerTag = resolveBuyerTag(user.username, linkedBuyer);
                     return (
                       <tr key={user.id}>
-                        <td>{user.username}</td>
-                        <td>{t(user.role)}</td>
+                        <td><UserIdent name={user.username} role={user.role} /></td>
+                        <td><RoleChip role={user.role} label={t(user.role)} /></td>
                         <td>
                           <div className="buyer-cell">
                             {buyerName ? <span>{buyerName}</span> : buyerTag ? null : "—"}
@@ -18265,7 +18375,10 @@ function RolesDashboard({ authUser }) {
                 </tbody>
               </table>
             </div>
-          )}
+            )}
+            </>
+            );
+          })()}
         </motion.div>
       </section>
       ) : null}
@@ -18412,7 +18525,59 @@ function RolesDashboard({ authUser }) {
             <div className="empty-state error">{teamState.error}</div>
           ) : buyers.length === 0 ? (
             <div className="empty-state">{t("No media buyers added yet.")}</div>
-          ) : (
+          ) : (() => {
+            const q = teamSearch.trim().toLowerCase();
+            const visibleBuyers = buyers.filter((member) => {
+              if (teamStatusFilter.length && !teamStatusFilter.includes(member.status || "Inactive")) return false;
+              if (!q) return true;
+              const hay = `${member.name} ${member.keitaro_name || ""} ${member.tag || ""} ${member.email || ""} ${member.contact || ""} ${member.country || ""} ${member.game || ""}`.toLowerCase();
+              return hay.includes(q);
+            });
+            return (
+            <>
+            <div className="pixel-table-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={teamSearch}
+                    onChange={(e) => setTeamSearch(e.target.value)}
+                    placeholder={t("Search name, tag, email, country…")}
+                  />
+                  {teamSearch ? (
+                    <button
+                      type="button"
+                      className="registry-search-clear"
+                      onClick={() => setTeamSearch("")}
+                      aria-label={t("Clear search")}
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="field">
+                <label>{t("Status")}</label>
+                <CountryDropdownPicker
+                  multiple
+                  values={teamStatusFilter}
+                  onToggle={toggleFilterValue(setTeamStatusFilter)}
+                  options={["Active", "Onboarding", "Inactive"].map((s) => ({
+                    value: s,
+                    label: t(s),
+                    dot: s === "Active" ? "#36d07c" : s === "Onboarding" ? "#ffc94d" : "#8a93a3",
+                  }))}
+                  placeholder={t("All")}
+                  searchPlaceholder={t("Filter status")}
+                  emptyResultsLabel={t("No statuses found.")}
+                />
+              </div>
+            </div>
+            {visibleBuyers.length === 0 ? (
+              <div className="empty-state">{t("No buyers match.")}</div>
+            ) : (
             <div className="table-wrap">
               <table className="entries-table team-table">
                 <thead>
@@ -18431,9 +18596,9 @@ function RolesDashboard({ authUser }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {buyers.map((member) => (
+                  {visibleBuyers.map((member) => (
                     <tr key={member.id}>
-                      <td>{member.name}</td>
+                      <td><UserIdent name={member.name} role={member.role} /></td>
                       <td>
                         {member.keitaro_name ? (
                           <span
@@ -18456,8 +18621,16 @@ function RolesDashboard({ authUser }) {
                           <span className="offer-muted">—</span>
                         )}
                       </td>
-                      <td>{t(member.role)}</td>
-                      <td>{member.country || "—"}</td>
+                      <td><RoleChip role={member.role} label={t(member.role)} /></td>
+                      <td>
+                        {member.country ? (
+                          <span className="buyer-country">
+                            <CountryFlag value={member.country} size={13} /> {member.country}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td>{member.approach ? t(member.approach) : "—"}</td>
                       <td>{member.game || "—"}</td>
                       <td>{member.email || "—"}</td>
@@ -18494,7 +18667,10 @@ function RolesDashboard({ authUser }) {
                 </tbody>
               </table>
             </div>
-          )}
+            )}
+            </>
+            );
+          })()}
         </motion.div>
       </section>
       ) : null}

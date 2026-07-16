@@ -763,5 +763,15 @@ export const translations = {
     "Failed to load logs.": "Kayıtlar yüklenemedi.",
     "Failed to purge logs.": "Kayıtlar silinemedi.",
     System: "Sistem",
+
+    // ── Access control (roles/users/team) ──────────────────────────────
+    "Search username or buyer…": "Kullanıcı adı veya alıcı ara…",
+    "Search name, tag, email, country…": "İsim, etiket, e-posta, ülke ara…",
+    "No users match.": "Eşleşen kullanıcı yok.",
+    "No buyers match.": "Eşleşen alıcı yok.",
+    "Type to find roles": "Rol aramak için yazın",
+    "Filter status": "Duruma göre filtrele",
+    "No statuses found.": "Durum bulunamadı.",
+    "Clear search": "Aramayı temizle",
   },
 };
