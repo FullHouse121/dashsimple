@@ -91,6 +91,9 @@ import {
   Maximize2,
   ScrollText,
   RefreshCw,
+  Star,
+  Play,
+  Pause,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 import keitaroLogo from "./assets/brands/keitaro.svg";
@@ -4648,6 +4651,22 @@ function TrackingLinksDashboard({ authUser }) {
     }
   };
 
+  // Deep link from the Campaigns table: prefill search and open the edit
+  // modal for the matching link (when the campaign was created here).
+  React.useEffect(() => {
+    let pending = null;
+    try {
+      pending = sessionStorage.getItem("pending-edit-campaign");
+    } catch { /* ignore */ }
+    if (!pending || !links.length) return;
+    try {
+      sessionStorage.removeItem("pending-edit-campaign");
+    } catch { /* ignore */ }
+    setTrackingSearch(pending);
+    const match = links.find((l) => String(l.name || "").trim() === pending);
+    if (match) openEdit(match);
+  }, [links]);
+
   const parseFilterConfig = (raw) => {
     if (!raw) return { logic: "and", rules: [] };
     try {
@@ -8717,30 +8736,100 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const [buyerFilterLocal, setBuyerFilterLocal] = React.useState([]);
   const [tableSort, setTableSort] = React.useState({ key: "ftds", dir: "desc" });
   const [expandedCampaign, setExpandedCampaign] = React.useState(null);
+  const [spendRows, setSpendRows] = React.useState([]);
+  const [prevRows, setPrevRows] = React.useState([]);
+  const [campaignStates, setCampaignStates] = React.useState({});
+  const [stateBusyId, setStateBusyId] = React.useState(null);
+  const [spendEditor, setSpendEditor] = React.useState(null); // { campaign, date, amount, saving, error }
+  const [minUniques, setMinUniques] = React.useState("0");
+  const [pinnedCampaigns, setPinnedCampaigns] = React.useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("dash-pinned-campaigns") || "[]"));
+    } catch {
+      return new Set();
+    }
+  });
   const sum = (value) => Number(value || 0);
+  const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+
+  const effectiveRangeIso = React.useMemo(() => {
+    const gr = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+    const pr = getPeriodDateRange(period, customRange);
+    const eff = gr.from || gr.to ? gr : pr;
+    return {
+      from: isoRe.test(eff.from || "") ? eff.from : null,
+      to: isoRe.test(eff.to || "") ? eff.to : null,
+    };
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
+
+  // The equally-long window immediately before the current one (for deltas).
+  const previousRangeIso = React.useMemo(() => {
+    const { from, to } = effectiveRangeIso;
+    if (!from || !to) return null;
+    const dayMs = 86400000;
+    const fromMs = Date.parse(`${from}T00:00:00Z`);
+    const toMs = Date.parse(`${to}T00:00:00Z`);
+    const lengthDays = Math.max(1, Math.round((toMs - fromMs) / dayMs) + 1);
+    const prevTo = new Date(fromMs - dayMs).toISOString().slice(0, 10);
+    const prevFrom = new Date(fromMs - dayMs * lengthDays).toISOString().slice(0, 10);
+    return { from: prevFrom, to: prevTo };
+  }, [effectiveRangeIso.from, effectiveRangeIso.to]);
+
+  const fetchSpend = React.useCallback(async () => {
+    try {
+      const qs = new URLSearchParams();
+      if (effectiveRangeIso.from) qs.set("from", effectiveRangeIso.from);
+      if (effectiveRangeIso.to) qs.set("to", effectiveRangeIso.to);
+      const response = await apiFetch(`/api/campaign-spend?${qs.toString()}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setSpendRows(Array.isArray(data) ? data : []);
+    } catch {
+      /* spend stays empty */
+    }
+  }, [effectiveRangeIso.from, effectiveRangeIso.to]);
 
   const fetchCampaigns = React.useCallback(async () => {
     try {
       setCampaignState({ loading: true, error: null });
-      const isoRe = /^\d{4}-\d{2}-\d{2}$/;
-      const gr = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
-      const pr = getPeriodDateRange(period, customRange);
-      const eff = gr.from || gr.to ? gr : pr;
       const qs = new URLSearchParams();
-      if (isoRe.test(eff.from || "")) qs.set("from", eff.from);
-      if (isoRe.test(eff.to || "")) qs.set("to", eff.to);
-      const response = await apiFetch(`/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`);
+      if (effectiveRangeIso.from) qs.set("from", effectiveRangeIso.from);
+      if (effectiveRangeIso.to) qs.set("to", effectiveRangeIso.to);
+      const requests = [apiFetch(`/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`)];
+      if (previousRangeIso) {
+        requests.push(
+          apiFetch(`/api/keitaro/live-stats?from=${previousRangeIso.from}&to=${previousRangeIso.to}`)
+        );
+      }
+      requests.push(apiFetch("/api/keitaro/campaign-states"));
+      const [response, ...rest] = await Promise.all(requests);
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to load campaign stats from Keitaro.");
       }
       const data = await response.json();
       setCampaignEntries(Array.isArray(data?.rows) ? data.rows : []);
+      const prevResponse = previousRangeIso ? rest[0] : null;
+      const statesResponse = previousRangeIso ? rest[1] : rest[0];
+      if (prevResponse?.ok) {
+        const prevData = await prevResponse.json();
+        setPrevRows(Array.isArray(prevData?.rows) ? prevData.rows : []);
+      } else {
+        setPrevRows([]);
+      }
+      if (statesResponse?.ok) {
+        const statesData = await statesResponse.json();
+        setCampaignStates(statesData?.states || {});
+      }
       setCampaignState({ loading: false, error: null });
     } catch (error) {
       setCampaignState({ loading: false, error: error.message || "Failed to load campaign stats." });
     }
-  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
+  }, [effectiveRangeIso.from, effectiveRangeIso.to, previousRangeIso]);
+
+  React.useEffect(() => {
+    fetchSpend();
+  }, [fetchSpend]);
 
   React.useEffect(() => {
     fetchCampaigns();
@@ -8785,6 +8874,17 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     ]
   );
 
+  // Manual spend per campaign over the selected window.
+  const spendByCampaign = React.useMemo(() => {
+    const map = new Map();
+    spendRows.forEach((row) => {
+      const key = String(row.campaign || "").trim();
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + (Number(row.amount) || 0));
+    });
+    return map;
+  }, [spendRows]);
+
   // ── One row per Keitaro campaign, with per-country + per-day sub-maps ──
   const campaignAgg = React.useMemo(() => {
     const map = new Map();
@@ -8793,6 +8893,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       if (!map.has(name)) {
         map.set(name, {
           campaign: name,
+          campaignId: row.campaign_id ?? null,
           buyer: row.buyer || null,
           tool: row.tool || null,
           game: row.game || null,
@@ -8812,6 +8913,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         });
       }
       const agg = map.get(name);
+      if (agg.campaignId == null && row.campaign_id != null) agg.campaignId = row.campaign_id;
       const day = String(row.date || "").trim();
       if (day) agg.dailyFtds.set(day, (agg.dailyFtds.get(day) || 0) + sum(row.ftds));
       agg.uniqueClicks += sum(row.unique_clicks);
@@ -8845,18 +8947,24 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         spark.length >= 2
           ? spark.slice(half).reduce((s, v) => s + v, 0) - spark.slice(0, half).reduce((s, v) => s + v, 0)
           : 0;
+      // Keitaro cost (if the tracker ever carries it) + manual entries.
+      const totalSpend = row.spend + (spendByCampaign.get(row.campaign) || 0);
       return {
         ...row,
         click2reg: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
         click2dep: row.uniqueClicks > 0 ? (row.ftds / row.uniqueClicks) * 100 : 0,
         r2d: row.registers > 0 ? (row.ftds / row.registers) * 100 : 0,
         ftd2red: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
+        totalSpend,
+        cpa: row.ftds > 0 && totalSpend > 0 ? totalSpend / row.ftds : 0,
+        roi: totalSpend > 0 ? ((row.revenue - totalSpend) / totalSpend) * 100 : null,
+        profit: row.revenue - totalSpend,
         spark,
         ftdDelta,
         countryRows: Array.from(row.countries.values()).sort((a, b) => b.ftds - a.ftds || b.clicks - a.clicks),
       };
     });
-  }, [scopedRows]);
+  }, [scopedRows, spendByCampaign]);
 
   const buyerOptionsLocal = React.useMemo(
     () =>
@@ -8868,7 +8976,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
 
   const visibleCampaigns = React.useMemo(() => {
     const q = campaignSearch.trim().toLowerCase();
+    const minUc = Number(minUniques) || 0;
     let rows = campaignAgg;
+    if (minUc > 0) rows = rows.filter((row) => row.uniqueClicks >= minUc);
     if (buyerFilterLocal.length) {
       rows = rows.filter((row) => buyerFilterLocal.includes(String(row.buyer || "").trim()));
     }
@@ -8881,8 +8991,26 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     }
     const { key, dir } = tableSort;
     const type = key === "campaign" ? "text" : "number";
-    return [...rows].sort((a, b) => compareSortValues(a[key], b[key], dir, type));
-  }, [campaignAgg, campaignSearch, buyerFilterLocal, tableSort]);
+    return [...rows].sort((a, b) => {
+      // Pinned campaigns float above everything, keeping their own order.
+      const aPin = pinnedCampaigns.has(a.campaign) ? 1 : 0;
+      const bPin = pinnedCampaigns.has(b.campaign) ? 1 : 0;
+      if (aPin !== bPin) return bPin - aPin;
+      return compareSortValues(a[key], b[key], dir, type);
+    });
+  }, [campaignAgg, campaignSearch, buyerFilterLocal, tableSort, minUniques, pinnedCampaigns]);
+
+  const togglePin = (campaign) => {
+    setPinnedCampaigns((prev) => {
+      const next = new Set(prev);
+      if (next.has(campaign)) next.delete(campaign);
+      else next.add(campaign);
+      try {
+        localStorage.setItem("dash-pinned-campaigns", JSON.stringify(Array.from(next)));
+      } catch { /* quota */ }
+      return next;
+    });
+  };
 
   const totals = React.useMemo(
     () =>
@@ -8894,12 +9022,43 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           acc.ftds += row.ftds;
           acc.redeposits += row.redeposits;
           acc.revenue += row.revenue;
+          acc.spend += row.totalSpend;
           return acc;
         },
-        { uniqueClicks: 0, clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
+        { uniqueClicks: 0, clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0, spend: 0 }
       ),
     [visibleCampaigns]
   );
+
+  // Previous-window totals under the same buyer/country scope (for deltas).
+  const prevTotals = React.useMemo(() => {
+    if (!prevRows.length) return null;
+    return prevRows
+      .filter((row) => {
+        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) return false;
+        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        return true;
+      })
+      .reduce(
+        (acc, row) => {
+          acc.uniqueClicks += sum(row.unique_clicks);
+          acc.registers += sum(row.registers);
+          acc.ftds += sum(row.ftds);
+          acc.redeposits += sum(row.redeposits);
+          acc.revenue += sum(row.revenue);
+          return acc;
+        },
+        { uniqueClicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
+      );
+  }, [prevRows, globalBuyerFilter, globalCountryFilter, effectiveBuyer, isLeadership]);
+
+  const deltaFor = (key) => {
+    if (!prevTotals) return null;
+    const prev = Number(prevTotals[key]) || 0;
+    const current = Number(totals[key]) || 0;
+    if (prev === 0) return current > 0 ? Infinity : null;
+    return ((current - prev) / prev) * 100;
+  };
 
   // Daily trend across the visible scope (clicks axis vs conversions axis).
   const growthSeries = React.useMemo(() => {
@@ -8961,19 +9120,45 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   };
 
+  // Per-tool cohort medians — a PWA campaign is judged against PWA numbers,
+  // not against Telegram or Facebook ones.
+  const toolMedians = React.useMemo(() => {
+    const byTool = new Map();
+    visibleCampaigns
+      .filter((row) => row.uniqueClicks >= 50)
+      .forEach((row) => {
+        const tool = String(row.tool || "—").trim() || "—";
+        if (!byTool.has(tool)) byTool.set(tool, { c2r: [], r2d: [] });
+        byTool.get(tool).c2r.push(row.click2reg);
+        byTool.get(tool).r2d.push(row.r2d);
+      });
+    const result = new Map();
+    byTool.forEach((lists, tool) => {
+      result.set(tool, { c2r: median(lists.c2r), r2d: median(lists.r2d) });
+    });
+    return result;
+  }, [visibleCampaigns]);
+
   // Efficiency map: only campaigns with enough traffic to judge (≥50 uniques).
   const scatterData = React.useMemo(
     () =>
       visibleCampaigns
         .filter((row) => row.uniqueClicks >= 50)
-        .map((row) => ({
-          name: shortCampaignLabel(row),
-          x: Math.round(row.click2reg * 10) / 10,
-          y: Math.round(row.r2d * 10) / 10,
-          z: row.uniqueClicks,
-          ftds: row.ftds,
-        })),
-    [visibleCampaigns]
+        .map((row) => {
+          const tool = String(row.tool || "—").trim() || "—";
+          const cohort = toolMedians.get(tool);
+          return {
+            name: shortCampaignLabel(row),
+            tool,
+            x: Math.round(row.click2reg * 10) / 10,
+            y: Math.round(row.r2d * 10) / 10,
+            z: row.uniqueClicks,
+            ftds: row.ftds,
+            cohortC2r: cohort ? Math.round(cohort.c2r * 10) / 10 : null,
+            cohortR2d: cohort ? Math.round(cohort.r2d * 10) / 10 : null,
+          };
+        }),
+    [visibleCampaigns, toolMedians]
   );
   const scatterMedians = React.useMemo(
     () => ({ x: median(scatterData.map((d) => d.x)), y: median(scatterData.map((d) => d.y)) }),
@@ -8997,6 +9182,18 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         detail: `${winner.ftds.toLocaleString()} FTD · R2D ${winner.r2d.toFixed(1)}% · ${formatCurrency(winner.revenue)}`,
       });
     }
+    const loser = rows
+      .filter((row) => row.totalSpend >= 50 && row.profit < 0)
+      .sort((a, b) => a.profit - b.profit)[0];
+    if (loser) {
+      signals.push({
+        tone: "bad",
+        Icon: DollarSign,
+        title: "Losing money",
+        campaign: shortCampaignLabel(loser),
+        detail: `${formatCurrency(loser.profit)} ${t("profit on")} ${formatCurrency(loser.totalSpend)} ${t("spend — cut or fix")}`,
+      });
+    }
     const retention = rows
       .filter((row) => row.ftds >= 10 && row.ftd2red >= 100)
       .sort((a, b) => b.ftd2red - a.ftd2red)[0];
@@ -9010,7 +9207,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       });
     }
     const leak = rows
-      .filter((row) => row.registers >= 100 && row.r2d < Math.max(5, medR2d / 2))
+      .filter((row) => {
+        if (row.registers < 100) return false;
+        const cohort = toolMedians.get(String(row.tool || "—").trim() || "—");
+        const benchmark = cohort?.r2d || medR2d;
+        return row.r2d < Math.max(5, benchmark / 2);
+      })
       .sort((a, b) => b.registers - a.registers)[0];
     if (leak) {
       signals.push({
@@ -9018,7 +9220,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         Icon: AlertTriangle,
         title: "Funnel leak",
         campaign: shortCampaignLabel(leak),
-        detail: `${leak.registers.toLocaleString()} ${t("regs but R2D only")} ${leak.r2d.toFixed(1)}% — ${t("check offer & brand")}`,
+        detail: `${leak.registers.toLocaleString()} ${t("regs but R2D only")} ${leak.r2d.toFixed(1)}% (${leak.tool || "—"} ${t("median")} ${(toolMedians.get(String(leak.tool || "—").trim() || "—")?.r2d || medR2d).toFixed(1)}%) — ${t("check offer & brand")}`,
       });
     }
     const dead = rows.filter((row) => row.uniqueClicks >= 300 && row.ftds === 0);
@@ -9031,13 +9233,61 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         detail: `${dead.reduce((s, row) => s + row.uniqueClicks, 0).toLocaleString()} ${t("unique clicks, 0 FTD — pause or rework")}`,
       });
     }
-    return signals.slice(0, 4);
-  }, [visibleCampaigns, t]);
+    return signals.slice(0, 5);
+  }, [visibleCampaigns, toolMedians, t]);
+
+  const [actionError, setActionError] = React.useState(null);
+
+  const toggleCampaignState = async (row) => {
+    if (row.campaignId == null) return;
+    const current = campaignStates[String(row.campaignId)] || "active";
+    const nextState = current === "disabled" ? "active" : "disabled";
+    setStateBusyId(row.campaignId);
+    setActionError(null);
+    try {
+      const response = await apiFetch(`/api/keitaro/campaigns/${row.campaignId}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state: nextState }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to update campaign state.");
+      setCampaignStates((prev) => ({ ...prev, [String(row.campaignId)]: nextState }));
+    } catch (error) {
+      setActionError(error.message || "Failed to update campaign state.");
+    } finally {
+      setStateBusyId(null);
+    }
+  };
+
+  const saveSpend = async () => {
+    if (!spendEditor) return;
+    const amount = Number(spendEditor.amount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      setSpendEditor((prev) => ({ ...prev, error: t("Enter a valid amount.") }));
+      return;
+    }
+    setSpendEditor((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const response = await apiFetch("/api/campaign-spend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaign: spendEditor.campaign, date: spendEditor.date, amount }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to save spend.");
+      setSpendEditor(null);
+      fetchSpend();
+    } catch (error) {
+      setSpendEditor((prev) => ({ ...prev, saving: false, error: error.message || "Failed to save spend." }));
+    }
+  };
 
   const exportCsv = () => {
     const header = [
       "Campaign", "UC", "Click2Reg %", "Registrations", "Click2Dep %", "R2D %",
       "FTD", "FTD2RED %", "Redeposit", "Revenue", "Redeposit revenue", "FTD revenue",
+      "Spend", "CPA", "ROI %",
     ].join(",");
     const lines = visibleCampaigns.map((row) =>
       [
@@ -9053,6 +9303,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         row.revenue.toFixed(2),
         row.redepositRevenue.toFixed(2),
         row.ftdRevenue.toFixed(2),
+        row.totalSpend.toFixed(2),
+        row.cpa > 0 ? row.cpa.toFixed(2) : "",
+        row.roi === null ? "" : row.roi.toFixed(1),
       ].join(",")
     );
     const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
@@ -9068,13 +9321,34 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const fmtInt = (value) => Number(value || 0).toLocaleString();
   const fmtPct = (value) => `${(Number(value) || 0).toFixed(1)}%`;
 
+  const profitTotal = totals.revenue - totals.spend;
   const kpiCards = [
-    { label: "Unique Clicks", value: fmtInt(totals.uniqueClicks), meta: "Deduplicated by campaign", icon: MousePointerClick },
-    { label: "Registrations", value: fmtInt(totals.registers), meta: "Sign-ups", icon: UserPlus },
-    { label: "FTD", value: fmtInt(totals.ftds), meta: "First-time deposits", icon: CreditCard },
-    { label: "Redeposit", value: fmtInt(totals.redeposits), meta: "Repeat deposits", icon: TrendingUp },
-    { label: "Revenue", value: formatCurrency(totals.revenue), meta: "FTD + Redeposit", icon: DollarSign, accent: true },
+    { label: "Unique Clicks", value: fmtInt(totals.uniqueClicks), meta: "Deduplicated by campaign", icon: MousePointerClick, delta: deltaFor("uniqueClicks") },
+    { label: "Registrations", value: fmtInt(totals.registers), meta: "Sign-ups", icon: UserPlus, delta: deltaFor("registers") },
+    { label: "FTD", value: fmtInt(totals.ftds), meta: "First-time deposits", icon: CreditCard, delta: deltaFor("ftds") },
+    { label: "Redeposit", value: fmtInt(totals.redeposits), meta: "Repeat deposits", icon: TrendingUp, delta: deltaFor("redeposits") },
+    { label: "Spend", value: formatCurrency(totals.spend), meta: "Keitaro cost + manual entries", icon: CreditCard, neutralDelta: true },
+    {
+      label: "Profit",
+      value: formatCurrency(profitTotal),
+      meta: totals.spend > 0 ? `ROI ${(((totals.revenue - totals.spend) / totals.spend) * 100).toFixed(0)}%` : "Revenue − Spend",
+      icon: DollarSign,
+      accent: profitTotal >= 0,
+      negative: profitTotal < 0,
+      delta: deltaFor("revenue"),
+    },
   ];
+  const renderDelta = (delta) => {
+    if (delta === null || delta === undefined) return null;
+    if (delta === Infinity) return <span className="kpi-delta is-up">▲ {t("new")}</span>;
+    const rounded = Math.round(delta * 10) / 10;
+    if (!Number.isFinite(rounded) || Math.abs(rounded) < 0.05) return <span className="kpi-delta">— 0%</span>;
+    return (
+      <span className={`kpi-delta${rounded > 0 ? " is-up" : " is-down"}`}>
+        {rounded > 0 ? "▲" : "▼"} {Math.abs(rounded).toFixed(1)}% {t("vs prev")}
+      </span>
+    );
+  };
 
   // Column format mirrors the team's Keitaro report layout.
   const CAMPAIGN_COLUMNS = [
@@ -9090,6 +9364,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     { key: "revenue", label: "Revenue" },
     { key: "redepositRevenue", label: "Redeposit (revenue)" },
     { key: "ftdRevenue", label: "FTD (revenue)" },
+    { key: "totalSpend", label: "Spend" },
+    { key: "cpa", label: "CPA" },
+    { key: "roi", label: "ROI" },
     { key: "ftdDelta", label: "Trend" },
   ];
 
@@ -9100,10 +9377,13 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         {kpiCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}`}>
+            <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}${stat.negative ? " card-negative" : ""}`}>
               <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
               <div className="card-value">{stat.value}</div>
-              <div className="card-meta">{t(stat.meta)}</div>
+              <div className="card-meta">
+                {t(stat.meta)}
+                {stat.neutralDelta ? null : renderDelta(stat.delta)}
+              </div>
             </div>
           );
         })}
@@ -9301,6 +9581,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                           <div className="tooltip-row"><span>{t("R2D")}: {d.y}%</span></div>
                           <div className="tooltip-row"><span>{t("Unique Clicks")}: {Number(d.z).toLocaleString()}</span></div>
                           <div className="tooltip-row"><span>FTD: {Number(d.ftds).toLocaleString()}</span></div>
+                          {d.cohortC2r != null ? (
+                            <div className="tooltip-row">
+                              <span>{d.tool} {t("cohort median")}: C2R {d.cohortC2r}% · R2D {d.cohortR2d}%</span>
+                            </div>
+                          ) : null}
                         </div>
                       );
                     }}
@@ -9362,7 +9647,24 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                 />
               </div>
             ) : null}
+            <div className="field">
+              <label>{t("Min. uniques")}</label>
+              <CountryDropdownPicker
+                value={minUniques}
+                onChange={(value) => setMinUniques(value || "0")}
+                options={[
+                  { value: "0", label: t("All traffic") },
+                  { value: "50", label: "≥ 50" },
+                  { value: "100", label: "≥ 100" },
+                  { value: "300", label: "≥ 300" },
+                  { value: "1000", label: "≥ 1000" },
+                ]}
+                placeholder={t("All traffic")}
+              />
+            </div>
           </div>
+
+          {actionError ? <p className="logs-error">{actionError}</p> : null}
 
           {campaignState.loading ? (
             <div className="empty-state">{t("Loading campaign stats…")}</div>
@@ -9371,7 +9673,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           ) : visibleCampaigns.length === 0 ? (
             <div className="empty-state">{t("No campaigns match this period or filter.")}</div>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap campaign-table-scroll">
               <table className="entries-table campaigns-table">
                 <thead>
                   <tr>
@@ -9393,13 +9695,18 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                 <tbody>
                   {visibleCampaigns.map((row) => {
                     const isOpen = expandedCampaign === row.campaign;
+                    const isPaused = row.campaignId != null && campaignStates[String(row.campaignId)] === "disabled";
                     return (
                       <React.Fragment key={row.campaign}>
-                        <tr className={isOpen ? "campaign-row-open" : ""}>
+                        <tr className={`${isOpen ? "campaign-row-open" : ""}${isPaused ? " campaign-row-paused" : ""}`}>
                           <td>
                             <div className="campaign-cell">
                               <span className="campaign-cell-name" title={row.campaign}>{row.campaign}</span>
                               <span className="campaign-cell-chips">
+                                {pinnedCampaigns.has(row.campaign) ? (
+                                  <span className="campaign-chip campaign-chip-pinned"><Star size={9} /> {t("pinned")}</span>
+                                ) : null}
+                                {isPaused ? <span className="campaign-chip campaign-chip-paused">{t("paused")}</span> : null}
                                 {row.tool ? (
                                   resolveBrandLogo(row.tool) ? <BrandMark value={row.tool} height={12} /> : <span className="campaign-chip">{row.tool}</span>
                                 ) : null}
@@ -9422,6 +9729,37 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                           <td className="campaign-dim">{formatCurrency(row.redepositRevenue)}</td>
                           <td className="campaign-dim">{formatCurrency(row.ftdRevenue)}</td>
                           <td>
+                            <span className="campaign-spend-cell">
+                              {row.totalSpend > 0 ? formatCurrency(row.totalSpend) : <span className="offer-muted">—</span>}
+                              <button
+                                type="button"
+                                className="icon-btn campaign-spend-edit"
+                                title={t("Enter spend")}
+                                onClick={() =>
+                                  setSpendEditor({
+                                    campaign: row.campaign,
+                                    date: new Date().toISOString().slice(0, 10),
+                                    amount: "",
+                                    saving: false,
+                                    error: null,
+                                  })
+                                }
+                              >
+                                <Pencil size={11} />
+                              </button>
+                            </span>
+                          </td>
+                          <td className="campaign-dim">{row.cpa > 0 ? formatCurrency(row.cpa) : "—"}</td>
+                          <td>
+                            {row.roi === null ? (
+                              <span className="offer-muted">—</span>
+                            ) : (
+                              <span className={`campaign-roi${row.roi >= 0 ? " is-up" : " is-down"}`}>
+                                {row.roi >= 0 ? "+" : ""}{row.roi.toFixed(0)}%
+                              </span>
+                            )}
+                          </td>
+                          <td>
                             <span className="campaign-trend">
                               <MiniSparkline values={row.spark} />
                               {row.spark.length >= 2 ? (
@@ -9434,16 +9772,50 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                             </span>
                           </td>
                           <td className="col-actions">
-                            {row.countryRows.length ? (
+                            <div className="campaign-row-actions">
+                              <button
+                                type="button"
+                                className={`icon-btn campaign-pin${pinnedCampaigns.has(row.campaign) ? " is-pinned" : ""}`}
+                                title={pinnedCampaigns.has(row.campaign) ? t("Unpin") : t("Pin to top")}
+                                onClick={() => togglePin(row.campaign)}
+                              >
+                                <Star size={13} />
+                              </button>
+                              {row.campaignId != null && campaignStates[String(row.campaignId)] ? (
+                                <button
+                                  type="button"
+                                  className="icon-btn"
+                                  disabled={stateBusyId === row.campaignId}
+                                  title={campaignStates[String(row.campaignId)] === "disabled" ? t("Resume campaign") : t("Pause campaign")}
+                                  onClick={() => toggleCampaignState(row)}
+                                >
+                                  {campaignStates[String(row.campaignId)] === "disabled" ? <Play size={13} /> : <Pause size={13} />}
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 className="icon-btn"
-                                title={t("GEO breakdown")}
-                                onClick={() => setExpandedCampaign(isOpen ? null : row.campaign)}
+                                title={t("Open in Tracking Links (edit offer)")}
+                                onClick={() => {
+                                  try {
+                                    sessionStorage.setItem("pending-edit-campaign", row.campaign);
+                                  } catch { /* ignore */ }
+                                  window.dispatchEvent(new CustomEvent("dash:navigate", { detail: { view: "tracking" } }));
+                                }}
                               >
-                                {isOpen ? <Minus size={13} /> : <Plus size={13} />}
+                                <Pencil size={13} />
                               </button>
-                            ) : null}
+                              {row.countryRows.length ? (
+                                <button
+                                  type="button"
+                                  className="icon-btn"
+                                  title={t("GEO breakdown")}
+                                  onClick={() => setExpandedCampaign(isOpen ? null : row.campaign)}
+                                >
+                                  {isOpen ? <Minus size={13} /> : <Plus size={13} />}
+                                </button>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                         {isOpen ? (
@@ -9480,7 +9852,19 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                     <td className="campaign-dim">{fmtPct(totals.ftds > 0 ? (totals.redeposits / totals.ftds) * 100 : 0)}</td>
                     <td>{fmtInt(totals.redeposits)}</td>
                     <td className="campaign-strong">{formatCurrency(totals.revenue)}</td>
-                    <td colSpan={3} />
+                    <td colSpan={2} />
+                    <td>{totals.spend > 0 ? formatCurrency(totals.spend) : "—"}</td>
+                    <td className="campaign-dim">{totals.spend > 0 && totals.ftds > 0 ? formatCurrency(totals.spend / totals.ftds) : "—"}</td>
+                    <td>
+                      {totals.spend > 0 ? (
+                        <span className={`campaign-roi${profitTotal >= 0 ? " is-up" : " is-down"}`}>
+                          {profitTotal >= 0 ? "+" : ""}{(((totals.revenue - totals.spend) / totals.spend) * 100).toFixed(0)}%
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td colSpan={2} />
                   </tr>
                 </tfoot>
               </table>
@@ -9488,6 +9872,69 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           )}
         </motion.div>
       </section>
+
+      <AnimatePresence>
+        {spendEditor ? (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSpendEditor(null)}
+          >
+            <motion.div
+              className="modal pixel-edit-modal campaign-spend-modal"
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-head">
+                <div>
+                  <p className="modal-kicker">{t("Enter spend")}</p>
+                  <h2 className="campaign-spend-modal-title">{spendEditor.campaign}</h2>
+                </div>
+                <button className="icon-btn" type="button" onClick={() => setSpendEditor(null)}>
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="field">
+                  <label>{t("Date")}</label>
+                  <input
+                    type="date"
+                    value={spendEditor.date}
+                    onChange={(e) => setSpendEditor((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label>{t("Amount (USD)")}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    autoFocus
+                    value={spendEditor.amount}
+                    onChange={(e) => setSpendEditor((prev) => ({ ...prev, amount: e.target.value }))}
+                    placeholder="0.00"
+                  />
+                  <p className="field-hint">{t("Overwrites the amount stored for this campaign on this date.")}</p>
+                </div>
+                {spendEditor.error ? (
+                  <div className="field field-span-2"><div className="api-status error">{spendEditor.error}</div></div>
+                ) : null}
+              </div>
+              <div className="modal-actions">
+                <button className="ghost" type="button" onClick={() => setSpendEditor(null)}>{t("Cancel")}</button>
+                <button className="action-pill" type="button" onClick={saveSpend} disabled={spendEditor.saving}>
+                  {spendEditor.saving ? t("Saving…") : t("Save spend")}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }
@@ -21310,6 +21757,17 @@ export default function App() {
       // ignore storage issues
     }
   }, [authUser]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    // Cross-section jumps (e.g. Campaigns row → Tracking Links edit modal).
+    const handleNavigate = (event) => {
+      const view = event?.detail?.view;
+      if (view) setActiveView(view);
+    };
+    window.addEventListener("dash:navigate", handleNavigate);
+    return () => window.removeEventListener("dash:navigate", handleNavigate);
+  }, []);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;

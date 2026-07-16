@@ -269,6 +269,15 @@ const initDb = async () => {
       details TEXT
     );`,
     `ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_agent TEXT;`,
+    `CREATE TABLE IF NOT EXISTS campaign_spend (
+      id SERIAL PRIMARY KEY,
+      campaign TEXT NOT NULL,
+      date TEXT NOT NULL,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      created_by TEXT,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (campaign, date)
+    );`,
     `CREATE TABLE IF NOT EXISTS campaigns (
       id SERIAL PRIMARY KEY,
       keitaro_id TEXT,
@@ -8769,7 +8778,7 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     ? ["campaign", "country", "region", "city"]
     : placementMode
       ? ["day", "campaign", "country", "sub_id_1"]
-      : ["day", "campaign", "country"];
+      : ["day", "campaign_id", "campaign", "country"];
   const report = await keitaroReportBuild({ from, to, timezone: tz, grouping, metrics: LIVE_STATS_METRICS });
   if (!report.ok) {
     return res.status(502).json({ error: report.error || "Keitaro report failed." });
@@ -8788,6 +8797,7 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
       date: r.day || to,
       buyer: parsed.buyer,
       campaign: r.campaign,
+      campaign_id: r.campaign_id ?? null,
       campaign_name: r.campaign,
       tool: parsed.tool || null,
       game: parsed.game || null,
@@ -8814,6 +8824,111 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     rows = rows.filter((r) => viewerOwnsRow(r, viewerBuyer));
   }
   res.json({ rows, range: { from, to }, source: "keitaro-live" });
+});
+
+// ── Manual campaign spend (fills the gap until costs live in Keitaro) ──
+// One row per campaign × day; buyers may only touch their own campaigns.
+app.get("/api/campaign-spend", async (req, res) => {
+  try {
+    const isoRe = /^\d{4}-\d{2}-\d{2}$/;
+    const clauses = [];
+    const params = [];
+    if (isoRe.test(String(req.query.from || ""))) {
+      params.push(String(req.query.from));
+      clauses.push(`date >= $${params.length}`);
+    }
+    if (isoRe.test(String(req.query.to || ""))) {
+      params.push(String(req.query.to));
+      clauses.push(`date <= $${params.length}`);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    let rows = await getRows(
+      `SELECT campaign, date, amount FROM campaign_spend ${where} ORDER BY date DESC LIMIT 20000`,
+      params
+    );
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    if (viewerBuyer) {
+      rows = rows.filter((row) => viewerOwnsRow({ campaign: row.campaign }, viewerBuyer));
+    }
+    return res.json(rows.map((row) => ({ ...row, amount: Number(row.amount) || 0 })));
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load spend." });
+  }
+});
+
+app.post("/api/campaign-spend", async (req, res) => {
+  try {
+    const campaign = String(req.body?.campaign || "").trim();
+    const date = String(req.body?.date || "").trim();
+    const amount = Number(req.body?.amount);
+    if (!campaign || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "Campaign and date (YYYY-MM-DD) are required." });
+    }
+    if (!Number.isFinite(amount) || amount < 0 || amount > 10000000) {
+      return res.status(400).json({ error: "Amount must be a non-negative number." });
+    }
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    if (viewerBuyer && !viewerOwnsRow({ campaign }, viewerBuyer)) {
+      return res.status(403).json({ error: "You can only enter spend for your own campaigns." });
+    }
+    await query(
+      `INSERT INTO campaign_spend (campaign, date, amount, created_by, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (campaign, date)
+       DO UPDATE SET amount = EXCLUDED.amount, created_by = EXCLUDED.created_by, updated_at = NOW()`,
+      [campaign.slice(0, 300), date, amount, req.user?.username || null]
+    );
+    return res.json({ ok: true, campaign, date, amount });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to save spend." });
+  }
+});
+
+// ── Campaign states + pause/resume straight from the dashboard ─────────
+const campaignStatesCache = { at: 0, data: null };
+app.get("/api/keitaro/campaign-states", async (req, res) => {
+  try {
+    if (!campaignStatesCache.data || Date.now() - campaignStatesCache.at > 60 * 1000) {
+      const result = await keitaroAdminFetch("/campaigns?limit=1000");
+      if (!result.ok) {
+        return res.status(502).json({ error: result.error || "Keitaro campaigns fetch failed." });
+      }
+      const list = Array.isArray(result.data) ? result.data : [];
+      campaignStatesCache.data = Object.fromEntries(
+        list.map((campaign) => [String(campaign.id), campaign.state || "active"])
+      );
+      campaignStatesCache.at = Date.now();
+    }
+    return res.json({ states: campaignStatesCache.data });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load campaign states." });
+  }
+});
+
+app.post("/api/keitaro/campaigns/:id/state", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid campaign id." });
+  const desired = String(req.body?.state || "").toLowerCase() === "disabled" ? "disabled" : "active";
+  try {
+    // Buyers may only touch campaigns whose name attributes to them.
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    if (viewerBuyer) {
+      const camp = await keitaroAdminFetch(`/campaigns/${id}`);
+      const name = camp.ok ? camp.data?.name : null;
+      if (!name || !viewerOwnsRow({ campaign: name }, viewerBuyer)) {
+        return res.status(403).json({ error: "You can only pause your own campaigns." });
+      }
+    }
+    const action = desired === "disabled" ? "disable" : "enable";
+    const result = await keitaroAdminFetch(`/campaigns/${id}/${action}`, { method: "POST" });
+    if (!result.ok) {
+      return res.status(502).json({ error: `Keitaro ${action} failed: ${result.error}` });
+    }
+    if (campaignStatesCache.data) campaignStatesCache.data[String(id)] = desired;
+    return res.json({ ok: true, id, state: desired });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to update campaign state." });
+  }
 });
 
 // The only Keitaro tracking/redirect domains a link may use — enforced

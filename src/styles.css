@@ -16632,3 +16632,51 @@ select option,
   color: var(--text);
   background: rgba(255, 255, 255, 0.02);
 }
+
+/* Campaigns 10/10: deltas, money columns, actions, sticky table */
+.kpi-delta { display: block; margin-top: 3px; font-size: 11px; color: var(--faint); }
+.kpi-delta.is-up { color: var(--green); }
+.kpi-delta.is-down { color: #ff8a7a; }
+
+.card-negative .card-value { color: #ff8a7a; }
+
+.campaign-roi { font-weight: 700; font-size: 12.5px; }
+.campaign-roi.is-up { color: var(--green); }
+.campaign-roi.is-down { color: #ff8a7a; }
+
+.campaign-spend-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.campaign-spend-edit { opacity: 0.35; }
+.campaigns-table tr:hover .campaign-spend-edit { opacity: 1; }
+
+.campaign-row-actions { display: inline-flex; align-items: center; gap: 4px; }
+.campaign-pin.is-pinned { color: var(--yellow); }
+.campaign-pin.is-pinned svg { fill: currentColor; }
+
+.campaign-chip-paused { color: #ff9357; border-color: rgba(255, 147, 87, 0.3); }
+.campaign-chip-pinned { color: var(--yellow); border-color: rgba(247, 198, 37, 0.3); }
+.campaign-row-paused td { opacity: 0.55; }
+.campaign-row-paused td.col-actions { opacity: 1; }
+
+.campaign-table-scroll { max-height: 74vh; overflow: auto; }
+.campaign-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #1d1f24;
+  box-shadow: 0 1px 0 var(--stroke);
+}
+.campaign-table-scroll tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: #1d1f24;
+}
+
+.campaign-spend-modal { max-width: 460px; }
+.campaign-spend-modal-title {
+  font-size: 15px;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
