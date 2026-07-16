@@ -21,6 +21,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
+  ZAxis,
+  ReferenceLine,
 } from "recharts";
 import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 import {
@@ -8806,9 +8808,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           redepositRevenue: 0,
           spend: 0,
           countries: new Map(),
+          dailyFtds: new Map(),
         });
       }
       const agg = map.get(name);
+      const day = String(row.date || "").trim();
+      if (day) agg.dailyFtds.set(day, (agg.dailyFtds.get(day) || 0) + sum(row.ftds));
       agg.uniqueClicks += sum(row.unique_clicks);
       agg.clicks += sum(row.clicks);
       agg.registers += sum(row.registers);
@@ -8831,14 +8836,26 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         c.revenue += sum(row.revenue);
       }
     });
-    return Array.from(map.values()).map((row) => ({
-      ...row,
-      click2reg: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
-      click2dep: row.uniqueClicks > 0 ? (row.ftds / row.uniqueClicks) * 100 : 0,
-      r2d: row.registers > 0 ? (row.ftds / row.registers) * 100 : 0,
-      ftd2red: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
-      countryRows: Array.from(row.countries.values()).sort((a, b) => b.ftds - a.ftds || b.clicks - a.clicks),
-    }));
+    return Array.from(map.values()).map((row) => {
+      const spark = Array.from(row.dailyFtds.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([, value]) => value);
+      const half = Math.floor(spark.length / 2);
+      const ftdDelta =
+        spark.length >= 2
+          ? spark.slice(half).reduce((s, v) => s + v, 0) - spark.slice(0, half).reduce((s, v) => s + v, 0)
+          : 0;
+      return {
+        ...row,
+        click2reg: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
+        click2dep: row.uniqueClicks > 0 ? (row.ftds / row.uniqueClicks) * 100 : 0,
+        r2d: row.registers > 0 ? (row.ftds / row.registers) * 100 : 0,
+        ftd2red: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
+        spark,
+        ftdDelta,
+        countryRows: Array.from(row.countries.values()).sort((a, b) => b.ftds - a.ftds || b.clicks - a.clicks),
+      };
+    });
   }, [scopedRows]);
 
   const buyerOptionsLocal = React.useMemo(
@@ -8937,6 +8954,116 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     [visibleCampaigns]
   );
 
+  const median = (values) => {
+    const sorted = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+    if (!sorted.length) return 0;
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  };
+
+  // Efficiency map: only campaigns with enough traffic to judge (≥50 uniques).
+  const scatterData = React.useMemo(
+    () =>
+      visibleCampaigns
+        .filter((row) => row.uniqueClicks >= 50)
+        .map((row) => ({
+          name: shortCampaignLabel(row),
+          x: Math.round(row.click2reg * 10) / 10,
+          y: Math.round(row.r2d * 10) / 10,
+          z: row.uniqueClicks,
+          ftds: row.ftds,
+        })),
+    [visibleCampaigns]
+  );
+  const scatterMedians = React.useMemo(
+    () => ({ x: median(scatterData.map((d) => d.x)), y: median(scatterData.map((d) => d.y)) }),
+    [scatterData]
+  );
+
+  // Rule-based reading of the table — the "what should I do" strip.
+  const actionSignals = React.useMemo(() => {
+    const rows = visibleCampaigns;
+    if (!rows.length) return [];
+    const judged = rows.filter((row) => row.uniqueClicks >= 50);
+    const medR2d = median(judged.map((row) => row.r2d));
+    const signals = [];
+    const winner = [...rows].sort((a, b) => b.ftds - a.ftds)[0];
+    if (winner && winner.ftds > 0) {
+      signals.push({
+        tone: "good",
+        Icon: TrendingUp,
+        title: "Scale",
+        campaign: shortCampaignLabel(winner),
+        detail: `${winner.ftds.toLocaleString()} FTD · R2D ${winner.r2d.toFixed(1)}% · ${formatCurrency(winner.revenue)}`,
+      });
+    }
+    const retention = rows
+      .filter((row) => row.ftds >= 10 && row.ftd2red >= 100)
+      .sort((a, b) => b.ftd2red - a.ftd2red)[0];
+    if (retention) {
+      signals.push({
+        tone: "good",
+        Icon: Trophy,
+        title: "Retention star",
+        campaign: shortCampaignLabel(retention),
+        detail: `${retention.redeposits.toLocaleString()} ${t("redeposits on")} ${retention.ftds.toLocaleString()} FTD (${retention.ftd2red.toFixed(0)}%)`,
+      });
+    }
+    const leak = rows
+      .filter((row) => row.registers >= 100 && row.r2d < Math.max(5, medR2d / 2))
+      .sort((a, b) => b.registers - a.registers)[0];
+    if (leak) {
+      signals.push({
+        tone: "warn",
+        Icon: AlertTriangle,
+        title: "Funnel leak",
+        campaign: shortCampaignLabel(leak),
+        detail: `${leak.registers.toLocaleString()} ${t("regs but R2D only")} ${leak.r2d.toFixed(1)}% — ${t("check offer & brand")}`,
+      });
+    }
+    const dead = rows.filter((row) => row.uniqueClicks >= 300 && row.ftds === 0);
+    if (dead.length) {
+      signals.push({
+        tone: "bad",
+        Icon: AlertTriangle,
+        title: "Dead traffic",
+        campaign: dead.length === 1 ? shortCampaignLabel(dead[0]) : `${dead.length} ${t("campaigns")}`,
+        detail: `${dead.reduce((s, row) => s + row.uniqueClicks, 0).toLocaleString()} ${t("unique clicks, 0 FTD — pause or rework")}`,
+      });
+    }
+    return signals.slice(0, 4);
+  }, [visibleCampaigns, t]);
+
+  const exportCsv = () => {
+    const header = [
+      "Campaign", "UC", "Click2Reg %", "Registrations", "Click2Dep %", "R2D %",
+      "FTD", "FTD2RED %", "Redeposit", "Revenue", "Redeposit revenue", "FTD revenue",
+    ].join(",");
+    const lines = visibleCampaigns.map((row) =>
+      [
+        `"${String(row.campaign).replace(/"/g, '""')}"`,
+        row.uniqueClicks,
+        row.click2reg.toFixed(1),
+        row.registers,
+        row.click2dep.toFixed(1),
+        row.r2d.toFixed(1),
+        row.ftds,
+        row.ftd2red.toFixed(1),
+        row.redeposits,
+        row.revenue.toFixed(2),
+        row.redepositRevenue.toFixed(2),
+        row.ftdRevenue.toFixed(2),
+      ].join(",")
+    );
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `keitaro-campaigns-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const toggleSort = (key) => setTableSort((prev) => toggleSortConfig(prev, key, "desc"));
   const fmtInt = (value) => Number(value || 0).toLocaleString();
   const fmtPct = (value) => `${(Number(value) || 0).toFixed(1)}%`;
@@ -8963,6 +9090,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     { key: "revenue", label: "Revenue" },
     { key: "redepositRevenue", label: "Redeposit (revenue)" },
     { key: "ftdRevenue", label: "FTD (revenue)" },
+    { key: "ftdDelta", label: "Trend" },
   ];
 
   return (
@@ -8980,6 +9108,24 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           );
         })}
       </section>
+
+      {actionSignals.length ? (
+        <section className="campaign-signals">
+          {actionSignals.map((signal) => {
+            const Icon = signal.Icon;
+            return (
+              <div key={signal.title} className={`campaign-signal tone-${signal.tone}`}>
+                <span className="campaign-signal-icon"><Icon size={15} /></span>
+                <div className="campaign-signal-body">
+                  <span className="campaign-signal-title">{t(signal.title)}</span>
+                  <span className="campaign-signal-campaign">{signal.campaign}</span>
+                  <span className="campaign-signal-detail">{signal.detail}</span>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
 
       <section className="panels campaign-charts">
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
@@ -9099,6 +9245,72 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
             </div>
           )}
         </motion.div>
+
+        <motion.div className="panel span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.16 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Efficiency Map")}</h3>
+              <p className="panel-subtitle">
+                {t("Each dot is a campaign (≥50 uniques); size = traffic. Right of the line: clicks convert to regs. Above it: regs deposit. Top-right = scale · bottom-right = fix offer · top-left = fix creatives · bottom-left = cut.")}
+              </p>
+            </div>
+          </div>
+          {scatterData.length < 2 ? (
+            <div className="empty-state">{t("Not enough campaigns with traffic to map yet.")}</div>
+          ) : (
+            <div className="chart chart-surface" style={{ height: 320 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 12, right: 24, bottom: 8, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis
+                    type="number"
+                    dataKey="x"
+                    name={t("Click2Reg")}
+                    unit="%"
+                    tick={{ fill: "#8b8f98", fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    label={{ value: `${t("Click2Reg")} %`, position: "insideBottom", offset: -4, fill: "#6b7079", fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="y"
+                    name={t("R2D")}
+                    unit="%"
+                    tick={{ fill: "#8b8f98", fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={false}
+                    label={{ value: `${t("R2D")} %`, angle: -90, position: "insideLeft", fill: "#6b7079", fontSize: 11 }}
+                  />
+                  <ZAxis type="number" dataKey="z" range={[70, 420]} name={t("Unique Clicks")} />
+                  <ReferenceLine x={scatterMedians.x} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+                  <ReferenceLine y={scatterMedians.y} stroke="rgba(255,255,255,0.18)" strokeDasharray="4 4" />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    itemStyle={tooltipItemStyle}
+                    labelStyle={tooltipLabelStyle}
+                    cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0]?.payload;
+                      if (!d) return null;
+                      return (
+                        <div className="chart-tooltip" style={tooltipStyle}>
+                          <p className="tooltip-label">{d.name}</p>
+                          <div className="tooltip-row"><span>{t("Click2Reg")}: {d.x}%</span></div>
+                          <div className="tooltip-row"><span>{t("R2D")}: {d.y}%</span></div>
+                          <div className="tooltip-row"><span>{t("Unique Clicks")}: {Number(d.z).toLocaleString()}</span></div>
+                          <div className="tooltip-row"><span>FTD: {Number(d.ftds).toLocaleString()}</span></div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter data={scatterData} fill={SERIES_COLORS.clicks} fillOpacity={0.75} stroke="#1b1d21" strokeWidth={1} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
       </section>
 
       <section className="panels panels-single">
@@ -9108,7 +9320,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               <h3 className="panel-title">{t("Keitaro Campaigns")}</h3>
               <p className="panel-subtitle">{t("One row per campaign in the tracker — expand a row for its GEO breakdown.")}</p>
             </div>
-            <span className="roles-count">{visibleCampaigns.length} {t("campaigns")}</span>
+            <div className="campaign-table-actions">
+              <span className="roles-count">{visibleCampaigns.length} {t("campaigns")}</span>
+              <button type="button" className="icon-btn" title={t("Export CSV")} onClick={exportCsv}>
+                <Download size={14} />
+              </button>
+            </div>
           </div>
 
           <div className="pixel-table-toolbar">
@@ -9204,6 +9421,18 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                           <td className="campaign-strong">{formatCurrency(row.revenue)}</td>
                           <td className="campaign-dim">{formatCurrency(row.redepositRevenue)}</td>
                           <td className="campaign-dim">{formatCurrency(row.ftdRevenue)}</td>
+                          <td>
+                            <span className="campaign-trend">
+                              <MiniSparkline values={row.spark} />
+                              {row.spark.length >= 2 ? (
+                                <span
+                                  className={`campaign-trend-delta${row.ftdDelta > 0 ? " is-up" : row.ftdDelta < 0 ? " is-down" : ""}`}
+                                >
+                                  {row.ftdDelta > 0 ? `▲${row.ftdDelta}` : row.ftdDelta < 0 ? `▼${Math.abs(row.ftdDelta)}` : "–"}
+                                </span>
+                              ) : null}
+                            </span>
+                          </td>
                           <td className="col-actions">
                             {row.countryRows.length ? (
                               <button
@@ -9239,6 +9468,21 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="campaign-totals-row">
+                    <td>{t("Total")} · {visibleCampaigns.length} {t("campaigns")}</td>
+                    <td>{fmtInt(totals.uniqueClicks)}</td>
+                    <td className="campaign-dim">{fmtPct(totals.uniqueClicks > 0 ? (totals.registers / totals.uniqueClicks) * 100 : 0)}</td>
+                    <td>{fmtInt(totals.registers)}</td>
+                    <td className="campaign-dim">{fmtPct(totals.uniqueClicks > 0 ? (totals.ftds / totals.uniqueClicks) * 100 : 0)}</td>
+                    <td className="campaign-dim">{fmtPct(totals.registers > 0 ? (totals.ftds / totals.registers) * 100 : 0)}</td>
+                    <td className="campaign-strong">{fmtInt(totals.ftds)}</td>
+                    <td className="campaign-dim">{fmtPct(totals.ftds > 0 ? (totals.redeposits / totals.ftds) * 100 : 0)}</td>
+                    <td>{fmtInt(totals.redeposits)}</td>
+                    <td className="campaign-strong">{formatCurrency(totals.revenue)}</td>
+                    <td colSpan={3} />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -17245,6 +17489,21 @@ const RoleChip = ({ role, label }) => (
     {label}
   </span>
 );
+
+// Tiny inline trend line for table rows — plain SVG, no axes, one hue.
+const MiniSparkline = ({ values, width = 84, height = 22, stroke = "#199e70" }) => {
+  if (!values || values.length < 2) return <span className="offer-muted">—</span>;
+  const max = Math.max(...values, 1);
+  const step = width / (values.length - 1);
+  const points = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v / max) * (height - 4)).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg width={width} height={height} className="mini-sparkline" aria-hidden="true">
+      <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+};
 
 // "Chrome · macOS" from a raw user-agent string — order matters (Edge/Opera
 // embed "Chrome", Chrome embeds "Safari").
