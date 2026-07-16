@@ -8833,9 +8833,10 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     });
     return Array.from(map.values()).map((row) => ({
       ...row,
-      c2r: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
+      click2reg: row.uniqueClicks > 0 ? (row.registers / row.uniqueClicks) * 100 : 0,
+      click2dep: row.uniqueClicks > 0 ? (row.ftds / row.uniqueClicks) * 100 : 0,
       r2d: row.registers > 0 ? (row.ftds / row.registers) * 100 : 0,
-      redepRate: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
+      ftd2red: row.ftds > 0 ? (row.redeposits / row.ftds) * 100 : 0,
       countryRows: Array.from(row.countries.values()).sort((a, b) => b.ftds - a.ftds || b.clicks - a.clicks),
     }));
   }, [scopedRows]);
@@ -8895,14 +8896,46 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       }
       const date = String(row.date || "").trim();
       if (!date) return;
-      if (!map.has(date)) map.set(date, { date, clicks: 0, registers: 0, ftds: 0 });
+      if (!map.has(date)) map.set(date, { date, clicks: 0, registers: 0, ftds: 0, redeposits: 0 });
       const current = map.get(date);
       current.clicks += sum(row.clicks);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
     });
     return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [scopedRows, campaignSearch, buyerFilterLocal]);
+
+  // Fixed series colors (validated for the dark surface, CVD-safe order) —
+  // the same entity keeps the same hue in every chart on this page.
+  const SERIES_COLORS = { clicks: "#3987e5", registers: "#9085e9", ftds: "#199e70", redeposits: "#c98500" };
+  const shortCampaignLabel = (row) => {
+    const bits = [row.buyer, row.game || row.tool, row.geo].filter(Boolean);
+    return bits.length >= 2 ? bits.join(" · ") : String(row.campaign).slice(0, 28);
+  };
+  // Top-10 slices for the comparison charts (they follow search + filters).
+  const topByFtd = React.useMemo(
+    () =>
+      [...visibleCampaigns]
+        .sort((a, b) => b.ftds - a.ftds)
+        .slice(0, 10)
+        .filter((row) => row.ftds > 0)
+        .map((row) => ({ name: shortCampaignLabel(row), ftds: row.ftds, redeposits: row.redeposits })),
+    [visibleCampaigns]
+  );
+  const topByRevenue = React.useMemo(
+    () =>
+      [...visibleCampaigns]
+        .sort((a, b) => b.revenue - a.revenue)
+        .slice(0, 10)
+        .filter((row) => row.revenue > 0)
+        .map((row) => ({
+          name: shortCampaignLabel(row),
+          ftdRevenue: Math.round(row.ftdRevenue * 100) / 100,
+          redepositRevenue: Math.round(row.redepositRevenue * 100) / 100,
+        })),
+    [visibleCampaigns]
+  );
 
   const toggleSort = (key) => setTableSort((prev) => toggleSortConfig(prev, key, "desc"));
   const fmtInt = (value) => Number(value || 0).toLocaleString();
@@ -8916,16 +8949,20 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     { label: "Revenue", value: formatCurrency(totals.revenue), meta: "FTD + Redeposit", icon: DollarSign, accent: true },
   ];
 
+  // Column format mirrors the team's Keitaro report layout.
   const CAMPAIGN_COLUMNS = [
     { key: "campaign", label: "Campaign" },
-    { key: "uniqueClicks", label: "Unique Clicks" },
-    { key: "clicks", label: "Clicks" },
+    { key: "uniqueClicks", label: "UC" },
+    { key: "click2reg", label: "Click2Reg" },
     { key: "registers", label: "Registrations" },
+    { key: "click2dep", label: "Click2Dep" },
+    { key: "r2d", label: "R2D" },
     { key: "ftds", label: "FTD" },
-    { key: "redeposits", label: "Redeposits" },
-    { key: "c2r", label: "C2R" },
-    { key: "r2d", label: "Reg2Dep" },
+    { key: "ftd2red", label: "FTD2RED" },
+    { key: "redeposits", label: "Redeposit" },
     { key: "revenue", label: "Revenue" },
+    { key: "redepositRevenue", label: "Redeposit (revenue)" },
+    { key: "ftdRevenue", label: "FTD (revenue)" },
   ];
 
   return (
@@ -8944,12 +8981,12 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         })}
       </section>
 
-      <section className="panels panels-single">
+      <section className="panels campaign-charts">
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Campaign Trend")}</h3>
-              <p className="panel-subtitle">{t("Daily clicks, registrations and FTDs across the selected campaigns.")}</p>
+              <h3 className="panel-title">{t("Daily Traffic")}</h3>
+              <p className="panel-subtitle">{t("Clicks per day across the selected campaigns.")}</p>
             </div>
             <div className="panel-actions">
               <PeriodSelect value={period} onChange={setPeriod} customRange={customRange} onCustomChange={onCustomChange} />
@@ -8962,28 +8999,102 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           ) : growthSeries.length === 0 ? (
             <div className="empty-state">{t("No Keitaro traffic in this period yet.")}</div>
           ) : (
-            <div className="chart chart-surface" style={{ height: 260 }}>
+            <div className="chart chart-surface" style={{ height: 220 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={growthSeries} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
+                <AreaChart data={growthSeries} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
                   <defs>
                     <linearGradient id="campClicksFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#64b8ff" stopOpacity={0.28} />
-                      <stop offset="100%" stopColor="#64b8ff" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="campFtdFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#36d07c" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#36d07c" stopOpacity={0.02} />
+                      <stop offset="0%" stopColor={SERIES_COLORS.clicks} stopOpacity={0.3} />
+                      <stop offset="100%" stopColor={SERIES_COLORS.clicks} stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                   <XAxis dataKey="date" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
-                  <YAxis yAxisId="clicks" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
-                  <YAxis yAxisId="conv" orientation="right" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
-                  <Area yAxisId="clicks" type="monotone" dataKey="clicks" name={t("Clicks")} stroke="#64b8ff" strokeWidth={2} fill="url(#campClicksFill)" />
-                  <Area yAxisId="conv" type="monotone" dataKey="registers" name={t("Registrations")} stroke="#a15bff" strokeWidth={2} fill="transparent" />
-                  <Area yAxisId="conv" type="monotone" dataKey="ftds" name={t("FTDs")} stroke="#36d07c" strokeWidth={2} fill="url(#campFtdFill)" />
+                  <Area type="monotone" dataKey="clicks" name={t("Clicks")} stroke={SERIES_COLORS.clicks} strokeWidth={2} fill="url(#campClicksFill)" />
                 </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.04 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Daily Conversions")}</h3>
+              <p className="panel-subtitle">{t("Registrations, FTDs and redeposits per day — one shared axis.")}</p>
+            </div>
+          </div>
+          {campaignState.loading || campaignState.error ? (
+            <div className="empty-state">{campaignState.error || t("Loading campaign stats…")}</div>
+          ) : growthSeries.length === 0 ? (
+            <div className="empty-state">{t("No Keitaro traffic in this period yet.")}</div>
+          ) : (
+            <div className="chart chart-surface" style={{ height: 220 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={growthSeries} margin={{ top: 8, right: 12, bottom: 0, left: -8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => String(v).slice(5)} />
+                  <YAxis tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#8b8f98" }} iconType="plainline" />
+                  <Line type="monotone" dataKey="registers" name={t("Registrations")} stroke={SERIES_COLORS.registers} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="ftds" name={t("FTDs")} stroke={SERIES_COLORS.ftds} strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="redeposits" name={t("Redeposits")} stroke={SERIES_COLORS.redeposits} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.08 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Top Campaigns by FTD")}</h3>
+              <p className="panel-subtitle">{t("Where the deposits actually come from — scale these.")}</p>
+            </div>
+          </div>
+          {topByFtd.length === 0 ? (
+            <div className="empty-state">{t("No FTDs in this period yet.")}</div>
+          ) : (
+            <div className="chart chart-surface" style={{ height: Math.max(200, topByFtd.length * 34 + 40) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topByFtd} layout="vertical" margin={{ top: 4, right: 44, bottom: 0, left: 8 }} barCategoryGap={6}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" width={170} tick={{ fill: "#a9adb7", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                  <Bar dataKey="ftds" name={t("FTDs")} fill={SERIES_COLORS.ftds} radius={[0, 4, 4, 0]} maxBarSize={18}>
+                    <LabelList dataKey="ftds" position="right" style={{ fill: "#a9adb7", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString()} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.12 }}>
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Revenue Composition")}</h3>
+              <p className="panel-subtitle">{t("FTD vs redeposit revenue — a big yellow share means players stay and redeposit.")}</p>
+            </div>
+          </div>
+          {topByRevenue.length === 0 ? (
+            <div className="empty-state">{t("No revenue in this period yet.")}</div>
+          ) : (
+            <div className="chart chart-surface" style={{ height: Math.max(200, topByRevenue.length * 34 + 60) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topByRevenue} layout="vertical" margin={{ top: 4, right: 16, bottom: 0, left: 8 }} barCategoryGap={6}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "#8b8f98", fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${Number(v).toLocaleString()}`} />
+                  <YAxis type="category" dataKey="name" width={170} tick={{ fill: "#a9adb7", fontSize: 11 }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} cursor={{ fill: "rgba(255,255,255,0.03)" }} formatter={(v) => formatCurrency(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: "#8b8f98" }} />
+                  <Bar dataKey="ftdRevenue" name={t("FTD revenue")} stackId="rev" fill={SERIES_COLORS.ftds} stroke="#1b1d21" strokeWidth={2} maxBarSize={18} />
+                  <Bar dataKey="redepositRevenue" name={t("Redeposit revenue")} stackId="rev" fill={SERIES_COLORS.redeposits} stroke="#1b1d21" strokeWidth={2} radius={[0, 4, 4, 0]} maxBarSize={18} />
+                </BarChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -9083,13 +9194,16 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                             </div>
                           </td>
                           <td>{fmtInt(row.uniqueClicks)}</td>
-                          <td className="campaign-dim">{fmtInt(row.clicks)}</td>
+                          <td className="campaign-dim">{fmtPct(row.click2reg)}</td>
                           <td>{fmtInt(row.registers)}</td>
-                          <td className="campaign-strong">{fmtInt(row.ftds)}</td>
-                          <td>{fmtInt(row.redeposits)}</td>
-                          <td className="campaign-dim">{fmtPct(row.c2r)}</td>
+                          <td className="campaign-dim">{fmtPct(row.click2dep)}</td>
                           <td className="campaign-dim">{fmtPct(row.r2d)}</td>
+                          <td className="campaign-strong">{fmtInt(row.ftds)}</td>
+                          <td className="campaign-dim">{fmtPct(row.ftd2red)}</td>
+                          <td>{fmtInt(row.redeposits)}</td>
                           <td className="campaign-strong">{formatCurrency(row.revenue)}</td>
+                          <td className="campaign-dim">{formatCurrency(row.redepositRevenue)}</td>
+                          <td className="campaign-dim">{formatCurrency(row.ftdRevenue)}</td>
                           <td className="col-actions">
                             {row.countryRows.length ? (
                               <button

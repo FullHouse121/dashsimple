@@ -800,6 +800,21 @@ export const translations = {
     Strong: "Güçlü",
     "Very strong": "Çok güçlü",
     // ── Campaigns (Keitaro-first) ──────────────────────────────────────
+    "Daily Traffic": "Günlük Trafik",
+    "Clicks per day across the selected campaigns.": "Seçili kampanyalarda günlük tıklamalar.",
+    "Daily Conversions": "Günlük Dönüşümler",
+    "Registrations, FTDs and redeposits per day — one shared axis.":
+      "Günlük kayıtlar, FTD'ler ve redepozitler — tek ortak eksen.",
+    "Top Campaigns by FTD": "FTD'ye Göre En İyi Kampanyalar",
+    "Where the deposits actually come from — scale these.":
+      "Depozitlerin gerçekte nereden geldiği — bunları ölçeklendirin.",
+    "Revenue Composition": "Gelir Bileşimi",
+    "FTD vs redeposit revenue — a big yellow share means players stay and redeposit.":
+      "FTD ve redepozit geliri — büyük sarı pay, oyuncuların kalıp tekrar yatırdığı anlamına gelir.",
+    "FTD revenue": "FTD geliri",
+    "Redeposit revenue": "Redepozit geliri",
+    "No FTDs in this period yet.": "Bu dönemde henüz FTD yok.",
+    "No revenue in this period yet.": "Bu dönemde henüz gelir yok.",
     "Unique Clicks": "Benzersiz Tıklamalar",
     "Campaign Trend": "Kampanya Trendi",
     "Daily clicks, registrations and FTDs across the selected campaigns.":
