@@ -367,7 +367,22 @@ const initDb = async () => {
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os_version TEXT;`,
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS os_icon TEXT;`,
     `ALTER TABLE device_stats ADD COLUMN IF NOT EXISTS device_model TEXT;`,
-    `DROP INDEX IF EXISTS idx_device_stats_key;`,
+    // Never DROP this index at boot: with several instances sharing the DB
+    // (Render + local dev), a drop window while another instance's sync runs
+    // kills every device upsert with 42P10 until the next clean boot.
+    // Instead, dedupe any strict duplicates first so the CREATE always works
+    // even on a dirty table. (If the column set ever changes, use a new
+    // versioned index name instead of dropping this one.)
+    `DELETE FROM device_stats a
+      USING device_stats b
+      WHERE a.id > b.id
+        AND a.date = b.date
+        AND a.device = b.device
+        AND a.os = b.os
+        AND a.os_version = b.os_version
+        AND a.device_model = b.device_model
+        AND a.buyer = b.buyer
+        AND a.country = b.country;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
       ON device_stats (date, device, os, os_version, device_model, buyer, country);`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
