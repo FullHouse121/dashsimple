@@ -16673,10 +16673,10 @@ select option,
   background: #1d1f24;
   box-shadow: 0 1px 0 var(--stroke);
 }
+/* tfoot is intentionally NOT sticky: Chrome unreliably repaints
+   bottom-stuck table cells (text shows through), even with separate
+   borders. Totals sit at the end of the scroll, where totals belong. */
 .campaign-table-scroll tfoot td {
-  position: sticky;
-  bottom: 0;
-  z-index: 3;
   background: #1d1f24;
 }
 
