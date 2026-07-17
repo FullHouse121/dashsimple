@@ -354,6 +354,34 @@ function CountryFlag({ value, size, className = "" }) {
   );
 }
 
+// Brand OS glyphs (Android robot / Apple mark). Falls back to the OS label
+// text for Windows/Linux/etc. so nothing is lost.
+const AndroidGlyph = ({ size = 15 }) => (
+  <svg viewBox="0 0 32 32" width={size} height={size} fill="#a4c639" aria-hidden="true">
+    <g>
+      <path d="M10.45.234l1.44 2.57C9.215 4.14 7.365 6.7 7.365 9.692h17.27c0-2.98-1.85-5.55-4.523-6.888l1.44-2.57s.103-.103-.103-.206c-.103-.103-.206.103-.206.103L19.7 2.702a9.35 9.35 0 0 0-3.804-.822 9.35 9.35 0 0 0-3.804.822l-1.54-2.57S10.45.03 10.346.03a.36.36 0 0 0 .103.206zM11.9 5.27c.4 0 .822.4.822.822s-.4.822-.822.822a.81.81 0 0 1-.822-.822.81.81 0 0 1 .822-.822zm8.224 0c.4 0 .822.4.822.822s-.4.822-.822.822a.81.81 0 0 1-.822-.822.81.81 0 0 1 .822-.822zM7.262 10.72v13.16c0 .617.822 1.542 1.44 1.542h2.056v4.523c0 1.13.822 2.056 1.85 2.056s1.85-.925 1.85-2.056V25.42h2.98v4.523c0 1.13.822 2.056 1.85 2.056s1.85-.925 1.85-2.056V25.42h2.056c.617 0 1.44-.822 1.44-1.542V10.72z" />
+      <path d="M4.383 10.412c1.028 0 1.85.925 1.85 2.056v7.813c0 1.13-.822 2.056-1.85 2.056s-1.85-.925-1.85-2.056v-7.813c0-1.13.822-2.056 1.85-2.056z" />
+      <path d="M27.617 10.412c1.028 0 1.85.925 1.85 2.056v7.813c0 1.13-.822 2.056-1.85 2.056s-1.85-.925-1.85-2.056v-7.813c0-1.13.822-2.056 1.85-2.056z" />
+    </g>
+  </svg>
+);
+const AppleGlyph = ({ size = 15 }) => (
+  <svg viewBox="0 0 842 1000" width={size * 0.84} height={size} fill="#e6e8ec" aria-hidden="true">
+    <path d="M824.66636 779.30363c-15.12299 34.93724-33.02368 67.09674-53.7638 96.66374-28.27076 40.3074-51.4182 68.2078-69.25717 83.7012-27.65347 25.4313-57.2822 38.4556-89.00964 39.1963-22.77708 0-50.24539-6.4813-82.21973-19.629-32.07926-13.0861-61.55985-19.5673-88.51583-19.5673-28.27075 0-58.59083 6.4812-91.02193 19.5673-32.48053 13.1477-58.64639 19.9994-78.65196 20.6784-30.42501 1.29623-60.75123-12.0985-91.02193-40.2457-19.32039-16.8514-43.48632-45.7394-72.43607-86.6641-31.060778-43.7024-56.597041-94.37983-76.602609-152.15586C10.740416 658.44309 0 598.01283 0 539.50845c0-67.01648 14.481044-124.8172 43.486336-173.25401C66.28194 327.34823 96.60818 296.6578 134.5638 274.1276c37.95566-22.53016 78.96676-34.01129 123.1321-34.74585 24.16591 0 55.85633 7.47508 95.23784 22.166 39.27042 14.74029 64.48571 22.21538 75.54091 22.21538 8.26518 0 36.27668-8.7405 83.7629-26.16587 44.90607-16.16001 82.80614-22.85118 113.85458-20.21546 84.13326 6.78992 147.34122 39.95559 189.37699 99.70686-75.24463 45.59122-112.46573 109.4473-111.72502 191.36456.67899 63.8067 23.82643 116.90384 69.31888 159.06309 20.61664 19.56727 43.64066 34.69027 69.2571 45.4307-5.55531 16.11062-11.41933 31.54225-17.65372 46.35662zM631.70926 20.0057c0 50.01141-18.27108 96.70693-54.6897 139.92782-43.94932 51.38118-97.10817 81.07162-154.75459 76.38659-.73454-5.99983-1.16045-12.31444-1.16045-18.95003 0-48.01091 20.9006-99.39207 58.01678-141.40314 18.53027-21.27094 42.09746-38.95744 70.67685-53.0663C578.3158 9.00229 605.2903 1.31621 630.65988 0c.74076 6.68575 1.04938 13.37191 1.04938 20.00505z" />
+  </svg>
+);
+// Map a Keitaro OS label to a brand glyph; null → caller shows the text.
+const osHasGlyph = (os) => {
+  const key = String(os || "").toLowerCase();
+  return key.includes("android") || /ios|iphone|ipad|ipod|mac|os x|watchos|tvos/.test(key);
+};
+function OsGlyph({ os, size = 15 }) {
+  const key = String(os || "").toLowerCase();
+  if (key.includes("android")) return <AndroidGlyph size={size} />;
+  if (/ios|iphone|ipad|ipod|mac|os x|watchos|tvos/.test(key)) return <AppleGlyph size={size} />;
+  return null;
+}
+
 function CountryDropdownPicker({
   value,
   onChange,
@@ -8699,8 +8727,13 @@ const LIVE_CLICKS_WINDOWS = [
   { value: "60", label: "Last hour" },
   { value: "180", label: "Last 3 hours" },
   { value: "720", label: "Last 12 hours" },
-  { value: "1440", label: "Today" },
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "this_week", label: "This week" },
+  { value: "this_month", label: "This month" },
+  { value: "previous_month", label: "Previous month" },
 ];
+const LIVE_CLICKS_IS_ROLLING = (value) => /^\d+$/.test(String(value));
 const LIVE_CLICKS_RENDER_CAP = 120;
 const liveClickSubIssues = (row) => {
   const issues = [];
@@ -8726,8 +8759,10 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   const fetchClicks = React.useCallback(async () => {
     try {
-      const limit = Number(windowMinutes) >= 180 ? 1000 : 600;
-      const response = await apiFetch(`/api/keitaro/clicks-live?minutes=${windowMinutes}&limit=${limit}`);
+      const rolling = LIVE_CLICKS_IS_ROLLING(windowMinutes);
+      const limit = rolling && Number(windowMinutes) < 180 ? 600 : 1000;
+      const query = rolling ? `minutes=${windowMinutes}` : `interval=${windowMinutes}`;
+      const response = await apiFetch(`/api/keitaro/clicks-live?${query}&limit=${limit}`);
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to load live clicks.");
@@ -8803,7 +8838,27 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   const newestClick = filteredRows[0] || null;
   const clickCount = filteredRows.length;
-  const perMinute = clickCount / Math.max(1, Number(windowMinutes));
+  const windowElapsedMinutes = (() => {
+    if (LIVE_CLICKS_IS_ROLLING(windowMinutes)) return Number(windowMinutes);
+    const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
+    if (!now) return 60;
+    const midnightMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    if (windowMinutes === "today") return Math.max(1, midnightMinutes);
+    if (windowMinutes === "yesterday") return 1440;
+    if (windowMinutes === "this_week") {
+      const weekday = (now.getUTCDay() + 6) % 7; // Monday = 0
+      return Math.max(1, weekday * 1440 + midnightMinutes);
+    }
+    if (windowMinutes === "this_month") {
+      return Math.max(1, (now.getUTCDate() - 1) * 1440 + midnightMinutes);
+    }
+    if (windowMinutes === "previous_month") {
+      const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).getUTCDate();
+      return days * 1440;
+    }
+    return 60;
+  })();
+  const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
   const uniqueCount = filteredRows.filter((row) => row.isUnique).length;
   const botCount = filteredRows.filter((row) => row.isBot).length;
   const proxyCount = filteredRows.filter((row) => row.isProxy).length;
@@ -8854,23 +8909,15 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   const healthCards = [
     {
-      label: "Last Click",
-      value: newestClick ? agoLabel(newestClick.datetime) : "—",
-      meta: newestClick ? `${newestClick.buyer || "?"} · ${newestClick.country || "?"}` : "No clicks in window",
-      tone: newestClick && trackerNowMs !== null && parseTrackerMs(newestClick.datetime) !== null
-        ? trackerNowMs - parseTrackerMs(newestClick.datetime) < 10 * 60 * 1000 ? "ok" : "warn"
-        : "bad",
-    },
-    {
       label: "Clicks",
       value: clickCount.toLocaleString(),
       meta: `${perMinute.toFixed(1)}/min in window`,
       tone: clickCount > 0 ? "ok" : "bad",
     },
     {
-      label: "Unique Rate",
-      value: pct(uniqueCount),
-      meta: `${uniqueCount.toLocaleString()} unique`,
+      label: "Unique Clicks",
+      value: uniqueCount.toLocaleString(),
+      meta: `${pct(uniqueCount)} of clicks unique`,
       tone: "none",
     },
     {
@@ -8949,7 +8996,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
             </div>
           </div>
 
-          <div className="pixel-table-toolbar">
+          <div className="pixel-table-toolbar live-clicks-toolbar">
             <div className="field registry-search-field">
               <label>Search</label>
               <div className="registry-search">
@@ -9070,13 +9117,26 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                               </button>
                             ) : null}
                           </td>
-                          <td title={`${row.country}${row.city ? ` · ${row.city}` : ""}${row.isp ? ` · ${row.isp}` : ""}`}>
-                            {row.country || "—"}
-                            {row.city ? <em className="live-click-dim"> · {row.city}</em> : null}
+                          <td
+                            className="live-click-geo"
+                            title={`${row.country}${row.city ? ` · ${row.city}` : ""}${row.isp ? ` · ${row.isp}` : ""}`}
+                          >
+                            <CountryFlag value={row.countryCode || row.country} size={15} />
+                            {row.city ? <em className="live-click-dim">{row.city}</em> : null}
+                            {!row.countryCode && !row.country && !row.city ? "—" : null}
                           </td>
-                          <td title={`${row.os} · ${row.browser} · ${row.deviceType}`}>
-                            {row.os || "—"}
-                            {row.browser ? <em className="live-click-dim"> · {row.browser}</em> : null}
+                          <td
+                            className="live-click-device"
+                            title={`${row.os} · ${row.browser} · ${row.deviceType}`}
+                          >
+                            {osHasGlyph(row.os) ? (
+                              <span className="live-click-os" title={row.os}>
+                                <OsGlyph os={row.os} size={15} />
+                              </span>
+                            ) : (
+                              <span>{row.os || "—"}</span>
+                            )}
+                            {row.browser ? <em className="live-click-dim">{row.browser}</em> : null}
                           </td>
                           {Array.from({ length: 11 }, (_, i) => {
                             const value = String(row.subs?.[i + 1] ?? "").trim();

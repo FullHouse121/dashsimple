@@ -8972,11 +8972,20 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
 const LIVE_CLICKS_SUB_COUNT = 11;
 const LIVE_CLICKS_COLUMNS = [
   "click_id", "sub_id", "external_id", "datetime", "campaign", "campaign_id",
-  "country", "city", "os", "browser", "device_type", "destination", "source",
-  "referrer", "is_unique_campaign", "is_bot", "is_using_proxy", "is_lead",
-  "is_sale", "offer", "stream", "ip", "isp",
+  "country", "country_code", "city", "os", "browser", "device_type",
+  "destination", "source", "referrer", "is_unique_campaign", "is_bot",
+  "is_using_proxy", "is_lead", "is_sale", "offer", "stream", "ip", "isp",
   ...Array.from({ length: LIVE_CLICKS_SUB_COUNT }, (_, i) => `sub_id_${i + 1}`),
 ];
+// Calendar windows resolved by Keitaro itself (no local date math beyond
+// previous_month, which the spec has no keyword for).
+const LIVE_CLICKS_INTERVALS = {
+  today: "today",
+  yesterday: "yesterday",
+  this_week: "first_day_of_this_week",
+  this_month: "first_day_of_this_month",
+  previous_month: null, // computed from/to below
+};
 const liveClicksCache = new Map(); // limit -> { at, rows, trackerNow }
 const trackerNowString = (timezone) => {
   try {
@@ -8991,13 +9000,36 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
   const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
   const timezone = resolveKeitaroTimezone();
+  const intervalKey = Object.prototype.hasOwnProperty.call(
+    LIVE_CLICKS_INTERVALS,
+    String(req.query.interval || "")
+  )
+    ? String(req.query.interval)
+    : null;
 
-  let cached = liveClicksCache.get(limit);
+  let range;
+  if (intervalKey === "previous_month") {
+    const now = trackerNowString(timezone); // YYYY-MM-DD HH:mm:ss in tracker tz
+    const year = Number(now.slice(0, 4));
+    const month = Number(now.slice(5, 7)); // 1-12
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const lastDay = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
+    const mm = String(prevMonth).padStart(2, "0");
+    range = { from: `${prevYear}-${mm}-01`, to: `${prevYear}-${mm}-${lastDay}`, timezone };
+  } else if (intervalKey) {
+    range = { interval: LIVE_CLICKS_INTERVALS[intervalKey], timezone };
+  } else {
+    range = { interval: "today", timezone };
+  }
+
+  const cacheKey = `${intervalKey || "rolling"}:${limit}`;
+  let cached = liveClicksCache.get(cacheKey);
   if (!cached || Date.now() - cached.at > 10 * 1000) {
     const result = await keitaroAdminFetch("/clicks/log", {
       method: "POST",
       body: JSON.stringify({
-        range: { interval: "today", timezone },
+        range,
         columns: LIVE_CLICKS_COLUMNS,
         sort: [{ name: "datetime", order: "DESC" }],
         limit,
@@ -9024,6 +9056,7 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
             campaignId: row.campaign_id ?? null,
             buyer: parseCampaignName(row.campaign).buyer || "",
             country: row.country || "",
+            countryCode: row.country_code || "",
             city: row.city || "",
             os: row.os || "",
             browser: row.browser || "",
@@ -9044,14 +9077,18 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
           };
         }),
       };
-      liveClicksCache.set(limit, cached);
+      liveClicksCache.set(cacheKey, cached);
     }
   }
 
-  // Rolling window in tracker time — datetimes compare as strings.
-  const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
-  const cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
-  let rows = cached.rows.filter((row) => !row.datetime || row.datetime >= cutoff);
+  let rows = cached.rows;
+  let cutoff = null;
+  if (!intervalKey) {
+    // Rolling window in tracker time — datetimes compare as strings.
+    const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
+    cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
+    rows = rows.filter((row) => !row.datetime || row.datetime >= cutoff);
+  }
 
   const viewerBuyer = await resolveViewerBuyer(req.user);
   if (viewerBuyer) {
@@ -9059,9 +9096,10 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
   }
   return res.json({
     rows,
-    window: { minutes, cutoff },
+    window: intervalKey ? { interval: intervalKey } : { minutes, cutoff },
     trackerNow: cached.trackerNow,
     timezone,
+    truncated: cached.rows.length >= limit,
   });
 });
 
