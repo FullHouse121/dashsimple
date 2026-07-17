@@ -7637,6 +7637,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       .slice(0, 8);
   }, [filteredEntries]);
   const leaderboardMaxFtds = buyerLeaderboard.reduce((max, row) => Math.max(max, row.ftds), 0);
+  const leaderboardTotalFtds = buyerLeaderboard.reduce((acc, row) => acc + row.ftds, 0);
 
   const volumeMax = Math.max(
     0,
@@ -8033,26 +8034,62 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           </div>
           {totals.clicks > 0 ? (
             <div className="stats-funnel">
-              {funnelStages.map((stage) => (
-                <div className="stats-funnel-stage" key={stage.key}>
-                  <div className="stats-funnel-meta">
-                    <span className="stats-funnel-label">{stage.label}</span>
-                    <span className="stats-funnel-value">{stage.value.toLocaleString()}</span>
-                    {stage.rate !== null ? (
-                      <span className="stats-funnel-rate">{fmtPercent(stage.rate)} of previous</span>
-                    ) : null}
+              {funnelStages.map((stage, idx) => (
+                <React.Fragment key={stage.key}>
+                  {idx > 0 ? (
+                    <div className="stats-funnel-step">
+                      <span
+                        className="stats-funnel-step-chip"
+                        style={{
+                          color: stage.color,
+                          borderColor: `${stage.color}45`,
+                          background: `${stage.color}14`,
+                        }}
+                      >
+                        ↓ {fmtPercent(stage.rate)}
+                      </span>
+                      <span className="stats-funnel-step-drop">
+                        −{Math.max(0, funnelStages[idx - 1].value - stage.value).toLocaleString()} dropped
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="stats-funnel-stage">
+                    <div className="stats-funnel-meta">
+                      <span
+                        className="stats-funnel-dot"
+                        style={{ background: stage.color, boxShadow: `0 0 8px ${stage.color}80` }}
+                      />
+                      <span className="stats-funnel-label">{stage.label}</span>
+                      <span className="stats-funnel-value">{stage.value.toLocaleString()}</span>
+                      {idx > 0 ? (
+                        <span className="stats-funnel-share">
+                          {fmtPercent(toPercent(stage.value, funnelStages[0].value))} of clicks
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="stats-funnel-track">
+                      <div
+                        className="stats-funnel-bar"
+                        style={{
+                          width: `${stage.width}%`,
+                          background: `linear-gradient(90deg, ${stage.color}f0, ${stage.color}55)`,
+                          boxShadow: `0 0 16px ${stage.color}2e`,
+                        }}
+                      />
+                    </div>
                   </div>
-                  <div className="stats-funnel-track">
-                    <div
-                      className="stats-funnel-bar"
-                      style={{
-                        width: `${stage.width}%`,
-                        background: `linear-gradient(90deg, ${stage.color}e0, ${stage.color}66)`,
-                      }}
-                    />
-                  </div>
-                </div>
+                </React.Fragment>
               ))}
+              <div className="stats-funnel-foot">
+                <span>Click → FTD</span>
+                <strong>{fmtPercent(toPercent(totals.ftds, totals.clicks))}</strong>
+                <span className="stats-funnel-foot-sep" aria-hidden="true" />
+                <span>Click → Reg</span>
+                <strong>{fmtPercent(toPercent(totals.registers, totals.clicks))}</strong>
+                <span className="stats-funnel-foot-push">
+                  EPC <strong>{fmtCost(safeDivide(totals.revenue, totals.clicks))}</strong>
+                </span>
+              </div>
             </div>
           ) : (
             <div className="empty-state">No traffic in this view.</div>
@@ -8073,29 +8110,49 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           </div>
           {buyerLeaderboard.length ? (
             <div className="stats-leaderboard">
-              {buyerLeaderboard.map((row, idx) => (
-                <div className="stats-leader-row" key={row.buyer}>
-                  <span className={`stats-leader-rank${idx === 0 ? " is-top" : ""}`}>{idx + 1}</span>
-                  <div className="stats-leader-main">
-                    <div className="stats-leader-top">
-                      <span className="stats-leader-name">{row.buyer}</span>
-                      <span className="stats-leader-ftds">{row.ftds.toLocaleString()} FTD</span>
+              <div className="stats-leader-grid stats-leader-head">
+                <span aria-hidden="true" />
+                <span className="stats-leader-head-name">Buyer</span>
+                <span>FTD</span>
+                <span className="is-optional">Regs</span>
+                <span className="is-optional">R2D</span>
+                <span>Revenue</span>
+              </div>
+              {buyerLeaderboard.map((row, idx) => {
+                const share =
+                  leaderboardTotalFtds > 0 ? (row.ftds / leaderboardTotalFtds) * 100 : 0;
+                const barWidth =
+                  leaderboardMaxFtds > 0
+                    ? Math.max(row.ftds > 0 ? 3 : 0, (row.ftds / leaderboardMaxFtds) * 100)
+                    : 0;
+                return (
+                  <div
+                    className={`stats-leader-grid stats-leader-row${idx < 3 ? ` is-rank-${idx + 1}` : ""}`}
+                    key={row.buyer}
+                  >
+                    <span className="stats-leader-rank">{idx + 1}</span>
+                    <div className="stats-leader-main">
+                      <div className="stats-leader-top">
+                        <span className="stats-leader-name">{row.buyer}</span>
+                        <span className="stats-leader-share">
+                          {share > 0 ? `${share.toFixed(1)}% of FTDs` : "—"}
+                        </span>
+                      </div>
+                      <div className="stats-leader-track">
+                        <i style={{ width: `${barWidth}%` }} />
+                      </div>
                     </div>
-                    <div className="stats-leader-track">
-                      <i
-                        style={{
-                          width: `${leaderboardMaxFtds > 0 ? Math.max(row.ftds > 0 ? 3 : 0, (row.ftds / leaderboardMaxFtds) * 100) : 0}%`,
-                        }}
-                      />
-                    </div>
+                    <span className="stats-leader-cell stats-leader-cell-ftd">
+                      {row.ftds.toLocaleString()}
+                    </span>
+                    <span className="stats-leader-cell is-optional">
+                      {row.registers.toLocaleString()}
+                    </span>
+                    <span className="stats-leader-cell is-optional">{fmtPercent(row.r2d)}</span>
+                    <span className="stats-leader-cell">{formatCurrency(row.revenue)}</span>
                   </div>
-                  <div className="stats-leader-stats">
-                    <span>{row.registers.toLocaleString()} regs</span>
-                    <span>{fmtPercent(row.r2d)} R2D</span>
-                    <span>{formatCurrency(row.revenue)}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state">No buyer data in this view.</div>
