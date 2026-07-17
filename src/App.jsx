@@ -7057,6 +7057,125 @@ function UtmBuilder() {
   );
 }
 
+// Flow-style funnel: one column per stage, joined by smooth tapering flows.
+// Bar heights use a cube-root scale so deep-funnel stages stay visible next to
+// click volume; the printed rates carry the exact numbers. Colors/gradients
+// follow the same series language as the Recharts panels.
+function StatsFunnelFlow({ stages }) {
+  const width = 640;
+  const height = 248;
+  const barW = 76;
+  const gap = stages.length > 1 ? (width - stages.length * barW) / (stages.length - 1) : 0;
+  const baseY = 196;
+  const maxH = 148;
+  const top = stages[0]?.value || 0;
+  const scaled = stages.map((stage) => ({
+    ...stage,
+    h: top > 0 && stage.value > 0 ? Math.max(8, Math.cbrt(stage.value / top) * maxH) : 0,
+  }));
+  const colX = (i) => i * (barW + gap);
+  const fmtRate = (value) =>
+    value === null || value === undefined || Number.isNaN(value) ? "—" : `${value.toFixed(2)}%`;
+
+  return (
+    <svg
+      className="stats-funnel-svg"
+      viewBox={`0 0 ${width} ${height}`}
+      role="img"
+      aria-label="Conversion funnel"
+    >
+      <defs>
+        {scaled.map((stage) => (
+          <linearGradient key={stage.key} id={`sf-bar-${stage.key}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={stage.color} stopOpacity={0.8} />
+            <stop offset="100%" stopColor={stage.color} stopOpacity={0.16} />
+          </linearGradient>
+        ))}
+        {scaled.slice(1).map((stage, idx) => (
+          <linearGradient key={stage.key} id={`sf-flow-${stage.key}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={scaled[idx].color} stopOpacity={0.14} />
+            <stop offset="100%" stopColor={stage.color} stopOpacity={0.09} />
+          </linearGradient>
+        ))}
+      </defs>
+
+      {scaled.slice(1).map((stage, idx) => {
+        const prev = scaled[idx];
+        const x1 = colX(idx) + barW;
+        const x2 = colX(idx + 1);
+        const y1 = baseY - prev.h;
+        const y2 = baseY - stage.h;
+        const c = (x2 - x1) / 2;
+        const flowPath = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2} L${x2},${baseY} L${x1},${baseY} Z`;
+        const edgePath = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
+        const midX = (x1 + x2) / 2;
+        const chipY = (y1 + y2) / 2 - 16;
+        const dropped = Math.max(0, prev.value - stage.value);
+        return (
+          <g key={`flow-${stage.key}`}>
+            <path d={flowPath} fill={`url(#sf-flow-${stage.key})`} />
+            <path d={edgePath} fill="none" stroke={stage.color} strokeOpacity={0.3} strokeWidth={1.4} />
+            <g>
+              <rect
+                x={midX - 27}
+                y={chipY - 10}
+                width={54}
+                height={20}
+                rx={10}
+                fill="rgba(20, 22, 26, 0.92)"
+                stroke="rgba(255, 255, 255, 0.09)"
+              />
+              <text className="sf-rate" x={midX} y={chipY + 4} textAnchor="middle">
+                {fmtRate(stage.rate)}
+              </text>
+            </g>
+            <text className="sf-drop" x={midX} y={chipY + 24} textAnchor="middle">
+              −{dropped.toLocaleString()}
+            </text>
+          </g>
+        );
+      })}
+
+      {scaled.map((stage, i) => (
+        <g key={stage.key} className="sf-stage">
+          <title>{`${stage.label}: ${stage.value.toLocaleString()} · ${fmtRate(stage.share)} of ${scaled[0].label.toLowerCase()}`}</title>
+          <rect
+            className="sf-bar"
+            x={colX(i)}
+            y={baseY - stage.h}
+            width={barW}
+            height={Math.max(stage.h, 0)}
+            rx={7}
+            fill={`url(#sf-bar-${stage.key})`}
+          />
+          {stage.h > 0 ? (
+            <rect
+              x={colX(i)}
+              y={baseY - stage.h}
+              width={barW}
+              height={2.4}
+              rx={1.2}
+              fill={stage.color}
+              opacity={0.9}
+            />
+          ) : null}
+          <text className="sf-value" x={colX(i) + barW / 2} y={baseY - stage.h - 10} textAnchor="middle">
+            {stage.value.toLocaleString()}
+          </text>
+          <text className="sf-label" x={colX(i) + barW / 2} y={baseY + 22} textAnchor="middle">
+            {stage.label}
+          </text>
+          <text className="sf-share" x={colX(i) + barW / 2} y={baseY + 38} textAnchor="middle">
+            {i === 0 ? "100%" : fmtRate(stage.share)}
+          </text>
+        </g>
+      ))}
+
+      <line x1="0" y1={baseY} x2={width} y2={baseY} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+    </svg>
+  );
+}
+
 function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
@@ -7598,23 +7717,27 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     }));
 
   // Conversion funnel stages (colors match the Campaigns page series colors so
-  // the same entity keeps the same hue everywhere). Cube-root width scaling
-  // keeps deep-funnel stages visible next to click volume.
+  // the same entity keeps the same hue everywhere). Uniques lead the funnel;
+  // falls back to raw clicks when the source has no uniques.
   const funnelStages = React.useMemo(() => {
+    const uniques = totals.uniqueClicks > 0 ? totals.uniqueClicks : totals.clicks;
     const stages = [
-      { key: "clicks", label: "Clicks", value: totals.clicks, color: "#3987e5" },
+      {
+        key: "uniques",
+        label: totals.uniqueClicks > 0 ? "Uniques" : "Clicks",
+        value: uniques,
+        color: "#3987e5",
+      },
       { key: "registers", label: "Registers", value: totals.registers, color: "#9085e9" },
       { key: "ftds", label: "FTDs", value: totals.ftds, color: "#199e70" },
       { key: "redeposits", label: "Redeposits", value: totals.redeposits, color: "#c98500" },
     ];
-    const top = stages[0].value || 0;
     return stages.map((stage, idx) => ({
       ...stage,
-      width:
-        top > 0 && stage.value > 0 ? Math.max(4, Math.cbrt(stage.value / top) * 100) : 0,
       rate: idx > 0 ? toPercent(stage.value, stages[idx - 1].value) : null,
+      share: toPercent(stage.value, stages[0].value),
     }));
-  }, [totals.clicks, totals.registers, totals.ftds, totals.redeposits]);
+  }, [totals.uniqueClicks, totals.clicks, totals.registers, totals.ftds, totals.redeposits]);
 
   // Per-buyer rollup of the filtered view, ranked by FTDs.
   const buyerLeaderboard = React.useMemo(() => {
@@ -8032,62 +8155,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
               <p className="panel-subtitle">Stage-to-stage conversion for the filtered view.</p>
             </div>
           </div>
-          {totals.clicks > 0 ? (
+          {funnelStages[0].value > 0 ? (
             <div className="stats-funnel">
-              {funnelStages.map((stage, idx) => (
-                <React.Fragment key={stage.key}>
-                  {idx > 0 ? (
-                    <div className="stats-funnel-step">
-                      <span
-                        className="stats-funnel-step-chip"
-                        style={{
-                          color: stage.color,
-                          borderColor: `${stage.color}45`,
-                          background: `${stage.color}14`,
-                        }}
-                      >
-                        ↓ {fmtPercent(stage.rate)}
-                      </span>
-                      <span className="stats-funnel-step-drop">
-                        −{Math.max(0, funnelStages[idx - 1].value - stage.value).toLocaleString()} dropped
-                      </span>
-                    </div>
-                  ) : null}
-                  <div className="stats-funnel-stage">
-                    <div className="stats-funnel-meta">
-                      <span
-                        className="stats-funnel-dot"
-                        style={{ background: stage.color, boxShadow: `0 0 8px ${stage.color}80` }}
-                      />
-                      <span className="stats-funnel-label">{stage.label}</span>
-                      <span className="stats-funnel-value">{stage.value.toLocaleString()}</span>
-                      {idx > 0 ? (
-                        <span className="stats-funnel-share">
-                          {fmtPercent(toPercent(stage.value, funnelStages[0].value))} of clicks
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="stats-funnel-track">
-                      <div
-                        className="stats-funnel-bar"
-                        style={{
-                          width: `${stage.width}%`,
-                          background: `linear-gradient(90deg, ${stage.color}f0, ${stage.color}55)`,
-                          boxShadow: `0 0 16px ${stage.color}2e`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                </React.Fragment>
-              ))}
+              <StatsFunnelFlow stages={funnelStages} />
               <div className="stats-funnel-foot">
-                <span>Click → FTD</span>
-                <strong>{fmtPercent(toPercent(totals.ftds, totals.clicks))}</strong>
+                <span>{funnelStages[0].label} → Reg</span>
+                <strong>{fmtPercent(funnelStages[1].share)}</strong>
                 <span className="stats-funnel-foot-sep" aria-hidden="true" />
-                <span>Click → Reg</span>
-                <strong>{fmtPercent(toPercent(totals.registers, totals.clicks))}</strong>
+                <span>{funnelStages[0].label} → FTD</span>
+                <strong>{fmtPercent(funnelStages[2].share)}</strong>
                 <span className="stats-funnel-foot-push">
-                  EPC <strong>{fmtCost(safeDivide(totals.revenue, totals.clicks))}</strong>
+                  EPC <strong>{fmtCost(safeDivide(totals.revenue, funnelStages[0].value))}</strong>
                 </span>
               </div>
             </div>
