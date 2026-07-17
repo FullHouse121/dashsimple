@@ -17246,7 +17246,8 @@ select option,
   vertical-align: middle;
 }
 .live-clicks-table tr:hover .live-click-copy { opacity: 1; }
-.live-click-flags { display: flex; gap: 4px; align-items: center; }
+.live-click-flags { white-space: nowrap; min-width: 64px; }
+.live-click-flags-inner { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
 .lc-flag {
   display: inline-flex;
   align-items: center;

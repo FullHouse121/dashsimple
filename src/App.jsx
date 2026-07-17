@@ -9152,11 +9152,17 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                             );
                           })}
                           <td className="live-click-flags">
-                            {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique (campaign)">U</span> : null}
-                            {row.isBot ? <span className="lc-flag lc-flag-bot" title="Bot">BOT</span> : null}
-                            {row.isProxy ? <span className="lc-flag lc-flag-proxy" title="Proxy/VPN">PXY</span> : null}
-                            {row.isLead ? <span className="lc-flag lc-flag-lead" title="Lead">L</span> : null}
-                            {row.isSale ? <span className="lc-flag lc-flag-sale" title="Sale">S</span> : null}
+                            {row.isUnique || row.isBot || row.isProxy || row.isLead || row.isSale ? (
+                              <span className="live-click-flags-inner">
+                                {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique (campaign)">U</span> : null}
+                                {row.isBot ? <span className="lc-flag lc-flag-bot" title="Bot">BOT</span> : null}
+                                {row.isProxy ? <span className="lc-flag lc-flag-proxy" title="Proxy/VPN">PXY</span> : null}
+                                {row.isLead ? <span className="lc-flag lc-flag-lead" title="Lead">L</span> : null}
+                                {row.isSale ? <span className="lc-flag lc-flag-sale" title="Sale">S</span> : null}
+                              </span>
+                            ) : (
+                              <span className="live-click-dim">—</span>
+                            )}
                           </td>
                           <td className="live-click-dest" title={row.destination}>
                             <span>{destinationHost(row.destination)}</span>
