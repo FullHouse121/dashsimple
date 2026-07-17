@@ -17461,61 +17461,114 @@ select option,
 }
 .live-clicks-table tbody tr:hover td:first-child { background: #1b1d22; }
 
-/* Dashboard "Last Clicks" preview — compact rows linking to the full view */
+/* Dashboard "Last Clicks" preview — richer activity-feed rows */
 .last-clicks-list {
   display: flex;
   flex-direction: column;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 .last-click-item {
   display: grid;
-  grid-template-columns: 62px 22px 88px minmax(0, 1fr) auto;
+  grid-template-columns: 84px 24px minmax(0, 1.4fr) minmax(0, 0.9fr) 140px auto;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  padding: 10px 8px;
+  padding: 11px 10px;
   border: 0;
+  border-left: 2px solid transparent;
   border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 8px;
   background: transparent;
   color: var(--text);
   text-align: left;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .last-click-item:last-child { border-bottom: 0; }
-.last-click-item:hover { background: rgba(255, 255, 255, 0.025); }
-.last-click-time {
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+.last-click-item:hover {
+  background: rgba(255, 255, 255, 0.028);
+  border-left-color: rgba(88, 177, 255, 0.5);
 }
-.last-click-geo { display: inline-flex; justify-content: center; }
-.last-click-geo .deus-flag { border-radius: 3px; }
-.last-click-buyer {
+.last-click-item.is-bot { opacity: 0.62; }
+
+.lc-col-time { display: flex; flex-direction: column; gap: 1px; }
+.lc-col-time b {
   font-size: 12.5px;
   font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.lc-col-time em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--faint);
+}
+.lc-col-flag { display: inline-flex; justify-content: center; }
+.lc-col-flag .deus-flag { border-radius: 3px; }
+
+.lc-col-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lc-main-top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lc-buyer {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.lc-geo {
+  font-size: 10.5px;
+  color: var(--faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.last-click-campaign {
-  font-size: 12px;
+.lc-camp {
+  font-size: 11.5px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lc-col-source { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lc-source-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.lc-source-val {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lc-col-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--faint);
   min-width: 0;
 }
-.last-click-tags {
+.lc-col-device span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lc-col-device svg { flex: 0 0 auto; display: block; }
+
+.lc-col-badges {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   justify-self: end;
 }
-.last-click-tags svg { display: block; }
 
-@media (max-width: 720px) {
-  .last-click-item { grid-template-columns: 54px 20px minmax(0, 1fr) auto; }
-  .last-click-campaign { display: none; }
+@media (max-width: 1000px) {
+  .last-click-item { grid-template-columns: 76px 22px minmax(0, 1fr) auto; }
+  .lc-col-source, .lc-col-device { display: none; }
 }

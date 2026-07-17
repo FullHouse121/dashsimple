@@ -1551,6 +1551,7 @@ function HomeDashboard({
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
   const [recentClicks, setRecentClicks] = React.useState([]);
+  const [recentClicksMeta, setRecentClicksMeta] = React.useState({ trackerNow: null, fetchedAt: null });
   const [recentClicksState, setRecentClicksState] = React.useState({ loading: true, error: null });
 
   // Small live-clicks preview for the dashboard — the newest handful of clicks,
@@ -1561,11 +1562,27 @@ function HomeDashboard({
       if (!response.ok) throw new Error("Failed to load recent clicks.");
       const data = await response.json();
       setRecentClicks((Array.isArray(data?.rows) ? data.rows : []).slice(0, 7));
+      setRecentClicksMeta({ trackerNow: data?.trackerNow || null, fetchedAt: Date.now() });
       setRecentClicksState({ loading: false, error: null });
     } catch (error) {
       setRecentClicksState({ loading: false, error: error.message || "Failed to load recent clicks." });
     }
   }, []);
+  const recentClickAgo = React.useCallback(
+    (datetime) => {
+      const base = recentClicksMeta.trackerNow
+        ? Date.parse(`${recentClicksMeta.trackerNow.replace(" ", "T")}Z`)
+        : null;
+      const ms = datetime ? Date.parse(`${String(datetime).replace(" ", "T")}Z`) : null;
+      if (base === null || ms === null) return "";
+      const drift = recentClicksMeta.fetchedAt ? Date.now() - recentClicksMeta.fetchedAt : 0;
+      const seconds = Math.max(0, Math.floor((base + drift - ms) / 1000));
+      if (seconds < 45) return "just now";
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      return `${Math.floor(seconds / 3600)}h ago`;
+    },
+    [recentClicksMeta]
+  );
 
   React.useEffect(() => {
     loadRecentClicks();
@@ -2487,24 +2504,46 @@ function HomeDashboard({
             <div className="last-clicks-list">
               {recentClicks.map((row) => {
                 const issues = liveClickSubIssues(row);
+                const source = String(row.subs?.[1] ?? "").trim();
+                const geoLine = [row.country, row.city].filter(Boolean).join(" · ");
                 return (
                   <button
                     type="button"
                     key={row.id}
-                    className="last-click-item"
+                    className={`last-click-item${row.isBot ? " is-bot" : ""}`}
                     onClick={() => onSeeLiveClicks?.()}
                     title={row.campaign}
                   >
-                    <span className="last-click-time">{String(row.datetime).slice(11) || "—"}</span>
-                    <span className="last-click-geo">
-                      <CountryFlag value={row.countryCode || row.country} size={14} />
+                    <span className="lc-col-time">
+                      <b>{String(row.datetime).slice(11) || "—"}</b>
+                      <em>{recentClickAgo(row.datetime)}</em>
                     </span>
-                    <span className="last-click-buyer">{row.buyer || "—"}</span>
-                    <span className="last-click-campaign">{row.campaign || "—"}</span>
-                    <span className="last-click-tags">
-                      {osHasGlyph(row.os) ? <OsGlyph os={row.os} size={13} /> : null}
-                      {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique">U</span> : null}
+                    <span className="lc-col-flag">
+                      <CountryFlag value={row.countryCode || row.country} size={16} />
+                    </span>
+                    <span className="lc-col-main">
+                      <span className="lc-main-top">
+                        <b className="lc-buyer">{row.buyer || "—"}</b>
+                        {geoLine ? <span className="lc-geo">{geoLine}</span> : null}
+                      </span>
+                      <span className="lc-camp">{row.campaign || "—"}</span>
+                    </span>
+                    <span className="lc-col-source">
+                      {source ? (
+                        <>
+                          <span className="lc-source-label">Source</span>
+                          <span className="lc-source-val">{source}</span>
+                        </>
+                      ) : null}
+                    </span>
+                    <span className="lc-col-device">
+                      {osHasGlyph(row.os) ? <OsGlyph os={row.os} size={14} /> : null}
+                      {row.browser ? <span>{row.browser}</span> : null}
+                    </span>
+                    <span className="lc-col-badges">
+                      {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique click">U</span> : null}
                       {row.isBot ? <span className="lc-flag lc-flag-bot" title="Bot">BOT</span> : null}
+                      {row.isProxy ? <span className="lc-flag lc-flag-proxy" title="Proxy/VPN">PXY</span> : null}
                       {issues.length ? (
                         <span className="lc-flag lc-flag-issue" title={`${issues.length} empty/unfilled sub(s)`}>
                           UTM
