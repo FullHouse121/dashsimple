@@ -8963,6 +8963,108 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
   res.json({ rows, range: { from, to }, source: "keitaro-live" });
 });
 
+// ── Live clicks straight from Keitaro's click log ─────────────────────
+// Near-real-time stream for the Live Clicks view: today's clicks newest-first,
+// cut to a rolling window. Keitaro has no push API, so clients poll; a short
+// shared cache keeps several polling browsers from hammering the tracker.
+// Note: in clicks/log responses the requested `click_id` column comes back as
+// `event_id` (a UUID); the click id used in destination URLs is `sub_id`.
+const LIVE_CLICKS_SUB_COUNT = 11;
+const LIVE_CLICKS_COLUMNS = [
+  "click_id", "sub_id", "external_id", "datetime", "campaign", "campaign_id",
+  "country", "city", "os", "browser", "device_type", "destination", "source",
+  "referrer", "is_unique_campaign", "is_bot", "is_using_proxy", "is_lead",
+  "is_sale", "offer", "stream", "ip", "isp",
+  ...Array.from({ length: LIVE_CLICKS_SUB_COUNT }, (_, i) => `sub_id_${i + 1}`),
+];
+const liveClicksCache = new Map(); // limit -> { at, rows, trackerNow }
+const trackerNowString = (timezone) => {
+  try {
+    return new Date().toLocaleString("sv-SE", { timeZone: timezone });
+  } catch {
+    return new Date().toISOString().slice(0, 19).replace("T", " ");
+  }
+};
+app.get("/api/keitaro/clicks-live", async (req, res) => {
+  const minutesRaw = Number.parseInt(String(req.query.minutes ?? ""), 10);
+  const minutes = Number.isFinite(minutesRaw) ? Math.min(Math.max(minutesRaw, 5), 1440) : 30;
+  const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
+  const timezone = resolveKeitaroTimezone();
+
+  let cached = liveClicksCache.get(limit);
+  if (!cached || Date.now() - cached.at > 10 * 1000) {
+    const result = await keitaroAdminFetch("/clicks/log", {
+      method: "POST",
+      body: JSON.stringify({
+        range: { interval: "today", timezone },
+        columns: LIVE_CLICKS_COLUMNS,
+        sort: [{ name: "datetime", order: "DESC" }],
+        limit,
+      }),
+    });
+    if (!result.ok) {
+      if (!cached) return res.status(502).json({ error: result.error || "Keitaro click log failed." });
+    } else {
+      const raw = Array.isArray(result.data?.rows) ? result.data.rows : [];
+      cached = {
+        at: Date.now(),
+        trackerNow: trackerNowString(timezone),
+        rows: raw.map((row) => {
+          const subs = {};
+          for (let i = 1; i <= LIVE_CLICKS_SUB_COUNT; i += 1) {
+            subs[i] = row[`sub_id_${i}`] ?? "";
+          }
+          return {
+            id: row.event_id || row.sub_id,
+            clickId: row.sub_id || "",
+            externalId: row.external_id || "",
+            datetime: row.datetime || "",
+            campaign: row.campaign || "",
+            campaignId: row.campaign_id ?? null,
+            buyer: parseCampaignName(row.campaign).buyer || "",
+            country: row.country || "",
+            city: row.city || "",
+            os: row.os || "",
+            browser: row.browser || "",
+            deviceType: row.device_type || "",
+            destination: row.destination || "",
+            source: row.source || "",
+            referrer: row.referrer || "",
+            isUnique: Boolean(row.is_unique_campaign),
+            isBot: Boolean(row.is_bot),
+            isProxy: Boolean(row.is_using_proxy),
+            isLead: Boolean(row.is_lead),
+            isSale: Boolean(row.is_sale),
+            offer: row.offer || "",
+            stream: row.stream || "",
+            ip: row.ip || "",
+            isp: row.isp || "",
+            subs,
+          };
+        }),
+      };
+      liveClicksCache.set(limit, cached);
+    }
+  }
+
+  // Rolling window in tracker time — datetimes compare as strings.
+  const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
+  const cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
+  let rows = cached.rows.filter((row) => !row.datetime || row.datetime >= cutoff);
+
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  if (viewerBuyer) {
+    rows = rows.filter((row) => viewerOwnsRow({ campaign: row.campaign, buyer: row.buyer }, viewerBuyer));
+  }
+  return res.json({
+    rows,
+    window: { minutes, cutoff },
+    trackerNow: cached.trackerNow,
+    timezone,
+  });
+});
+
 // ── Manual campaign spend (fills the gap until costs live in Keitaro) ──
 // One row per campaign × day; buyers may only touch their own campaigns.
 app.get("/api/campaign-spend", async (req, res) => {

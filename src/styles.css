@@ -17138,3 +17138,135 @@ select option,
   .stats-leader-grid { grid-template-columns: 26px minmax(0, 1fr) 58px 84px; }
   .stats-leader-grid .is-optional { display: none; }
 }
+
+/* Live Clicks: health cards, live indicator, stream table */
+.live-clicks-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.live-click-card.tone-ok .card-value { color: var(--green); }
+.live-click-card.tone-warn .card-value { color: var(--yellow); }
+.live-click-card.tone-bad .card-value { color: #ff8a7a; }
+
+.live-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--green);
+}
+.live-indicator i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 0 rgba(54, 208, 124, 0.5);
+  animation: live-pulse 1.8s ease-out infinite;
+}
+.live-indicator.is-paused { color: var(--muted); }
+.live-indicator.is-paused i {
+  background: var(--muted);
+  animation: none;
+  box-shadow: none;
+}
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(54, 208, 124, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(54, 208, 124, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(54, 208, 124, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-indicator i { animation: none; }
+}
+
+.live-clicks-issues-toggle { white-space: nowrap; }
+.live-clicks-issues-toggle.is-active {
+  color: var(--yellow);
+  border-color: rgba(247, 198, 37, 0.4);
+  background: rgba(247, 198, 37, 0.07);
+}
+
+.live-clicks-wrap { max-height: 66vh; overflow: auto; }
+.live-clicks-table { border-collapse: separate; border-spacing: 0; }
+.live-clicks-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #1d1f24;
+  box-shadow: 0 1px 0 var(--stroke);
+  white-space: nowrap;
+}
+.live-clicks-table td { white-space: nowrap; }
+
+.live-click-time span { font-variant-numeric: tabular-nums; }
+.live-click-time em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--faint);
+}
+.live-click-campaign {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.live-click-mono span,
+.live-click-dest span {
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+}
+.live-click-mono span {
+  display: inline-block;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.live-click-dim { font-style: normal; color: var(--faint); font-size: 11px; }
+.live-click-sub,
+.live-click-sub-bad {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+}
+.live-click-sub-bad {
+  color: var(--yellow);
+  background: rgba(247, 198, 37, 0.06);
+  box-shadow: inset 2px 0 0 rgba(247, 198, 37, 0.5);
+}
+.live-click-copy {
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  opacity: 0.3;
+  vertical-align: middle;
+}
+.live-clicks-table tr:hover .live-click-copy { opacity: 1; }
+.live-click-flags { display: flex; gap: 4px; align-items: center; }
+.lc-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+}
+.lc-flag-unique { color: var(--green); border-color: rgba(54, 208, 124, 0.35); }
+.lc-flag-bot { color: #ff8a7a; border-color: rgba(255, 138, 122, 0.4); }
+.lc-flag-proxy { color: #ff9357; border-color: rgba(255, 147, 87, 0.4); }
+.lc-flag-lead { color: #58b1ff; border-color: rgba(88, 177, 255, 0.4); }
+.lc-flag-sale { color: var(--green); border-color: rgba(54, 208, 124, 0.5); background: rgba(54, 208, 124, 0.1); }
+.live-click-row-bot td { opacity: 0.55; }
+.live-click-dest span {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+@media (max-width: 1100px) {
+  .live-clicks-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

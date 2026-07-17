@@ -32,6 +32,7 @@ import {
   Megaphone,
   Trophy,
   Filter,
+  Activity,
   Award,
   Medal,
   Crown,
@@ -300,6 +301,7 @@ const navItems = [
   { key: "tracking", label: "Tracking Links", icon: MousePointerClick },
   { key: "flows", label: "My Flows", icon: FlowsIcon },
   { key: "statistics", label: "Statistics", icon: BarChart3 },
+  { key: "live_clicks", label: "Live Clicks", icon: Activity },
   { key: "campaigns", label: "Campaigns", icon: Megaphone },
   { key: "placements", label: "Placement", icon: MousePointerClick },
   { key: "user_behavior", label: "User Behavior", icon: Users },
@@ -316,7 +318,7 @@ const navItems = [
 
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
-  { title: "Performance", items: ["statistics", "campaigns", "placements", "user_behavior", "devices"] },
+  { title: "Performance", items: ["statistics", "live_clicks", "campaigns", "placements", "user_behavior", "devices"] },
   { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts"] },
   { title: "Administration", items: ["roles", "logs"] },
   { title: "Account", items: ["profile"] },
@@ -8680,6 +8682,448 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
               </ResponsiveContainer>
             )}
           </div>
+        </motion.div>
+      </section>
+    </>
+  );
+}
+
+// Near-real-time click stream from Keitaro's click log. Polls every 15s
+// (pausable); the server caches briefly so several open dashboards don't
+// hammer the tracker. The point is flow debugging: watch clicks arrive with
+// their full UTM set (sub1–11) and destination, and catch broken tagging —
+// empty subs or unfilled {macro} literals — the minute a campaign launches.
+const LIVE_CLICKS_WINDOWS = [
+  { value: "15", label: "Last 15 min" },
+  { value: "30", label: "Last 30 min" },
+  { value: "60", label: "Last hour" },
+  { value: "180", label: "Last 3 hours" },
+  { value: "720", label: "Last 12 hours" },
+  { value: "1440", label: "Today" },
+];
+const LIVE_CLICKS_RENDER_CAP = 120;
+const liveClickSubIssues = (row) => {
+  const issues = [];
+  for (let i = 1; i <= 11; i += 1) {
+    const value = String(row.subs?.[i] ?? "").trim();
+    if (!value || /^\{.+\}$/.test(value)) issues.push(i);
+  }
+  return issues;
+};
+
+function LiveClicksDashboard({ authUser, viewerBuyer }) {
+  const isLeadership = isLeadershipRole(authUser?.role);
+  const [rows, setRows] = React.useState([]);
+  const [meta, setMeta] = React.useState(null); // { trackerNow, window, timezone }
+  const [clicksState, setClicksState] = React.useState({ loading: true, error: null });
+  const [windowMinutes, setWindowMinutes] = React.useState("30");
+  const [paused, setPaused] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [buyerFilter, setBuyerFilter] = React.useState("All");
+  const [issuesOnly, setIssuesOnly] = React.useState(false);
+  const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
+  const [, setClock] = React.useState(0); // 1s re-render so "Xs ago" ticks
+
+  const fetchClicks = React.useCallback(async () => {
+    try {
+      const limit = Number(windowMinutes) >= 180 ? 1000 : 600;
+      const response = await apiFetch(`/api/keitaro/clicks-live?minutes=${windowMinutes}&limit=${limit}`);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load live clicks.");
+      }
+      const data = await response.json();
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+      setMeta({ trackerNow: data?.trackerNow, window: data?.window, timezone: data?.timezone });
+      setLastFetchedAt(Date.now());
+      setClicksState({ loading: false, error: null });
+    } catch (error) {
+      setClicksState({ loading: false, error: error.message || "Failed to load live clicks." });
+    }
+  }, [windowMinutes]);
+
+  React.useEffect(() => {
+    setClicksState((prev) => ({ ...prev, loading: true }));
+    fetchClicks();
+  }, [fetchClicks]);
+
+  React.useEffect(() => {
+    if (paused) return undefined;
+    const id = setInterval(() => {
+      if (!document.hidden) fetchClicks();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [fetchClicks, paused]);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setClock((tick) => tick + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const buyers = React.useMemo(() => {
+    const set = new Set();
+    rows.forEach((row) => {
+      if (row.buyer) set.add(row.buyer);
+    });
+    return ["All", ...Array.from(set).sort()];
+  }, [rows]);
+
+  const filteredRows = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (isLeadership && !isAllSelection(buyerFilter) && row.buyer !== buyerFilter) return false;
+      if (issuesOnly && liveClickSubIssues(row).length === 0) return false;
+      if (!q) return true;
+      const subsText = Object.values(row.subs || {}).join(" ");
+      const hay = `${row.campaign} ${row.buyer} ${row.clickId} ${row.externalId} ${row.country} ${row.city} ${row.destination} ${subsText}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, search, buyerFilter, issuesOnly, isLeadership]);
+
+  const parseTrackerMs = (value) => {
+    if (!value) return null;
+    const parsed = Date.parse(`${String(value).replace(" ", "T")}Z`);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  // Tracker-time "now", advanced locally between polls so the ages tick.
+  const trackerNowMs = (() => {
+    const base = parseTrackerMs(meta?.trackerNow);
+    if (base === null) return null;
+    const drift = lastFetchedAt ? Date.now() - lastFetchedAt : 0;
+    return base + drift;
+  })();
+  const agoLabel = (datetime) => {
+    const ms = parseTrackerMs(datetime);
+    if (ms === null || trackerNowMs === null) return "—";
+    const seconds = Math.max(0, Math.floor((trackerNowMs - ms) / 1000));
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
+  };
+
+  const newestClick = filteredRows[0] || null;
+  const clickCount = filteredRows.length;
+  const perMinute = clickCount / Math.max(1, Number(windowMinutes));
+  const uniqueCount = filteredRows.filter((row) => row.isUnique).length;
+  const botCount = filteredRows.filter((row) => row.isBot).length;
+  const proxyCount = filteredRows.filter((row) => row.isProxy).length;
+  const issueRows = filteredRows.filter((row) => liveClickSubIssues(row).length > 0);
+  const pct = (num) => (clickCount > 0 ? `${((num / clickCount) * 100).toFixed(1)}%` : "—");
+
+  const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
+  const copyText = (value) => {
+    try {
+      navigator.clipboard?.writeText(String(value || ""));
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+  const destinationHost = (url) => {
+    try {
+      return new URL(url).host;
+    } catch {
+      return String(url || "").slice(0, 32) || "—";
+    }
+  };
+
+  const exportCsv = () => {
+    const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const header = [
+      "Time", "Buyer", "Campaign", "Click ID", "External ID", "Country", "City",
+      "OS", "Browser", ...Array.from({ length: 11 }, (_, i) => `Sub ${i + 1}`),
+      "Unique", "Bot", "Proxy", "Destination",
+    ].join(",");
+    const lines = filteredRows.map((row) =>
+      [
+        quote(row.datetime), quote(row.buyer), quote(row.campaign), quote(row.clickId),
+        quote(row.externalId), quote(row.country), quote(row.city), quote(row.os),
+        quote(row.browser),
+        ...Array.from({ length: 11 }, (_, i) => quote(row.subs?.[i + 1] ?? "")),
+        row.isUnique ? 1 : 0, row.isBot ? 1 : 0, row.isProxy ? 1 : 0,
+        quote(row.destination),
+      ].join(",")
+    );
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `live-clicks-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const healthCards = [
+    {
+      label: "Last Click",
+      value: newestClick ? agoLabel(newestClick.datetime) : "—",
+      meta: newestClick ? `${newestClick.buyer || "?"} · ${newestClick.country || "?"}` : "No clicks in window",
+      tone: newestClick && trackerNowMs !== null && parseTrackerMs(newestClick.datetime) !== null
+        ? trackerNowMs - parseTrackerMs(newestClick.datetime) < 10 * 60 * 1000 ? "ok" : "warn"
+        : "bad",
+    },
+    {
+      label: "Clicks",
+      value: clickCount.toLocaleString(),
+      meta: `${perMinute.toFixed(1)}/min in window`,
+      tone: clickCount > 0 ? "ok" : "bad",
+    },
+    {
+      label: "Unique Rate",
+      value: pct(uniqueCount),
+      meta: `${uniqueCount.toLocaleString()} unique`,
+      tone: "none",
+    },
+    {
+      label: "Bots / Proxy",
+      value: pct(botCount),
+      meta: `${botCount.toLocaleString()} bots · ${proxyCount.toLocaleString()} proxy`,
+      tone: botCount / Math.max(1, clickCount) > 0.2 ? "warn" : "none",
+    },
+    {
+      label: "UTM Issues",
+      value: issueRows.length.toLocaleString(),
+      meta: issueRows.length ? "empty or unfilled {macro} subs" : "all subs filled",
+      tone: issueRows.length ? "warn" : "ok",
+    },
+  ];
+
+  return (
+    <>
+      <section className="cards live-clicks-cards">
+        {healthCards.map((card, idx) => (
+          <motion.div
+            key={card.label}
+            className={`card live-click-card tone-${card.tone}`}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.06, duration: 0.45 }}
+          >
+            <div className="card-head">{card.label}</div>
+            <div className="card-value">{card.value}</div>
+            <div className="card-meta">{card.meta}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div className="stats-panel-title">
+              <span className="stats-icon-tile" style={{ "--tile-accent": "#58b1ff" }}>
+                <Activity size={15} strokeWidth={2.2} />
+              </span>
+              <div>
+                <h3 className="panel-title">Live Clicks</h3>
+                <p className="panel-subtitle">
+                  Raw clicks from Keitaro with full UTM routing — refreshed every 15s.
+                </p>
+              </div>
+            </div>
+            <div className="campaign-table-actions">
+              <span className={`live-indicator${paused ? " is-paused" : ""}`}>
+                <i aria-hidden="true" />
+                {paused ? "Paused" : "Live"}
+              </span>
+              <span className="roles-count">
+                {filteredRows.length} clicks · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
+              </span>
+              <button
+                type="button"
+                className="icon-btn"
+                title={paused ? "Resume auto-refresh" : "Pause auto-refresh"}
+                onClick={() => setPaused((prev) => !prev)}
+              >
+                {paused ? <Play size={14} /> : <Pause size={14} />}
+              </button>
+              <button type="button" className="icon-btn" title="Refresh now" onClick={fetchClicks}>
+                <RefreshCw size={14} />
+              </button>
+              <button type="button" className="icon-btn" title="Export CSV" onClick={exportCsv}>
+                <Download size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="pixel-table-toolbar">
+            <div className="field registry-search-field">
+              <label>Search</label>
+              <div className="registry-search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Campaign, click id, sub, destination…"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    className="registry-search-clear"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="field">
+              <label>Window</label>
+              <Select
+                value={windowMinutes}
+                onChange={(v) => setWindowMinutes(v)}
+                options={LIVE_CLICKS_WINDOWS}
+                placeholder="Window"
+              />
+            </div>
+            {isLeadership ? (
+              <div className="field">
+                <label>Buyer</label>
+                <Select
+                  value={buyerFilter}
+                  onChange={(v) => setBuyerFilter(v)}
+                  options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
+                  placeholder="Buyer"
+                  searchPlaceholder="Find buyer"
+                />
+              </div>
+            ) : null}
+            <div className="field live-clicks-issues-field">
+              <label>Filter</label>
+              <button
+                type="button"
+                className={`ghost live-clicks-issues-toggle${issuesOnly ? " is-active" : ""}`}
+                onClick={() => setIssuesOnly((prev) => !prev)}
+              >
+                UTM issues only
+              </button>
+            </div>
+          </div>
+
+          {clicksState.loading && !rows.length ? (
+            <div className="empty-state">Loading live clicks…</div>
+          ) : clicksState.error && !rows.length ? (
+            <div className="empty-state error">{clicksState.error}</div>
+          ) : !filteredRows.length ? (
+            <div className="empty-state">No clicks in this window.</div>
+          ) : (
+            <>
+              <div className="table-wrap live-clicks-wrap">
+                <table className="entries-table stats-table live-clicks-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Buyer</th>
+                      <th>Campaign</th>
+                      <th>Click ID</th>
+                      <th>External ID</th>
+                      <th>GEO</th>
+                      <th>Device</th>
+                      {Array.from({ length: 11 }, (_, i) => (
+                        <th key={`sub-${i + 1}`}>Sub {i + 1}</th>
+                      ))}
+                      <th>Flags</th>
+                      <th>Destination</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((row) => {
+                      const issues = liveClickSubIssues(row);
+                      return (
+                        <tr key={row.id} className={row.isBot ? "live-click-row-bot" : undefined}>
+                          <td className="live-click-time" title={row.datetime}>
+                            <span>{String(row.datetime).slice(11) || "—"}</span>
+                            <em>{agoLabel(row.datetime)}</em>
+                          </td>
+                          <td>{row.buyer || "—"}</td>
+                          <td className="live-click-campaign" title={row.campaign}>
+                            {row.campaign || "—"}
+                          </td>
+                          <td className="live-click-mono" title={row.clickId}>
+                            <span>{row.clickId || "—"}</span>
+                            {row.clickId ? (
+                              <button
+                                type="button"
+                                className="icon-btn live-click-copy"
+                                title="Copy click id"
+                                onClick={() => copyText(row.clickId)}
+                              >
+                                <Copy size={11} />
+                              </button>
+                            ) : null}
+                          </td>
+                          <td className="live-click-mono" title={row.externalId}>
+                            <span>{row.externalId || "—"}</span>
+                            {row.externalId ? (
+                              <button
+                                type="button"
+                                className="icon-btn live-click-copy"
+                                title="Copy external id"
+                                onClick={() => copyText(row.externalId)}
+                              >
+                                <Copy size={11} />
+                              </button>
+                            ) : null}
+                          </td>
+                          <td title={`${row.country}${row.city ? ` · ${row.city}` : ""}${row.isp ? ` · ${row.isp}` : ""}`}>
+                            {row.country || "—"}
+                            {row.city ? <em className="live-click-dim"> · {row.city}</em> : null}
+                          </td>
+                          <td title={`${row.os} · ${row.browser} · ${row.deviceType}`}>
+                            {row.os || "—"}
+                            {row.browser ? <em className="live-click-dim"> · {row.browser}</em> : null}
+                          </td>
+                          {Array.from({ length: 11 }, (_, i) => {
+                            const value = String(row.subs?.[i + 1] ?? "").trim();
+                            const bad = issues.includes(i + 1);
+                            return (
+                              <td
+                                key={`sub-${row.id}-${i + 1}`}
+                                className={bad ? "live-click-sub-bad" : "live-click-sub"}
+                                title={value || "empty"}
+                              >
+                                {value || "—"}
+                              </td>
+                            );
+                          })}
+                          <td className="live-click-flags">
+                            {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique (campaign)">U</span> : null}
+                            {row.isBot ? <span className="lc-flag lc-flag-bot" title="Bot">BOT</span> : null}
+                            {row.isProxy ? <span className="lc-flag lc-flag-proxy" title="Proxy/VPN">PXY</span> : null}
+                            {row.isLead ? <span className="lc-flag lc-flag-lead" title="Lead">L</span> : null}
+                            {row.isSale ? <span className="lc-flag lc-flag-sale" title="Sale">S</span> : null}
+                          </td>
+                          <td className="live-click-dest" title={row.destination}>
+                            <span>{destinationHost(row.destination)}</span>
+                            {row.destination ? (
+                              <button
+                                type="button"
+                                className="icon-btn live-click-copy"
+                                title="Copy destination URL"
+                                onClick={() => copyText(row.destination)}
+                              >
+                                <Copy size={11} />
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
+                <p className="field-hint" style={{ marginTop: 8 }}>
+                  Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length} clicks — narrow the window or search, or export the CSV for everything.
+                </p>
+              ) : null}
+            </>
+          )}
         </motion.div>
       </section>
     </>
@@ -22198,6 +22642,7 @@ export default function App() {
   const isTracking = activeView === "tracking";
   const isFlows = activeView === "flows";
   const isStats = activeView === "statistics";
+  const isLiveClicks = activeView === "live_clicks";
   const isCampaigns = activeView === "campaigns";
   const isPlacements = activeView === "placements";
   const isUserBehavior = activeView === "user_behavior";
@@ -22295,6 +22740,7 @@ export default function App() {
       tracking: "tracking_links",
       flows: "tracking_links",
       statistics: "statistics",
+      live_clicks: "statistics",
       campaigns: "campaigns",
       placements: "placements",
       user_behavior: "user_behavior",
@@ -23326,6 +23772,8 @@ export default function App() {
             viewerBuyer={effectiveViewerBuyer}
             filters={filters}
           />
+        ) : isLiveClicks ? (
+          <LiveClicksDashboard authUser={authUser} viewerBuyer={effectiveViewerBuyer} />
         ) : isCampaigns ? (
           <CampaignsDashboard
             period={period}
