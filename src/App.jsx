@@ -9105,9 +9105,6 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
               </span>
               <div>
                 <h3 className="panel-title">Live Clicks</h3>
-                <p className="panel-subtitle">
-                  Raw clicks from Keitaro with full UTM routing — refreshed every 15s.
-                </p>
               </div>
             </div>
             <div className="campaign-table-actions">
