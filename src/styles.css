@@ -16806,51 +16806,143 @@ select option,
   gap: 10px;
   padding: 8px 2px 2px;
 }
-.stats-funnel-surface { padding: 16px 14px 8px; }
-.stats-funnel-svg { width: 100%; height: auto; display: block; }
-.stats-funnel-svg text { font-family: inherit; }
-.stats-funnel-svg .sf-band {
-  fill: rgba(255, 255, 255, 0.016);
-  transition: fill 0.15s ease;
+.stats-funnel-surface { padding: 18px 16px 14px; }
+
+.sfv2 {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  padding: 2px;
 }
-.stats-funnel-svg:hover .sf-band { fill: rgba(255, 255, 255, 0.024); }
-.stats-funnel-svg .sf-note {
-  fill: var(--faint);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.sfv2-stage {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
 }
-.stats-funnel-svg .sf-value {
-  fill: var(--text);
-  font-size: 14.5px;
+.sfv2-count {
+  font-size: 17px;
   font-weight: 700;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
-.stats-funnel-svg .sf-label {
-  fill: var(--muted);
-  font-size: 10px;
+.sfv2-sub {
+  font-size: 10.5px;
+  color: var(--faint);
+  margin-top: -3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sfv2-track {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 156px;
+  margin-top: 5px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.012));
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+.sfv2-stage:hover .sfv2-track { border-color: rgba(255, 255, 255, 0.11); }
+/* quarter gridlines inside the track */
+.sfv2-track::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0 calc(25% - 1px),
+    rgba(255, 255, 255, 0.035) calc(25% - 1px) 25%
+  );
+  pointer-events: none;
+}
+.sfv2-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 4px 4px 11px 11px;
+  transition: height 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sfv2-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
 }
-.stats-funnel-svg .sf-share {
-  fill: var(--faint);
+.sfv2-label i { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+
+.sfv2-gap {
+  flex: 0 0 54px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+/* connecting hairline behind the chip */
+.sfv2-gap::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.sfv2-gap-drop {
+  position: relative;
+  z-index: 1;
   font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
   font-variant-numeric: tabular-nums;
+  background: rgba(16, 18, 22, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
-.stats-funnel-svg .sf-rate {
-  fill: #d7dae0;
-  font-size: 10.5px;
+
+/* step-conversion watermark centered in each track */
+.sfv2-pct {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 16px;
   font-weight: 700;
+  color: rgba(242, 242, 244, 0.92);
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
 }
-.stats-funnel-svg .sf-drop {
-  fill: var(--faint);
-  font-size: 9.5px;
-  font-variant-numeric: tabular-nums;
+.sfv2-pct em {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+  text-shadow: none;
 }
-.stats-funnel-svg .sf-stage .sf-bar { transition: opacity 0.15s ease; opacity: 0.95; }
-.stats-funnel-svg .sf-stage:hover .sf-bar { opacity: 1; }
 
 .stats-funnel-foot {
   display: flex;
