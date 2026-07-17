@@ -8749,7 +8749,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const [rows, setRows] = React.useState([]);
   const [meta, setMeta] = React.useState(null); // { trackerNow, window, timezone }
   const [clicksState, setClicksState] = React.useState({ loading: true, error: null });
-  const [windowMinutes, setWindowMinutes] = React.useState("30");
+  const [windowMinutes, setWindowMinutes] = React.useState("today");
   const [paused, setPaused] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
