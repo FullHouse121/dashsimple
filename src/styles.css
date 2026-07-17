@@ -17258,6 +17258,7 @@ select option,
   letter-spacing: 0.04em;
   border: 1px solid;
 }
+.lc-flag-issue { color: var(--yellow); border-color: rgba(247, 198, 37, 0.4); background: rgba(247, 198, 37, 0.08); }
 .lc-flag-unique { color: var(--green); border-color: rgba(54, 208, 124, 0.35); }
 .lc-flag-bot { color: #ff8a7a; border-color: rgba(255, 138, 122, 0.4); }
 .lc-flag-proxy { color: #ff9357; border-color: rgba(255, 147, 87, 0.4); }
@@ -17459,3 +17460,62 @@ select option,
   background: #1d1f24;
 }
 .live-clicks-table tbody tr:hover td:first-child { background: #1b1d22; }
+
+/* Dashboard "Last Clicks" preview — compact rows linking to the full view */
+.last-clicks-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+.last-click-item {
+  display: grid;
+  grid-template-columns: 62px 22px 88px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+.last-click-item:last-child { border-bottom: 0; }
+.last-click-item:hover { background: rgba(255, 255, 255, 0.025); }
+.last-click-time {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.last-click-geo { display: inline-flex; justify-content: center; }
+.last-click-geo .deus-flag { border-radius: 3px; }
+.last-click-buyer {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.last-click-campaign {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.last-click-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  justify-self: end;
+}
+.last-click-tags svg { display: block; }
+
+@media (max-width: 720px) {
+  .last-click-item { grid-template-columns: 54px 20px minmax(0, 1fr) auto; }
+  .last-click-campaign { display: none; }
+}

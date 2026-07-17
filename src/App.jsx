@@ -1535,6 +1535,7 @@ function HomeDashboard({
   onCustomChange,
   filters,
   onSeeGeos,
+  onSeeLiveClicks,
   authUser,
   viewerBuyer,
 }) {
@@ -1549,6 +1550,30 @@ function HomeDashboard({
   const [homeRows, setHomeRows] = React.useState([]);
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
+  const [recentClicks, setRecentClicks] = React.useState([]);
+  const [recentClicksState, setRecentClicksState] = React.useState({ loading: true, error: null });
+
+  // Small live-clicks preview for the dashboard — the newest handful of clicks,
+  // scoped to the viewer server-side, refreshed on the same 20s cadence.
+  const loadRecentClicks = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/keitaro/clicks-live?minutes=120&limit=60");
+      if (!response.ok) throw new Error("Failed to load recent clicks.");
+      const data = await response.json();
+      setRecentClicks((Array.isArray(data?.rows) ? data.rows : []).slice(0, 7));
+      setRecentClicksState({ loading: false, error: null });
+    } catch (error) {
+      setRecentClicksState({ loading: false, error: error.message || "Failed to load recent clicks." });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadRecentClicks();
+    const id = setInterval(() => {
+      if (!document.hidden) loadRecentClicks();
+    }, 20000);
+    return () => clearInterval(id);
+  }, [loadRecentClicks]);
 
   // Compute the active fetch range inline (periodRange itself is declared
   // further down, so we can't reference it here without a TDZ error). The
@@ -2423,6 +2448,74 @@ function HomeDashboard({
               })}
             </div>
           </div>
+        </motion.div>
+      </section>
+
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.34, duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div className="stats-panel-title">
+              <span className="stats-icon-tile" style={{ "--tile-accent": "#58b1ff" }}>
+                <Activity size={15} strokeWidth={2.2} />
+              </span>
+              <div>
+                <h3 className="panel-title">{t("Last Clicks")}</h3>
+                <p className="panel-subtitle">{t("Newest clicks from the tracker — live.")}</p>
+              </div>
+            </div>
+            <div className="campaign-table-actions">
+              <span className="live-indicator"><i aria-hidden="true" />{t("Live")}</span>
+              {onSeeLiveClicks ? (
+                <button type="button" className="ghost" onClick={() => onSeeLiveClicks()}>
+                  {t("View all")}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {recentClicksState.loading && !recentClicks.length ? (
+            <div className="empty-state">{t("Loading recent clicks…")}</div>
+          ) : recentClicksState.error && !recentClicks.length ? (
+            <div className="empty-state error">{recentClicksState.error}</div>
+          ) : !recentClicks.length ? (
+            <div className="empty-state">{t("No clicks in the last 2 hours.")}</div>
+          ) : (
+            <div className="last-clicks-list">
+              {recentClicks.map((row) => {
+                const issues = liveClickSubIssues(row);
+                return (
+                  <button
+                    type="button"
+                    key={row.id}
+                    className="last-click-item"
+                    onClick={() => onSeeLiveClicks?.()}
+                    title={row.campaign}
+                  >
+                    <span className="last-click-time">{String(row.datetime).slice(11) || "—"}</span>
+                    <span className="last-click-geo">
+                      <CountryFlag value={row.countryCode || row.country} size={14} />
+                    </span>
+                    <span className="last-click-buyer">{row.buyer || "—"}</span>
+                    <span className="last-click-campaign">{row.campaign || "—"}</span>
+                    <span className="last-click-tags">
+                      {osHasGlyph(row.os) ? <OsGlyph os={row.os} size={13} /> : null}
+                      {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique">U</span> : null}
+                      {row.isBot ? <span className="lc-flag lc-flag-bot" title="Bot">BOT</span> : null}
+                      {issues.length ? (
+                        <span className="lc-flag lc-flag-issue" title={`${issues.length} empty/unfilled sub(s)`}>
+                          UTM
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
       </section>
 
@@ -23991,6 +24084,7 @@ export default function App() {
             onCustomChange={handleCustomRange}
             filters={filters}
             onSeeGeos={() => setActiveView("geos")}
+            onSeeLiveClicks={() => setActiveView("live_clicks")}
             authUser={authUser}
             viewerBuyer={effectiveViewerBuyer}
           />
