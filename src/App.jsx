@@ -2502,6 +2502,14 @@ function HomeDashboard({
             <div className="empty-state">{t("No clicks in the last 2 hours.")}</div>
           ) : (
             <div className="last-clicks-list">
+              <div className="last-click-head">
+                <span>Time</span>
+                <span />
+                <span>Buyer · Campaign</span>
+                <span>Source</span>
+                <span>Device</span>
+                <span className="lc-head-status">Status</span>
+              </div>
               {recentClicks.map((row) => {
                 const issues = liveClickSubIssues(row);
                 const source = String(row.subs?.[1] ?? "").trim();
@@ -2528,17 +2536,12 @@ function HomeDashboard({
                       </span>
                       <span className="lc-camp">{row.campaign || "—"}</span>
                     </span>
-                    <span className="lc-col-source">
-                      {source ? (
-                        <>
-                          <span className="lc-source-label">Source</span>
-                          <span className="lc-source-val">{source}</span>
-                        </>
-                      ) : null}
+                    <span className="lc-col-source" title={source || "no source"}>
+                      {source || <span className="lc-dim-dash">—</span>}
                     </span>
                     <span className="lc-col-device">
                       {osHasGlyph(row.os) ? <OsGlyph os={row.os} size={14} /> : null}
-                      {row.browser ? <span>{row.browser}</span> : null}
+                      {row.browser ? <span>{row.browser}</span> : <span className="lc-dim-dash">—</span>}
                     </span>
                     <span className="lc-col-badges">
                       {row.isUnique ? <span className="lc-flag lc-flag-unique" title="Unique click">U</span> : null}
@@ -2548,6 +2551,9 @@ function HomeDashboard({
                         <span className="lc-flag lc-flag-issue" title={`${issues.length} empty/unfilled sub(s)`}>
                           UTM
                         </span>
+                      ) : null}
+                      {!row.isUnique && !row.isBot && !row.isProxy && !issues.length ? (
+                        <span className="lc-flag lc-flag-clean" title="Clean">OK</span>
                       ) : null}
                     </span>
                   </button>
