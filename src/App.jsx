@@ -7057,25 +7057,40 @@ function UtmBuilder() {
   );
 }
 
-// Flow-style funnel: one column per stage, joined by smooth tapering flows.
-// Bar heights use a cube-root scale so deep-funnel stages stay visible next to
-// click volume; the printed rates carry the exact numbers. Colors/gradients
-// follow the same series language as the Recharts panels.
+// Flow-style funnel: one continuous silhouette descending across the stages,
+// styled like the app's area charts (single green gradient fill + smooth top
+// edge) instead of disjoint colored columns. Stage identity stays via colored
+// cap segments; heights use a cube-root scale so deep stages remain visible —
+// the printed rates carry the exact numbers.
 function StatsFunnelFlow({ stages }) {
   const width = 640;
-  const height = 248;
-  const barW = 76;
+  const height = 252;
+  const barW = 92;
   const gap = stages.length > 1 ? (width - stages.length * barW) / (stages.length - 1) : 0;
-  const baseY = 196;
+  const baseY = 198;
   const maxH = 148;
   const top = stages[0]?.value || 0;
   const scaled = stages.map((stage) => ({
     ...stage,
-    h: top > 0 && stage.value > 0 ? Math.max(8, Math.cbrt(stage.value / top) * maxH) : 0,
+    h: top > 0 && stage.value > 0 ? Math.max(10, Math.cbrt(stage.value / top) * maxH) : 0,
   }));
   const colX = (i) => i * (barW + gap);
+  const topY = (i) => baseY - scaled[i].h;
   const fmtRate = (value) =>
     value === null || value === undefined || Number.isNaN(value) ? "—" : `${value.toFixed(2)}%`;
+
+  // One silhouette: flat over each stage, smooth taper between stages.
+  let edge = `M${colX(0)},${topY(0)}`;
+  scaled.forEach((stage, i) => {
+    edge += ` L${colX(i) + barW},${topY(i)}`;
+    if (i < scaled.length - 1) {
+      const x1 = colX(i) + barW;
+      const x2 = colX(i + 1);
+      const c = (x2 - x1) / 2;
+      edge += ` C${x1 + c},${topY(i)} ${x2 - c},${topY(i + 1)} ${x2},${topY(i + 1)}`;
+    }
+  });
+  const area = `${edge} L${width},${baseY} L0,${baseY} Z`;
 
   return (
     <svg
@@ -7085,51 +7100,82 @@ function StatsFunnelFlow({ stages }) {
       aria-label="Conversion funnel"
     >
       <defs>
-        {scaled.map((stage) => (
-          <linearGradient key={stage.key} id={`sf-bar-${stage.key}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={stage.color} stopOpacity={0.8} />
-            <stop offset="100%" stopColor={stage.color} stopOpacity={0.16} />
-          </linearGradient>
-        ))}
-        {scaled.slice(1).map((stage, idx) => (
-          <linearGradient key={stage.key} id={`sf-flow-${stage.key}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={scaled[idx].color} stopOpacity={0.14} />
-            <stop offset="100%" stopColor={stage.color} stopOpacity={0.09} />
-          </linearGradient>
-        ))}
+        <linearGradient id="sf-area-fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#36d07c" stopOpacity={0.3} />
+          <stop offset="60%" stopColor="#36d07c" stopOpacity={0.08} />
+          <stop offset="100%" stopColor="#36d07c" stopOpacity={0.01} />
+        </linearGradient>
+        <linearGradient id="sf-edge-stroke" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#3987e5" />
+          <stop offset="55%" stopColor="#36d07c" />
+          <stop offset="100%" stopColor="#36d07c" />
+        </linearGradient>
       </defs>
 
+      {/* stage bands + horizontal grid, the chart's background rhythm */}
+      {scaled.map((stage, i) => (
+        <rect
+          key={`band-${stage.key}`}
+          className="sf-band"
+          x={colX(i)}
+          y={baseY - maxH - 20}
+          width={barW}
+          height={maxH + 20}
+          rx={8}
+        />
+      ))}
+      {[0.33, 0.66, 1].map((f) => (
+        <line
+          key={f}
+          x1="0"
+          y1={baseY - maxH * f}
+          x2={width}
+          y2={baseY - maxH * f}
+          stroke="rgba(255,255,255,0.05)"
+          strokeDasharray="1 5"
+        />
+      ))}
+
+      <path d={area} fill="url(#sf-area-fill)" />
+      <path d={edge} fill="none" stroke="url(#sf-edge-stroke)" strokeWidth={2} strokeOpacity={0.85} />
+
+      {/* stage caps keep the series-color identity from the other charts */}
+      {scaled.map((stage, i) =>
+        stage.h > 0 ? (
+          <line
+            key={`cap-${stage.key}`}
+            x1={colX(i) + 2}
+            y1={topY(i)}
+            x2={colX(i) + barW - 2}
+            y2={topY(i)}
+            stroke={stage.color}
+            strokeWidth={2.6}
+            strokeLinecap="round"
+          />
+        ) : null
+      )}
+
       {scaled.slice(1).map((stage, idx) => {
-        const prev = scaled[idx];
         const x1 = colX(idx) + barW;
         const x2 = colX(idx + 1);
-        const y1 = baseY - prev.h;
-        const y2 = baseY - stage.h;
-        const c = (x2 - x1) / 2;
-        const flowPath = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2} L${x2},${baseY} L${x1},${baseY} Z`;
-        const edgePath = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
         const midX = (x1 + x2) / 2;
-        const chipY = (y1 + y2) / 2 - 16;
-        const dropped = Math.max(0, prev.value - stage.value);
+        const chipY = (topY(idx) + topY(idx + 1)) / 2 - 14;
+        const dropped = Math.max(0, scaled[idx].value - stage.value);
         return (
-          <g key={`flow-${stage.key}`}>
-            <path d={flowPath} fill={`url(#sf-flow-${stage.key})`} />
-            <path d={edgePath} fill="none" stroke={stage.color} strokeOpacity={0.3} strokeWidth={1.4} />
-            <g>
-              <rect
-                x={midX - 27}
-                y={chipY - 10}
-                width={54}
-                height={20}
-                rx={10}
-                fill="rgba(20, 22, 26, 0.92)"
-                stroke="rgba(255, 255, 255, 0.09)"
-              />
-              <text className="sf-rate" x={midX} y={chipY + 4} textAnchor="middle">
-                {fmtRate(stage.rate)}
-              </text>
-            </g>
-            <text className="sf-drop" x={midX} y={chipY + 24} textAnchor="middle">
+          <g key={`junction-${stage.key}`}>
+            <rect
+              x={midX - 27}
+              y={chipY - 10}
+              width={54}
+              height={20}
+              rx={10}
+              fill="rgba(18, 20, 24, 0.95)"
+              stroke="rgba(255, 255, 255, 0.1)"
+            />
+            <text className="sf-rate" x={midX} y={chipY + 4} textAnchor="middle">
+              {fmtRate(stage.rate)}
+            </text>
+            <text className="sf-drop" x={midX} y={chipY + 26} textAnchor="middle">
               −{dropped.toLocaleString()}
             </text>
           </g>
@@ -7137,41 +7183,21 @@ function StatsFunnelFlow({ stages }) {
       })}
 
       {scaled.map((stage, i) => (
-        <g key={stage.key} className="sf-stage">
+        <g key={`meta-${stage.key}`} className="sf-stage">
           <title>{`${stage.label}: ${stage.value.toLocaleString()} · ${fmtRate(stage.share)} of ${scaled[0].label.toLowerCase()}`}</title>
-          <rect
-            className="sf-bar"
-            x={colX(i)}
-            y={baseY - stage.h}
-            width={barW}
-            height={Math.max(stage.h, 0)}
-            rx={7}
-            fill={`url(#sf-bar-${stage.key})`}
-          />
-          {stage.h > 0 ? (
-            <rect
-              x={colX(i)}
-              y={baseY - stage.h}
-              width={barW}
-              height={2.4}
-              rx={1.2}
-              fill={stage.color}
-              opacity={0.9}
-            />
-          ) : null}
-          <text className="sf-value" x={colX(i) + barW / 2} y={baseY - stage.h - 10} textAnchor="middle">
+          <text className="sf-value" x={colX(i) + barW / 2} y={topY(i) - 12} textAnchor="middle">
             {stage.value.toLocaleString()}
           </text>
-          <text className="sf-label" x={colX(i) + barW / 2} y={baseY + 22} textAnchor="middle">
+          <text className="sf-label" x={colX(i) + barW / 2} y={baseY + 23} textAnchor="middle">
             {stage.label}
           </text>
-          <text className="sf-share" x={colX(i) + barW / 2} y={baseY + 38} textAnchor="middle">
+          <text className="sf-share" x={colX(i) + barW / 2} y={baseY + 40} textAnchor="middle">
             {i === 0 ? "100%" : fmtRate(stage.share)}
           </text>
         </g>
       ))}
 
-      <line x1="0" y1={baseY} x2={width} y2={baseY} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+      <line x1="0" y1={baseY} x2={width} y2={baseY} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
     </svg>
   );
 }
@@ -8157,7 +8183,9 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           </div>
           {funnelStages[0].value > 0 ? (
             <div className="stats-funnel">
-              <StatsFunnelFlow stages={funnelStages} />
+              <div className="chart-surface stats-funnel-surface">
+                <StatsFunnelFlow stages={funnelStages} />
+              </div>
               <div className="stats-funnel-foot">
                 <span>{funnelStages[0].label} → Reg</span>
                 <strong>{fmtPercent(funnelStages[1].share)}</strong>

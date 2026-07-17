@@ -16806,8 +16806,14 @@ select option,
   gap: 10px;
   padding: 8px 2px 2px;
 }
+.stats-funnel-surface { padding: 16px 14px 8px; }
 .stats-funnel-svg { width: 100%; height: auto; display: block; }
 .stats-funnel-svg text { font-family: inherit; }
+.stats-funnel-svg .sf-band {
+  fill: rgba(255, 255, 255, 0.016);
+  transition: fill 0.15s ease;
+}
+.stats-funnel-svg:hover .sf-band { fill: rgba(255, 255, 255, 0.024); }
 .stats-funnel-svg .sf-value {
   fill: var(--text);
   font-size: 14.5px;
