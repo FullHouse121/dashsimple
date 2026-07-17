@@ -1170,6 +1170,10 @@ const deletePixel = async (id) => query(`DELETE FROM pixels WHERE id = $1`, [id]
 const sqlNormalizeBuyerToken = (expression) =>
   `REGEXP_REPLACE(LOWER(COALESCE(${expression}, '')), '[^a-z0-9]+', '', 'g')`;
 
+// "Cost is being received" means cost within this many days — a lifetime sum
+// stays green forever after the first dollar, which hides dead tokens.
+const RECEIVED_SPEND_WINDOW_DAYS = 3;
+
 // One-pass spend aggregates for the integration list. media_stats is scanned
 // once per query (grouped by raw buyer/domain, then normalized over the few
 // distinct values) instead of twice per integration row with per-row regex.
@@ -1184,6 +1188,27 @@ const metaSpendCtesSql = `WITH buyer_spend AS (
          SELECT domain, SUM(spend) AS spend
          FROM media_stats
          WHERE TRIM(COALESCE(domain, '')) <> ''
+         GROUP BY domain
+       ) g
+       GROUP BY 1
+     ),
+     buyer_spend_recent AS (
+       SELECT ${sqlNormalizeBuyerToken("g.buyer")} AS tok, SUM(g.spend) AS spend
+       FROM (
+         SELECT buyer, SUM(spend) AS spend
+         FROM media_stats
+         WHERE date >= to_char(NOW() - INTERVAL '${RECEIVED_SPEND_WINDOW_DAYS} days', 'YYYY-MM-DD')
+         GROUP BY buyer
+       ) g
+       GROUP BY 1
+     ),
+     domain_spend_recent AS (
+       SELECT LOWER(TRIM(g.domain)) AS dom, SUM(g.spend) AS spend
+       FROM (
+         SELECT domain, SUM(spend) AS spend
+         FROM media_stats
+         WHERE TRIM(COALESCE(domain, '')) <> ''
+           AND date >= to_char(NOW() - INTERVAL '${RECEIVED_SPEND_WINDOW_DAYS} days', 'YYYY-MM-DD')
          GROUP BY domain
        ) g
        GROUP BY 1
@@ -1202,6 +1227,24 @@ const integrationReceivedSpendSql = (alias, pixelAlias = "p") => `COALESCE(
               (
                 SELECT SUM(bs.spend)
                 FROM buyer_spend bs
+                WHERE ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} <> ''
+                  AND bs.tok LIKE '%' || ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} || '%'
+              ),
+              0
+            )`;
+
+// Same lookup over the recent window only — the liveness signal.
+const integrationRecentReceivedSpendSql = (alias, pixelAlias = "p") => `COALESCE(
+              (
+                SELECT SUM(ds.spend)
+                FROM domain_spend_recent ds
+                WHERE TRIM(COALESCE(${pixelAlias}.flows, '')) <> ''
+                  AND ds.dom = ANY(string_to_array(
+                        REPLACE(LOWER(COALESCE(${pixelAlias}.flows, '')), ' ', ''), ','))
+              ),
+              (
+                SELECT SUM(bs.spend)
+                FROM buyer_spend_recent bs
                 WHERE ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} <> ''
                   AND bs.tok LIKE '%' || ${sqlNormalizeBuyerToken(`${alias}.buyer_name`)} || '%'
               ),
@@ -1230,6 +1273,7 @@ const selectMetaTokenIntegrations = async (limit) =>
             m.keitaro_integration_id,
             m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
+            ${integrationRecentReceivedSpendSql("m")} AS recent_received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             p.flows AS pixel_flow
@@ -1263,6 +1307,7 @@ const selectMetaTokenIntegrationsByOwner = async (ownerId, limit) =>
             m.keitaro_integration_id,
             m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
+            ${integrationRecentReceivedSpendSql("m")} AS recent_received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             p.flows AS pixel_flow
@@ -1297,6 +1342,7 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.keitaro_integration_id,
             m.keitaro_last_error,
             ${integrationReceivedSpendSql("m")} AS received_spend,
+            ${integrationRecentReceivedSpendSql("m")} AS recent_received_spend,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             p.flows AS pixel_flow
@@ -1321,7 +1367,8 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
             ranked.status,
             ranked.is_wired,
             ranked.owner_id,
-            ranked.received_spend
+            ranked.received_spend,
+            ranked.recent_received_spend
      FROM (
        SELECT m.id,
               m.account_number,
@@ -1333,7 +1380,8 @@ const selectLatestMetaTokenIntegrationForAccount = async (accountNumber, ownerId
              m.pixel_id,
              p.flows AS pixel_flow,
              m.created_at,
-             ${integrationReceivedSpendSql("m")} AS received_spend
+             ${integrationReceivedSpendSql("m")} AS received_spend,
+             ${integrationRecentReceivedSpendSql("m")} AS recent_received_spend
        FROM meta_token_integrations m
        LEFT JOIN pixels p ON p.id = m.pixel_id
        WHERE TRIM(COALESCE(m.account_number, '')) = $1
@@ -1479,7 +1527,7 @@ const syncAccountFromLatestIntegration = async ({ accountNumber, ownerId }) => {
     integrationId: latest.id,
     integrationStatus: latest.status,
     integrationIsWired: latest.is_wired,
-    receivedSpend: latest.received_spend,
+    receivedSpend: latest.recent_received_spend ?? latest.received_spend,
     metaToken: latest.meta_token,
     buyerName: latest.buyer_name,
   });
@@ -4456,6 +4504,12 @@ const normalizeAdsetMacro = (value) => {
   return raw;
 };
 
+// Cutoff (YYYY-MM-DD, matches media_stats.date) for "cost is being received".
+const receivedSpendCutoffDate = () =>
+  new Date(Date.now() - RECEIVED_SPEND_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
 const selectReceivedSpendForBuyer = async (buyerName) => {
   const normalized = normalizeBuyerName(buyerName);
   if (!normalized) return 0;
@@ -4463,10 +4517,15 @@ const selectReceivedSpendForBuyer = async (buyerName) => {
   // labels instead of every media_stats row.
   const row = await getRow(
     `SELECT COALESCE(SUM(g.spend), 0) AS spend
-     FROM (SELECT buyer, SUM(spend) AS spend FROM media_stats GROUP BY buyer) g
+     FROM (
+       SELECT buyer, SUM(spend) AS spend
+       FROM media_stats
+       WHERE date >= $2
+       GROUP BY buyer
+     ) g
      WHERE REGEXP_REPLACE(LOWER(COALESCE(g.buyer, '')), '[^a-z0-9]+', '', 'g')
            LIKE '%' || $1 || '%'`,
-    [normalized]
+    [normalized, receivedSpendCutoffDate()]
   );
   return Number(row?.spend || 0);
 };
@@ -4476,8 +4535,9 @@ const selectReceivedSpendForIntegration = async ({ buyerName, pixelId, pixelFlow
     const row = await getRow(
       `SELECT COALESCE(SUM(spend), 0) AS spend
        FROM media_stats
-       WHERE LOWER(TRIM(COALESCE(domain, ''))) = ANY($1)`,
-      [flowList]
+       WHERE LOWER(TRIM(COALESCE(domain, ''))) = ANY($1)
+         AND date >= $2`,
+      [flowList, receivedSpendCutoffDate()]
     );
     return Number(row?.spend || 0);
   };
@@ -7109,7 +7169,9 @@ app.post("/api/accounts", async (req, res) => {
 
     let resolvedAccountStatus = String(status || "Active").trim() || "Active";
     if (linkedIntegration) {
-      const linkedSpend = Number(linkedIntegration.received_spend || 0);
+      const linkedSpend = Number(
+        linkedIntegration.recent_received_spend ?? linkedIntegration.received_spend ?? 0
+      );
       const lifecycle = resolveIntegrationLifecycleStatus({
         status: linkedIntegration.status,
         isWired: linkedIntegration.is_wired,
@@ -7629,14 +7691,17 @@ app.get("/api/meta-tokens", async (req, res) => {
     : await selectMetaTokenIntegrationsByOwner(req.user.id, limit);
 
   // "Cost Received" reflects the real Keitaro cost integration: overlay the
-  // live cost per buyer (from report/build). Falls back to the SQL-derived
-  // value if Keitaro is unavailable.
+  // live cost per buyer (from report/build) — the YTD total plus the recent
+  // window that drives the liveness check. Falls back to the SQL-derived
+  // values if Keitaro is unavailable.
   try {
-    const costByBuyer = await getKeitaroCostByBuyer();
-    if (costByBuyer && costByBuyer.size) {
+    const { total, recent, recentOk } = await getKeitaroCostByBuyer();
+    if (total && total.size) {
       rows.forEach((row) => {
         const key = normalizeBuyerName(resolveBuyerAlias(row.buyer_name));
-        if (key) row.received_spend = costByBuyer.get(key) || 0;
+        if (!key) return;
+        row.received_spend = total.get(key) || 0;
+        if (recentOk) row.recent_received_spend = recent.get(key) || 0;
       });
     }
   } catch (error) {
@@ -8046,12 +8111,23 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     pixelId: integration.pixel_id,
     pixelFlow: integration.pixel_flow,
   });
-  if (!(receivedSpend > 0)) issues.push("No cost received for this integration yet");
+  if (!(receivedSpend > 0)) {
+    issues.push(`No cost received in the last ${RECEIVED_SPEND_WINDOW_DAYS} days`);
+  }
 
-  // Re-read Keitaro's own health for the linked cost integration, if any.
+  // Re-read Keitaro's own health for the linked cost integration. Records
+  // without a stored link get matched by ad account so the check never
+  // silently skips Keitaro.
   let keitaroId = integration.keitaro_integration_id || null;
   let keitaroLastError = integration.keitaro_last_error || null;
-  if (keitaroId) {
+  if (!keitaroId) {
+    const found = await findKeitaroFbIntegrationByAccount(integration.account_number);
+    if (found.ok && found.id) {
+      keitaroId = found.id;
+      keitaroLastError = found.lastError || null;
+      if (keitaroLastError) issues.push(`Keitaro: ${keitaroLastError}`);
+    }
+  } else {
     const sync = await syncMetaIntegrationFromKeitaro(keitaroId);
     if (sync.ok) {
       keitaroId = sync.id || keitaroId;
@@ -8347,6 +8423,26 @@ const syncMetaIntegrationFromKeitaro = async (keitaroId) => {
   if (!result.ok) return { ok: false, id: keitaroId, lastError: result.error };
   const { id, lastError } = readKeitaroFbIntegration(result);
   return { ok: true, id: id || keitaroId, lastError };
+};
+// Recover the Keitaro id for records created before the push feature (or whose
+// push failed): match Keitaro's FB integration list by ad account number.
+const findKeitaroFbIntegrationByAccount = async (adAccountId) => {
+  const account = String(adAccountId || "").trim();
+  if (!account) return { ok: false, id: null, lastError: null };
+  const result = await keitaroAdminFetch("/integrations/facebook");
+  if (!result.ok) return { ok: false, id: null, lastError: result.error };
+  const list = Array.isArray(result.data)
+    ? result.data
+    : Array.isArray(result.data?.integrations)
+      ? result.data.integrations
+      : [];
+  const match = list.find((item) => String(item?.ad_account_id || "").trim() === account);
+  if (!match) return { ok: true, id: null, lastError: null };
+  return {
+    ok: true,
+    id: match.id ?? null,
+    lastError: match.last_error || match.last_raw_error || null,
+  };
 };
 // Remove the Keitaro FB integration when we delete the local record. Best-effort.
 const deleteMetaIntegrationFromKeitaro = async (keitaroId) => {
@@ -8747,31 +8843,51 @@ const isIsoDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 const isoDay = (dt) => dt.toISOString().slice(0, 10);
 
 // Live Keitaro cost per buyer (the actual "cost integration" figure), keyed by
-// the normalized+aliased buyer name. Year-to-date, cached 5 min. Used to drive
-// the Meta Token $ section's "Cost Received".
-const keitaroCostCache = { at: 0, byBuyer: null };
+// the normalized+aliased buyer name. Two windows per refresh: year-to-date
+// (the total shown on the card) and the recent liveness window (drives the
+// "Receive Cost" check). Cached 5 min. `recentOk` is false when only the
+// recent report failed, so callers can keep their SQL-derived fallback.
+const keitaroCostCache = { at: 0, total: null, recent: null, recentOk: false };
 const getKeitaroCostByBuyer = async () => {
-  if (keitaroCostCache.byBuyer && Date.now() - keitaroCostCache.at < 5 * 60 * 1000) {
-    return keitaroCostCache.byBuyer;
+  if (keitaroCostCache.total && Date.now() - keitaroCostCache.at < 5 * 60 * 1000) {
+    return keitaroCostCache;
   }
   const today = new Date();
-  const report = await keitaroReportBuild({
-    from: `${today.getUTCFullYear()}-01-01`,
-    to: isoDay(today),
-    grouping: ["campaign"],
-    metrics: ["cost"],
-    limit: 5000,
-  });
-  if (!report.ok) return keitaroCostCache.byBuyer || new Map();
-  const map = new Map();
-  for (const r of report.rows) {
-    const key = normalizeBuyerName(parseCampaignName(r.campaign).buyer);
-    if (!key) continue;
-    map.set(key, (map.get(key) || 0) + (Number(r.cost) || 0));
+  const rowsToBuyerMap = (rows) => {
+    const map = new Map();
+    for (const r of rows) {
+      const key = normalizeBuyerName(parseCampaignName(r.campaign).buyer);
+      if (!key) continue;
+      map.set(key, (map.get(key) || 0) + (Number(r.cost) || 0));
+    }
+    return map;
+  };
+  const [totalReport, recentReport] = await Promise.all([
+    keitaroReportBuild({
+      from: `${today.getUTCFullYear()}-01-01`,
+      to: isoDay(today),
+      grouping: ["campaign"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+    keitaroReportBuild({
+      from: isoDay(new Date(today.getTime() - RECEIVED_SPEND_WINDOW_DAYS * 86400000)),
+      to: isoDay(today),
+      grouping: ["campaign"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+  ]);
+  if (!totalReport.ok) {
+    return keitaroCostCache.total
+      ? keitaroCostCache
+      : { total: new Map(), recent: new Map(), recentOk: false };
   }
   keitaroCostCache.at = Date.now();
-  keitaroCostCache.byBuyer = map;
-  return map;
+  keitaroCostCache.total = rowsToBuyerMap(totalReport.rows);
+  keitaroCostCache.recent = recentReport.ok ? rowsToBuyerMap(recentReport.rows) : new Map();
+  keitaroCostCache.recentOk = recentReport.ok;
+  return keitaroCostCache;
 };
 
 app.get("/api/keitaro/live-stats", async (req, res) => {
