@@ -7070,9 +7070,16 @@ function StatsFunnelFlow({ stages }) {
   const baseY = 198;
   const maxH = 148;
   const top = stages[0]?.value || 0;
+  // Log scale: the funnel spans orders of magnitude (26k clicks vs 400 FTDs),
+  // so a linear/root scale collapses into a cliff + flatline. Log keeps every
+  // stage tall and the descent readable; exact numbers are printed on chart.
+  const logTop = Math.log10(Math.max(top, 10));
   const scaled = stages.map((stage) => ({
     ...stage,
-    h: top > 0 && stage.value > 0 ? Math.max(10, Math.cbrt(stage.value / top) * maxH) : 0,
+    h:
+      top > 0 && stage.value > 0
+        ? Math.max(12, (Math.log10(Math.max(stage.value, 1.5)) / logTop) * maxH)
+        : 0,
   }));
   const colX = (i) => i * (barW + gap);
   const topY = (i) => baseY - scaled[i].h;
@@ -7101,15 +7108,18 @@ function StatsFunnelFlow({ stages }) {
     >
       <defs>
         <linearGradient id="sf-area-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#36d07c" stopOpacity={0.3} />
-          <stop offset="60%" stopColor="#36d07c" stopOpacity={0.08} />
-          <stop offset="100%" stopColor="#36d07c" stopOpacity={0.01} />
+          <stop offset="0%" stopColor="#36d07c" stopOpacity={0.34} />
+          <stop offset="55%" stopColor="#36d07c" stopOpacity={0.1} />
+          <stop offset="100%" stopColor="#36d07c" stopOpacity={0.015} />
         </linearGradient>
         <linearGradient id="sf-edge-stroke" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#3987e5" />
           <stop offset="55%" stopColor="#36d07c" />
           <stop offset="100%" stopColor="#36d07c" />
         </linearGradient>
+        <filter id="sf-edge-glow" x="-20%" y="-40%" width="140%" height="180%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
       </defs>
 
       {/* stage bands + horizontal grid, the chart's background rhythm */}
@@ -7137,7 +7147,18 @@ function StatsFunnelFlow({ stages }) {
       ))}
 
       <path d={area} fill="url(#sf-area-fill)" />
-      <path d={edge} fill="none" stroke="url(#sf-edge-stroke)" strokeWidth={2} strokeOpacity={0.85} />
+      <path
+        d={edge}
+        fill="none"
+        stroke="url(#sf-edge-stroke)"
+        strokeWidth={5}
+        strokeOpacity={0.28}
+        filter="url(#sf-edge-glow)"
+      />
+      <path d={edge} fill="none" stroke="url(#sf-edge-stroke)" strokeWidth={2} strokeOpacity={0.9} />
+      <text className="sf-note" x={width - 2} y={10} textAnchor="end">
+        log scale
+      </text>
 
       {/* stage caps keep the series-color identity from the other charts */}
       {scaled.map((stage, i) =>

@@ -16814,6 +16814,12 @@ select option,
   transition: fill 0.15s ease;
 }
 .stats-funnel-svg:hover .sf-band { fill: rgba(255, 255, 255, 0.024); }
+.stats-funnel-svg .sf-note {
+  fill: var(--faint);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .stats-funnel-svg .sf-value {
   fill: var(--text);
   font-size: 14.5px;
