@@ -17263,7 +17263,103 @@ select option,
 .lc-flag-proxy { color: #ff9357; border-color: rgba(255, 147, 87, 0.4); }
 .lc-flag-lead { color: #58b1ff; border-color: rgba(88, 177, 255, 0.4); }
 .lc-flag-sale { color: var(--green); border-color: rgba(54, 208, 124, 0.5); background: rgba(54, 208, 124, 0.1); }
+.live-click-row { cursor: pointer; }
+.live-click-row:hover td { background: rgba(255, 255, 255, 0.022); }
+.live-click-row.is-expanded > td {
+  background: rgba(88, 177, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(88, 177, 255, 0.18);
+}
+.live-click-row.is-expanded > td:first-child { background: #1a2230; }
 .live-click-row-bot td { opacity: 0.55; }
+
+/* Click detail (click-to-expand): every sub + ids + destination in full */
+.live-click-detail-row > td {
+  padding: 0 !important;
+  background: rgba(12, 14, 18, 0.6);
+  position: sticky;
+  left: 0;
+}
+.live-click-detail {
+  padding: 16px 18px 18px;
+  border-top: 1px solid rgba(88, 177, 255, 0.18);
+  /* pin content to the visible viewport width so it doesn't scroll off with
+     the wide table; the detail-row td spans all columns (~2500px). */
+  position: sticky;
+  left: 0;
+  width: calc(100vw - 320px);
+  max-width: 1180px;
+}
+.live-click-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.live-click-detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-click-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.live-click-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.lc-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.022);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.lc-detail-field.is-bad {
+  background: rgba(247, 198, 37, 0.06);
+  border-color: rgba(247, 198, 37, 0.3);
+}
+.lc-detail-wide { grid-column: 1 / -1; }
+.lc-detail-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.lc-detail-value {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.lc-detail-field.is-bad .lc-detail-value { color: var(--yellow); }
+.lc-detail-url {
+  font-family: "SF Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+}
+.lc-detail-copy {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  margin-left: 4px;
+  opacity: 0.4;
+}
+.lc-detail-field:hover .lc-detail-copy { opacity: 1; }
 .live-click-dest span {
   display: inline-block;
   max-width: 180px;

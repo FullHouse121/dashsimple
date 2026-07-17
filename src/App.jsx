@@ -8755,6 +8755,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [issuesOnly, setIssuesOnly] = React.useState(false);
   const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
+  const [expandedId, setExpandedId] = React.useState(null); // row inspected
   const [, setClock] = React.useState(0); // 1s re-render so "Xs ago" ticks
 
   const fetchClicks = React.useCallback(async () => {
@@ -9081,8 +9082,13 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                   <tbody>
                     {visibleRows.map((row) => {
                       const issues = liveClickSubIssues(row);
+                      const isExpanded = expandedId === row.id;
                       return (
-                        <tr key={row.id} className={row.isBot ? "live-click-row-bot" : undefined}>
+                        <React.Fragment key={row.id}>
+                        <tr
+                          className={`live-click-row${row.isBot ? " live-click-row-bot" : ""}${isExpanded ? " is-expanded" : ""}`}
+                          onClick={() => setExpandedId((prev) => (prev === row.id ? null : row.id))}
+                        >
                           <td className="live-click-time" title={row.datetime}>
                             <span>{String(row.datetime).slice(11) || "—"}</span>
                             <em>{agoLabel(row.datetime)}</em>
@@ -9098,7 +9104,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="icon-btn live-click-copy"
                                 title="Copy click id"
-                                onClick={() => copyText(row.clickId)}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.clickId); }}
                               >
                                 <Copy size={11} />
                               </button>
@@ -9111,7 +9117,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="icon-btn live-click-copy"
                                 title="Copy external id"
-                                onClick={() => copyText(row.externalId)}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.externalId); }}
                               >
                                 <Copy size={11} />
                               </button>
@@ -9171,13 +9177,106 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="icon-btn live-click-copy"
                                 title="Copy destination URL"
-                                onClick={() => copyText(row.destination)}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.destination); }}
                               >
                                 <Copy size={11} />
                               </button>
                             ) : null}
                           </td>
                         </tr>
+                        {isExpanded ? (
+                          <tr className="live-click-detail-row">
+                            <td colSpan={20}>
+                              <div className="live-click-detail">
+                                <div className="live-click-detail-head">
+                                  <span className="live-click-detail-title">
+                                    {row.campaign || "Click detail"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="icon-btn"
+                                    title="Close"
+                                    onClick={(e) => { e.stopPropagation(); setExpandedId(null); }}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                                <div className="live-click-detail-grid">
+                                  {Array.from({ length: 11 }, (_, i) => {
+                                    const value = String(row.subs?.[i + 1] ?? "").trim();
+                                    const bad = issues.includes(i + 1);
+                                    return (
+                                      <div
+                                        className={`lc-detail-field${bad ? " is-bad" : ""}`}
+                                        key={`d-sub-${i + 1}`}
+                                      >
+                                        <span className="lc-detail-label">Sub {i + 1}</span>
+                                        <span className="lc-detail-value">
+                                          {value || "—"}
+                                          {value ? (
+                                            <button
+                                              type="button"
+                                              className="icon-btn lc-detail-copy"
+                                              title={`Copy Sub ${i + 1}`}
+                                              onClick={(e) => { e.stopPropagation(); copyText(value); }}
+                                            >
+                                              <Copy size={10} />
+                                            </button>
+                                          ) : null}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div className="live-click-detail-meta">
+                                  <div className="lc-detail-field lc-detail-wide">
+                                    <span className="lc-detail-label">Destination</span>
+                                    <span className="lc-detail-value lc-detail-url">
+                                      {row.destination || "—"}
+                                      {row.destination ? (
+                                        <button
+                                          type="button"
+                                          className="icon-btn lc-detail-copy"
+                                          title="Copy destination URL"
+                                          onClick={(e) => { e.stopPropagation(); copyText(row.destination); }}
+                                        >
+                                          <Copy size={10} />
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Click ID</span>
+                                    <span className="lc-detail-value">{row.clickId || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">External ID</span>
+                                    <span className="lc-detail-value">{row.externalId || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Offer</span>
+                                    <span className="lc-detail-value">{row.offer || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Stream</span>
+                                    <span className="lc-detail-value">{row.stream || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">IP · ISP</span>
+                                    <span className="lc-detail-value">
+                                      {[row.ip, row.isp].filter(Boolean).join(" · ") || "—"}
+                                    </span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Referrer</span>
+                                    <span className="lc-detail-value lc-detail-url">{row.referrer || "—"}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
