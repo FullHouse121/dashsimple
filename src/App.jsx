@@ -31,6 +31,7 @@ import {
   BarChart3,
   Megaphone,
   Trophy,
+  Filter,
   Award,
   Medal,
   Crown,
@@ -7090,27 +7091,41 @@ function StatsFunnelFlow({ stages }) {
               className="sfv2-stage"
               title={`${stage.label}: ${stage.value.toLocaleString()} · ${fmtRate1(stage.share)} of ${stages[0].label.toLowerCase()}`}
             >
-              <div className="sfv2-count">{stage.value.toLocaleString()}</div>
-              <div className="sfv2-sub">
-                {i === 0 ? "entered" : `${fmtRate1(stage.share)} of ${stages[0].label.toLowerCase()}`}
-              </div>
-              <div className="sfv2-track">
-                <span className="sfv2-pct">
-                  {fmtRate1(stepRate)}
-                  {i > 0 ? <em>of prev</em> : <em>baseline</em>}
-                </span>
-                <div
-                  className="sfv2-fill"
-                  style={{
-                    height: `${fillPct}%`,
-                    background: `linear-gradient(180deg, ${stage.color}d9 0%, ${stage.color}59 55%, ${stage.color}1f 100%)`,
-                    boxShadow: `inset 0 1.5px 0 ${stage.color}, 0 0 18px ${stage.color}33`,
-                  }}
+              <div
+                className="sfv2-card"
+                style={{
+                  "--stage-color": stage.color,
+                  background: `linear-gradient(180deg, ${stage.color}0e, rgba(255, 255, 255, 0.012) 46%)`,
+                }}
+              >
+                <span
+                  className="sfv2-card-accent"
+                  style={{ background: `linear-gradient(90deg, ${stage.color}, ${stage.color}00)` }}
                 />
-              </div>
-              <div className="sfv2-label">
-                <i style={{ background: stage.color, boxShadow: `0 0 6px ${stage.color}88` }} />
-                {stage.label}
+                <div className="sfv2-card-head">
+                  <span className="sfv2-label">
+                    <i style={{ background: stage.color, boxShadow: `0 0 6px ${stage.color}88` }} />
+                    {stage.label}
+                  </span>
+                  <div className="sfv2-count">{stage.value.toLocaleString()}</div>
+                  <div className="sfv2-sub">
+                    {i === 0 ? "entered" : `${fmtRate1(stage.share)} of ${stages[0].label.toLowerCase()}`}
+                  </div>
+                </div>
+                <div className="sfv2-track">
+                  <span className="sfv2-pct">
+                    {fmtRate1(stepRate)}
+                    {i > 0 ? <em>of prev</em> : <em>baseline</em>}
+                  </span>
+                  <div
+                    className="sfv2-fill"
+                    style={{
+                      height: `${fillPct}%`,
+                      background: `linear-gradient(180deg, ${stage.color}d9 0%, ${stage.color}59 55%, ${stage.color}1f 100%)`,
+                      boxShadow: `inset 0 1.5px 0 ${stage.color}, 0 0 18px ${stage.color}33`,
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </React.Fragment>
@@ -8094,10 +8109,18 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           transition={{ duration: 0.5, delay: 0.1 }}
         >
           <div className="panel-head">
-            <div>
-              <h3 className="panel-title">Conversion Funnel</h3>
-              <p className="panel-subtitle">Stage-to-stage conversion for the filtered view.</p>
+            <div className="stats-panel-title">
+              <span className="stats-icon-tile" style={{ "--tile-accent": "#36d07c" }}>
+                <Filter size={15} strokeWidth={2.2} />
+              </span>
+              <div>
+                <h3 className="panel-title">Conversion Funnel</h3>
+                <p className="panel-subtitle">Stage-to-stage conversion for the filtered view.</p>
+              </div>
             </div>
+            <span className="stats-head-chip">
+              U → FTD <strong>{fmtPercent(funnelStages[2].share)}</strong>
+            </span>
           </div>
           {funnelStages[0].value > 0 ? (
             <div className="stats-funnel">
@@ -8127,10 +8150,18 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           transition={{ duration: 0.5, delay: 0.16 }}
         >
           <div className="panel-head">
-            <div>
-              <h3 className="panel-title">Buyer Leaderboard</h3>
-              <p className="panel-subtitle">Ranked by FTDs in the filtered view.</p>
+            <div className="stats-panel-title">
+              <span className="stats-icon-tile" style={{ "--tile-accent": "#f7c625" }}>
+                <Trophy size={15} strokeWidth={2.2} />
+              </span>
+              <div>
+                <h3 className="panel-title">Buyer Leaderboard</h3>
+                <p className="panel-subtitle">Ranked by FTDs in the filtered view.</p>
+              </div>
             </div>
+            <span className="stats-head-chip">
+              {buyerLeaderboard.length} <strong>buyers</strong>
+            </span>
           </div>
           {buyerLeaderboard.length ? (
             <div className="stats-leaderboard">
