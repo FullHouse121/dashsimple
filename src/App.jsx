@@ -7084,10 +7084,12 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     ftds: "",
   });
   const [statsEntries, setStatsEntries] = React.useState([]);
+  const [prevStatsEntries, setPrevStatsEntries] = React.useState([]);
   const [statsState, setStatsState] = React.useState({ loading: true, error: null });
   const [buyerFilter, setBuyerFilter] = React.useState(isLeadership ? "All" : effectiveBuyer);
   const [showAllStatsRows, setShowAllStatsRows] = React.useState(false);
   const [statsOverviewFilters, setStatsOverviewFilters] = React.useState(["ftds"]);
+  const [statsCostMode, setStatsCostMode] = React.useState(null); // null = auto: revenue when no spend
 
   const updateStatsForm = (key) => (event) => {
     setStatsForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -7120,6 +7122,18 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     const qs = new URLSearchParams();
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
+    // The equally-long window immediately before the current one (for deltas).
+    let prevRange = null;
+    if (from && to) {
+      const dayMs = 86400000;
+      const fromMs = Date.parse(`${from}T00:00:00Z`);
+      const toMs = Date.parse(`${to}T00:00:00Z`);
+      const lengthDays = Math.max(1, Math.round((toMs - fromMs) / dayMs) + 1);
+      prevRange = {
+        from: new Date(fromMs - dayMs * lengthDays).toISOString().slice(0, 10),
+        to: new Date(fromMs - dayMs).toISOString().slice(0, 10),
+      };
+    }
     const liveUrl = `/api/keitaro/live-stats${qs.toString() ? `?${qs}` : ""}`;
     const cacheKey = `live-stats:${qs.toString()}`;
     const cached = readSwrCache(cacheKey);
@@ -7134,7 +7148,11 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     try {
       let rows = null;
       // Primary path: live, aggregated data straight from Keitaro.
-      const response = await apiFetch(liveUrl);
+      const requests = [apiFetch(liveUrl)];
+      if (prevRange) {
+        requests.push(apiFetch(`/api/keitaro/live-stats?from=${prevRange.from}&to=${prevRange.to}`));
+      }
+      const [response, prevResponse] = await Promise.all(requests);
       if (response.ok) {
         const data = await response.json();
         rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
@@ -7145,6 +7163,14 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         if (!fb.ok) throw new Error("Failed to load media buyer stats.");
         const fbData = await fb.json();
         rows = Array.isArray(fbData) ? fbData : [];
+      }
+      if (prevRange && prevResponse?.ok) {
+        const prevData = await prevResponse.json().catch(() => null);
+        setPrevStatsEntries(
+          Array.isArray(prevData) ? prevData : Array.isArray(prevData?.rows) ? prevData.rows : []
+        );
+      } else {
+        setPrevStatsEntries([]);
       }
       writeSwrCache(cacheKey, rows);
       setStatsEntries(rows);
@@ -7220,6 +7246,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           ftds: 0,
           redeposits: 0,
           revenue: 0,
+          ftdRevenue: 0,
+          redepositRevenue: 0,
         });
       }
       const current = map.get(key);
@@ -7231,6 +7259,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       current.ftds += sum(row.ftds);
       current.redeposits += sum(row.redeposits);
       current.revenue += readRevenue(row);
+      current.ftdRevenue += readNumeric(row.ftdRevenue ?? row.ftd_revenue);
+      current.redepositRevenue += readNumeric(row.redepositRevenue ?? row.redeposit_revenue);
       if (!current.id && row.id) current.id = row.id;
     });
 
@@ -7294,6 +7324,85 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     }),
     { spend: 0, clicks: 0, uniqueClicks: 0, installs: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
   );
+
+  // Comparison window for the top-card deltas. With an explicit date range we
+  // compare against the equally-long window fetched before it; on an unbounded
+  // view we compare the trailing 7 days in the data against the 7 before them.
+  const statsComparison = React.useMemo(() => {
+    const scopeFilter = (row) => {
+      if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) return false;
+      if (
+        isLeadership &&
+        !isAllSelection(buyerFilter) &&
+        !String(row.buyer || "").toLowerCase().includes(String(buyerFilter).toLowerCase())
+      ) {
+        return false;
+      }
+      if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+      return true;
+    };
+    const totalsOf = (rows) =>
+      rows.reduce(
+        (acc, row) => {
+          acc.spend += sum(row.spend);
+          acc.clicks += sum(row.clicks);
+          acc.uniqueClicks += sum(row.unique_clicks);
+          acc.registers += sum(row.registers);
+          acc.ftds += sum(row.ftds);
+          acc.redeposits += sum(row.redeposits);
+          acc.revenue += readRevenue(row);
+          return acc;
+        },
+        { spend: 0, clicks: 0, uniqueClicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
+      );
+    if (prevStatsEntries.length) {
+      return { current: null, prev: totalsOf(prevStatsEntries.filter(scopeFilter)), label: "vs prev period" };
+    }
+    const scoped = statsEntries.filter(scopeFilter);
+    const dayOf = (row) => String(row.date || "").slice(0, 10);
+    const maxDate = scoped.reduce((max, row) => (dayOf(row) > max ? dayOf(row) : max), "");
+    if (!maxDate) return null;
+    const dayMs = 86400000;
+    const maxMs = Date.parse(`${maxDate}T00:00:00Z`);
+    const within = (row, startMs, endMs) => {
+      const ms = Date.parse(`${dayOf(row)}T00:00:00Z`);
+      return Number.isFinite(ms) && ms >= startMs && ms <= endMs;
+    };
+    const prevRows = scoped.filter((row) => within(row, maxMs - 13 * dayMs, maxMs - 7 * dayMs));
+    if (!prevRows.length) return null;
+    const currentRows = scoped.filter((row) => within(row, maxMs - 6 * dayMs, maxMs));
+    return { current: totalsOf(currentRows), prev: totalsOf(prevRows), label: "7d vs prior" };
+  }, [
+    prevStatsEntries,
+    statsEntries,
+    globalBuyerFilter,
+    globalCountryFilter,
+    buyerFilter,
+    effectiveBuyer,
+    isLeadership,
+  ]);
+
+  const statsDeltaFor = (key) => {
+    if (!statsComparison) return null;
+    const base = statsComparison.current || totals;
+    const prev = Number(statsComparison.prev?.[key]) || 0;
+    const current = Number(base[key]) || 0;
+    if (prev === 0) return current > 0 ? Infinity : null;
+    return ((current - prev) / prev) * 100;
+  };
+  const renderStatsDelta = (delta) => {
+    if (delta === null || delta === undefined || !statsComparison) return null;
+    if (delta === Infinity) return <span className="kpi-delta is-up">▲ new</span>;
+    const rounded = Math.round(delta * 10) / 10;
+    if (!Number.isFinite(rounded) || Math.abs(rounded) < 0.05) {
+      return <span className="kpi-delta">— 0% {statsComparison.label}</span>;
+    }
+    return (
+      <span className={`kpi-delta${rounded > 0 ? " is-up" : " is-down"}`}>
+        {rounded > 0 ? "▲" : "▼"} {Math.abs(rounded).toFixed(1)}% {statsComparison.label}
+      </span>
+    );
+  };
 
   const isStatsSingleDayRange = Boolean(
     globalDateRange.from &&
@@ -7458,6 +7567,9 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         installs: 0,
         registers: 0,
         ftds: 0,
+        revenue: 0,
+        ftdRevenue: 0,
+        redepositRevenue: 0,
       });
     }
     const current = chartMap.get(key);
@@ -7466,6 +7578,9 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     current.installs += sum(row.installs);
     current.registers += sum(row.registers);
     current.ftds += sum(row.ftds);
+    current.revenue += sum(row.revenue);
+    current.ftdRevenue += sum(row.ftdRevenue);
+    current.redepositRevenue += sum(row.redepositRevenue);
   });
 
   const chartData = Array.from(chartMap.values())
@@ -7479,7 +7594,49 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       cpc: toCost(row.spend, row.clicks),
       cpr: toCost(row.spend, row.registers),
       cpp: toCost(row.spend, row.ftds),
+      epc: safeDivide(row.revenue, row.clicks),
     }));
+
+  // Conversion funnel stages (colors match the Campaigns page series colors so
+  // the same entity keeps the same hue everywhere). Cube-root width scaling
+  // keeps deep-funnel stages visible next to click volume.
+  const funnelStages = React.useMemo(() => {
+    const stages = [
+      { key: "clicks", label: "Clicks", value: totals.clicks, color: "#3987e5" },
+      { key: "registers", label: "Registers", value: totals.registers, color: "#9085e9" },
+      { key: "ftds", label: "FTDs", value: totals.ftds, color: "#199e70" },
+      { key: "redeposits", label: "Redeposits", value: totals.redeposits, color: "#c98500" },
+    ];
+    const top = stages[0].value || 0;
+    return stages.map((stage, idx) => ({
+      ...stage,
+      width:
+        top > 0 && stage.value > 0 ? Math.max(4, Math.cbrt(stage.value / top) * 100) : 0,
+      rate: idx > 0 ? toPercent(stage.value, stages[idx - 1].value) : null,
+    }));
+  }, [totals.clicks, totals.registers, totals.ftds, totals.redeposits]);
+
+  // Per-buyer rollup of the filtered view, ranked by FTDs.
+  const buyerLeaderboard = React.useMemo(() => {
+    const map = new Map();
+    filteredEntries.forEach((row) => {
+      const buyer = String(row.buyer || "").trim() || "Unknown";
+      if (!map.has(buyer)) {
+        map.set(buyer, { buyer, clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 });
+      }
+      const current = map.get(buyer);
+      current.clicks += sum(row.clicks);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.redeposits += sum(row.redeposits);
+      current.revenue += sum(row.revenue);
+    });
+    return Array.from(map.values())
+      .map((row) => ({ ...row, r2d: toPercent(row.ftds, row.registers) }))
+      .sort((a, b) => b.ftds - a.ftds || b.registers - a.registers)
+      .slice(0, 8);
+  }, [filteredEntries]);
+  const leaderboardMaxFtds = buyerLeaderboard.reduce((max, row) => Math.max(max, row.ftds), 0);
 
   const volumeMax = Math.max(
     0,
@@ -7497,6 +7654,11 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const volumeDomainMax = volumeMax > 0 ? Math.ceil(volumeMax * 1.15) : 10;
   const rateDomainMax = Math.min(100, Math.max(10, Math.ceil((rateMax || 0) / 5) * 5));
   const costDomainMax = costMax > 0 ? Math.ceil(costMax * 1.2) : 10;
+  const revenueMax = Math.max(0, ...chartData.map((row) => row.revenue || 0));
+  const revenueDomainMax = revenueMax > 0 ? Math.ceil(revenueMax * 1.15) : 10;
+  // The daily revenue split is only meaningful when Keitaro reports it.
+  const hasRevenueSplit = chartData.some((row) => row.ftdRevenue > 0 || row.redepositRevenue > 0);
+  const resolvedCostMode = statsCostMode || (totals.spend > 0 ? "cost" : "revenue");
   const [statsTableSort, setStatsTableSort] = React.useState({ key: "ftds", dir: "desc" });
   const toggleStatsSort = (key) => {
     setStatsTableSort((prev) => toggleSortConfig(prev, key, "desc"));
@@ -7519,6 +7681,10 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         return sum(row.registers);
       case "ftds":
         return sum(row.ftds);
+      case "redeposits":
+        return sum(row.redeposits);
+      case "revenue":
+        return sum(row.revenue);
       case "c2i":
         return toPercent(sum(row.installs), sum(row.clicks));
       case "c2r":
@@ -7554,14 +7720,118 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   }, [filteredEntries, statsTableSort]);
   const visibleEntries = showAllStatsRows ? sortedEntries : sortedEntries.slice(0, 10);
 
+  // Columns with no data in the filtered view (no spend → no cost metrics,
+  // no installs → no install funnel) are dropped instead of rendering dashes.
+  const hasSpendData = totals.spend > 0;
+  const hasInstallData = totals.installs > 0;
+  const statsColumns = [
+    { key: "date", label: "Date" },
+    { key: "buyer", label: "Buyer" },
+    { key: "country", label: "Country" },
+    ...(hasSpendData ? [{ key: "spend", label: "Spend" }] : []),
+    { key: "clicks", label: "Clicks" },
+    ...(hasInstallData ? [{ key: "installs", label: "Installs" }] : []),
+    { key: "registers", label: "Registers" },
+    { key: "ftds", label: "FTDs" },
+    { key: "redeposits", label: "Redeposits" },
+    { key: "revenue", label: "Revenue" },
+    ...(hasInstallData ? [{ key: "c2i", label: "C2I" }] : []),
+    { key: "c2r", label: "C2R" },
+    { key: "c2ftd", label: "C2FTD" },
+    { key: "r2d", label: "R2D" },
+    ...(hasSpendData
+      ? [
+          { key: "cpc", label: "CPC" },
+          ...(hasInstallData ? [{ key: "cpi", label: "CPI" }] : []),
+          { key: "cpr", label: "CPR" },
+          { key: "cpp", label: "CPP" },
+        ]
+      : []),
+  ];
+  React.useEffect(() => {
+    setStatsTableSort((prev) =>
+      statsColumns.some((col) => col.key === prev.key) ? prev : { key: "ftds", dir: "desc" }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSpendData, hasInstallData]);
+
+  const statsRowCells = (row) => {
+    const spend = sum(row.spend);
+    const clicks = sum(row.clicks);
+    const installs = sum(row.installs);
+    const registers = sum(row.registers);
+    const ftds = sum(row.ftds);
+    const redeposits = sum(row.redeposits);
+    const revenue = sum(row.revenue);
+    return {
+      date: row.date,
+      buyer: row.buyer,
+      country: row.country || "—",
+      spend: spend ? formatCurrency(spend) : "—",
+      clicks: clicks.toLocaleString(),
+      installs: installs ? installs.toLocaleString() : "—",
+      registers: registers.toLocaleString(),
+      ftds: ftds.toLocaleString(),
+      redeposits: redeposits ? redeposits.toLocaleString() : "—",
+      revenue: revenue ? formatCurrency(revenue) : "—",
+      c2i: fmtPercent(toPercent(installs, clicks)),
+      c2r: fmtPercent(toPercent(registers, clicks)),
+      c2ftd: fmtPercent(toPercent(ftds, clicks)),
+      r2d: fmtPercent(toPercent(ftds, registers)),
+      cpc: fmtCost(toCost(spend, clicks)),
+      cpi: fmtCost(toCost(spend, installs)),
+      cpr: fmtCost(toCost(spend, registers)),
+      cpp: fmtCost(toCost(spend, ftds)),
+    };
+  };
+  const statsTotalsCells = {
+    date: "Totals",
+    buyer: "",
+    country: "",
+    spend: totals.spend ? formatCurrency(totals.spend) : "—",
+    clicks: totals.clicks.toLocaleString(),
+    installs: totals.installs ? totals.installs.toLocaleString() : "—",
+    registers: totals.registers.toLocaleString(),
+    ftds: totals.ftds.toLocaleString(),
+    redeposits: totals.redeposits ? totals.redeposits.toLocaleString() : "—",
+    revenue: totals.revenue ? formatCurrency(totals.revenue) : "—",
+    c2i: fmtPercent(toPercent(totals.installs, totals.clicks)),
+    c2r: fmtPercent(toPercent(totals.registers, totals.clicks)),
+    c2ftd: fmtPercent(toPercent(totals.ftds, totals.clicks)),
+    r2d: fmtPercent(toPercent(totals.ftds, totals.registers)),
+    cpc: fmtCost(toCost(totals.spend, totals.clicks)),
+    cpi: fmtCost(toCost(totals.spend, totals.installs)),
+    cpr: fmtCost(toCost(totals.spend, totals.registers)),
+    cpp: fmtCost(toCost(totals.spend, totals.ftds)),
+  };
+
+  const exportStatsCsv = () => {
+    const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const rawCell = (row, key) => {
+      const value = getStatsSortValue(row, key);
+      if (value === null || value === undefined) return "";
+      if (key === "date" || key === "buyer" || key === "country") return quote(value);
+      return Number.isFinite(Number(value)) ? Number(value).toFixed(2).replace(/\.00$/, "") : "";
+    };
+    const header = statsColumns.map((col) => col.label).join(",");
+    const lines = sortedEntries.map((row) => statsColumns.map((col) => rawCell(row, col.key)).join(","));
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `funnel-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <>
       <section className="cards">
-        {[ 
+        {[
           { label: "Total Spend", value: fmtCost(totals.spend), meta: "Filtered view" },
-          { label: "Total Clicks", value: totals.clicks.toLocaleString(), meta: "Filtered view" },
-          { label: "Total Registers", value: totals.registers.toLocaleString(), meta: "Filtered view" },
-          { label: "Total FTDs", value: totals.ftds.toLocaleString(), meta: "Filtered view" },
+          { label: "Unique Clicks", value: totals.uniqueClicks.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("uniqueClicks") },
+          { label: "Total Registers", value: totals.registers.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("registers") },
+          { label: "Total FTDs", value: totals.ftds.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("ftds") },
         ].map((stat, idx) => (
           <motion.div
             key={stat.label}
@@ -7572,6 +7842,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
           >
             <div className="card-head">{stat.label}</div>
             <div className="card-value">{stat.value}</div>
+            {renderStatsDelta(stat.delta)}
             <div className="card-meta">{stat.meta}</div>
           </motion.div>
         ))}
@@ -7747,6 +8018,91 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         </motion.div>
       </section>
 
+      <section className="panels extra stats-insight-row">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Conversion Funnel</h3>
+              <p className="panel-subtitle">Stage-to-stage conversion for the filtered view.</p>
+            </div>
+          </div>
+          {totals.clicks > 0 ? (
+            <div className="stats-funnel">
+              {funnelStages.map((stage) => (
+                <div className="stats-funnel-stage" key={stage.key}>
+                  <div className="stats-funnel-meta">
+                    <span className="stats-funnel-label">{stage.label}</span>
+                    <span className="stats-funnel-value">{stage.value.toLocaleString()}</span>
+                    {stage.rate !== null ? (
+                      <span className="stats-funnel-rate">{fmtPercent(stage.rate)} of previous</span>
+                    ) : null}
+                  </div>
+                  <div className="stats-funnel-track">
+                    <div
+                      className="stats-funnel-bar"
+                      style={{
+                        width: `${stage.width}%`,
+                        background: `linear-gradient(90deg, ${stage.color}e0, ${stage.color}66)`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No traffic in this view.</div>
+          )}
+        </motion.div>
+
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.16 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Buyer Leaderboard</h3>
+              <p className="panel-subtitle">Ranked by FTDs in the filtered view.</p>
+            </div>
+          </div>
+          {buyerLeaderboard.length ? (
+            <div className="stats-leaderboard">
+              {buyerLeaderboard.map((row, idx) => (
+                <div className="stats-leader-row" key={row.buyer}>
+                  <span className={`stats-leader-rank${idx === 0 ? " is-top" : ""}`}>{idx + 1}</span>
+                  <div className="stats-leader-main">
+                    <div className="stats-leader-top">
+                      <span className="stats-leader-name">{row.buyer}</span>
+                      <span className="stats-leader-ftds">{row.ftds.toLocaleString()} FTD</span>
+                    </div>
+                    <div className="stats-leader-track">
+                      <i
+                        style={{
+                          width: `${leaderboardMaxFtds > 0 ? Math.max(row.ftds > 0 ? 3 : 0, (row.ftds / leaderboardMaxFtds) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="stats-leader-stats">
+                    <span>{row.registers.toLocaleString()} regs</span>
+                    <span>{fmtPercent(row.r2d)} R2D</span>
+                    <span>{formatCurrency(row.revenue)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state">No buyer data in this view.</div>
+          )}
+        </motion.div>
+      </section>
+
       <section className="entries-section">
         <motion.div
           className="panel form-panel"
@@ -7759,17 +8115,23 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
               <h3 className="panel-title">Media Buyer Funnel Log</h3>
               <p className="panel-subtitle">Calculated funnel metrics per entry.</p>
             </div>
-            {isLeadership ? (
-              <Select
-                value={buyerFilter}
-                onChange={(v) => setBuyerFilter(v)}
-                options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
-                placeholder="Select buyer"
-                searchPlaceholder="Find buyer"
-              />
-            ) : (
-              <div className="select select-static">{effectiveBuyer}</div>
-            )}
+            <div className="campaign-table-actions">
+              <span className="roles-count">{sortedEntries.length} rows</span>
+              <button type="button" className="icon-btn" title="Export CSV" onClick={exportStatsCsv}>
+                <Download size={14} />
+              </button>
+              {isLeadership ? (
+                <Select
+                  value={buyerFilter}
+                  onChange={(v) => setBuyerFilter(v)}
+                  options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
+                  placeholder="Select buyer"
+                  searchPlaceholder="Find buyer"
+                />
+              ) : (
+                <div className="select select-static">{effectiveBuyer}</div>
+              )}
+            </div>
           </div>
 
           {statsState.loading ? (
@@ -7784,24 +8146,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                 <table className="entries-table stats-table">
                   <thead>
                     <tr>
-                      {[
-                        { key: "date", label: "Date" },
-                        { key: "buyer", label: "Buyer" },
-                        { key: "country", label: "Country" },
-                        { key: "spend", label: "Spend" },
-                        { key: "clicks", label: "Clicks" },
-                        { key: "installs", label: "Installs" },
-                        { key: "registers", label: "Registers" },
-                        { key: "ftds", label: "FTDs" },
-                        { key: "c2i", label: "C2I" },
-                        { key: "c2r", label: "C2R" },
-                        { key: "c2ftd", label: "C2FTD" },
-                        { key: "r2d", label: "R2D" },
-                        { key: "cpc", label: "CPC" },
-                        { key: "cpi", label: "CPI" },
-                        { key: "cpr", label: "CPR" },
-                        { key: "cpp", label: "CPP" },
-                      ].map((col) => {
+                      {statsColumns.map((col) => {
                         const isActive = statsTableSort.key === col.key;
                         return (
                           <th key={col.key}>
@@ -7822,42 +8167,23 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                   </thead>
                   <tbody>
                     {visibleEntries.map((row) => {
-                      const spend = sum(row.spend);
-                      const clicks = sum(row.clicks);
-                      const installs = sum(row.installs);
-                      const registers = sum(row.registers);
-                      const ftds = sum(row.ftds);
-                      const c2i = toPercent(installs, clicks);
-                      const c2r = toPercent(registers, clicks);
-                      const c2f = toPercent(ftds, clicks);
-                      const r2d = toPercent(ftds, registers);
-                      const cpc = toCost(spend, clicks);
-                      const cpi = toCost(spend, installs);
-                      const cpr = toCost(spend, registers);
-                      const cpp = toCost(spend, ftds);
-
+                      const cells = statsRowCells(row);
                       return (
                         <tr key={`${row.id || "stat"}-${row.date}-${row.buyer}-${row.country || ""}`}>
-                          <td>{row.date}</td>
-                          <td>{row.buyer}</td>
-                          <td>{row.country || "—"}</td>
-                          <td>{spend ? formatCurrency(spend) : "—"}</td>
-                          <td>{clicks.toLocaleString()}</td>
-                          <td>{installs ? installs.toLocaleString() : "—"}</td>
-                          <td>{registers.toLocaleString()}</td>
-                          <td>{ftds.toLocaleString()}</td>
-                          <td>{fmtPercent(c2i)}</td>
-                          <td>{fmtPercent(c2r)}</td>
-                          <td>{fmtPercent(c2f)}</td>
-                          <td>{fmtPercent(r2d)}</td>
-                          <td>{fmtCost(cpc)}</td>
-                          <td>{fmtCost(cpi)}</td>
-                          <td>{fmtCost(cpr)}</td>
-                          <td>{fmtCost(cpp)}</td>
+                          {statsColumns.map((col) => (
+                            <td key={col.key}>{cells[col.key]}</td>
+                          ))}
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="stats-totals-row">
+                      {statsColumns.map((col) => (
+                        <td key={col.key}>{statsTotalsCells[col.key]}</td>
+                      ))}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
               {sortedEntries.length > 10 ? (
@@ -8063,64 +8389,184 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Cost Metrics</h3>
-              <p className="panel-subtitle">Cost per click, register, and FTD.</p>
+              <h3 className="panel-title">
+                {resolvedCostMode === "cost" ? "Cost Metrics" : "Revenue & EPC"}
+              </h3>
+              <p className="panel-subtitle">
+                {resolvedCostMode === "cost"
+                  ? "Cost per click, register, and FTD."
+                  : "Daily revenue with earnings per click."}
+              </p>
+            </div>
+            <div className="stats-chart-toggle">
+              {[
+                { key: "cost", label: "Cost" },
+                { key: "revenue", label: "Revenue" },
+              ].map((mode) => (
+                <button
+                  type="button"
+                  key={mode.key}
+                  className={`overview-filter${resolvedCostMode === mode.key ? " is-active" : ""}`}
+                  onClick={() => setStatsCostMode(mode.key)}
+                >
+                  {mode.label}
+                </button>
+              ))}
             </div>
           </div>
           <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={chartData}
-                margin={{ top: 12, right: 24, left: 4, bottom: 4 }}
-                barCategoryGap={18}
-                barGap={6}
-              >
-                <defs>
-                  <linearGradient id="statsCostCpc" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.85} />
-                    <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.25} />
-                  </linearGradient>
-                  <linearGradient id="statsCostCpr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.85} />
-                    <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
-                  </linearGradient>
-                  <linearGradient id="statsCostCpp" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--green)" stopOpacity={0.85} />
-                    <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={axisTickStyle}
-                  tickMargin={10}
-                  minTickGap={16}
-                  tickFormatter={formatShortDate}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={60}
-                  tick={axisTickStyle}
-                  domain={[0, costDomainMax]}
-                  tickFormatter={(value) => formatCurrency(value)}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  labelFormatter={formatShortDate}
-                  formatter={(value, name) => [fmtCost(value), name]}
-                />
-                <Legend
-                  iconType="circle"
-                  wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
-                />
-                <Bar dataKey="cpc" name="CPC" fill="url(#statsCostCpc)" radius={[8, 8, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="cpr" name="CPR" fill="url(#statsCostCpr)" radius={[8, 8, 0, 0]} maxBarSize={36} />
-                <Bar dataKey="cpp" name="CPP" fill="url(#statsCostCpp)" radius={[8, 8, 0, 0]} maxBarSize={36} />
-              </BarChart>
-            </ResponsiveContainer>
+            {resolvedCostMode === "cost" ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 12, right: 24, left: 4, bottom: 4 }}
+                  barCategoryGap={18}
+                  barGap={6}
+                >
+                  <defs>
+                    <linearGradient id="statsCostCpc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.85} />
+                      <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.25} />
+                    </linearGradient>
+                    <linearGradient id="statsCostCpr" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.85} />
+                      <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
+                    </linearGradient>
+                    <linearGradient id="statsCostCpp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.85} />
+                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickMargin={10}
+                    minTickGap={16}
+                    tickFormatter={formatShortDate}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                    tick={axisTickStyle}
+                    domain={[0, costDomainMax]}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={formatShortDate}
+                    formatter={(value, name) => [fmtCost(value), name]}
+                  />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                  />
+                  <Bar dataKey="cpc" name="CPC" fill="url(#statsCostCpc)" radius={[8, 8, 0, 0]} maxBarSize={36} />
+                  <Bar dataKey="cpr" name="CPR" fill="url(#statsCostCpr)" radius={[8, 8, 0, 0]} maxBarSize={36} />
+                  <Bar dataKey="cpp" name="CPP" fill="url(#statsCostCpp)" radius={[8, 8, 0, 0]} maxBarSize={36} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={chartData}
+                  margin={{ top: 12, right: 8, left: 4, bottom: 4 }}
+                  barCategoryGap={18}
+                >
+                  <defs>
+                    <linearGradient id="statsRevFtd" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.3} />
+                    </linearGradient>
+                    <linearGradient id="statsRevRed" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#c98500" stopOpacity={0.9} />
+                      <stop offset="95%" stopColor="#c98500" stopOpacity={0.3} />
+                    </linearGradient>
+                    <linearGradient id="statsRevTotal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.85} />
+                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickMargin={10}
+                    minTickGap={16}
+                    tickFormatter={formatShortDate}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={60}
+                    tick={axisTickStyle}
+                    domain={[0, revenueDomainMax]}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <YAxis
+                    yAxisId="epc"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={formatShortDate}
+                    formatter={(value, name) => [fmtCost(value), name]}
+                  />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }}
+                  />
+                  {hasRevenueSplit ? (
+                    <>
+                      <Bar
+                        dataKey="ftdRevenue"
+                        name="FTD Revenue"
+                        stackId="rev"
+                        fill="url(#statsRevFtd)"
+                        maxBarSize={36}
+                      />
+                      <Bar
+                        dataKey="redepositRevenue"
+                        name="Redeposit Revenue"
+                        stackId="rev"
+                        fill="url(#statsRevRed)"
+                        radius={[8, 8, 0, 0]}
+                        maxBarSize={36}
+                      />
+                    </>
+                  ) : (
+                    <Bar
+                      dataKey="revenue"
+                      name="Revenue"
+                      fill="url(#statsRevTotal)"
+                      radius={[8, 8, 0, 0]}
+                      maxBarSize={36}
+                    />
+                  )}
+                  <Line
+                    type="monotone"
+                    dataKey="epc"
+                    name="EPC"
+                    yAxisId="epc"
+                    stroke="#ffd86b"
+                    strokeWidth={2}
+                    connectNulls
+                    dot={{ r: 2.6, strokeWidth: 1.6, fill: "#0f1217" }}
+                    activeDot={{ r: 4.5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </motion.div>
       </section>
@@ -17533,17 +17979,23 @@ function MetaTokenDashboard({ authUser }) {
 
   const bindingChecks = React.useMemo(() => {
     if (!selectedBinding) return null;
-    const receivedSpend = Number(selectedBinding.received_spend || 0);
+    // Liveness = cost inside the recent window; the lifetime total stays green
+    // forever after the first dollar. Fall back to lifetime while the API
+    // predates recent_received_spend.
+    const recentSpend = Number(
+      selectedBinding.recent_received_spend ?? selectedBinding.received_spend ?? 0
+    );
+    const keitaroError = String(selectedBinding.keitaro_last_error || "").trim();
     const metaTokenReady = Boolean(String(selectedBinding.meta_token || "").trim());
     const accountReady = Boolean(String(selectedBinding.account_number || "").trim());
     const buyerReady = Boolean(String(selectedBinding.buyer_name || "").trim());
-    const costReady = receivedSpend > 0;
-    const metaWorking = metaTokenReady && costReady;
+    const costReady = recentSpend > 0;
+    const metaWorking = metaTokenReady && costReady && !keitaroError;
     const checks = [
       {
         key: "meta",
         label: "Meta Token",
-        value: metaWorking ? "Working" : "Not working",
+        value: keitaroError ? "Token error (Keitaro)" : metaWorking ? "Working" : "Not working",
         ok: metaWorking,
       },
       {
@@ -17561,18 +18013,25 @@ function MetaTokenDashboard({ authUser }) {
       {
         key: "cost",
         label: "Receive Cost",
-        value: receivedSpend > 0 ? formatCurrency(receivedSpend) : "$0.00",
+        value: recentSpend > 0 ? formatCurrency(recentSpend) : "$0.00",
         ok: costReady,
       },
     ];
-    const wired = checks.every((item) => item.ok) || Number(selectedBinding.is_wired) === 1;
+    const wired = checks.every((item) => item.ok);
     return { checks, wired };
   }, [selectedBinding]);
 
   const bindingIssues = React.useMemo(() => {
     if (!bindingChecks) return [];
-    return bindingChecks.checks.filter((item) => !item.ok).map((item) => `${item.label} missing`);
-  }, [bindingChecks]);
+    const keitaroError = String(selectedBinding?.keitaro_last_error || "").trim();
+    return bindingChecks.checks
+      .filter((item) => !item.ok)
+      .map((item) => {
+        if (item.key === "meta" && keitaroError) return `Keitaro: ${keitaroError}`;
+        if (item.key === "cost") return "No cost received in the last 3 days";
+        return `${item.label} missing`;
+      });
+  }, [bindingChecks, selectedBinding?.keitaro_last_error]);
 
   const flowMode = React.useMemo(() => {
     if (!selectedBinding || !bindingChecks) return "offline";
@@ -17751,7 +18210,7 @@ function MetaTokenDashboard({ authUser }) {
                         meta: maskToken(selectedBinding?.meta_token),
                         account: "Meta ad account",
                         buyer: "assigned media buyer",
-                        cost: "received from Keitaro",
+                        cost: "received from Keitaro · last 3 days",
                       };
                       const foots = {
                         meta: "token attached",
