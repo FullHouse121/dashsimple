@@ -9021,7 +9021,10 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
       const ms = parse(row.datetime);
       if (!Number.isFinite(ms)) return;
       const bucket = Math.floor(ms / stepMs) * stepMs;
-      counts.set(bucket, (counts.get(bucket) || 0) + 1);
+      const entry = counts.get(bucket) || { clicks: 0, uniques: 0 };
+      entry.clicks += 1;
+      if (row.isUnique) entry.uniques += 1;
+      counts.set(bucket, entry);
       if (bucket < oldest) oldest = bucket;
       if (bucket > newest) newest = bucket;
     });
@@ -9029,9 +9032,11 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
     const series = [];
     for (let bucket = oldest; bucket <= newest; bucket += stepMs) {
       const iso = new Date(bucket).toISOString();
+      const entry = counts.get(bucket);
       series.push({
         label: stepMin >= 1440 ? iso.slice(5, 10) : iso.slice(11, 16),
-        clicks: counts.get(bucket) || 0,
+        clicks: entry?.clicks || 0,
+        uniques: entry?.uniques || 0,
       });
     }
     return series;
@@ -9140,7 +9145,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
             <div>
               <h3 className="panel-title">Clicks Timeline</h3>
               <p className="panel-subtitle">
-                {LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — bucketed clicks.
+                {LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — clicks vs unique clicks.
               </p>
             </div>
           </div>
@@ -9152,6 +9157,10 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                     <linearGradient id="liveClicksArea" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3987e5" stopOpacity={0.35} />
                       <stop offset="95%" stopColor="#3987e5" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="liveUniquesArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#36d07c" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#36d07c" stopOpacity={0.03} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
@@ -9172,14 +9181,30 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                   />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    formatter={(value) => [Number(value).toLocaleString(), "Clicks"]}
+                    formatter={(value, name) => [Number(value).toLocaleString(), name]}
+                  />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ paddingTop: 6, color: "#9aa0aa", fontSize: 12 }}
                   />
                   <Area
                     type="monotone"
                     dataKey="clicks"
+                    name="Clicks"
                     stroke="#3987e5"
                     strokeWidth={2}
                     fill="url(#liveClicksArea)"
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="uniques"
+                    name="Unique Clicks"
+                    stroke="#36d07c"
+                    strokeWidth={2}
+                    fill="url(#liveUniquesArea)"
                     dot={false}
                     activeDot={{ r: 4 }}
                     isAnimationActive={false}
