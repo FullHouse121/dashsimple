@@ -22095,6 +22095,12 @@ export default function App() {
       setViewerBuyer("");
       return;
     }
+    // The username is the identity that campaign names resolve to
+    // ("Karen | …" → KarenFarias, matched by prefix). A media_buyers record
+    // is a CRM profile whose name can be anything — Karen's is "KRBR", and
+    // blindly adopting it made every stats view filter her rows against a
+    // string they never contain, emptying her dashboard. Only adopt the
+    // record name when it's actually compatible with the username.
     const fallback = authUser?.username || "";
     setViewerBuyer(fallback);
     const fetchBuyer = async () => {
@@ -22103,11 +22109,15 @@ export default function App() {
         if (!response.ok) return;
         const data = await response.json();
         const record = Array.isArray(data) ? data[0] : null;
-        if (record?.name) {
-          setViewerBuyer(record.name);
-        }
+        const recordName = record?.name ? String(record.name) : "";
+        if (!recordName) return;
+        const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const a = norm(recordName);
+        const b = norm(fallback);
+        const compatible = Boolean(a && b) && (a.startsWith(b) || b.startsWith(a));
+        if (compatible) setViewerBuyer(recordName);
       } catch (error) {
-        // ignore
+        // ignore — the username fallback already scopes correctly
       }
     };
     fetchBuyer();

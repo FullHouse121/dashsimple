@@ -894,8 +894,39 @@ const insertMediaStat = async (payload) => {
   return rows[0];
 };
 
-const selectMediaStats = async (limit) =>
-  getRows(
+// Buyer scoping must happen in SQL, BEFORE the LIMIT. Fetching "the newest N
+// rows" and filtering in JS silently starves lower-volume buyers: Karen's
+// rows exist for today, but the newest 200 rows across the table were all
+// Akku/Enzo/Carvalho/Matheus/Sara, so she saw an empty dashboard.
+// This clause is a deliberate SUPERSET of viewerOwnsRow (which still runs
+// afterwards as the precise gate) — it only has to stop the LIMIT from
+// discarding the viewer's rows.
+const buyerScopeClause = (viewerBuyer, paramOffset = 0) => {
+  const forms = buyerShortForms(viewerBuyer);
+  if (!forms.length) return { sql: "", params: [] };
+  const params = [];
+  const parts = [];
+  forms.forEach((form) => {
+    const normalized = String(form).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!normalized) return;
+    // row buyer starts with the viewer's name ("karen" → "KarenFarias"),
+    // or the viewer's name starts with the row buyer (truncated "sar" rows),
+    // or the campaign name mentions them.
+    params.push(`${normalized}%`);
+    parts.push(`REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g') LIKE $${paramOffset + params.length}`);
+    params.push(normalized);
+    parts.push(`$${paramOffset + params.length} LIKE REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g') || '%'`);
+    params.push(`%${normalized}%`);
+    parts.push(`REGEXP_REPLACE(LOWER(COALESCE(campaign_name, '')), '[^a-z0-9]+', '', 'g') LIKE $${paramOffset + params.length}`);
+  });
+  if (!parts.length) return { sql: "", params: [] };
+  return { sql: `(${parts.join(" OR ")})`, params };
+};
+
+const selectMediaStats = async (limit, viewerBuyer = null) => {
+  // scope params are bound first here, so placeholders start at $1 (offset 0)
+  const scope = viewerBuyer ? buyerScopeClause(viewerBuyer, 0) : { sql: "", params: [] };
+  return getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
             spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
      FROM (
@@ -914,6 +945,7 @@ const selectMediaStats = async (limit) =>
          id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
          spend, revenue, ftd_revenue, redeposit_revenue, clicks, installs, registers, ftds, redeposits, created_at
        FROM media_stats
+       ${scope.sql ? `WHERE ${scope.sql}` : ""}
        ORDER BY
          date,
          buyer,
@@ -928,15 +960,23 @@ const selectMediaStats = async (limit) =>
          id DESC
      ) dedup
      ORDER BY date DESC, id DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${scope.params.length + 1}`,
+    [...scope.params, limit]
   );
+};
 
-const selectMediaStatsRaw = async (limit, { from = null, to = null } = {}) => {
+const selectMediaStatsRaw = async (limit, { from = null, to = null, viewerBuyer = null } = {}) => {
   const params = [];
   let where = "";
   if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
   if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  if (viewerBuyer) {
+    const scope = buyerScopeClause(viewerBuyer, params.length);
+    if (scope.sql) {
+      params.push(...scope.params);
+      where += `${where ? " AND " : "WHERE "}${scope.sql}`;
+    }
+  }
   params.push(limit);
   return getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
@@ -951,12 +991,19 @@ const selectMediaStatsRaw = async (limit, { from = null, to = null } = {}) => {
 
 // Date-range variants — much cheaper than fetching 100k rows and filtering client-side.
 // Falls back to non-range query when both bounds are null.
-const selectMediaStatsRange = async ({ limit, from, to }) => {
-  if (!from && !to) return selectMediaStats(limit);
+const selectMediaStatsRange = async ({ limit, from, to, viewerBuyer = null }) => {
+  if (!from && !to) return selectMediaStats(limit, viewerBuyer);
   const params = [];
   let where = "";
   if (from) { params.push(from); where += `${where ? " AND " : "WHERE "}date >= $${params.length}`; }
   if (to)   { params.push(to);   where += `${where ? " AND " : "WHERE "}date <= $${params.length}`; }
+  if (viewerBuyer) {
+    const scope = buyerScopeClause(viewerBuyer, params.length);
+    if (scope.sql) {
+      params.push(...scope.params);
+      where += `${where ? " AND " : "WHERE "}${scope.sql}`;
+    }
+  }
   params.push(limit);
   return getRows(
     `SELECT id, date, buyer, country, city, region, placement, domain, campaign_name, adset_name, ad_name,
@@ -5982,11 +6029,11 @@ app.get("/api/media-stats", async (req, res) => {
   let rows;
   if (strictMode) {
     // Honor date range in strict mode too — Home dashboard always passes both.
-    rows = await selectMediaStatsRaw(limit, { from, to });
+    rows = await selectMediaStatsRaw(limit, { from, to, viewerBuyer });
   } else if (from || to) {
-    rows = await selectMediaStatsRange({ limit, from, to });
+    rows = await selectMediaStatsRange({ limit, from, to, viewerBuyer });
   } else {
-    rows = await selectMediaStats(limit);
+    rows = await selectMediaStats(limit, viewerBuyer);
   }
 
   if (viewerBuyer) {
