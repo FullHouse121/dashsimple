@@ -17323,8 +17323,7 @@ select option,
      of the wide table's horizontal scroll (the detail-row td spans ~2500px). */
   position: sticky;
   left: 0;
-  width: calc(100vw - 320px);
-  max-width: 1200px;
+  width: calc(100vw - 340px);
   box-sizing: border-box;
   /* .live-clicks-table td sets white-space:nowrap for the compact rows, which
      inherits into this panel and blocks wrapping — reset it here. */
