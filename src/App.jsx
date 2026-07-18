@@ -8895,6 +8895,25 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
   const [expandedId, setExpandedId] = React.useState(null); // row inspected
   const [, setClock] = React.useState(0); // 1s re-render so "Xs ago" ticks
+  const [copyToast, setCopyToast] = React.useState({
+    visible: false, type: "success", message: "", left: 0, top: 0, above: true,
+  });
+  const copyToastTimeoutRef = React.useRef(null);
+  React.useEffect(() => () => {
+    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+  }, []);
+  const showCopyToast = React.useCallback((type, message, anchorRect) => {
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
+    const rawLeft = anchorRect ? anchorRect.left + anchorRect.width / 2 : viewportWidth / 2;
+    const clampedLeft = Math.max(170, Math.min(viewportWidth - 170, rawLeft));
+    const showAbove = anchorRect ? anchorRect.top > 72 : true;
+    const top = anchorRect ? (showAbove ? anchorRect.top - 10 : anchorRect.bottom + 10) : 72;
+    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+    setCopyToast({ visible: true, type, message, left: clampedLeft, top, above: showAbove });
+    copyToastTimeoutRef.current = setTimeout(() => {
+      setCopyToast((prev) => ({ ...prev, visible: false }));
+    }, 1400);
+  }, []);
 
   const fetchClicks = React.useCallback(async () => {
     try {
@@ -9048,11 +9067,13 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const pct = (num) => (clickCount > 0 ? `${((num / clickCount) * 100).toFixed(1)}%` : "—");
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
-  const copyText = (value) => {
+  const copyText = (value, event) => {
+    const anchorRect = event?.currentTarget?.getBoundingClientRect?.() || null;
     try {
       navigator.clipboard?.writeText(String(value || ""));
+      showCopyToast("success", "Has been copied successfully", anchorRect);
     } catch {
-      /* clipboard unavailable */
+      showCopyToast("error", "Copy failed", anchorRect);
     }
   };
   const destinationHost = (url) => {
@@ -9118,6 +9139,26 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   return (
     <>
+      <AnimatePresence>
+        {copyToast.visible ? (
+          <div
+            className={`copy-toast-anchor${copyToast.above ? "" : " is-below"}`}
+            style={{ left: copyToast.left, top: copyToast.top }}
+          >
+            <motion.div
+              className={`copy-toast ${copyToast.type}`}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+            >
+              {copyToast.type === "success" ? <CheckCircle size={14} /> : <X size={14} />}
+              <span>{copyToast.message}</span>
+            </motion.div>
+          </div>
+        ) : null}
+      </AnimatePresence>
+
       <section className="cards live-clicks-cards">
         {healthCards.map((card, idx) => (
           <motion.div
@@ -9365,7 +9406,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="lc-id-pill"
                                 title={`${row.clickId} — click to copy`}
-                                onClick={(e) => { e.stopPropagation(); copyText(row.clickId); }}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.clickId, e); }}
                               >
                                 <i className="lc-id-dot lc-id-dot-click" aria-hidden="true" />
                                 <span>{row.clickId}</span>
@@ -9380,7 +9421,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="lc-id-pill"
                                 title={`${row.externalId} — click to copy`}
-                                onClick={(e) => { e.stopPropagation(); copyText(row.externalId); }}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.externalId, e); }}
                               >
                                 <i className="lc-id-dot lc-id-dot-ext" aria-hidden="true" />
                                 <span>{row.externalId}</span>
@@ -9443,7 +9484,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 type="button"
                                 className="icon-btn live-click-copy"
                                 title="Copy destination URL"
-                                onClick={(e) => { e.stopPropagation(); copyText(row.destination); }}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.destination, e); }}
                               >
                                 <Copy size={11} />
                               </button>
@@ -9484,7 +9525,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                               type="button"
                                               className="icon-btn lc-detail-copy"
                                               title={`Copy Sub ${i + 1}`}
-                                              onClick={(e) => { e.stopPropagation(); copyText(value); }}
+                                              onClick={(e) => { e.stopPropagation(); copyText(value, e); }}
                                             >
                                               <Copy size={10} />
                                             </button>
@@ -9504,7 +9545,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                           type="button"
                                           className="icon-btn lc-detail-copy"
                                           title="Copy destination URL"
-                                          onClick={(e) => { e.stopPropagation(); copyText(row.destination); }}
+                                          onClick={(e) => { e.stopPropagation(); copyText(row.destination, e); }}
                                         >
                                           <Copy size={10} />
                                         </button>
