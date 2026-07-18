@@ -6829,6 +6829,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const globalUserMinFtds = Number(filters?.userMinFtds || 0);
   const globalUserMinRedeposits = Number(filters?.userMinRedeposits || 0);
   const globalUserRevenueOnly = Boolean(filters?.userRevenueOnly);
+  const globalBrandFilter = String(filters?.statsBrand || "").trim();
+  const globalGameFilter = String(filters?.statsGame || "").trim();
+  const globalToolFilter = String(filters?.statsTool || "").trim();
+  const globalPlacementFilter = String(filters?.statsPlacement || "").trim();
+  const globalMinClicks = Number(filters?.statsMinClicks || 0);
+  const globalMinFtds = Number(filters?.statsMinFtds || 0);
+  const globalProfitableOnly = Boolean(filters?.statsProfitableOnly);
   const globalDateRange = React.useMemo(
     () => normalizeDateRange(filters?.dateFrom, filters?.dateTo),
     [filters?.dateFrom, filters?.dateTo]
@@ -6985,9 +6992,23 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     return direct || ftd + redeposit;
   };
 
+  const matchesAttr = (value, needle) =>
+    !needle || String(value || "").toLowerCase().includes(String(needle).toLowerCase());
+
   const normalizedEntries = React.useMemo(() => {
     const map = new Map();
+    // Brand/game/tool/placement live on the RAW rows — grouping by
+    // date|buyer|country drops them, so these filters apply before grouping.
     statsEntries.forEach((row) => {
+      if (!matchesAttr(row.brand, globalBrandFilter)) return;
+      if (!matchesAttr(row.game, globalGameFilter)) return;
+      if (!matchesAttr(row.tool, globalToolFilter)) return;
+      if (
+        globalPlacementFilter &&
+        !String(row.placement || "").toLowerCase().includes(globalPlacementFilter.toLowerCase())
+      ) {
+        return;
+      }
       const date = String(row.date || "");
       const buyer = String(row.buyer || "");
       const country = String(row.country || "");
@@ -7029,14 +7050,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       if (dateSort !== 0) return dateSort;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [statsEntries]);
+  }, [statsEntries, globalBrandFilter, globalGameFilter, globalToolFilter, globalPlacementFilter]);
 
   const buyers = isLeadership
     ? Array.from(
         new Set(["All", ...buyerOptions, ...normalizedEntries.map((row) => row.buyer).filter(Boolean)])
       )
     : [effectiveBuyer].filter(Boolean);
-  const filteredEntries = normalizedEntries.filter((row) => {
+  // Traffic-analysis filters from the Refine modal (brand/game/tool/placement
+  // + minimum thresholds) — applied on the grouped rows so the KPI cards,
+  // charts and table all agree.
+  const statsRowMatchesFilters = (row) => {
     if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
       return false;
     }
@@ -7049,8 +7073,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     }
     if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
     if (!isDateInRange(row.date, globalDateRange)) return false;
+    // (brand/game/tool/placement already applied on the raw rows above)
+    if (globalMinClicks > 0 && sum(row.clicks) < globalMinClicks) return false;
+    if (globalMinFtds > 0 && sum(row.ftds) < globalMinFtds) return false;
+    if (globalProfitableOnly && sum(row.revenue) <= sum(row.spend)) return false;
     return true;
-  });
+  };
+  const filteredEntries = normalizedEntries.filter(statsRowMatchesFilters);
 
   React.useEffect(() => {
     setShowAllStatsRows(false);
@@ -7206,6 +7235,15 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         }
         if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
         if (!isDateInRange(row.date, globalDateRange)) return false;
+        if (!matchesAttr(row.brand, globalBrandFilter)) return false;
+        if (!matchesAttr(row.game, globalGameFilter)) return false;
+        if (!matchesAttr(row.tool, globalToolFilter)) return false;
+        if (
+          globalPlacementFilter &&
+          !String(row.placement || "").toLowerCase().includes(globalPlacementFilter.toLowerCase())
+        ) {
+          return false;
+        }
         return true;
       }),
     [
@@ -7217,6 +7255,10 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       globalCountryFilter,
       globalDateRange.from,
       globalDateRange.to,
+      globalBrandFilter,
+      globalGameFilter,
+      globalToolFilter,
+      globalPlacementFilter,
     ]
   );
 
@@ -7305,15 +7347,65 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   const uc = totals.uniqueClicks;
   const ucSub = (num, formatter) =>
     uc > 0 ? { value: formatter(num, uc), label: "on unique" } : null;
+  // Rates lead with UNIQUE clicks because that's what Keitaro's own `cr`
+  // metric reports and what buyers compare against; the raw-click rate stays
+  // as the secondary line. Install cards only appear when installs are
+  // actually tracked (this tracker doesn't, so they'd read 0.00%/—).
+  const rateBase = uc > 0 ? uc : totals.clicks;
+  const rateBaseLabel = uc > 0 ? "of unique clicks" : "of clicks";
+  const rawSub = (num) =>
+    uc > 0 ? { value: fmtPercent(toPercent(num, totals.clicks)), label: "of all clicks" } : null;
   const statsKpis = [
-    { label: "Click2Install", value: fmtPercent(toPercent(totals.installs, totals.clicks)), meta: "Rate", sub: ucSub(totals.installs, (n, d) => fmtPercent(toPercent(n, d))) },
-    { label: "Click2Reg", value: fmtPercent(toPercent(totals.registers, totals.clicks)), meta: "Rate", sub: ucSub(totals.registers, (n, d) => fmtPercent(toPercent(n, d))) },
-    { label: "Click2Dep", value: fmtPercent(toPercent(totals.ftds, totals.clicks)), meta: "Rate", sub: ucSub(totals.ftds, (n, d) => fmtPercent(toPercent(n, d))) },
-    { label: "EPC", value: fmtCost(safeDivide(totals.revenue, totals.clicks)), meta: "Revenue per click", sub: uc > 0 ? { value: fmtCost(safeDivide(totals.revenue, uc)), label: "per unique" } : null },
-    { label: "Install2Reg", value: fmtPercent(toPercent(totals.registers, totals.installs)), meta: "Rate" },
-    { label: "Install2Dep", value: fmtPercent(toPercent(totals.ftds, totals.installs)), meta: "Rate" },
-    { label: "Reg2Dep", value: fmtPercent(toPercent(totals.ftds, totals.registers)), meta: "Rate" },
-    { label: "Dep2Red", value: fmtPercent(toPercent(totals.redeposits, totals.ftds)), meta: "Rate" },
+    ...(totals.installs > 0
+      ? [
+          {
+            label: "Click2Install",
+            value: fmtPercent(toPercent(totals.installs, rateBase)),
+            meta: rateBaseLabel,
+            sub: rawSub(totals.installs),
+          },
+          { label: "Install2Reg", value: fmtPercent(toPercent(totals.registers, totals.installs)), meta: "of installs" },
+          { label: "Install2Dep", value: fmtPercent(toPercent(totals.ftds, totals.installs)), meta: "of installs" },
+        ]
+      : []),
+    {
+      label: "Click2Reg",
+      value: fmtPercent(toPercent(totals.registers, rateBase)),
+      meta: rateBaseLabel,
+      sub: rawSub(totals.registers),
+    },
+    {
+      label: "Click2Dep",
+      value: fmtPercent(toPercent(totals.ftds, rateBase)),
+      meta: rateBaseLabel,
+      sub: rawSub(totals.ftds),
+    },
+    {
+      label: "Reg2Dep",
+      value: fmtPercent(toPercent(totals.ftds, totals.registers)),
+      meta: "registrations that deposited",
+    },
+    {
+      // Redeposits are EVENTS, not people — one depositor can redeposit many
+      // times, so a percentage reads as a broken >100% "rate". Show the ratio.
+      label: "Redeposits / FTD",
+      value: totals.ftds > 0 ? `${(totals.redeposits / totals.ftds).toFixed(2)}×` : "—",
+      meta: "redeposit events per depositor",
+    },
+    {
+      label: "EPC",
+      value: fmtCost(safeDivide(totals.revenue, rateBase)),
+      meta: uc > 0 ? "per unique click" : "per click",
+      sub:
+        uc > 0
+          ? { value: fmtCost(safeDivide(totals.revenue, totals.clicks)), label: "per raw click" }
+          : null,
+    },
+    {
+      label: "Cost per FTD",
+      value: totals.spend > 0 ? fmtCost(toCost(totals.spend, totals.ftds)) : "—",
+      meta: totals.spend > 0 ? "spend / FTD" : "no spend in range",
+    },
   ];
 
   const chartMap = new Map();
@@ -10575,6 +10667,13 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const globalUserMinFtds = Number(filters?.userMinFtds || 0);
   const globalUserMinRedeposits = Number(filters?.userMinRedeposits || 0);
   const globalUserRevenueOnly = Boolean(filters?.userRevenueOnly);
+  const globalBrandFilter = String(filters?.statsBrand || "").trim();
+  const globalGameFilter = String(filters?.statsGame || "").trim();
+  const globalToolFilter = String(filters?.statsTool || "").trim();
+  const globalPlacementFilter = String(filters?.statsPlacement || "").trim();
+  const globalMinClicks = Number(filters?.statsMinClicks || 0);
+  const globalMinFtds = Number(filters?.statsMinFtds || 0);
+  const globalProfitableOnly = Boolean(filters?.statsProfitableOnly);
 
   const normalizedSearch = search.trim().toLowerCase();
   const sum = (value) => Number(value || 0);
@@ -21880,6 +21979,13 @@ export default function App() {
       userRevenueOnly: false,
       approach: "All",
       buyer: "All",
+      statsBrand: "",
+      statsGame: "",
+      statsTool: "",
+      statsPlacement: "",
+      statsMinClicks: "",
+      statsMinFtds: "",
+      statsProfitableOnly: false,
       category: "All",
       billing: "All",
       status: "All",
@@ -23362,7 +23468,7 @@ export default function App() {
 
                 {usesPerformanceFilters ? (
                   <>
-                    {(isHome || isGeos || isPlacements || isUserBehavior) && isLeadership ? (
+                    {(isHome || isGeos || isStats || isPlacements || isUserBehavior) && isLeadership ? (
                       <div className={`field${filters.buyer && filters.buyer !== "All" ? " is-active" : ""}`}>
                         <div className="field-label-row">
                           <label>Buyer</label>
@@ -23387,6 +23493,86 @@ export default function App() {
                           emptyResultsLabel="No buyers found."
                         />
                       </div>
+                    ) : null}
+                    {isStats ? (
+                      <>
+                        <div className="modal-section-label">
+                          <Megaphone size={11} />
+                          <span>Traffic</span>
+                        </div>
+                        <div className="filters-grid-2">
+                          <div className={`field${filters.statsBrand ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Brand</label>
+                              {filters.statsBrand ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsBrand: "" }))} aria-label="Clear brand">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="text" placeholder="All brands" value={filters.statsBrand} onChange={updateFilter("statsBrand")} />
+                          </div>
+                          <div className={`field${filters.statsGame ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Game / Offer</label>
+                              {filters.statsGame ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsGame: "" }))} aria-label="Clear game">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="text" placeholder="All games" value={filters.statsGame} onChange={updateFilter("statsGame")} />
+                          </div>
+                          <div className={`field${filters.statsTool ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Tool / Source</label>
+                              {filters.statsTool ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsTool: "" }))} aria-label="Clear tool">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="text" placeholder="All tools" value={filters.statsTool} onChange={updateFilter("statsTool")} />
+                          </div>
+                          <div className={`field${filters.statsPlacement ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Placement</label>
+                              {filters.statsPlacement ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsPlacement: "" }))} aria-label="Clear placement">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="text" placeholder="All placements" value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
+                          </div>
+                        </div>
+
+                        <div className="modal-section-label">
+                          <Filter size={11} />
+                          <span>Thresholds</span>
+                        </div>
+                        <div className="filters-grid-2">
+                          <div className={`field${filters.statsMinClicks ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Min clicks</label>
+                              {filters.statsMinClicks ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinClicks: "" }))} aria-label="Clear min clicks">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="number" min="0" placeholder="0" value={filters.statsMinClicks} onChange={updateFilter("statsMinClicks")} />
+                          </div>
+                          <div className={`field${filters.statsMinFtds ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Min FTDs</label>
+                              {filters.statsMinFtds ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinFtds: "" }))} aria-label="Clear min FTDs">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="number" min="0" placeholder="0" value={filters.statsMinFtds} onChange={updateFilter("statsMinFtds")} />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className={`filter-toggle${filters.statsProfitableOnly ? " is-on" : ""}`}
+                          onClick={() => setFilters((prev) => ({ ...prev, statsProfitableOnly: !prev.statsProfitableOnly }))}
+                          aria-pressed={filters.statsProfitableOnly}
+                        >
+                          <span className="filter-toggle-dot" aria-hidden="true" />
+                          Profitable rows only (revenue &gt; spend)
+                        </button>
+                      </>
                     ) : null}
                     {isGeos ? (
                       <>

@@ -17736,3 +17736,44 @@ select option,
   color: var(--faint);
   text-transform: uppercase;
 }
+
+/* Refine-modal helpers: paired fields + a boolean pill toggle */
+.filters-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.filter-toggle:hover { border-color: rgba(255, 255, 255, 0.14); }
+.filter-toggle-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+.filter-toggle.is-on {
+  color: var(--text);
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.07);
+}
+.filter-toggle.is-on .filter-toggle-dot {
+  background: var(--green);
+  box-shadow: 0 0 8px rgba(54, 208, 124, 0.5);
+}
