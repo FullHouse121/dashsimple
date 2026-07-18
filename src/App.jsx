@@ -9001,6 +9001,41 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
     return 60;
   })();
   const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
+
+  // Clicks-over-time buckets for the chart: adaptive step, zero-filled from
+  // the oldest LOADED click (capped windows chart only what's loaded).
+  const clicksSeries = React.useMemo(() => {
+    if (!filteredRows.length) return [];
+    const stepMin =
+      windowElapsedMinutes <= 90 ? 2
+      : windowElapsedMinutes <= 240 ? 5
+      : windowElapsedMinutes <= 900 ? 15
+      : windowElapsedMinutes <= 2 * 1440 ? 60
+      : 1440;
+    const stepMs = stepMin * 60 * 1000;
+    const parse = (dt) => Date.parse(`${String(dt).replace(" ", "T")}Z`);
+    const counts = new Map();
+    let oldest = Infinity;
+    let newest = -Infinity;
+    filteredRows.forEach((row) => {
+      const ms = parse(row.datetime);
+      if (!Number.isFinite(ms)) return;
+      const bucket = Math.floor(ms / stepMs) * stepMs;
+      counts.set(bucket, (counts.get(bucket) || 0) + 1);
+      if (bucket < oldest) oldest = bucket;
+      if (bucket > newest) newest = bucket;
+    });
+    if (!Number.isFinite(oldest)) return [];
+    const series = [];
+    for (let bucket = oldest; bucket <= newest; bucket += stepMs) {
+      const iso = new Date(bucket).toISOString();
+      series.push({
+        label: stepMin >= 1440 ? iso.slice(5, 10) : iso.slice(11, 16),
+        clicks: counts.get(bucket) || 0,
+      });
+    }
+    return series;
+  }, [filteredRows, windowElapsedMinutes]);
   const uniqueCount = filteredRows.filter((row) => row.isUnique).length;
   const botCount = filteredRows.filter((row) => row.isBot).length;
   const proxyCount = filteredRows.filter((row) => row.isProxy).length;
@@ -9092,6 +9127,70 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
             <div className="card-meta">{card.meta}</div>
           </motion.div>
         ))}
+      </section>
+
+      <section className="panels panels-single">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.06 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Clicks Timeline</h3>
+              <p className="panel-subtitle">
+                {LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — bucketed clicks.
+              </p>
+            </div>
+          </div>
+          <div className="chart chart-surface">
+            {clicksSeries.length > 1 ? (
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={clicksSeries} margin={{ top: 8, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="liveClicksArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3987e5" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#3987e5" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickMargin={8}
+                    minTickGap={24}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                    tick={axisTickStyle}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [Number(value).toLocaleString(), "Clicks"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="clicks"
+                    stroke="#3987e5"
+                    strokeWidth={2}
+                    fill="url(#liveClicksArea)"
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="empty-state">Not enough clicks in this window to chart.</div>
+            )}
+          </div>
+        </motion.div>
       </section>
 
       <section className="entries-section">
@@ -9235,31 +9334,35 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                           <td className="live-click-campaign" title={row.campaign}>
                             {row.campaign || "—"}
                           </td>
-                          <td className="live-click-mono" title={row.clickId}>
-                            <span>{row.clickId || "—"}</span>
+                          <td>
                             {row.clickId ? (
                               <button
                                 type="button"
-                                className="icon-btn live-click-copy"
-                                title="Copy click id"
+                                className="lc-id-pill"
+                                title={`${row.clickId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.clickId); }}
                               >
-                                <Copy size={11} />
+                                <i className="lc-id-dot lc-id-dot-click" aria-hidden="true" />
+                                <span>{row.clickId}</span>
                               </button>
-                            ) : null}
+                            ) : (
+                              <span className="lc-dim-dash">—</span>
+                            )}
                           </td>
-                          <td className="live-click-mono" title={row.externalId}>
-                            <span>{row.externalId || "—"}</span>
+                          <td>
                             {row.externalId ? (
                               <button
                                 type="button"
-                                className="icon-btn live-click-copy"
-                                title="Copy external id"
+                                className="lc-id-pill"
+                                title={`${row.externalId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.externalId); }}
                               >
-                                <Copy size={11} />
+                                <i className="lc-id-dot lc-id-dot-ext" aria-hidden="true" />
+                                <span>{row.externalId}</span>
                               </button>
-                            ) : null}
+                            ) : (
+                              <span className="lc-dim-dash">—</span>
+                            )}
                           </td>
                           <td
                             className="live-click-geo"

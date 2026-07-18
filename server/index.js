@@ -8987,6 +8987,26 @@ const LIVE_CLICKS_INTERVALS = {
   previous_month: null, // computed from/to below
 };
 const liveClicksCache = new Map(); // limit -> { at, rows, trackerNow }
+// Live Clicks only shows traffic that belongs to a registered dashboard buyer
+// (matched via the campaign's buyer segment: Akku, Sara, Leticia, Karen…).
+// Foreign/test campaigns in the tracker stay out of the feed.
+const registeredBuyersCache = { at: 0, list: [] };
+const getRegisteredBuyers = async () => {
+  if (registeredBuyersCache.list.length && Date.now() - registeredBuyersCache.at < 60 * 1000) {
+    return registeredBuyersCache.list;
+  }
+  try {
+    const rows = await getRows(`SELECT username FROM users`);
+    const list = rows.map((row) => String(row.username || "").trim()).filter(Boolean);
+    if (list.length) {
+      registeredBuyersCache.at = Date.now();
+      registeredBuyersCache.list = list;
+    }
+    return registeredBuyersCache.list;
+  } catch {
+    return registeredBuyersCache.list;
+  }
+};
 const trackerNowString = (timezone) => {
   try {
     return new Date().toLocaleString("sv-SE", { timeZone: timezone });
@@ -9094,6 +9114,14 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
     // it — i.e. the oldest fetched row is still inside the window.
     const oldest = cached.rows[cached.rows.length - 1];
     truncated = rawCapped && (!oldest?.datetime || oldest.datetime >= cutoff);
+  }
+
+  // Keep only clicks attributable to a registered dashboard buyer.
+  const registeredBuyers = await getRegisteredBuyers();
+  if (registeredBuyers.length) {
+    rows = rows.filter(
+      (row) => row.buyer && registeredBuyers.some((username) => buyerMatches(row.buyer, username))
+    );
   }
 
   const viewerBuyer = await resolveViewerBuyer(req.user);
