@@ -8874,6 +8874,21 @@ const LIVE_CLICKS_WINDOWS = [
 ];
 const LIVE_CLICKS_IS_ROLLING = (value) => /^\d+$/.test(String(value));
 const LIVE_CLICKS_RENDER_CAP = 120;
+// Team-standard meaning of each sub slot (mirrors the UTM builder's macro
+// set: sub1={{placement}}, sub3-5 campaign/adset/ad names, sub6 adset id...).
+const SUB_MEANINGS = {
+  1: "Placement",
+  2: "Buyer Tag",
+  3: "Campaign Name",
+  4: "Adset Name",
+  5: "Ad Name",
+  6: "Adset ID",
+  7: "Approach",
+  8: "Approach Name",
+  9: "GEO",
+  10: "Ad Account",
+  11: "Source",
+};
 const liveClickSubIssues = (row) => {
   const issues = [];
   for (let i = 1; i <= 11; i += 1) {
@@ -9377,7 +9392,12 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                       <th>GEO</th>
                       <th>Device</th>
                       {Array.from({ length: 11 }, (_, i) => (
-                        <th key={`sub-${i + 1}`}>Sub {i + 1}</th>
+                        <th key={`sub-${i + 1}`} title={SUB_MEANINGS[i + 1]}>
+                          <span className="lc-th-sub">
+                            Sub {i + 1}
+                            <em>{SUB_MEANINGS[i + 1]}</em>
+                          </span>
+                        </th>
                       ))}
                       <th>Flags</th>
                       <th>Destination</th>
@@ -9518,7 +9538,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                         className={`lc-detail-field${bad ? " is-bad" : ""}`}
                                         key={`d-sub-${i + 1}`}
                                       >
-                                        <span className="lc-detail-label">Sub {i + 1}</span>
+                                        <span className="lc-detail-label">Sub {i + 1} · {SUB_MEANINGS[i + 1]}</span>
                                         <span className="lc-detail-value">
                                           {value || "—"}
                                           {value ? (
@@ -10288,7 +10308,7 @@ function ConversionsDashboard({ authUser, viewerBuyer }) {
                                     const value = String(row.subs?.[i + 1] ?? "").trim();
                                     return (
                                       <div className="lc-detail-field" key={`conv-sub-${i + 1}`}>
-                                        <span className="lc-detail-label">Sub {i + 1}</span>
+                                        <span className="lc-detail-label">Sub {i + 1} · {SUB_MEANINGS[i + 1]}</span>
                                         <span className="lc-detail-value">
                                           {value || "—"}
                                           {value ? (

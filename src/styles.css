@@ -17719,3 +17719,14 @@ select option,
     grid-template-columns: minmax(260px, 1fr) 200px 180px 200px;
   }
 }
+
+/* Sub column headers carry their team meaning under the slot number */
+.lc-th-sub { display: flex; flex-direction: column; gap: 1px; }
+.lc-th-sub em {
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+  text-transform: uppercase;
+}
