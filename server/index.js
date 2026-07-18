@@ -9137,6 +9137,138 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
   });
 });
 
+// ── Live conversions from Keitaro's conversion log ────────────────────
+// Mirror of clicks-live for conversions: rolling/calendar windows, short
+// shared cache, registered-buyer + viewer scoping. Statuses on this tracker:
+// registration / ftd / redeposit. Quirk mirror: the requested
+// `postback_datetime` column returns as `datetime`.
+const LIVE_CONVERSIONS_COLUMNS = [
+  "conversion_id", "sub_id", "external_id", "click_datetime",
+  "postback_datetime", "sale_datetime", "status", "tid", "revenue",
+  "campaign", "campaign_id", "offer", "stream", "country", "country_code",
+  "city", "os", "browser", "device_type", "params",
+  ...Array.from({ length: LIVE_CLICKS_SUB_COUNT }, (_, i) => `sub_id_${i + 1}`),
+];
+const liveConversionsCache = new Map(); // cacheKey -> { at, rows, trackerNow }
+app.get("/api/keitaro/conversions-live", async (req, res) => {
+  const minutesRaw = Number.parseInt(String(req.query.minutes ?? ""), 10);
+  const minutes = Number.isFinite(minutesRaw) ? Math.min(Math.max(minutesRaw, 5), 1440) : 30;
+  const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
+  const timezone = resolveKeitaroTimezone();
+  const intervalKey = Object.prototype.hasOwnProperty.call(
+    LIVE_CLICKS_INTERVALS,
+    String(req.query.interval || "")
+  )
+    ? String(req.query.interval)
+    : null;
+
+  let range;
+  if (intervalKey === "previous_month") {
+    const now = trackerNowString(timezone);
+    const year = Number(now.slice(0, 4));
+    const month = Number(now.slice(5, 7));
+    const prevYear = month === 1 ? year - 1 : year;
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const lastDay = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate();
+    const mm = String(prevMonth).padStart(2, "0");
+    range = { from: `${prevYear}-${mm}-01`, to: `${prevYear}-${mm}-${lastDay}`, timezone };
+  } else if (intervalKey) {
+    range = { interval: LIVE_CLICKS_INTERVALS[intervalKey], timezone };
+  } else {
+    range = { interval: "today", timezone };
+  }
+
+  const cacheKey = `${intervalKey || "rolling"}:${limit}`;
+  let cached = liveConversionsCache.get(cacheKey);
+  if (!cached || Date.now() - cached.at > 10 * 1000) {
+    const result = await keitaroAdminFetch("/conversions/log", {
+      method: "POST",
+      body: JSON.stringify({
+        range,
+        columns: LIVE_CONVERSIONS_COLUMNS,
+        sort: [{ name: "postback_datetime", order: "DESC" }],
+        limit,
+      }),
+    });
+    if (!result.ok) {
+      if (!cached) {
+        return res.status(502).json({ error: result.error || "Keitaro conversion log failed." });
+      }
+    } else {
+      const raw = Array.isArray(result.data?.rows) ? result.data.rows : [];
+      cached = {
+        at: Date.now(),
+        trackerNow: trackerNowString(timezone),
+        rows: raw.map((row) => {
+          const subs = {};
+          for (let i = 1; i <= LIVE_CLICKS_SUB_COUNT; i += 1) {
+            subs[i] = row[`sub_id_${i}`] ?? "";
+          }
+          const params = row.params && typeof row.params === "object" ? row.params : {};
+          return {
+            id: row.event_id || `${row.sub_id || "conv"}-${row.datetime || ""}-${row.status || ""}`,
+            clickId: row.sub_id || "",
+            externalId: row.external_id || "",
+            clickDatetime: row.click_datetime || "",
+            datetime: row.datetime || "",
+            saleDatetime: row.sale_datetime || "",
+            status: String(row.status || "").toLowerCase(),
+            tid: row.tid || "",
+            revenue: Number(row.revenue) || 0,
+            payout: params.payout || "",
+            currency: params.currency || "",
+            campaign: row.campaign || "",
+            campaignId: row.campaign_id ?? null,
+            buyer: parseCampaignName(row.campaign).buyer || "",
+            offer: row.offer || "",
+            stream: row.stream || "",
+            country: row.country || "",
+            countryCode: row.country_code || "",
+            city: row.city || "",
+            os: row.os || "",
+            browser: row.browser || "",
+            deviceType: row.device_type || "",
+            subs,
+          };
+        }),
+      };
+      liveConversionsCache.set(cacheKey, cached);
+    }
+  }
+
+  let rows = cached.rows;
+  let cutoff = null;
+  const rawCapped = cached.rows.length >= limit;
+  let truncated = rawCapped;
+  if (!intervalKey) {
+    const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
+    cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
+    rows = rows.filter((row) => !row.datetime || row.datetime >= cutoff);
+    const oldest = cached.rows[cached.rows.length - 1];
+    truncated = rawCapped && (!oldest?.datetime || oldest.datetime >= cutoff);
+  }
+
+  const registeredBuyers = await getRegisteredBuyers();
+  if (registeredBuyers.length) {
+    rows = rows.filter(
+      (row) => row.buyer && registeredBuyers.some((username) => buyerMatches(row.buyer, username))
+    );
+  }
+
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  if (viewerBuyer) {
+    rows = rows.filter((row) => viewerOwnsRow({ campaign: row.campaign, buyer: row.buyer }, viewerBuyer));
+  }
+  return res.json({
+    rows,
+    window: intervalKey ? { interval: intervalKey } : { minutes, cutoff },
+    trackerNow: cached.trackerNow,
+    timezone,
+    truncated,
+  });
+});
+
 // ── Manual campaign spend (fills the gap until costs live in Keitaro) ──
 // One row per campaign × day; buyers may only touch their own campaigns.
 app.get("/api/campaign-spend", async (req, res) => {
