@@ -9301,40 +9301,98 @@ const collectSubs = (row) => {
   return subs;
 };
 
+const mapClickRow = (row) => ({
+  id: row.event_id || row.sub_id,
+  clickId: row.sub_id || "",
+  externalId: row.external_id || "",
+  datetime: row.datetime || "",
+  campaign: row.campaign || "",
+  campaignId: row.campaign_id ?? null,
+  buyer: parseCampaignName(row.campaign).buyer || "",
+  country: row.country || "",
+  countryCode: row.country_code || "",
+  city: row.city || "",
+  os: row.os || "",
+  browser: row.browser || "",
+  deviceType: row.device_type || "",
+  destination: row.destination || "",
+  source: row.source || "",
+  referrer: row.referrer || "",
+  isUnique: Boolean(row.is_unique_campaign),
+  isBot: Boolean(row.is_bot),
+  isProxy: Boolean(row.is_using_proxy),
+  isLead: Boolean(row.is_lead),
+  isSale: Boolean(row.is_sale),
+  offer: row.offer || "",
+  stream: row.stream || "",
+  ip: row.ip || "",
+  isp: row.isp || "",
+  subs: collectSubs(row),
+});
+
 registerLiveLogEndpoint({
   routePath: "/api/keitaro/clicks-live",
   logPath: "/clicks/log",
   columns: LIVE_CLICKS_COLUMNS,
   sortField: "datetime",
   failMessage: "Keitaro click log failed.",
-  mapRow: (row) => ({
-    id: row.event_id || row.sub_id,
-    clickId: row.sub_id || "",
-    externalId: row.external_id || "",
-    datetime: row.datetime || "",
-    campaign: row.campaign || "",
-    campaignId: row.campaign_id ?? null,
-    buyer: parseCampaignName(row.campaign).buyer || "",
-    country: row.country || "",
-    countryCode: row.country_code || "",
-    city: row.city || "",
-    os: row.os || "",
-    browser: row.browser || "",
-    deviceType: row.device_type || "",
-    destination: row.destination || "",
-    source: row.source || "",
-    referrer: row.referrer || "",
-    isUnique: Boolean(row.is_unique_campaign),
-    isBot: Boolean(row.is_bot),
-    isProxy: Boolean(row.is_using_proxy),
-    isLead: Boolean(row.is_lead),
-    isSale: Boolean(row.is_sale),
-    offer: row.offer || "",
-    stream: row.stream || "",
-    ip: row.ip || "",
-    isp: row.isp || "",
-    subs: collectSubs(row),
-  }),
+  mapRow: mapClickRow,
+});
+
+// Deep click lookup: the live feed only holds the newest ~1,000 clicks, so a
+// click from days ago (that later converted) is not in the window. Look it up
+// directly in Keitaro by click id (sub_id) or external id over a wide range.
+app.get("/api/keitaro/clicks-lookup", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (q.length < 3) {
+    return res.status(400).json({ error: "Enter at least 3 characters to look up." });
+  }
+  const daysRaw = Number.parseInt(String(req.query.days ?? ""), 10);
+  const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 30;
+  const timezone = resolveKeitaroTimezone();
+  const range = { interval: `${days}_days_ago`, timezone };
+
+  // Exact id match first (sub_id, then external_id), then a broader regex over
+  // both — a paste of a click id hits the first path instantly.
+  const attempts = [
+    [{ name: "sub_id", operator: "EQUALS", expression: q }],
+    [{ name: "external_id", operator: "EQUALS", expression: q }],
+    [{ name: "sub_id", operator: "CONTAINS", expression: q }],
+    [{ name: "external_id", operator: "CONTAINS", expression: q }],
+  ];
+  let raw = [];
+  for (const filters of attempts) {
+    const result = await keitaroAdminFetch("/clicks/log", {
+      method: "POST",
+      body: JSON.stringify({
+        range,
+        columns: LIVE_CLICKS_COLUMNS,
+        filters,
+        sort: [{ name: "datetime", order: "DESC" }],
+        limit: 100,
+      }),
+    });
+    if (result.ok && Array.isArray(result.data?.rows) && result.data.rows.length) {
+      raw = result.data.rows;
+      break;
+    }
+    if (!result.ok && !raw.length && filters === attempts[0]) {
+      return res.status(502).json({ error: result.error || "Keitaro click lookup failed." });
+    }
+  }
+
+  let rows = raw.map(mapClickRow);
+  const registeredBuyers = await getRegisteredBuyers();
+  if (registeredBuyers.length) {
+    rows = rows.filter(
+      (row) => row.buyer && registeredBuyers.some((username) => buyerMatches(row.buyer, username))
+    );
+  }
+  const viewerBuyer = await resolveViewerBuyer(req.user);
+  if (viewerBuyer) {
+    rows = rows.filter((row) => viewerOwnsRow({ campaign: row.campaign, buyer: row.buyer }, viewerBuyer));
+  }
+  return res.json({ rows, days, source: "lookup" });
 });
 
 // Conversions mirror. Statuses on this tracker: registration / ftd /

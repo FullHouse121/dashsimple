@@ -17785,3 +17785,37 @@ select option,
   background: var(--green);
   box-shadow: 0 0 8px rgba(54, 208, 124, 0.5);
 }
+
+/* Deep-search (find a click older than the live window) */
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--green);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-btn:hover { color: #4fe39a; }
+.deep-search-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid rgba(88, 177, 255, 0.28);
+  background: rgba(88, 177, 255, 0.06);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.deep-search-banner .link-btn { margin-left: auto; color: #58b1ff; }
+.deep-search-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #58b1ff;
+  box-shadow: 0 0 8px rgba(88, 177, 255, 0.6);
+  flex-shrink: 0;
+}

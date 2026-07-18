@@ -161,6 +161,44 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const pct = (num) => (clickCount > 0 ? `${((num / clickCount) * 100).toFixed(1)}%` : "—");
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
+
+  // Deep lookup: the live feed only holds the newest ~1,000 clicks, so a click
+  // from days ago (that later converted) isn't in the window. When an in-window
+  // search finds nothing, query Keitaro directly by id over the last 30 days.
+  const [deep, setDeep] = React.useState({ rows: null, loading: false, error: null, term: "" });
+  const runDeepLookup = React.useCallback(async (term) => {
+    const q = String(term || "").trim();
+    if (q.length < 3) return;
+    setDeep({ rows: null, loading: true, error: null, term: q });
+    try {
+      const response = await apiFetch(`/api/keitaro/clicks-lookup?q=${encodeURIComponent(q)}&days=30`);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Lookup failed.");
+      }
+      const data = await response.json();
+      setDeep({ rows: Array.isArray(data?.rows) ? data.rows : [], loading: false, error: null, term: q });
+    } catch (error) {
+      setDeep({ rows: null, loading: false, error: error.message || "Lookup failed.", term: q });
+    }
+  }, []);
+  // Reset deep results whenever the search or window changes.
+  React.useEffect(() => {
+    setDeep({ rows: null, loading: false, error: null, term: "" });
+  }, [search, windowMinutes, buyerFilter]);
+  // Auto-run when the in-window search is empty and the term looks like an id.
+  const searchTrimmed = search.trim();
+  const inWindowEmpty = searchTrimmed.length >= 3 && filteredRows.length === 0;
+  React.useEffect(() => {
+    if (inWindowEmpty && searchTrimmed.length >= 5 && deep.rows === null && !deep.loading && deep.term !== searchTrimmed) {
+      const id = setTimeout(() => runDeepLookup(searchTrimmed), 500);
+      return () => clearTimeout(id);
+    }
+    return undefined;
+  }, [inWindowEmpty, searchTrimmed, deep.rows, deep.loading, deep.term, runDeepLookup]);
+
+  const deepActive = deep.rows !== null || deep.loading || Boolean(deep.error);
+  const renderRows = deepActive && deep.rows ? deep.rows.slice(0, LIVE_CLICKS_RENDER_CAP) : visibleRows;
   const destinationHost = (url) => {
     try {
       return new URL(url).host;
@@ -427,10 +465,36 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
             <div className="empty-state">Loading live clicks…</div>
           ) : clicksState.error && !rows.length ? (
             <div className="empty-state error">{clicksState.error}</div>
-          ) : !filteredRows.length ? (
-            <div className="empty-state">No clicks in this window.</div>
+          ) : !filteredRows.length && !deepActive ? (
+            <div className="empty-state">
+              {searchTrimmed.length >= 3 ? (
+                <>
+                  No match in this window.{" "}
+                  <button type="button" className="link-btn" onClick={() => runDeepLookup(searchTrimmed)}>
+                    Search Keitaro's last 30 days for “{searchTrimmed}”
+                  </button>
+                </>
+              ) : (
+                "No clicks in this window."
+              )}
+            </div>
+          ) : deepActive && deep.loading ? (
+            <div className="empty-state">Searching the last 30 days…</div>
+          ) : deepActive && deep.error ? (
+            <div className="empty-state error">{deep.error}</div>
+          ) : deepActive && deep.rows && deep.rows.length === 0 ? (
+            <div className="empty-state">No click matching “{deep.term}” in the last 30 days.</div>
           ) : (
             <>
+              {deepActive && deep.rows && deep.rows.length ? (
+                <div className="deep-search-banner">
+                  <span className="deep-search-dot" aria-hidden="true" />
+                  {deep.rows.length} result{deep.rows.length === 1 ? "" : "s"} for “{deep.term}” from Keitaro's last 30 days (outside the live window).
+                  <button type="button" className="link-btn" onClick={() => setDeep({ rows: null, loading: false, error: null, term: "" })}>
+                    Back to live
+                  </button>
+                </div>
+              ) : null}
               <div className="table-wrap live-clicks-wrap">
                 <table className="entries-table stats-table live-clicks-table">
                   <thead>
@@ -455,7 +519,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row) => {
+                    {renderRows.map((row) => {
                       const issues = liveClickSubIssues(row);
                       const isExpanded = expandedId === row.id;
                       return (
@@ -661,7 +725,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                   </tbody>
                 </table>
               </div>
-              {filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
+              {!deepActive && filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
                 <p className="field-hint" style={{ marginTop: 8 }}>
                   Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length.toLocaleString()}{plus} clicks — narrow the window or search, or export the CSV for everything loaded.
                 </p>
