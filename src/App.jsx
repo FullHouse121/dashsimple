@@ -1931,7 +1931,7 @@ function HomeDashboard({
                     {activeOverviewMetrics.map((metric) => (
                       <Area
                         key={metric.key}
-                        type="natural"
+                        type="monotone"
                         dataKey={metric.key}
                         name={t(metric.label)}
                         yAxisId={metric.type === "percent" ? "right" : "left"}
@@ -2141,7 +2141,7 @@ function HomeDashboard({
                   return (
                     <Area
                       key={series.key}
-                      type="natural"
+                      type="monotone"
                       dataKey={series.key}
                       name={t(series.label)}
                       stroke={series.color}
@@ -7857,7 +7857,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
                       {activeStatsOverviewMetrics.map((metric) => (
                         <Area
                           key={metric.key}
-                          type="natural"
+                          type="monotone"
                           dataKey={metric.key}
                           name={metric.label}
                           yAxisId={metric.type === "percent" ? "right" : "left"}
