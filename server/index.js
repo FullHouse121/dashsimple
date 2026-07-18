@@ -7,6 +7,28 @@ import {
   makeBuyerScoping,
 } from "./lib/scoping.js";
 import { createTokenCodec } from "./lib/auth.js";
+import fs from "fs";
+
+// Render "Secret Files" mount at /etc/secrets/<NAME> but do NOT populate
+// process.env — the app reads process.env, so hydrate it from any secret file
+// that isn't already an env var. dotenv/.env values take precedence; secret
+// files only fill the gaps. (Directory overridable for tests.)
+const SECRET_FILE_DIR = process.env.SECRET_FILE_DIR || "/etc/secrets";
+try {
+  if (fs.existsSync(SECRET_FILE_DIR)) {
+    for (const name of fs.readdirSync(SECRET_FILE_DIR)) {
+      if (process.env[name]) continue;
+      try {
+        const value = fs.readFileSync(`${SECRET_FILE_DIR}/${name}`, "utf8").trim();
+        if (value) process.env[name] = value;
+      } catch {
+        /* skip unreadable entries */
+      }
+    }
+  }
+} catch {
+  /* /etc/secrets absent outside Render */
+}
 import express from "express";
 import cors from "cors";
 import compression from "compression";
