@@ -8,7 +8,7 @@ import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
 import { Select } from "../components/Select.jsx";
-import { useLiveFeed, parseTrackerMs } from "../lib/useLiveFeed.js";
+import { useLiveFeed, parseTrackerMs, useWindowSeries } from "../lib/useLiveFeed.js";
 import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
   LIVE_CLICKS_WINDOWS,
@@ -44,6 +44,9 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     windowElapsedMinutes,
   } = useLiveFeed({ endpoint: "/api/keitaro/conversions-live", failLabel: "Failed to load conversions." });
   const { toast: copyToast, copyText } = useCopyToast();
+  // Multi-day windows exceed the 1,000-row cap — chart and count those from
+  // Keitaro's daily aggregate (null for today/yesterday/rolling).
+  const aggregateRows = useWindowSeries({ windowValue: windowMinutes, trackerNow: meta?.trackerNow });
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [statusFilter, setStatusFilter] = React.useState("All");
@@ -88,17 +91,64 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     return `${Math.floor(seconds / 86400)}d after click`;
   };
 
-  const convCount = filteredRows.length;
-  const isCapped = Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  const scopedAggregate = React.useMemo(() => {
+    if (!aggregateRows) return null;
+    if (!isLeadership || isAllSelection(buyerFilter)) return aggregateRows;
+    return aggregateRows.filter((row) => row.buyer === buyerFilter);
+  }, [aggregateRows, isLeadership, buyerFilter]);
+  const aggregateTotals = React.useMemo(() => {
+    if (!scopedAggregate) return null;
+    return scopedAggregate.reduce(
+      (acc, row) => ({
+        registrations: acc.registrations + (Number(row.registers) || 0),
+        ftds: acc.ftds + (Number(row.ftds) || 0),
+        redeposits: acc.redeposits + (Number(row.redeposits) || 0),
+        revenue: acc.revenue + (Number(row.revenue) || 0),
+      }),
+      { registrations: 0, ftds: 0, redeposits: 0, revenue: 0 }
+    );
+  }, [scopedAggregate]);
+  // Status filter narrows the table; the aggregate has no per-status split, so
+  // only use it for the unfiltered view.
+  const usingAggregate = Boolean(
+    aggregateTotals &&
+      isAllSelection(statusFilter) &&
+      !search.trim() &&
+      aggregateTotals.registrations + aggregateTotals.ftds + aggregateTotals.redeposits > 0
+  );
+  const registrations = usingAggregate ? aggregateTotals.registrations : filteredRows.filter((row) => row.status === "registration").length;
+  const ftds = usingAggregate ? aggregateTotals.ftds : filteredRows.filter((row) => row.status === "ftd").length;
+  const redeposits = usingAggregate ? aggregateTotals.redeposits : filteredRows.filter((row) => row.status === "redeposit").length;
+  const convCount = usingAggregate ? registrations + ftds + redeposits : filteredRows.length;
+  const isCapped = !usingAggregate && Boolean(meta?.truncated) && filteredRows.length === rows.length;
   const plus = isCapped ? "+" : "";
-  const registrations = filteredRows.filter((row) => row.status === "registration").length;
-  const ftds = filteredRows.filter((row) => row.status === "ftd").length;
-  const redeposits = filteredRows.filter((row) => row.status === "redeposit").length;
-  const revenueTotal = filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
+  const revenueTotal = usingAggregate
+    ? aggregateTotals.revenue
+    : filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
 
 
   // Conversions + revenue per bucket for the timeline.
   const convSeries = React.useMemo(() => {
+    // Aggregate path: one point per day, exact totals, no cap.
+    if (usingAggregate && scopedAggregate?.length) {
+      const byDay = new Map();
+      scopedAggregate.forEach((row) => {
+        const day = String(row.date || "").slice(0, 10);
+        if (!day) return;
+        const entry = byDay.get(day) || { conversions: 0, revenue: 0 };
+        entry.conversions +=
+          (Number(row.registers) || 0) + (Number(row.ftds) || 0) + (Number(row.redeposits) || 0);
+        entry.revenue += Number(row.revenue) || 0;
+        byDay.set(day, entry);
+      });
+      return [...byDay.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([day, entry]) => ({
+          label: day.slice(5),
+          conversions: entry.conversions,
+          revenue: Number(entry.revenue.toFixed(2)),
+        }));
+    }
     if (!filteredRows.length) return [];
     const stepMin =
       windowElapsedMinutes <= 90 ? 2
@@ -133,7 +183,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
       });
     }
     return series;
-  }, [filteredRows, windowElapsedMinutes]);
+  }, [filteredRows, windowElapsedMinutes, usingAggregate, scopedAggregate]);
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
   const statusChip = (status) => {

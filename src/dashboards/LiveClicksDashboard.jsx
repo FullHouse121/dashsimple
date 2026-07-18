@@ -8,7 +8,7 @@ import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
 import { Select } from "../components/Select.jsx";
-import { useLiveFeed, parseTrackerMs } from "../lib/useLiveFeed.js";
+import { useLiveFeed, parseTrackerMs, useWindowSeries } from "../lib/useLiveFeed.js";
 import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
   LIVE_CLICKS_WINDOWS,
@@ -40,6 +40,10 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     windowElapsedMinutes,
   } = useLiveFeed({ endpoint: "/api/keitaro/clicks-live", failLabel: "Failed to load live clicks." });
   const { toast: copyToast, copyText } = useCopyToast();
+  // Multi-day windows exceed the 1,000-row cap, so the raw feed only holds
+  // the newest day — chart and count those windows from Keitaro's daily
+  // aggregate instead (null for today/yesterday/rolling).
+  const aggregateRows = useWindowSeries({ windowValue: windowMinutes, trackerNow: meta?.trackerNow });
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [issuesOnly, setIssuesOnly] = React.useState(false);
@@ -67,15 +71,51 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
 
   const newestClick = filteredRows[0] || null;
-  const clickCount = filteredRows.length;
-  // The API caps at 1000 rows; when Keitaro had more, counts are a floor.
-  const isCapped = Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  // Scope the aggregate to the same buyer the table is filtered to.
+  const scopedAggregate = React.useMemo(() => {
+    if (!aggregateRows) return null;
+    if (!isLeadership || isAllSelection(buyerFilter)) return aggregateRows;
+    return aggregateRows.filter((row) => row.buyer === buyerFilter);
+  }, [aggregateRows, isLeadership, buyerFilter]);
+  const aggregateTotals = React.useMemo(() => {
+    if (!scopedAggregate) return null;
+    return scopedAggregate.reduce(
+      (acc, row) => ({
+        clicks: acc.clicks + (Number(row.clicks) || 0),
+        uniques: acc.uniques + (Number(row.unique_clicks) || 0),
+      }),
+      { clicks: 0, uniques: 0 }
+    );
+  }, [scopedAggregate]);
+  const usingAggregate = Boolean(aggregateTotals && aggregateTotals.clicks > 0);
+  const clickCount = usingAggregate ? aggregateTotals.clicks : filteredRows.length;
+  // The raw feed caps at 1000 rows; aggregate windows report exact totals.
+  const isCapped = !usingAggregate && Boolean(meta?.truncated) && filteredRows.length === rows.length;
   const plus = isCapped ? "+" : "";
   const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
 
   // Clicks-over-time buckets for the chart: adaptive step, zero-filled from
   // the oldest LOADED click (capped windows chart only what's loaded).
   const clicksSeries = React.useMemo(() => {
+    // Aggregate path: one point per day, exact totals, no cap.
+    if (scopedAggregate && scopedAggregate.length) {
+      const byDay = new Map();
+      scopedAggregate.forEach((row) => {
+        const day = String(row.date || "").slice(0, 10);
+        if (!day) return;
+        const entry = byDay.get(day) || { clicks: 0, uniques: 0 };
+        entry.clicks += Number(row.clicks) || 0;
+        entry.uniques += Number(row.unique_clicks) || 0;
+        byDay.set(day, entry);
+      });
+      return [...byDay.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([day, entry]) => ({
+          label: day.slice(5),
+          clicks: entry.clicks,
+          uniques: entry.uniques,
+        }));
+    }
     if (!filteredRows.length) return [];
     const stepMin =
       windowElapsedMinutes <= 90 ? 2
@@ -111,8 +151,10 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
       });
     }
     return series;
-  }, [filteredRows, windowElapsedMinutes]);
-  const uniqueCount = filteredRows.filter((row) => row.isUnique).length;
+  }, [filteredRows, windowElapsedMinutes, scopedAggregate]);
+  const uniqueCount = usingAggregate
+    ? aggregateTotals.uniques
+    : filteredRows.filter((row) => row.isUnique).length;
   const botCount = filteredRows.filter((row) => row.isBot).length;
   const proxyCount = filteredRows.filter((row) => row.isProxy).length;
   const issueRows = filteredRows.filter((row) => liveClickSubIssues(row).length > 0);

@@ -119,3 +119,57 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
     windowElapsedMinutes,
   };
 };
+
+// Calendar windows larger than a day can't chart from the capped raw rows —
+// "this week" at the 1,000-row cap holds only the newest day. For those
+// windows the timeline/count cards read Keitaro's aggregated day×campaign
+// report instead (uncapped, 45s-cached and viewer-scoped server-side).
+export const calendarRangeFor = (windowValue, trackerNow) => {
+  if (!trackerNow) return null;
+  const today = String(trackerNow).slice(0, 10);
+  const d = new Date(`${today}T00:00:00Z`);
+  if (windowValue === "this_week") {
+    const weekday = (d.getUTCDay() + 6) % 7; // Monday = 0
+    const from = new Date(d.getTime() - weekday * 86400000).toISOString().slice(0, 10);
+    return { from, to: today };
+  }
+  if (windowValue === "this_month") {
+    return { from: `${today.slice(0, 7)}-01`, to: today };
+  }
+  if (windowValue === "previous_month") {
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth();
+    const from = new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
+    const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    return { from, to };
+  }
+  return null; // today / yesterday / rolling — raw rows cover the window
+};
+
+export const useWindowSeries = ({ windowValue, trackerNow }) => {
+  const range = calendarRangeFor(windowValue, trackerNow);
+  const from = range?.from || null;
+  const to = range?.to || null;
+  const [seriesRows, setSeriesRows] = React.useState(null);
+  React.useEffect(() => {
+    if (!from || !to) {
+      setSeriesRows(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch(`/api/keitaro/live-stats?from=${from}&to=${to}`);
+        if (!response.ok) throw new Error("series fetch failed");
+        const data = await response.json();
+        if (!cancelled) setSeriesRows(Array.isArray(data?.rows) ? data.rows : []);
+      } catch {
+        if (!cancelled) setSeriesRows(null); // callers fall back to raw rows
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to]);
+  return seriesRows;
+};
