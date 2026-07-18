@@ -150,26 +150,32 @@ export const useWindowSeries = ({ windowValue, trackerNow }) => {
   const range = calendarRangeFor(windowValue, trackerNow);
   const from = range?.from || null;
   const to = range?.to || null;
-  const [seriesRows, setSeriesRows] = React.useState(null);
+  // Tag the payload with the range it belongs to: while a new window loads,
+  // the previous window's totals must never be shown under the new label —
+  // callers fall back to the raw rows until the matching aggregate lands.
+  const [entry, setEntry] = React.useState(null); // { key, rows }
+  const rangeKey = from && to ? `${from}|${to}` : null;
   React.useEffect(() => {
     if (!from || !to) {
-      setSeriesRows(null);
+      setEntry(null);
       return undefined;
     }
     let cancelled = false;
     (async () => {
       try {
-        const response = await apiFetch(`/api/keitaro/live-stats?from=${from}&to=${to}`);
+        const response = await apiFetch(`/api/keitaro/live-stats?group=daily&from=${from}&to=${to}`);
         if (!response.ok) throw new Error("series fetch failed");
         const data = await response.json();
-        if (!cancelled) setSeriesRows(Array.isArray(data?.rows) ? data.rows : []);
+        if (!cancelled) {
+          setEntry({ key: `${from}|${to}`, rows: Array.isArray(data?.rows) ? data.rows : [] });
+        }
       } catch {
-        if (!cancelled) setSeriesRows(null); // callers fall back to raw rows
+        if (!cancelled) setEntry(null); // callers fall back to raw rows
       }
     })();
     return () => {
       cancelled = true;
     };
   }, [from, to]);
-  return seriesRows;
+  return entry && entry.key === rangeKey ? entry.rows : null;
 };

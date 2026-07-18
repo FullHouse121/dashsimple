@@ -8960,6 +8960,31 @@ const mapLiveStatsRows = (reportRows, { to }) => {
   });
 };
 
+// Lean shape for group=daily: only what the live timelines/count cards read.
+// The full mapping carries 19 fields per row (geo/city/placement/costs) which
+// the charts never touch — dropping them cuts a month's payload by ~4x.
+const mapDailyStatsRows = (reportRows, { to }) => {
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return reportRows.map((r) => {
+    const ftdRev = num(r.custom_conversion_8_revenue);
+    const redepRev = num(r.custom_conversion_7_revenue);
+    let revenue = num(r.revenue);
+    if (revenue === 0 && ftdRev + redepRev > 0) revenue = ftdRev + redepRev;
+    return {
+      date: r.day || to,
+      buyer: parseCampaignName(r.campaign).buyer,
+      campaign: r.campaign,
+      campaign_name: r.campaign,
+      clicks: num(r.clicks),
+      unique_clicks: num(r.campaign_unique_clicks),
+      registers: num(r.regs),
+      ftds: num(r.custom_conversion_8),
+      redeposits: num(r.custom_conversion_7),
+      revenue,
+    };
+  });
+};
+
 // live-stats is the hottest Keitaro endpoint (every Performance view mounts
 // it, default window is year-to-date). Cache mapped rows per (from,to,tz,mode)
 // for 45s and coalesce concurrent identical requests into one report/build —
@@ -8983,6 +9008,10 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
   const mode = String(req.query.group || "stats");
   const geoMode = mode === "geo";
   const placementMode = mode === "placement";
+  // "daily" powers the live views' timeline/count cards: day × campaign only
+  // (campaign is required for buyer scoping). Dropping the country/city axes
+  // shrinks a month from ~800KB to ~30KB and keeps the tracker's work small.
+  const dailyMode = mode === "daily";
   const highCard = geoMode || placementMode;
   const from = isIsoDate(req.query.from)
     ? String(req.query.from)
@@ -8994,7 +9023,9 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     ? ["campaign", "country", "region", "city"]
     : placementMode
       ? ["day", "campaign", "country", "sub_id_1"]
-      : ["day", "campaign_id", "campaign", "country"];
+      : dailyMode
+        ? ["day", "campaign"]
+        : ["day", "campaign_id", "campaign", "country"];
 
   const cacheKey = `${from}|${to}|${tz}|${mode}`;
   const hit = liveStatsCache.get(cacheKey);
@@ -9010,7 +9041,9 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
     entry.promise = (async () => {
       const report = await keitaroReportBuild({ from, to, timezone: tz, grouping, metrics: LIVE_STATS_METRICS });
       if (!report.ok) throw new Error(report.error || "Keitaro report failed.");
-      const mapped = mapLiveStatsRows(report.rows, { to });
+      const mapped = dailyMode
+        ? mapDailyStatsRows(report.rows, { to })
+        : mapLiveStatsRows(report.rows, { to });
       liveStatsCache.set(cacheKey, { at: Date.now(), rows: mapped });
       if (liveStatsCache.size > 200) liveStatsCache.clear(); // bounded
       return mapped;
