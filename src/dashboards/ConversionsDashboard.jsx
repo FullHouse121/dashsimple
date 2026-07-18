@@ -8,6 +8,8 @@ import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
 import { Select } from "../components/Select.jsx";
+import { useLiveFeed, parseTrackerMs } from "../lib/useLiveFeed.js";
+import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
   LIVE_CLICKS_WINDOWS,
   LIVE_CLICKS_IS_ROLLING,
@@ -27,90 +29,25 @@ const CONVERSION_STATUS_META = {
 
 export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   const isLeadership = isLeadershipRole(authUser?.role);
-  const [rows, setRows] = React.useState([]);
-  const [meta, setMeta] = React.useState(null);
-  const [convState, setConvState] = React.useState({ loading: true, error: null });
-  const [windowMinutes, setWindowMinutes] = React.useState("today");
-  const [paused, setPaused] = React.useState(false);
+  const {
+    rows,
+    meta,
+    feedState: convState,
+    windowValue: windowMinutes,
+    setWindowValue: setWindowMinutes,
+    paused,
+    setPaused,
+    lastFetchedAt,
+    refresh: fetchConversions,
+    trackerNowMs,
+    agoLabel,
+    windowElapsedMinutes,
+  } = useLiveFeed({ endpoint: "/api/keitaro/conversions-live", failLabel: "Failed to load conversions." });
+  const { toast: copyToast, copyText } = useCopyToast();
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [statusFilter, setStatusFilter] = React.useState("All");
-  const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
   const [expandedId, setExpandedId] = React.useState(null);
-  const [, setClock] = React.useState(0);
-  const [copyToast, setCopyToast] = React.useState({
-    visible: false, type: "success", message: "", left: 0, top: 0, above: true,
-  });
-  const copyToastTimeoutRef = React.useRef(null);
-  React.useEffect(() => () => {
-    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
-  }, []);
-  const showCopyToast = React.useCallback((type, message, anchorRect) => {
-    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
-    const rawLeft = anchorRect ? anchorRect.left + anchorRect.width / 2 : viewportWidth / 2;
-    const clampedLeft = Math.max(170, Math.min(viewportWidth - 170, rawLeft));
-    const showAbove = anchorRect ? anchorRect.top > 72 : true;
-    const top = anchorRect ? (showAbove ? anchorRect.top - 10 : anchorRect.bottom + 10) : 72;
-    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
-    setCopyToast({ visible: true, type, message, left: clampedLeft, top, above: showAbove });
-    copyToastTimeoutRef.current = setTimeout(() => {
-      setCopyToast((prev) => ({ ...prev, visible: false }));
-    }, 1400);
-  }, []);
-  const copyText = (value, event) => {
-    const anchorRect = event?.currentTarget?.getBoundingClientRect?.() || null;
-    try {
-      navigator.clipboard?.writeText(String(value || ""));
-      showCopyToast("success", "Has been copied successfully", anchorRect);
-    } catch {
-      showCopyToast("error", "Copy failed", anchorRect);
-    }
-  };
-
-  const fetchConversions = React.useCallback(async () => {
-    try {
-      const rolling = LIVE_CLICKS_IS_ROLLING(windowMinutes);
-      const limit = rolling && Number(windowMinutes) < 180 ? 600 : 1000;
-      const query = rolling ? `minutes=${windowMinutes}` : `interval=${windowMinutes}`;
-      const response = await apiFetch(`/api/keitaro/conversions-live?${query}&limit=${limit}`);
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to load conversions.");
-      }
-      const data = await response.json();
-      setRows(Array.isArray(data?.rows) ? data.rows : []);
-      setMeta({
-        trackerNow: data?.trackerNow,
-        window: data?.window,
-        timezone: data?.timezone,
-        truncated: Boolean(data?.truncated),
-      });
-      setLastFetchedAt(Date.now());
-      setConvState({ loading: false, error: null });
-    } catch (error) {
-      setConvState({ loading: false, error: error.message || "Failed to load conversions." });
-    }
-  }, [windowMinutes]);
-
-  React.useEffect(() => {
-    setConvState((prev) => ({ ...prev, loading: true }));
-    fetchConversions();
-  }, [fetchConversions]);
-
-  React.useEffect(() => {
-    if (paused) return undefined;
-    const id = setInterval(() => {
-      if (!document.hidden) fetchConversions();
-    }, 20000);
-    return () => clearInterval(id);
-  }, [fetchConversions, paused]);
-
-  React.useEffect(() => {
-    // 5s, not 1s: every tick re-renders the visible table rows (they are not
-    // memoized), and second-precision "ago" labels aren't worth 5x the work.
-    const id = setInterval(() => setClock((tick) => tick + 1), 5000);
-    return () => clearInterval(id);
-  }, []);
 
   const buyers = React.useMemo(() => {
     const set = new Set();
@@ -139,26 +76,6 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     });
   }, [rows, search, buyerFilter, statusFilter, isLeadership]);
 
-  const parseTrackerMs = (value) => {
-    if (!value) return null;
-    const parsed = Date.parse(`${String(value).replace(" ", "T")}Z`);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const trackerNowMs = (() => {
-    const base = parseTrackerMs(meta?.trackerNow);
-    if (base === null) return null;
-    const drift = lastFetchedAt ? Date.now() - lastFetchedAt : 0;
-    return base + drift;
-  })();
-  const agoLabel = (datetime) => {
-    const ms = parseTrackerMs(datetime);
-    if (ms === null || trackerNowMs === null) return "—";
-    const seconds = Math.max(0, Math.floor((trackerNowMs - ms) / 1000));
-    if (seconds < 60) return `${seconds}s ago`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  };
   // Click → conversion lag, the "how long did this take to convert" signal.
   const lagLabel = (clickDatetime, convDatetime) => {
     const a = parseTrackerMs(clickDatetime);
@@ -179,26 +96,6 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   const redeposits = filteredRows.filter((row) => row.status === "redeposit").length;
   const revenueTotal = filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
 
-  const windowElapsedMinutes = (() => {
-    if (LIVE_CLICKS_IS_ROLLING(windowMinutes)) return Number(windowMinutes);
-    const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
-    if (!now) return 60;
-    const midnightMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    if (windowMinutes === "today") return Math.max(1, midnightMinutes);
-    if (windowMinutes === "yesterday") return 1440;
-    if (windowMinutes === "this_week") {
-      const weekday = (now.getUTCDay() + 6) % 7;
-      return Math.max(1, weekday * 1440 + midnightMinutes);
-    }
-    if (windowMinutes === "this_month") {
-      return Math.max(1, (now.getUTCDate() - 1) * 1440 + midnightMinutes);
-    }
-    if (windowMinutes === "previous_month") {
-      const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).getUTCDate();
-      return days * 1440;
-    }
-    return 60;
-  })();
 
   // Conversions + revenue per bucket for the timeline.
   const convSeries = React.useMemo(() => {
@@ -308,25 +205,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
 
   return (
     <>
-      <AnimatePresence>
-        {copyToast.visible ? (
-          <div
-            className={`copy-toast-anchor${copyToast.above ? "" : " is-below"}`}
-            style={{ left: copyToast.left, top: copyToast.top }}
-          >
-            <motion.div
-              className={`copy-toast ${copyToast.type}`}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.18 }}
-            >
-              {copyToast.type === "success" ? <CheckCircle size={14} /> : <X size={14} />}
-              <span>{copyToast.message}</span>
-            </motion.div>
-          </div>
-        ) : null}
-      </AnimatePresence>
+      <CopyToast toast={copyToast} />
 
       <section className="cards conversions-cards">
         {healthCards.map((card, idx) => (

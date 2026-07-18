@@ -8,6 +8,8 @@ import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
 import { Select } from "../components/Select.jsx";
+import { useLiveFeed, parseTrackerMs } from "../lib/useLiveFeed.js";
+import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
   LIVE_CLICKS_WINDOWS,
   LIVE_CLICKS_IS_ROLLING,
@@ -23,76 +25,25 @@ import {
 // empty subs or unfilled {macro} literals — the minute a campaign launches.
 export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const isLeadership = isLeadershipRole(authUser?.role);
-  const [rows, setRows] = React.useState([]);
-  const [meta, setMeta] = React.useState(null); // { trackerNow, window, timezone }
-  const [clicksState, setClicksState] = React.useState({ loading: true, error: null });
-  const [windowMinutes, setWindowMinutes] = React.useState("today");
-  const [paused, setPaused] = React.useState(false);
+  const {
+    rows,
+    meta,
+    feedState: clicksState,
+    windowValue: windowMinutes,
+    setWindowValue: setWindowMinutes,
+    paused,
+    setPaused,
+    lastFetchedAt,
+    refresh: fetchClicks,
+    trackerNowMs,
+    agoLabel,
+    windowElapsedMinutes,
+  } = useLiveFeed({ endpoint: "/api/keitaro/clicks-live", failLabel: "Failed to load live clicks." });
+  const { toast: copyToast, copyText } = useCopyToast();
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [issuesOnly, setIssuesOnly] = React.useState(false);
-  const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
   const [expandedId, setExpandedId] = React.useState(null); // row inspected
-  const [, setClock] = React.useState(0); // 1s re-render so "Xs ago" ticks
-  const [copyToast, setCopyToast] = React.useState({
-    visible: false, type: "success", message: "", left: 0, top: 0, above: true,
-  });
-  const copyToastTimeoutRef = React.useRef(null);
-  React.useEffect(() => () => {
-    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
-  }, []);
-  const showCopyToast = React.useCallback((type, message, anchorRect) => {
-    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
-    const rawLeft = anchorRect ? anchorRect.left + anchorRect.width / 2 : viewportWidth / 2;
-    const clampedLeft = Math.max(170, Math.min(viewportWidth - 170, rawLeft));
-    const showAbove = anchorRect ? anchorRect.top > 72 : true;
-    const top = anchorRect ? (showAbove ? anchorRect.top - 10 : anchorRect.bottom + 10) : 72;
-    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
-    setCopyToast({ visible: true, type, message, left: clampedLeft, top, above: showAbove });
-    copyToastTimeoutRef.current = setTimeout(() => {
-      setCopyToast((prev) => ({ ...prev, visible: false }));
-    }, 1400);
-  }, []);
-
-  const fetchClicks = React.useCallback(async () => {
-    try {
-      const rolling = LIVE_CLICKS_IS_ROLLING(windowMinutes);
-      const limit = rolling && Number(windowMinutes) < 180 ? 600 : 1000;
-      const query = rolling ? `minutes=${windowMinutes}` : `interval=${windowMinutes}`;
-      const response = await apiFetch(`/api/keitaro/clicks-live?${query}&limit=${limit}`);
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        throw new Error(detail?.error || "Failed to load live clicks.");
-      }
-      const data = await response.json();
-      setRows(Array.isArray(data?.rows) ? data.rows : []);
-      setMeta({ trackerNow: data?.trackerNow, window: data?.window, timezone: data?.timezone, truncated: Boolean(data?.truncated) });
-      setLastFetchedAt(Date.now());
-      setClicksState({ loading: false, error: null });
-    } catch (error) {
-      setClicksState({ loading: false, error: error.message || "Failed to load live clicks." });
-    }
-  }, [windowMinutes]);
-
-  React.useEffect(() => {
-    setClicksState((prev) => ({ ...prev, loading: true }));
-    fetchClicks();
-  }, [fetchClicks]);
-
-  React.useEffect(() => {
-    if (paused) return undefined;
-    const id = setInterval(() => {
-      if (!document.hidden) fetchClicks();
-    }, 15000);
-    return () => clearInterval(id);
-  }, [fetchClicks, paused]);
-
-  React.useEffect(() => {
-    // 5s, not 1s: every tick re-renders the visible table rows (they are not
-    // memoized), and second-precision "ago" labels aren't worth 5x the work.
-    const id = setInterval(() => setClock((tick) => tick + 1), 5000);
-    return () => clearInterval(id);
-  }, []);
 
   const buyers = React.useMemo(() => {
     const set = new Set();
@@ -114,52 +65,12 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     });
   }, [rows, search, buyerFilter, issuesOnly, isLeadership]);
 
-  const parseTrackerMs = (value) => {
-    if (!value) return null;
-    const parsed = Date.parse(`${String(value).replace(" ", "T")}Z`);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  // Tracker-time "now", advanced locally between polls so the ages tick.
-  const trackerNowMs = (() => {
-    const base = parseTrackerMs(meta?.trackerNow);
-    if (base === null) return null;
-    const drift = lastFetchedAt ? Date.now() - lastFetchedAt : 0;
-    return base + drift;
-  })();
-  const agoLabel = (datetime) => {
-    const ms = parseTrackerMs(datetime);
-    if (ms === null || trackerNowMs === null) return "—";
-    const seconds = Math.max(0, Math.floor((trackerNowMs - ms) / 1000));
-    if (seconds < 60) return `${seconds}s ago`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
-  };
 
   const newestClick = filteredRows[0] || null;
   const clickCount = filteredRows.length;
   // The API caps at 1000 rows; when Keitaro had more, counts are a floor.
   const isCapped = Boolean(meta?.truncated) && filteredRows.length === rows.length;
   const plus = isCapped ? "+" : "";
-  const windowElapsedMinutes = (() => {
-    if (LIVE_CLICKS_IS_ROLLING(windowMinutes)) return Number(windowMinutes);
-    const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
-    if (!now) return 60;
-    const midnightMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    if (windowMinutes === "today") return Math.max(1, midnightMinutes);
-    if (windowMinutes === "yesterday") return 1440;
-    if (windowMinutes === "this_week") {
-      const weekday = (now.getUTCDay() + 6) % 7; // Monday = 0
-      return Math.max(1, weekday * 1440 + midnightMinutes);
-    }
-    if (windowMinutes === "this_month") {
-      return Math.max(1, (now.getUTCDate() - 1) * 1440 + midnightMinutes);
-    }
-    if (windowMinutes === "previous_month") {
-      const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).getUTCDate();
-      return days * 1440;
-    }
-    return 60;
-  })();
   const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
 
   // Clicks-over-time buckets for the chart: adaptive step, zero-filled from
@@ -208,15 +119,6 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const pct = (num) => (clickCount > 0 ? `${((num / clickCount) * 100).toFixed(1)}%` : "—");
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
-  const copyText = (value, event) => {
-    const anchorRect = event?.currentTarget?.getBoundingClientRect?.() || null;
-    try {
-      navigator.clipboard?.writeText(String(value || ""));
-      showCopyToast("success", "Has been copied successfully", anchorRect);
-    } catch {
-      showCopyToast("error", "Copy failed", anchorRect);
-    }
-  };
   const destinationHost = (url) => {
     try {
       return new URL(url).host;
@@ -280,25 +182,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   return (
     <>
-      <AnimatePresence>
-        {copyToast.visible ? (
-          <div
-            className={`copy-toast-anchor${copyToast.above ? "" : " is-below"}`}
-            style={{ left: copyToast.left, top: copyToast.top }}
-          >
-            <motion.div
-              className={`copy-toast ${copyToast.type}`}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.18 }}
-            >
-              {copyToast.type === "success" ? <CheckCircle size={14} /> : <X size={14} />}
-              <span>{copyToast.message}</span>
-            </motion.div>
-          </div>
-        ) : null}
-      </AnimatePresence>
+      <CopyToast toast={copyToast} />
 
       <section className="cards live-clicks-cards">
         {healthCards.map((card, idx) => (
