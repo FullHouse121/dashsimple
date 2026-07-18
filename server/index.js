@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import compression from "compression";
@@ -5,6 +6,20 @@ import crypto from "crypto";
 import { Pool } from "pg";
 
 const databaseUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+// Hosted = Render/production. Everything else is a laptop.
+const isHostedRuntime = Boolean(process.env.RENDER || process.env.NODE_ENV === "production");
+
+// Local dev shares the PRODUCTION Supabase DB by design (team decision), which
+// makes local API writes production writes. Refuse to boot silently into that:
+// the operator must acknowledge once with ALLOW_PROD_DB=1 in .env.
+if (!isHostedRuntime && databaseUrl && !databaseUrl.includes("localhost")) {
+  if (process.env.ALLOW_PROD_DB !== "1") {
+    console.error("[boot] DATABASE_URL points at a REMOTE database — local API writes would be production writes.");
+    console.error("[boot] Set ALLOW_PROD_DB=1 in .env to acknowledge, or point DATABASE_URL at a local Postgres.");
+    process.exit(1);
+  }
+  console.warn("[boot] ⚠ REMOTE database in use — writes are live production writes.");
+}
 
 const pool = new Pool({
   connectionString: databaseUrl,
@@ -4445,8 +4460,18 @@ const verifyPassword = (password, stored) => {
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(derived, "hex"));
 };
 
-const authSecret =
-  process.env.AUTH_SECRET || process.env.POSTBACK_SECRET || "dev-auth-secret";
+// Fail closed: a missing AUTH_SECRET in production would make admin tokens
+// forgeable (any client could sign its own). Dev keeps a loud fallback.
+const authSecret = (() => {
+  const configured = process.env.AUTH_SECRET || process.env.POSTBACK_SECRET || "";
+  if (configured) return configured;
+  if (isHostedRuntime) {
+    console.error("[boot] AUTH_SECRET is not set — refusing to serve forgeable tokens in production.");
+    process.exit(1);
+  }
+  console.warn("[boot] ⚠ AUTH_SECRET missing — using an insecure dev fallback secret.");
+  return "dev-auth-secret";
+})();
 const authTtlSeconds = Number.parseInt(process.env.AUTH_TTL_SECONDS || "604800", 10);
 
 const encodeToken = (payload) => {
@@ -4495,7 +4520,14 @@ const buyerMatches = (rowBuyer, viewerBuyer) => {
   if (!viewerValue) return false;
   if (!rowValue) return false;
   if (rowValue === viewerValue) return true;
-  return rowValue.includes(viewerValue) || viewerValue.includes(rowValue);
+  // Anchored prefix only (the legit alias shape: "Leo" ↔ "Leomarketing",
+  // "Karen" ↔ "KarenFarias"), never mid-string, shorter side ≥ 3 chars.
+  // Bidirectional .includes() let one buyer's rows scope onto another's the
+  // moment two names overlapped anywhere ("rosara" matched "sara").
+  const [short, long] =
+    rowValue.length <= viewerValue.length ? [rowValue, viewerValue] : [viewerValue, rowValue];
+  if (short.length < 3) return false;
+  return long.startsWith(short);
 };
 
 const normalizeAdsetMacro = (value) => {
@@ -4679,7 +4711,34 @@ const seedUsers = async () => {
   }
 };
 
+// Constant-time comparison for webhook/cron shared secrets.
+const secretEquals = (provided, expected) => {
+  const a = Buffer.from(String(provided || ""));
+  const b = Buffer.from(String(expected || ""));
+  if (a.length !== b.length || b.length === 0) return false;
+  return crypto.timingSafeEqual(a, b);
+};
+
 const app = express();
+// Render sits behind a proxy — trust one hop so req.ip is the real client.
+app.set("trust proxy", 1);
+// Express 4 does NOT catch rejected async handlers; one unhandled rejection
+// kills the whole process. Auto-wrap every route handler registered below so
+// a failure becomes a logged 500 for that request instead of a crash.
+for (const method of ["get", "post", "put", "patch", "delete"]) {
+  const register = app[method].bind(app);
+  app[method] = (pathArg, ...handlers) => {
+    if (handlers.length === 0) return register(pathArg); // app.get("setting") reads
+    return register(
+      pathArg,
+      ...handlers.map((handler) =>
+        typeof handler === "function"
+          ? (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
+          : handler
+      )
+    );
+  };
+}
 // gzip JSON responses — the big media-stats payloads shrink ~10x, which is
 // the difference between a 15s page load and a sub-5s one over WAN.
 app.use(compression({ threshold: 1024 }));
@@ -6858,7 +6917,7 @@ app.get("/api/domains/:id/og-debug", async (req, res) => {
     endpoint.searchParams.set("fields", "engagement");
     endpoint.searchParams.set("access_token", token);
 
-    const response = await fetch(endpoint, { method: "POST" });
+    const response = await fetch(endpoint, { method: "POST", signal: AbortSignal.timeout(10000) });
     const data = await response.json().catch(() => null);
     if (!response.ok || data?.error) {
       return res.status(response.ok ? 502 : response.status).json({
@@ -6988,7 +7047,7 @@ app.post("/api/domains/og-debug/scrape-all", async (req, res) => {
       endpoint.searchParams.set("fields", "engagement");
       endpoint.searchParams.set("access_token", token);
 
-      const response = await fetch(endpoint, { method: "POST" });
+      const response = await fetch(endpoint, { method: "POST", signal: AbortSignal.timeout(10000) });
       const data = await response.json().catch(() => null);
       if (!response.ok || data?.error) {
         failed += 1;
@@ -7205,7 +7264,7 @@ app.post("/api/accounts", async (req, res) => {
       message: `${req.user?.username || "User"} registered account ${payload.account_number}.`,
     });
     const row = await selectAccountRegistryById(info.id);
-    return res.status(201).json(row || { id: info.id });
+    return res.status(201).json(row ? sanitizeIntegrationRow(row) : { id: info.id });
   } catch (error) {
     await createUnexpectedNotification({
       req,
@@ -7408,7 +7467,7 @@ app.patch("/api/accounts/:id", async (req, res) => {
   }
 
   const row = await selectAccountRegistryById(id);
-  return res.json(row || { ok: true });
+  return res.json(row ? sanitizeIntegrationRow(row) : { ok: true });
 });
 
 app.delete("/api/accounts/:id", async (req, res) => {
@@ -7683,6 +7742,23 @@ app.delete("/api/pixels/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Raw Meta/Keitaro tokens must never reach the browser: mask to a suffix.
+// PATCH recognises the mask and keeps the stored value, so edit round-trips
+// don't destroy tokens.
+const MASKED_TOKEN_RE = /^\u2022+.{0,6}$/;
+const maskStoredToken = (value) =>
+  value ? `\u2022\u2022\u2022\u2022${String(value).slice(-4)}` : value;
+const isMaskedTokenInput = (value) => MASKED_TOKEN_RE.test(String(value || "").trim());
+const sanitizeIntegrationRow = (row) => {
+  if (!row || typeof row !== "object") return row;
+  return {
+    ...row,
+    meta_token: maskStoredToken(row.meta_token),
+    keitaro_token: maskStoredToken(row.keitaro_token),
+    meta_token_set: Boolean(row.meta_token),
+  };
+};
+
 app.get("/api/meta-tokens", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
@@ -7707,7 +7783,7 @@ app.get("/api/meta-tokens", async (req, res) => {
   } catch (error) {
     /* keep the SQL-derived received_spend on failure */
   }
-  return res.json(rows);
+  return res.json(rows.map(sanitizeIntegrationRow));
 });
 
 app.post("/api/meta-tokens", async (req, res) => {
@@ -7848,7 +7924,7 @@ app.post("/api/meta-tokens", async (req, res) => {
       message: `${req.user?.username || "User"} linked Meta integration for account ${payload.account_number}.`,
     });
     const row = await selectMetaTokenIntegrationById(info.id);
-    return res.status(201).json(row || { id: info.id });
+    return res.status(201).json(row ? sanitizeIntegrationRow(row) : { id: info.id });
   } catch (error) {
     await createUnexpectedNotification({
       req,
@@ -7927,9 +8003,11 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
         ? String(body.accountNumber || "").trim()
         : String(current.account_number || "").trim(),
     meta_token:
-      body.token !== undefined ? String(body.token || "").trim() : String(current.meta_token || "").trim(),
+      body.token !== undefined && !isMaskedTokenInput(body.token)
+        ? String(body.token || "").trim()
+        : String(current.meta_token || "").trim(),
     keitaro_token:
-      body.keitaroToken !== undefined
+      body.keitaroToken !== undefined && !isMaskedTokenInput(body.keitaroToken)
         ? String(body.keitaroToken || "").trim() || null
         : String(current.keitaro_token || "").trim() || null,
     buyer_name: resolvedBuyerName,
@@ -8086,7 +8164,7 @@ app.patch("/api/meta-tokens/:id", async (req, res) => {
       dedupeWindowSeconds: 30,
     });
   }
-  return res.json(row || { ok: true });
+  return res.json(row ? sanitizeIntegrationRow(row) : { ok: true });
 });
 
 app.post("/api/meta-tokens/:id/test", async (req, res) => {
@@ -8163,7 +8241,7 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     actor_name: req.user?.username || req.user?.role || "System",
     dedupeWindowSeconds: wired ? 30 : 90,
   });
-  return res.json({ ok: wired, status, issues, receivedSpend, row });
+  return res.json({ ok: wired, status, issues, receivedSpend, row: sanitizeIntegrationRow(row) });
 });
 
 app.delete("/api/meta-tokens/:id", async (req, res) => {
@@ -8367,6 +8445,8 @@ const keitaroAdminFetch = async (path, options = {}) => {
   try {
     const response = await fetch(`${normalizeBaseUrl(baseUrl)}/admin_api/v1${path}`, {
       ...options,
+      // A hung tracker must not hold Express requests open for minutes.
+      signal: options.signal || AbortSignal.timeout(15000),
       headers: {
         "Content-Type": "application/json",
         ...buildAuthHeaders(apiKey),
@@ -8663,7 +8743,8 @@ const resolvePostbackBuyer = (buyer) => {
   if (!key) return "unknown";
   if (POSTBACK_BUYER_MAP[key]) return POSTBACK_BUYER_MAP[key];
   for (const [k, v] of Object.entries(POSTBACK_BUYER_MAP)) {
-    if (key.includes(k) || k.includes(key)) return v;
+    const [short, long] = k.length <= key.length ? [k, key] : [key, k];
+    if (short.length >= 3 && long.startsWith(short)) return v;
   }
   return key;
 };
@@ -8890,39 +8971,10 @@ const getKeitaroCostByBuyer = async () => {
   return keitaroCostCache;
 };
 
-app.get("/api/keitaro/live-stats", async (req, res) => {
-  const tz = String(req.query.tz || "UTC");
-  const today = new Date();
-  const to = isIsoDate(req.query.to) ? String(req.query.to) : isoDay(today);
-
-  // group modes:
-  //   stats (default) → day/campaign/country   (Statistics, Campaigns)
-  //   geo             → campaign/country/region/city (GEOS; no day axis)
-  //   placement       → day/campaign/country/sub_id_1 (Placements)
-  // geo/placement are high-cardinality, so their default window stays short;
-  // stats defaults to year-to-date to mirror the old "load all" behaviour.
-  const mode = String(req.query.group || "stats");
-  const geoMode = mode === "geo";
-  const placementMode = mode === "placement";
-  const highCard = geoMode || placementMode;
-  const from = isIsoDate(req.query.from)
-    ? String(req.query.from)
-    : highCard
-      ? isoDay(new Date(today.getTime() - 59 * 86400000))
-      : `${today.getUTCFullYear()}-01-01`;
-
-  const grouping = geoMode
-    ? ["campaign", "country", "region", "city"]
-    : placementMode
-      ? ["day", "campaign", "country", "sub_id_1"]
-      : ["day", "campaign_id", "campaign", "country"];
-  const report = await keitaroReportBuild({ from, to, timezone: tz, grouping, metrics: LIVE_STATS_METRICS });
-  if (!report.ok) {
-    return res.status(502).json({ error: report.error || "Keitaro report failed." });
-  }
-
+// Map raw report/build rows into the media_stats-like shape the clients eat.
+const mapLiveStatsRows = (reportRows, { to }) => {
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  let rows = report.rows.map((r) => {
+  return reportRows.map((r) => {
     const parsed = parseCampaignName(r.campaign);
     const ftdRev = num(r.custom_conversion_8_revenue);
     const redepRev = num(r.custom_conversion_7_revenue);
@@ -8955,6 +9007,73 @@ app.get("/api/keitaro/live-stats", async (req, res) => {
       redeposits: num(r.custom_conversion_7),
     };
   });
+};
+
+// live-stats is the hottest Keitaro endpoint (every Performance view mounts
+// it, default window is year-to-date). Cache mapped rows per (from,to,tz,mode)
+// for 45s and coalesce concurrent identical requests into one report/build —
+// N polling dashboards otherwise mean N full-YTD scans on the tracker.
+const liveStatsCache = new Map(); // key -> { at, rows } | { promise }
+const LIVE_STATS_TTL_MS = 45 * 1000;
+app.get("/api/keitaro/live-stats", async (req, res) => {
+  // Default to the tracker's own timezone (Asia/Dubai), NOT UTC — the synced
+  // media_stats fallback buckets days in tracker time, and a 4h boundary skew
+  // made "today" disagree between the live path and its own fallback.
+  const tz = String(req.query.tz || resolveKeitaroTimezone());
+  const today = new Date();
+  const to = isIsoDate(req.query.to) ? String(req.query.to) : trackerNowString(tz).slice(0, 10);
+
+  // group modes:
+  //   stats (default) → day/campaign/country   (Statistics, Campaigns)
+  //   geo             → campaign/country/region/city (GEOS; no day axis)
+  //   placement       → day/campaign/country/sub_id_1 (Placements)
+  // geo/placement are high-cardinality, so their default window stays short;
+  // stats defaults to year-to-date to mirror the old "load all" behaviour.
+  const mode = String(req.query.group || "stats");
+  const geoMode = mode === "geo";
+  const placementMode = mode === "placement";
+  const highCard = geoMode || placementMode;
+  const from = isIsoDate(req.query.from)
+    ? String(req.query.from)
+    : highCard
+      ? isoDay(new Date(today.getTime() - 59 * 86400000))
+      : `${trackerNowString(tz).slice(0, 4)}-01-01`;
+
+  const grouping = geoMode
+    ? ["campaign", "country", "region", "city"]
+    : placementMode
+      ? ["day", "campaign", "country", "sub_id_1"]
+      : ["day", "campaign_id", "campaign", "country"];
+
+  const cacheKey = `${from}|${to}|${tz}|${mode}`;
+  const hit = liveStatsCache.get(cacheKey);
+  let mappedRows = null;
+  if (hit?.rows && Date.now() - hit.at < LIVE_STATS_TTL_MS) {
+    mappedRows = hit.rows;
+  } else if (hit?.promise) {
+    // Another request is already fetching this exact report — share it.
+    mappedRows = await hit.promise.catch(() => null);
+  }
+  if (!mappedRows) {
+    const entry = {};
+    entry.promise = (async () => {
+      const report = await keitaroReportBuild({ from, to, timezone: tz, grouping, metrics: LIVE_STATS_METRICS });
+      if (!report.ok) throw new Error(report.error || "Keitaro report failed.");
+      const mapped = mapLiveStatsRows(report.rows, { to });
+      liveStatsCache.set(cacheKey, { at: Date.now(), rows: mapped });
+      if (liveStatsCache.size > 200) liveStatsCache.clear(); // bounded
+      return mapped;
+    })();
+    liveStatsCache.set(cacheKey, entry);
+    try {
+      mappedRows = await entry.promise;
+    } catch (error) {
+      if (liveStatsCache.get(cacheKey) === entry) liveStatsCache.delete(cacheKey);
+      return res.status(502).json({ error: error.message || "Keitaro report failed." });
+    }
+  }
+
+  let rows = mappedRows;
 
   const viewerBuyer = await resolveViewerBuyer(req.user);
   if (viewerBuyer) {
@@ -9040,7 +9159,17 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
   } else if (intervalKey) {
     range = { interval: LIVE_CLICKS_INTERVALS[intervalKey], timezone };
   } else {
-    range = { interval: "today", timezone };
+    // Rolling windows can cross tracker midnight — fetch from the cutoff's
+    // calendar day so an early-morning "last hour" keeps last night's events.
+    const nowStr = trackerNowString(timezone);
+    const cutoffDay = new Date(Date.parse(`${nowStr.replace(" ", "T")}Z`) - minutes * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const todayStr = nowStr.slice(0, 10);
+    range =
+      cutoffDay === todayStr
+        ? { interval: "today", timezone }
+        : { from: cutoffDay, to: todayStr, timezone };
   }
 
   const cacheKey = `${intervalKey || "rolling"}:${limit}`;
@@ -9176,7 +9305,17 @@ app.get("/api/keitaro/conversions-live", async (req, res) => {
   } else if (intervalKey) {
     range = { interval: LIVE_CLICKS_INTERVALS[intervalKey], timezone };
   } else {
-    range = { interval: "today", timezone };
+    // Rolling windows can cross tracker midnight — fetch from the cutoff's
+    // calendar day so an early-morning "last hour" keeps last night's events.
+    const nowStr = trackerNowString(timezone);
+    const cutoffDay = new Date(Date.parse(`${nowStr.replace(" ", "T")}Z`) - minutes * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const todayStr = nowStr.slice(0, 10);
+    range =
+      cutoffDay === todayStr
+        ? { interval: "today", timezone }
+        : { from: cutoffDay, to: todayStr, timezone };
   }
 
   const cacheKey = `${intervalKey || "rolling"}:${limit}`;
@@ -9781,7 +9920,10 @@ app.delete("/api/campaigns/:id", async (req, res) => {
 app.all("/api/postbacks/install", async (req, res) => {
   const payload = { ...(req.query || {}), ...(req.body || {}) };
   const secret = String(payload.key || payload.token || payload.secret || "");
-  if (postbackSecret && secret !== postbackSecret) {
+  if (!postbackSecret) {
+    return res.status(503).json({ error: "Postbacks are not configured." });
+  }
+  if (!secretEquals(secret, postbackSecret)) {
     return res.status(401).json({ error: "Invalid postback key." });
   }
 
@@ -9862,7 +10004,10 @@ app.get("/api/postbacks/logs", async (req, res) => {
 const handleConversionPostback = (eventType) => async (req, res) => {
   const payload = { ...(req.query || {}), ...(req.body || {}) };
   const secret = String(payload.key || payload.token || payload.secret || "");
-  if (postbackSecret && secret !== postbackSecret) {
+  if (!postbackSecret) {
+    return res.status(503).json({ error: "Postbacks are not configured." });
+  }
+  if (!secretEquals(secret, postbackSecret)) {
     return res.status(401).json({ error: "Invalid postback key." });
   }
 
@@ -10020,6 +10165,11 @@ app.delete("/api/users/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Fixed-window login limiter: 10 attempts / 10 min per IP. Successful login
+// clears the window. In-process state is fine for a single Render instance.
+const loginAttempts = new Map();
+const LOGIN_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
 app.post("/api/auth/login", async (req, res) => {
   const { username, password } = req.body ?? {};
 
@@ -10027,10 +10177,28 @@ app.post("/api/auth/login", async (req, res) => {
     return res.status(400).json({ error: "Username and password are required." });
   }
 
+  const ipKey = String(req.ip || "unknown");
+  const attempt = loginAttempts.get(ipKey);
+  const now = Date.now();
+  if (attempt && now < attempt.resetAt && attempt.count >= LOGIN_MAX_ATTEMPTS) {
+    return res.status(429).json({ error: "Too many login attempts. Try again in a few minutes." });
+  }
+  if (!attempt || now >= attempt.resetAt) {
+    loginAttempts.set(ipKey, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  } else {
+    attempt.count += 1;
+  }
+  if (loginAttempts.size > 5000) loginAttempts.clear(); // bounded memory
+
   const user = await selectUserByUsername(String(username).trim());
+  // Equalize timing for unknown usernames so response time doesn't enumerate.
+  // The dummy must be shaped like a real scrypt record (salt:128-hex-chars),
+  // otherwise timingSafeEqual throws on length mismatch.
+  if (!user) verifyPassword(password, `deadbeefdeadbeef:${"0".repeat(128)}`);
   if (!user || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: "Invalid credentials." });
   }
+  loginAttempts.delete(ipKey);
 
   const token = encodeToken({
     id: user.id,
@@ -10272,10 +10440,6 @@ const runKeitaroSync = async ({
   const syncRangeBounds = syncTarget === "overall" ? resolveKeitaroRangeBounds(preparedPayload?.range) : null;
   const hasRangeBounds = Boolean(syncRangeBounds?.from && syncRangeBounds?.to);
 
-  if (syncTarget === "overall" && replaceExisting && hasRangeBounds) {
-    await deleteMediaStatsByDateRange(syncRangeBounds.from, syncRangeBounds.to);
-  }
-
   const endpoint = `${normalizeBaseUrl(baseUrl)}${normalizePath(
     reportPath || "/admin_api/v1/report/build"
   )}`;
@@ -10283,6 +10447,7 @@ const runKeitaroSync = async ({
   const fetchReportPage = async (reportPayload) => {
     const response = await fetch(endpoint, {
       method: "POST",
+      signal: AbortSignal.timeout(60000),
       headers: {
         "Content-Type": "application/json",
         ...buildAuthHeaders(apiKey),
@@ -10659,7 +10824,20 @@ const runKeitaroSync = async ({
     syncTarget === "overall" && replaceExisting && !hasRangeBounds;
   let totalRows = 0;
 
-  await iterateReportPages(preparedPayload, async ({ rows: pageRows, data: pageData }) => {
+  // Fetch every page BEFORE touching media_stats — if Keitaro fails mid-fetch
+  // we abort with the existing data intact. The old order (delete first, then
+  // stream inserts) could wipe the month's fallback dataset during the exact
+  // outage that makes clients fall back to it.
+  const bufferedPages = [];
+  await iterateReportPages(preparedPayload, async (page) => {
+    bufferedPages.push(page);
+  });
+
+  if (syncTarget === "overall" && replaceExisting && hasRangeBounds) {
+    await deleteMediaStatsByDateRange(syncRangeBounds.from, syncRangeBounds.to);
+  }
+
+  const processPage = async ({ rows: pageRows, data: pageData }) => {
     resolveColumnNames(pageRows, pageData);
     for (const rawRow of pageRows) {
       totalRows += 1;
@@ -10950,7 +11128,11 @@ const runKeitaroSync = async ({
 
       inserted += 1;
     }
-  });
+  };
+
+  for (const page of bufferedPages) {
+    await processPage(page);
+  }
 
   return {
     total: totalRows,
@@ -10978,6 +11160,7 @@ app.post("/api/keitaro/test", async (req, res) => {
       headers: {
         ...buildAuthHeaders(apiKey),
       },
+      signal: AbortSignal.timeout(15000),
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
@@ -11015,7 +11198,10 @@ app.get("/api/keitaro/campaign-format-check", async (req, res) => {
 
   const endpoint = `${normalizeBaseUrl(baseUrl)}/admin_api/v1/campaigns`;
   try {
-    const response = await fetch(endpoint, { headers: { ...buildAuthHeaders(apiKey) } });
+    const response = await fetch(endpoint, {
+      headers: { ...buildAuthHeaders(apiKey) },
+      signal: AbortSignal.timeout(15000),
+    });
     const data = await response.json().catch(() => null);
     if (!response.ok) {
       return res.status(response.status).json({
@@ -11087,7 +11273,10 @@ app.get("/api/keitaro/campaign-format-check", async (req, res) => {
 
 app.all("/api/keitaro/cron", async (req, res) => {
   const secret = normalizeSecretValue(req.headers["x-cron-secret"] || req.query.secret || "");
-  if (keitaroCronSecret && secret !== keitaroCronSecret) {
+  if (!keitaroCronSecret) {
+    return res.status(503).json({ error: "Cron sync is not configured." });
+  }
+  if (!secretEquals(secret, keitaroCronSecret)) {
     return res.status(401).json({ error: "Unauthorized." });
   }
 
@@ -11341,10 +11530,21 @@ app.post("/api/keitaro/sync", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5174;
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled rejection:", reason?.message || reason);
+});
 const startServer = async () => {
   await initDb();
   await seedRoles();
   await seedUsers();
+  // Catch-all for the auto-wrapped async routes above.
+  app.use((err, req, res, next) => {
+    console.error(`[api] ${req.method} ${req.path} failed:`, err?.message || err);
+    if (res.headersSent) return next(err);
+    return res.status(500).json({ error: "Internal server error." });
+  });
+
   app.listen(PORT, () => {
     console.log(`Finance API running on http://localhost:${PORT}`);
   });

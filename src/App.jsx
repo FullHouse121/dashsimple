@@ -7126,7 +7126,7 @@ function UtmBuilder() {
                     const rows = utmHistory.map((it) => (typeof it === "string" ? { url: it } : it));
                     const csv = ["tool,country,params,created_at,url"]
                       .concat(rows.map((r) =>
-                        [r.tool || "", r.country || "", (r.params || []).join(" "), r.createdAt || "", `"${(r.url || "").replace(/"/g, '""')}"`].join(",")
+                        [csvCell(r.tool || ""), csvCell(r.country || ""), csvCell((r.params || []).join(" ")), csvCell(r.createdAt || ""), csvCell(r.url || "")].join(",")
                       ))
                       .join("\n");
                     const blob = new Blob([csv], { type: "text/csv" });
@@ -8058,7 +8058,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
   };
 
   const exportStatsCsv = () => {
-    const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const quote = csvCell;
     const rawCell = (row, key) => {
       const value = getStatsSortValue(row, key);
       if (value === null || value === undefined) return "";
@@ -8874,6 +8874,15 @@ const LIVE_CLICKS_WINDOWS = [
 ];
 const LIVE_CLICKS_IS_ROLLING = (value) => /^\d+$/.test(String(value));
 const LIVE_CLICKS_RENDER_CAP = 120;
+// CSV cell escaping incl. spreadsheet-formula neutralisation: values that
+// start with = + - @ (or tab/CR) execute as formulas when the export is
+// opened in Excel/Sheets, and sub/external_id values arrive from public
+// postbacks — attacker-controllable. Prefix with ' to keep them inert.
+const csvCell = (value) => {
+  let s = String(value ?? "").replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s}"`;
+};
 // Team-standard meaning of each sub slot (mirrors the UTM builder's macro
 // set: sub1={{placement}}, sub3-5 campaign/adset/ad names, sub6 adset id...).
 const SUB_MEANINGS = {
@@ -9101,7 +9110,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   };
 
   const exportCsv = () => {
-    const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const quote = csvCell;
     const header = [
       "Time", "Buyer", "Campaign", "Click ID", "External ID", "Country", "City",
       "OS", "Browser", ...Array.from({ length: 11 }, (_, i) => `Sub ${i + 1}`),
@@ -9854,7 +9863,7 @@ function ConversionsDashboard({ authUser, viewerBuyer }) {
   };
 
   const exportCsv = () => {
-    const quote = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const quote = csvCell;
     const header = [
       "Postback Time", "Click Time", "Buyer", "Campaign", "Status", "Revenue",
       "Payout", "Currency", "Country", "City", "Click ID", "External ID", "TID",
@@ -11619,7 +11628,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     ].join(",");
     const lines = visibleCampaigns.map((row) =>
       [
-        `"${String(row.campaign).replace(/"/g, '""')}"`,
+        csvCell(row.campaign),
         row.uniqueClicks,
         row.click2reg.toFixed(1),
         row.registers,
