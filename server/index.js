@@ -9083,11 +9083,17 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
 
   let rows = cached.rows;
   let cutoff = null;
+  const rawCapped = cached.rows.length >= limit;
+  let truncated = rawCapped;
   if (!intervalKey) {
     // Rolling window in tracker time — datetimes compare as strings.
     const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
     cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
     rows = rows.filter((row) => !row.datetime || row.datetime >= cutoff);
+    // A capped fetch only truncates the rolling window when the cap cut INTO
+    // it — i.e. the oldest fetched row is still inside the window.
+    const oldest = cached.rows[cached.rows.length - 1];
+    truncated = rawCapped && (!oldest?.datetime || oldest.datetime >= cutoff);
   }
 
   const viewerBuyer = await resolveViewerBuyer(req.user);
@@ -9099,7 +9105,7 @@ app.get("/api/keitaro/clicks-live", async (req, res) => {
     window: intervalKey ? { interval: intervalKey } : { minutes, cutoff },
     trackerNow: cached.trackerNow,
     timezone,
-    truncated: cached.rows.length >= limit,
+    truncated,
   });
 });
 

@@ -8908,7 +8908,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
       }
       const data = await response.json();
       setRows(Array.isArray(data?.rows) ? data.rows : []);
-      setMeta({ trackerNow: data?.trackerNow, window: data?.window, timezone: data?.timezone });
+      setMeta({ trackerNow: data?.trackerNow, window: data?.window, timezone: data?.timezone, truncated: Boolean(data?.truncated) });
       setLastFetchedAt(Date.now());
       setClicksState({ loading: false, error: null });
     } catch (error) {
@@ -8977,6 +8977,9 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
   const newestClick = filteredRows[0] || null;
   const clickCount = filteredRows.length;
+  // The API caps at 1000 rows; when Keitaro had more, counts are a floor.
+  const isCapped = Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  const plus = isCapped ? "+" : "";
   const windowElapsedMinutes = (() => {
     if (LIVE_CLICKS_IS_ROLLING(windowMinutes)) return Number(windowMinutes);
     const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
@@ -9049,8 +9052,8 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const healthCards = [
     {
       label: "Clicks",
-      value: clickCount.toLocaleString(),
-      meta: `${perMinute.toFixed(1)}/min in window`,
+      value: `${clickCount.toLocaleString()}${plus}`,
+      meta: isCapped ? "showing the newest 1,000" : `${perMinute.toFixed(1)}/min in window`,
       tone: clickCount > 0 ? "ok" : "bad",
     },
     {
@@ -9113,7 +9116,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
                 {paused ? "Paused" : "Live"}
               </span>
               <span className="roles-count">
-                {filteredRows.length} clicks · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
+                {filteredRows.length.toLocaleString()}{plus} clicks · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
               </span>
               <button
                 type="button"
@@ -9419,7 +9422,7 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
               </div>
               {filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
                 <p className="field-hint" style={{ marginTop: 8 }}>
-                  Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length} clicks — narrow the window or search, or export the CSV for everything.
+                  Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length.toLocaleString()}{plus} clicks — narrow the window or search, or export the CSV for everything loaded.
                 </p>
               ) : null}
             </>
