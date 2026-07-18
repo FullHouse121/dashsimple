@@ -72,3 +72,13 @@ export const tooltipStyle = {
   color: "#f2f2f4",
   fontSize: "12px",
 };
+
+// CSV cell escaping incl. spreadsheet-formula neutralisation: values that
+// start with = + - @ (or tab/CR) execute as formulas when the export is
+// opened in Excel/Sheets, and sub/external_id values arrive from public
+// postbacks — attacker-controllable. Prefix with ' to keep them inert.
+export const csvCell = (value) => {
+  let s = String(value ?? "").replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s}"`;
+};

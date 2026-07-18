@@ -1,0 +1,746 @@
+import React from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, CreditCard } from "lucide-react";
+import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
+import { apiFetch } from "../lib/api.js";
+import { isLeadershipRole } from "../lib/permissions.js";
+import { isAllSelection } from "../lib/filters.js";
+import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
+import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
+import { Select } from "../components/Select.jsx";
+import {
+  LIVE_CLICKS_WINDOWS,
+  LIVE_CLICKS_IS_ROLLING,
+  LIVE_CLICKS_RENDER_CAP,
+  SUB_MEANINGS,
+  liveClickSubIssues,
+} from "../lib/live.js";
+
+// Conversion log from Keitaro: every postback (registration / ftd /
+// redeposit) with revenue, original payout, click→conversion lag and the full
+// UTM set — the buyer-facing deep-dive companion to Live Clicks.
+const CONVERSION_STATUS_META = {
+  registration: { label: "Registration", className: "conv-status-registration" },
+  ftd: { label: "FTD", className: "conv-status-ftd" },
+  redeposit: { label: "Redeposit", className: "conv-status-redeposit" },
+};
+
+export default function ConversionsDashboard({ authUser, viewerBuyer }) {
+  const isLeadership = isLeadershipRole(authUser?.role);
+  const [rows, setRows] = React.useState([]);
+  const [meta, setMeta] = React.useState(null);
+  const [convState, setConvState] = React.useState({ loading: true, error: null });
+  const [windowMinutes, setWindowMinutes] = React.useState("today");
+  const [paused, setPaused] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [buyerFilter, setBuyerFilter] = React.useState("All");
+  const [statusFilter, setStatusFilter] = React.useState("All");
+  const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
+  const [expandedId, setExpandedId] = React.useState(null);
+  const [, setClock] = React.useState(0);
+  const [copyToast, setCopyToast] = React.useState({
+    visible: false, type: "success", message: "", left: 0, top: 0, above: true,
+  });
+  const copyToastTimeoutRef = React.useRef(null);
+  React.useEffect(() => () => {
+    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+  }, []);
+  const showCopyToast = React.useCallback((type, message, anchorRect) => {
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1440;
+    const rawLeft = anchorRect ? anchorRect.left + anchorRect.width / 2 : viewportWidth / 2;
+    const clampedLeft = Math.max(170, Math.min(viewportWidth - 170, rawLeft));
+    const showAbove = anchorRect ? anchorRect.top > 72 : true;
+    const top = anchorRect ? (showAbove ? anchorRect.top - 10 : anchorRect.bottom + 10) : 72;
+    if (copyToastTimeoutRef.current) clearTimeout(copyToastTimeoutRef.current);
+    setCopyToast({ visible: true, type, message, left: clampedLeft, top, above: showAbove });
+    copyToastTimeoutRef.current = setTimeout(() => {
+      setCopyToast((prev) => ({ ...prev, visible: false }));
+    }, 1400);
+  }, []);
+  const copyText = (value, event) => {
+    const anchorRect = event?.currentTarget?.getBoundingClientRect?.() || null;
+    try {
+      navigator.clipboard?.writeText(String(value || ""));
+      showCopyToast("success", "Has been copied successfully", anchorRect);
+    } catch {
+      showCopyToast("error", "Copy failed", anchorRect);
+    }
+  };
+
+  const fetchConversions = React.useCallback(async () => {
+    try {
+      const rolling = LIVE_CLICKS_IS_ROLLING(windowMinutes);
+      const limit = rolling && Number(windowMinutes) < 180 ? 600 : 1000;
+      const query = rolling ? `minutes=${windowMinutes}` : `interval=${windowMinutes}`;
+      const response = await apiFetch(`/api/keitaro/conversions-live?${query}&limit=${limit}`);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to load conversions.");
+      }
+      const data = await response.json();
+      setRows(Array.isArray(data?.rows) ? data.rows : []);
+      setMeta({
+        trackerNow: data?.trackerNow,
+        window: data?.window,
+        timezone: data?.timezone,
+        truncated: Boolean(data?.truncated),
+      });
+      setLastFetchedAt(Date.now());
+      setConvState({ loading: false, error: null });
+    } catch (error) {
+      setConvState({ loading: false, error: error.message || "Failed to load conversions." });
+    }
+  }, [windowMinutes]);
+
+  React.useEffect(() => {
+    setConvState((prev) => ({ ...prev, loading: true }));
+    fetchConversions();
+  }, [fetchConversions]);
+
+  React.useEffect(() => {
+    if (paused) return undefined;
+    const id = setInterval(() => {
+      if (!document.hidden) fetchConversions();
+    }, 20000);
+    return () => clearInterval(id);
+  }, [fetchConversions, paused]);
+
+  React.useEffect(() => {
+    // 5s, not 1s: every tick re-renders the visible table rows (they are not
+    // memoized), and second-precision "ago" labels aren't worth 5x the work.
+    const id = setInterval(() => setClock((tick) => tick + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  const buyers = React.useMemo(() => {
+    const set = new Set();
+    rows.forEach((row) => {
+      if (row.buyer) set.add(row.buyer);
+    });
+    return ["All", ...Array.from(set).sort()];
+  }, [rows]);
+  const statuses = React.useMemo(() => {
+    const set = new Set();
+    rows.forEach((row) => {
+      if (row.status) set.add(row.status);
+    });
+    return ["All", ...Array.from(set).sort()];
+  }, [rows]);
+
+  const filteredRows = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (isLeadership && !isAllSelection(buyerFilter) && row.buyer !== buyerFilter) return false;
+      if (!isAllSelection(statusFilter) && row.status !== statusFilter) return false;
+      if (!q) return true;
+      const subsText = Object.values(row.subs || {}).join(" ");
+      const hay = `${row.campaign} ${row.buyer} ${row.clickId} ${row.externalId} ${row.tid} ${row.status} ${row.country} ${row.city} ${row.offer} ${subsText}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [rows, search, buyerFilter, statusFilter, isLeadership]);
+
+  const parseTrackerMs = (value) => {
+    if (!value) return null;
+    const parsed = Date.parse(`${String(value).replace(" ", "T")}Z`);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const trackerNowMs = (() => {
+    const base = parseTrackerMs(meta?.trackerNow);
+    if (base === null) return null;
+    const drift = lastFetchedAt ? Date.now() - lastFetchedAt : 0;
+    return base + drift;
+  })();
+  const agoLabel = (datetime) => {
+    const ms = parseTrackerMs(datetime);
+    if (ms === null || trackerNowMs === null) return "—";
+    const seconds = Math.max(0, Math.floor((trackerNowMs - ms) / 1000));
+    if (seconds < 60) return `${seconds}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
+  };
+  // Click → conversion lag, the "how long did this take to convert" signal.
+  const lagLabel = (clickDatetime, convDatetime) => {
+    const a = parseTrackerMs(clickDatetime);
+    const b = parseTrackerMs(convDatetime);
+    if (a === null || b === null || b < a) return null;
+    const seconds = Math.floor((b - a) / 1000);
+    if (seconds < 60) return `${seconds}s after click`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m after click`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h after click`;
+    return `${Math.floor(seconds / 86400)}d after click`;
+  };
+
+  const convCount = filteredRows.length;
+  const isCapped = Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  const plus = isCapped ? "+" : "";
+  const registrations = filteredRows.filter((row) => row.status === "registration").length;
+  const ftds = filteredRows.filter((row) => row.status === "ftd").length;
+  const redeposits = filteredRows.filter((row) => row.status === "redeposit").length;
+  const revenueTotal = filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
+
+  const windowElapsedMinutes = (() => {
+    if (LIVE_CLICKS_IS_ROLLING(windowMinutes)) return Number(windowMinutes);
+    const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
+    if (!now) return 60;
+    const midnightMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    if (windowMinutes === "today") return Math.max(1, midnightMinutes);
+    if (windowMinutes === "yesterday") return 1440;
+    if (windowMinutes === "this_week") {
+      const weekday = (now.getUTCDay() + 6) % 7;
+      return Math.max(1, weekday * 1440 + midnightMinutes);
+    }
+    if (windowMinutes === "this_month") {
+      return Math.max(1, (now.getUTCDate() - 1) * 1440 + midnightMinutes);
+    }
+    if (windowMinutes === "previous_month") {
+      const days = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).getUTCDate();
+      return days * 1440;
+    }
+    return 60;
+  })();
+
+  // Conversions + revenue per bucket for the timeline.
+  const convSeries = React.useMemo(() => {
+    if (!filteredRows.length) return [];
+    const stepMin =
+      windowElapsedMinutes <= 90 ? 2
+      : windowElapsedMinutes <= 240 ? 5
+      : windowElapsedMinutes <= 900 ? 15
+      : windowElapsedMinutes <= 2 * 1440 ? 60
+      : 1440;
+    const stepMs = stepMin * 60 * 1000;
+    const counts = new Map();
+    let oldest = Infinity;
+    let newest = -Infinity;
+    filteredRows.forEach((row) => {
+      const ms = parseTrackerMs(row.datetime);
+      if (ms === null) return;
+      const bucket = Math.floor(ms / stepMs) * stepMs;
+      const entry = counts.get(bucket) || { conversions: 0, revenue: 0 };
+      entry.conversions += 1;
+      entry.revenue += row.revenue || 0;
+      counts.set(bucket, entry);
+      if (bucket < oldest) oldest = bucket;
+      if (bucket > newest) newest = bucket;
+    });
+    if (!Number.isFinite(oldest)) return [];
+    const series = [];
+    for (let bucket = oldest; bucket <= newest; bucket += stepMs) {
+      const iso = new Date(bucket).toISOString();
+      const entry = counts.get(bucket);
+      series.push({
+        label: stepMin >= 1440 ? iso.slice(5, 10) : iso.slice(11, 16),
+        conversions: entry?.conversions || 0,
+        revenue: Number((entry?.revenue || 0).toFixed(2)),
+      });
+    }
+    return series;
+  }, [filteredRows, windowElapsedMinutes]);
+
+  const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
+  const statusChip = (status) => {
+    const meta2 = CONVERSION_STATUS_META[status];
+    return (
+      <span className={`conv-status ${meta2?.className || "conv-status-other"}`}>
+        {meta2?.label || status || "—"}
+      </span>
+    );
+  };
+
+  const exportCsv = () => {
+    const quote = csvCell;
+    const header = [
+      "Postback Time", "Click Time", "Buyer", "Campaign", "Status", "Revenue",
+      "Payout", "Currency", "Country", "City", "Click ID", "External ID", "TID",
+      "Offer", "Stream", ...Array.from({ length: 11 }, (_, i) => `Sub ${i + 1}`),
+    ].join(",");
+    const lines = filteredRows.map((row) =>
+      [
+        quote(row.datetime), quote(row.clickDatetime), quote(row.buyer), quote(row.campaign),
+        quote(row.status), row.revenue.toFixed(2), quote(row.payout), quote(row.currency),
+        quote(row.country), quote(row.city), quote(row.clickId), quote(row.externalId),
+        quote(row.tid), quote(row.offer), quote(row.stream),
+        ...Array.from({ length: 11 }, (_, i) => quote(row.subs?.[i + 1] ?? "")),
+      ].join(",")
+    );
+    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `conversions-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const healthCards = [
+    {
+      label: "Conversions",
+      value: `${convCount.toLocaleString()}${plus}`,
+      meta: isCapped ? "showing the newest 1,000" : "in window",
+      tone: convCount > 0 ? "ok" : "bad",
+    },
+    {
+      label: "Registrations",
+      value: registrations.toLocaleString(),
+      meta: convCount ? `${((registrations / convCount) * 100).toFixed(1)}% of conversions` : "—",
+      tone: "none",
+    },
+    {
+      label: "FTDs",
+      value: ftds.toLocaleString(),
+      meta: registrations ? `${((ftds / registrations) * 100).toFixed(1)}% Reg → FTD` : "no registrations",
+      tone: ftds > 0 ? "ok" : "none",
+    },
+    {
+      label: "Redeposits",
+      value: redeposits.toLocaleString(),
+      meta: ftds ? `${(redeposits / Math.max(1, ftds)).toFixed(1)}× per FTD` : "—",
+      tone: "none",
+    },
+    {
+      label: "Revenue",
+      value: formatCurrency(revenueTotal),
+      meta: convCount ? `${formatCurrency(revenueTotal / convCount)} avg per conversion` : "—",
+      tone: revenueTotal > 0 ? "ok" : "none",
+    },
+  ];
+
+  return (
+    <>
+      <AnimatePresence>
+        {copyToast.visible ? (
+          <div
+            className={`copy-toast-anchor${copyToast.above ? "" : " is-below"}`}
+            style={{ left: copyToast.left, top: copyToast.top }}
+          >
+            <motion.div
+              className={`copy-toast ${copyToast.type}`}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+            >
+              {copyToast.type === "success" ? <CheckCircle size={14} /> : <X size={14} />}
+              <span>{copyToast.message}</span>
+            </motion.div>
+          </div>
+        ) : null}
+      </AnimatePresence>
+
+      <section className="cards conversions-cards">
+        {healthCards.map((card, idx) => (
+          <motion.div
+            key={card.label}
+            className={`card live-click-card tone-${card.tone}`}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.06, duration: 0.45 }}
+          >
+            <div className="card-head">{card.label}</div>
+            <div className="card-value">{card.value}</div>
+            <div className="card-meta">{card.meta}</div>
+          </motion.div>
+        ))}
+      </section>
+
+      <section className="panels panels-single">
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.06 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">Conversions Timeline</h3>
+              <p className="panel-subtitle">
+                {LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — conversions and revenue.
+              </p>
+            </div>
+          </div>
+          <div className="chart chart-surface">
+            {convSeries.length > 1 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart data={convSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="convArea" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#36d07c" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#36d07c" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={axisTickStyle}
+                    tickMargin={8}
+                    minTickGap={24}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                    tick={axisTickStyle}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    yAxisId="revenue"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    tick={axisTickStyle}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value, name) =>
+                      name === "Revenue"
+                        ? [formatCurrency(Number(value) || 0), name]
+                        : [Number(value).toLocaleString(), name]
+                    }
+                  />
+                  <Legend
+                    iconType="circle"
+                    wrapperStyle={{ paddingTop: 6, color: "#9aa0aa", fontSize: 12 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="conversions"
+                    name="Conversions"
+                    stroke="#36d07c"
+                    strokeWidth={2}
+                    fill="url(#convArea)"
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Revenue"
+                    yAxisId="revenue"
+                    stroke="#ffd86b"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                    isAnimationActive={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="empty-state">Not enough conversions in this window to chart.</div>
+            )}
+          </div>
+        </motion.div>
+      </section>
+
+      <section className="entries-section">
+        <motion.div
+          className="panel form-panel"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <div className="panel-head">
+            <div className="stats-panel-title">
+              <span className="stats-icon-tile" style={{ "--tile-accent": "#36d07c" }}>
+                <CreditCard size={15} strokeWidth={2.2} />
+              </span>
+              <div>
+                <h3 className="panel-title">Conversion Log</h3>
+              </div>
+            </div>
+            <div className="campaign-table-actions">
+              <span className={`live-indicator${paused ? " is-paused" : ""}`}>
+                <i aria-hidden="true" />
+                {paused ? "Paused" : "Live"}
+              </span>
+              <span className="roles-count">
+                {filteredRows.length.toLocaleString()}{plus} conversions · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
+              </span>
+              <button
+                type="button"
+                className="icon-btn"
+                title={paused ? "Resume auto-refresh" : "Pause auto-refresh"}
+                onClick={() => setPaused((prev) => !prev)}
+              >
+                {paused ? <Play size={14} /> : <Pause size={14} />}
+              </button>
+              <button type="button" className="icon-btn" title="Refresh now" onClick={fetchConversions}>
+                <RefreshCw size={14} />
+              </button>
+              <button type="button" className="icon-btn" title="Export CSV" onClick={exportCsv}>
+                <Download size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="pixel-table-toolbar conversions-toolbar">
+            <div className="field registry-search-field">
+              <label>Search</label>
+              <div className="registry-search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Campaign, click id, tid, sub…"
+                />
+                {search ? (
+                  <button
+                    type="button"
+                    className="registry-search-clear"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <div className="field">
+              <label>Window</label>
+              <Select
+                value={windowMinutes}
+                onChange={(v) => setWindowMinutes(v)}
+                options={LIVE_CLICKS_WINDOWS}
+                placeholder="Window"
+              />
+            </div>
+            <div className="field">
+              <label>Status</label>
+              <Select
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v)}
+                options={statuses.map((status) => ({
+                  value: status,
+                  label: status === "All" ? "All" : CONVERSION_STATUS_META[status]?.label || status,
+                }))}
+                placeholder="Status"
+              />
+            </div>
+            {isLeadership ? (
+              <div className="field">
+                <label>Buyer</label>
+                <Select
+                  value={buyerFilter}
+                  onChange={(v) => setBuyerFilter(v)}
+                  options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
+                  placeholder="Buyer"
+                  searchPlaceholder="Find buyer"
+                />
+              </div>
+            ) : null}
+          </div>
+
+          {convState.loading && !rows.length ? (
+            <div className="empty-state">Loading conversions…</div>
+          ) : convState.error && !rows.length ? (
+            <div className="empty-state error">{convState.error}</div>
+          ) : !filteredRows.length ? (
+            <div className="empty-state">No conversions in this window.</div>
+          ) : (
+            <>
+              <div className="table-wrap live-clicks-wrap">
+                <table className="entries-table stats-table live-clicks-table">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Buyer</th>
+                      <th>Campaign</th>
+                      <th>Status</th>
+                      <th>Revenue</th>
+                      <th>GEO</th>
+                      <th>Click ID</th>
+                      <th>External ID</th>
+                      <th>TID</th>
+                      <th>Device</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.map((row) => {
+                      const isExpanded = expandedId === row.id;
+                      const lag = lagLabel(row.clickDatetime, row.datetime);
+                      return (
+                        <React.Fragment key={row.id}>
+                        <tr
+                          className={`live-click-row${isExpanded ? " is-expanded" : ""}`}
+                          onClick={() => setExpandedId((prev) => (prev === row.id ? null : row.id))}
+                        >
+                          <td className="live-click-time" title={row.datetime}>
+                            <span>{String(row.datetime).slice(11) || "—"}</span>
+                            <em>{agoLabel(row.datetime)}</em>
+                          </td>
+                          <td>{row.buyer || "—"}</td>
+                          <td className="live-click-campaign" title={row.campaign}>
+                            {row.campaign || "—"}
+                          </td>
+                          <td>{statusChip(row.status)}</td>
+                          <td className={row.revenue > 0 ? "conv-revenue" : undefined}>
+                            {row.revenue > 0 ? formatCurrency(row.revenue) : <span className="lc-dim-dash">—</span>}
+                          </td>
+                          <td
+                            className="live-click-geo"
+                            title={`${row.country}${row.city ? ` · ${row.city}` : ""}`}
+                          >
+                            <CountryFlag value={row.countryCode || row.country} size={15} />
+                            {row.city ? <em className="live-click-dim">{row.city}</em> : null}
+                            {!row.countryCode && !row.country && !row.city ? "—" : null}
+                          </td>
+                          <td>
+                            {row.clickId ? (
+                              <button
+                                type="button"
+                                className="lc-id-pill"
+                                title={`${row.clickId} — click to copy`}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.clickId, e); }}
+                              >
+                                <i className="lc-id-dot lc-id-dot-click" aria-hidden="true" />
+                                <span>{row.clickId}</span>
+                              </button>
+                            ) : (
+                              <span className="lc-dim-dash">—</span>
+                            )}
+                          </td>
+                          <td>
+                            {row.externalId ? (
+                              <button
+                                type="button"
+                                className="lc-id-pill"
+                                title={`${row.externalId} — click to copy`}
+                                onClick={(e) => { e.stopPropagation(); copyText(row.externalId, e); }}
+                              >
+                                <i className="lc-id-dot lc-id-dot-ext" aria-hidden="true" />
+                                <span>{row.externalId}</span>
+                              </button>
+                            ) : (
+                              <span className="lc-dim-dash">—</span>
+                            )}
+                          </td>
+                          <td className="conv-tid" title={row.tid}>
+                            {row.tid || <span className="lc-dim-dash">—</span>}
+                          </td>
+                          <td
+                            className="live-click-device"
+                            title={`${row.os} · ${row.browser} · ${row.deviceType}`}
+                          >
+                            {osHasGlyph(row.os) ? (
+                              <span className="live-click-os" title={row.os}>
+                                <OsGlyph os={row.os} size={15} />
+                              </span>
+                            ) : (
+                              <span>{row.os || "—"}</span>
+                            )}
+                            {row.browser ? <em className="live-click-dim">{row.browser}</em> : null}
+                          </td>
+                        </tr>
+                        {isExpanded ? (
+                          <tr className="live-click-detail-row">
+                            <td colSpan={10}>
+                              <div className="live-click-detail">
+                                <div className="live-click-detail-head">
+                                  <span className="live-click-detail-title">
+                                    {row.campaign || "Conversion detail"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="icon-btn"
+                                    title="Close"
+                                    onClick={(e) => { e.stopPropagation(); setExpandedId(null); }}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                                <div className="live-click-detail-meta" style={{ borderTop: 0, paddingTop: 0, marginBottom: 14 }}>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Status</span>
+                                    <span className="lc-detail-value">{statusChip(row.status)}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Revenue</span>
+                                    <span className="lc-detail-value">
+                                      {row.revenue > 0 ? formatCurrency(row.revenue) : "—"}
+                                      {row.payout ? (
+                                        <em className="live-click-dim"> ({row.payout} {row.currency})</em>
+                                      ) : null}
+                                    </span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Conversion time</span>
+                                    <span className="lc-detail-value">
+                                      {row.datetime || "—"}
+                                      {lag ? <em className="live-click-dim"> · {lag}</em> : null}
+                                    </span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Click time</span>
+                                    <span className="lc-detail-value">{row.clickDatetime || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">TID</span>
+                                    <span className="lc-detail-value">{row.tid || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Offer</span>
+                                    <span className="lc-detail-value">{row.offer || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Stream</span>
+                                    <span className="lc-detail-value">{row.stream || "—"}</span>
+                                  </div>
+                                  <div className="lc-detail-field">
+                                    <span className="lc-detail-label">Device</span>
+                                    <span className="lc-detail-value">
+                                      {[row.os, row.browser, row.deviceType].filter(Boolean).join(" · ") || "—"}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="live-click-detail-grid">
+                                  {Array.from({ length: 11 }, (_, i) => {
+                                    const value = String(row.subs?.[i + 1] ?? "").trim();
+                                    return (
+                                      <div className="lc-detail-field" key={`conv-sub-${i + 1}`}>
+                                        <span className="lc-detail-label">Sub {i + 1} · {SUB_MEANINGS[i + 1]}</span>
+                                        <span className="lc-detail-value">
+                                          {value || "—"}
+                                          {value ? (
+                                            <button
+                                              type="button"
+                                              className="icon-btn lc-detail-copy"
+                                              title={`Copy Sub ${i + 1}`}
+                                              onClick={(e) => { e.stopPropagation(); copyText(value, e); }}
+                                            >
+                                              <Copy size={10} />
+                                            </button>
+                                          ) : null}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
+                <p className="field-hint" style={{ marginTop: 8 }}>
+                  Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length.toLocaleString()}{plus} conversions — narrow the window or search, or export the CSV for everything loaded.
+                </p>
+              ) : null}
+            </>
+          )}
+        </motion.div>
+      </section>
+    </>
+  );
+}
+
