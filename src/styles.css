@@ -17738,11 +17738,7 @@ select option,
 }
 
 /* Refine-modal helpers: paired fields + a boolean pill toggle */
-.filters-grid-2 {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
+.dashboard-filters-modal .modal-body > .filter-toggle { grid-column: 1 / -1; }
 .filter-toggle {
   display: inline-flex;
   align-items: center;

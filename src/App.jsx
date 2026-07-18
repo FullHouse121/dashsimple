@@ -23500,7 +23500,6 @@ export default function App() {
                           <Megaphone size={11} />
                           <span>Traffic</span>
                         </div>
-                        <div className="filters-grid-2">
                           <div className={`field${filters.statsBrand ? " is-active" : ""}`}>
                             <div className="field-label-row">
                               <label>Brand</label>
@@ -23537,13 +23536,11 @@ export default function App() {
                             </div>
                             <input type="text" placeholder="All placements" value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
                           </div>
-                        </div>
 
                         <div className="modal-section-label">
                           <Filter size={11} />
                           <span>Thresholds</span>
                         </div>
-                        <div className="filters-grid-2">
                           <div className={`field${filters.statsMinClicks ? " is-active" : ""}`}>
                             <div className="field-label-row">
                               <label>Min clicks</label>
@@ -23562,10 +23559,9 @@ export default function App() {
                             </div>
                             <input type="number" min="0" placeholder="0" value={filters.statsMinFtds} onChange={updateFilter("statsMinFtds")} />
                           </div>
-                        </div>
                         <button
                           type="button"
-                          className={`filter-toggle${filters.statsProfitableOnly ? " is-on" : ""}`}
+                          className={`filter-toggle field-wide${filters.statsProfitableOnly ? " is-on" : ""}`}
                           onClick={() => setFilters((prev) => ({ ...prev, statsProfitableOnly: !prev.statsProfitableOnly }))}
                           aria-pressed={filters.statsProfitableOnly}
                         >
