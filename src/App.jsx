@@ -7392,19 +7392,31 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
       value: totals.ftds > 0 ? `${(totals.redeposits / totals.ftds).toFixed(2)}×` : "—",
       meta: "redeposit events per depositor",
     },
+    // Cost line: what a unique click, a registration and an FTD each cost,
+    // then what a click earns back. Reads left-to-right down the funnel.
     {
-      label: "EPC",
-      value: fmtCost(safeDivide(totals.revenue, rateBase)),
-      meta: uc > 0 ? "per unique click" : "per click",
-      sub:
-        uc > 0
-          ? { value: fmtCost(safeDivide(totals.revenue, totals.clicks)), label: "per raw click" }
-          : null,
+      label: "Cost per Unique Click",
+      value: totals.spend > 0 ? fmtCost(toCost(totals.spend, rateBase)) : "—",
+      meta: totals.spend > 0 ? (uc > 0 ? "spend / unique click" : "spend / click") : "no spend in range",
+    },
+    {
+      label: "Cost per Reg",
+      value: totals.spend > 0 ? fmtCost(toCost(totals.spend, totals.registers)) : "—",
+      meta: totals.spend > 0 ? "spend / registration" : "no spend in range",
     },
     {
       label: "Cost per FTD",
       value: totals.spend > 0 ? fmtCost(toCost(totals.spend, totals.ftds)) : "—",
       meta: totals.spend > 0 ? "spend / FTD" : "no spend in range",
+    },
+    {
+      label: "EPC",
+      value: fmtCost(safeDivide(totals.revenue, rateBase)),
+      meta: uc > 0 ? "revenue / unique click" : "revenue / click",
+      sub:
+        uc > 0
+          ? { value: fmtCost(safeDivide(totals.revenue, totals.clicks)), label: "per raw click" }
+          : null,
     },
   ];
 
