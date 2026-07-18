@@ -4248,10 +4248,22 @@ select option,
   flex: 0 0 auto;
 }
 
+/* Hover stays neutral so it never reads as "selected" — only .is-active is
+   green. Keyboard focus gets its own visible ring. */
 .date-preset:hover {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.date-preset:focus-visible {
+  outline: 2px solid rgba(54, 208, 124, 0.55);
+  outline-offset: 2px;
+}
+
+.date-preset.is-active:hover {
+  border-color: rgba(54, 208, 124, 0.6);
+  background: rgba(54, 208, 124, 0.14);
 }
 
 .date-preset.is-active {

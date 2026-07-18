@@ -7128,6 +7128,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
         return false;
       }
       if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+      // Deltas must compare like with like: the previous period is scoped by
+      // the same brand/game/tool/placement filters as the current view.
+      if (!matchesAttr(row.brand, globalBrandFilter)) return false;
+      if (!matchesAttr(row.game, globalGameFilter)) return false;
+      if (!matchesAttr(row.tool, globalToolFilter)) return false;
+      if (
+        globalPlacementFilter &&
+        !String(row.placement || "").toLowerCase().includes(globalPlacementFilter.toLowerCase())
+      ) {
+        return false;
+      }
       return true;
     };
     const totalsOf = (rows) =>
@@ -7169,6 +7180,10 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     buyerFilter,
     effectiveBuyer,
     isLeadership,
+    globalBrandFilter,
+    globalGameFilter,
+    globalToolFilter,
+    globalPlacementFilter,
   ]);
 
   const statsDeltaFor = (key) => {
@@ -7185,6 +7200,12 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     const rounded = Math.round(delta * 10) / 10;
     if (!Number.isFinite(rounded) || Math.abs(rounded) < 0.05) {
       return <span className="kpi-delta">— 0% {statsComparison.label}</span>;
+    }
+    // A near-zero baseline (a campaign that barely ran last period) produces
+    // percentages like 349,042% — arithmetically true, unreadable. Past 10x
+    // the story is "this is new", not a number worth reading.
+    if (rounded > 999) {
+      return <span className="kpi-delta is-up">▲ &gt;999% {statsComparison.label}</span>;
     }
     return (
       <span className={`kpi-delta${rounded > 0 ? " is-up" : " is-down"}`}>
