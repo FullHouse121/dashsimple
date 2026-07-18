@@ -23047,6 +23047,24 @@ function LoginScreen({ onLogin, loading, error }) {
 export default function App() {
   const [activeView, setActiveView] = React.useState("home");
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => {
+    try {
+      return localStorage.getItem("dash-sidebar-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebarCollapsed = React.useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("dash-sidebar-collapsed", next ? "1" : "0");
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
+  }, []);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const initialFiltersRef = React.useRef(null);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
@@ -23787,13 +23805,22 @@ export default function App() {
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
       <ConfirmHost />
-      <div className={`app${mobileNavOpen ? " mobile-nav-open" : ""}`}>
+      <div className={`app${mobileNavOpen ? " mobile-nav-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <div
         className="mobile-nav-backdrop"
         onClick={() => setMobileNavOpen(false)}
         aria-hidden="true"
       />
-      <aside className={`sidebar${mobileNavOpen ? " is-open" : ""}`}>
+      <aside className={`sidebar${mobileNavOpen ? " is-open" : ""}${sidebarCollapsed ? " is-collapsed" : ""}`}>
+        <button
+          className="sidebar-collapse-toggle"
+          type="button"
+          onClick={toggleSidebarCollapsed}
+          aria-label={sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+          title={sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+        >
+          {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
         <button
           className="mobile-nav-close"
           type="button"
@@ -23833,6 +23860,7 @@ export default function App() {
                   <a
                     key={item.label}
                     className={`nav-item${isActive ? " active" : ""}`}
+                    title={sidebarCollapsed ? t(item.label) : undefined}
                     href={item.href || "#"}
                     target={isExternal ? "_blank" : undefined}
                     rel={isExternal ? "noreferrer" : undefined}
@@ -23857,6 +23885,7 @@ export default function App() {
             className={`action-pill sidebar-docs${isDocs ? " is-active" : ""}`}
             type="button"
             onClick={() => { setActiveView("docs"); setMobileNavOpen(false); }}
+            title={sidebarCollapsed ? t("Documentation") : undefined}
           >
             <BookOpen size={16} />
             {t("Documentation")}

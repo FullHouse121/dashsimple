@@ -17619,3 +17619,68 @@ select option,
   .last-click-head span:nth-child(5),
   .lc-col-source, .lc-col-device { display: none; }
 }
+
+/* Collapsible sidebar: chevron toggle on the sidebar edge; collapsed = icon rail */
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 34px;
+  right: -13px;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--stroke);
+  background: #1d2025;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.sidebar-collapse-toggle:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: #23262c;
+}
+
+@media (min-width: 861px) {
+  .app.sidebar-collapsed { grid-template-columns: 78px 1fr; }
+
+  .sidebar.is-collapsed { padding: 32px 14px; }
+  .sidebar.is-collapsed .brand { display: none; }
+  .sidebar.is-collapsed .sidebar-section .section-title { display: none; }
+  .sidebar.is-collapsed .team-pill {
+    justify-content: center;
+    padding: 10px;
+  }
+  .sidebar.is-collapsed .team-pill-content { display: none; }
+  .sidebar.is-collapsed .nav-section-title {
+    height: 1px;
+    margin: 6px 8px;
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  /* labels are bare text nodes — collapse them with font-size: 0 */
+  .sidebar.is-collapsed .nav-item {
+    justify-content: center;
+    gap: 0;
+    font-size: 0;
+    padding: 11px 0;
+  }
+  .sidebar.is-collapsed .nav-item svg { flex-shrink: 0; }
+  .sidebar.is-collapsed .sidebar-docs {
+    justify-content: center;
+    gap: 0;
+    font-size: 0;
+    padding: 12px 0;
+  }
+  .sidebar.is-collapsed .lang-switch { display: none; }
+}
+
+@media (max-width: 860px) {
+  /* Mobile uses the overlay drawer — the collapse toggle has no role there */
+  .sidebar-collapse-toggle { display: none; }
+}
