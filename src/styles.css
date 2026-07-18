@@ -17690,21 +17690,27 @@ select option,
 @media (max-width: 1100px) {
   .conversions-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Same recipe as the Tracking Links flow-pill: neutral chip, coloured dot */
 .conv-status {
   display: inline-flex;
   align-items: center;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
 }
-.conv-status-registration { color: #58b1ff; border-color: rgba(88, 177, 255, 0.35); background: rgba(88, 177, 255, 0.07); }
-.conv-status-ftd { color: var(--green); border-color: rgba(54, 208, 124, 0.4); background: rgba(54, 208, 124, 0.09); }
-.conv-status-redeposit { color: #ffbf5c; border-color: rgba(255, 191, 92, 0.38); background: rgba(255, 191, 92, 0.08); }
-.conv-status-other { color: var(--muted); border-color: rgba(255, 255, 255, 0.12); }
+.conv-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 .conv-revenue { color: var(--green); font-weight: 700; font-variant-numeric: tabular-nums; }
 .conv-tid {
   max-width: 120px;

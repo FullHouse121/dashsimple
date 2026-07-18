@@ -21,10 +21,13 @@ import {
 // Conversion log from Keitaro: every postback (registration / ftd /
 // redeposit) with revenue, original payout, click→conversion lag and the full
 // UTM set — the buyer-facing deep-dive companion to Live Clicks.
+// Chips follow the Tracking Links flow-pill shape: neutral surface, the
+// status meaning carried by the dot colour (blue reg / green FTD / amber
+// redeposit) rather than by tinting the whole pill.
 const CONVERSION_STATUS_META = {
-  registration: { label: "Registration", className: "conv-status-registration" },
-  ftd: { label: "FTD", className: "conv-status-ftd" },
-  redeposit: { label: "Redeposit", className: "conv-status-redeposit" },
+  registration: { label: "Registration", dot: "#58b1ff" },
+  ftd: { label: "FTD", dot: "#36d07c" },
+  redeposit: { label: "Redeposit", dot: "#ffbf5c" },
 };
 
 export default function ConversionsDashboard({ authUser, viewerBuyer }) {
@@ -187,10 +190,15 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
   const statusChip = (status) => {
-    const meta2 = CONVERSION_STATUS_META[status];
+    const statusMeta = CONVERSION_STATUS_META[status];
     return (
-      <span className={`conv-status ${meta2?.className || "conv-status-other"}`}>
-        {meta2?.label || status || "—"}
+      <span className="conv-status">
+        <i
+          className="conv-status-dot"
+          style={{ background: statusMeta?.dot || "var(--muted)" }}
+          aria-hidden="true"
+        />
+        {statusMeta?.label || status || "—"}
       </span>
     );
   };
