@@ -1,4 +1,12 @@
 import "dotenv/config";
+import {
+  CAMPAIGN_SEGMENT_KEYS,
+  normalizeBuyerName,
+  buyerMatches,
+  makeCampaignParser,
+  makeBuyerScoping,
+} from "./lib/scoping.js";
+import { createTokenCodec } from "./lib/auth.js";
 import express from "express";
 import cors from "cors";
 import compression from "compression";
@@ -648,9 +656,28 @@ const initDb = async () => {
       WHERE project_id IS NULL;`,
   ];
 
+  // Schema gate: the statement list above is 170+ ALTER/UPDATE statements
+  // that used to run against the shared prod DB on EVERY boot (and raced
+  // concurrent boots — the 42P10 incident). Hash the list; if the DB already
+  // carries this exact schema signature, skip the storm entirely. Any edit to
+  // the statements changes the hash and re-runs them once.
+  await query(`CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT)`);
+  const schemaSignature = crypto.createHash("sha256").update(statements.join("\n")).digest("hex");
+  const appliedSignature = await getRow(`SELECT value FROM schema_meta WHERE key = 'statements_sha'`);
+  if (appliedSignature?.value === schemaSignature) {
+    console.log("[boot] schema up to date — skipping migration statements.");
+    return;
+  }
+
   for (const statement of statements) {
     await query(statement);
   }
+
+  await query(
+    `INSERT INTO schema_meta (key, value) VALUES ('statements_sha', $1)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+    [schemaSignature]
+  );
 };
 
 const allPermissions = [
@@ -3976,7 +4003,7 @@ const parseBooleanEnv = (value, fallback) => {
 // Campaigns follow a fixed 5-segment convention:
 //   Buyer | Tool | Game | Geo | Brand
 // Segment 0 is the media buyer; "-" marks an intentionally empty slot.
-const CAMPAIGN_SEGMENT_KEYS = ["buyer", "tool", "game", "geo", "brand"];
+// CAMPAIGN_SEGMENT_KEYS imported from ./lib/scoping.js
 
 // Short buyer name (as written in the campaign) → canonical buyer.
 // Overridable via KEITARO_BUYER_ALIASES env (JSON, e.g. {"leo":"Leomarketing"}).
@@ -4005,30 +4032,7 @@ const resolveBuyerAlias = (value) => {
 // Parse a campaign name into its segments. Resilient to old/unformatted
 // names: when there's no " | " delimiter, segment 0 is treated as the buyer
 // so legacy attribution keeps working.
-const parseCampaignName = (name) => {
-  const raw = String(name || "").trim();
-  const segments = raw ? raw.split("|").map((p) => p.trim()) : [];
-  const segmentCount = segments.length;
-  const isFormatted =
-    segmentCount === CAMPAIGN_SEGMENT_KEYS.length && segments.every((s) => s.length > 0);
-  // "-" is a deliberate placeholder → treat as empty for the typed fields.
-  const slot = (i) => {
-    const v = segments[i] ? segments[i].trim() : "";
-    return v === "-" ? "" : v;
-  };
-  const rawBuyer = (segments[0] ? segments[0].trim() : raw) || "";
-  return {
-    raw,
-    isFormatted,
-    segmentCount,
-    rawBuyer,
-    buyer: resolveBuyerAlias(rawBuyer),
-    tool: slot(1),
-    game: slot(2),
-    geo: slot(3),
-    brand: slot(4),
-  };
-};
+const parseCampaignName = makeCampaignParser(resolveBuyerAlias);
 
 const DEFAULT_KEITARO_TIMEZONE = "Asia/Dubai";
 
@@ -4474,31 +4478,7 @@ const authSecret = (() => {
 })();
 const authTtlSeconds = Number.parseInt(process.env.AUTH_TTL_SECONDS || "604800", 10);
 
-const encodeToken = (payload) => {
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", authSecret).update(body).digest("base64url");
-  return `${body}.${signature}`;
-};
-
-const decodeToken = (token) => {
-  if (!token) return null;
-  const [body, signature] = token.split(".");
-  if (!body || !signature) return null;
-  const expected = crypto.createHmac("sha256", authSecret).update(body).digest("base64url");
-  const sigBuffer = Buffer.from(signature);
-  const expBuffer = Buffer.from(expected);
-  if (sigBuffer.length !== expBuffer.length) return null;
-  if (!crypto.timingSafeEqual(sigBuffer, expBuffer)) return null;
-  let payload;
-  try {
-    payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-  } catch (error) {
-    return null;
-  }
-  const exp = Number(payload?.exp || 0);
-  if (exp && exp < Math.floor(Date.now() / 1000)) return null;
-  return payload;
-};
+const { encodeToken, decodeToken } = createTokenCodec(authSecret);
 
 const normalizeRoleName = (value) =>
   String(value || "")
@@ -4509,26 +4489,8 @@ const isLeadership = (user) => {
   return normalized === "boss" || normalized === "teamleader";
 };
 
-const normalizeBuyerName = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-const buyerMatches = (rowBuyer, viewerBuyer) => {
-  const rowValue = normalizeBuyerName(rowBuyer);
-  const viewerValue = normalizeBuyerName(viewerBuyer);
-  if (!viewerValue) return false;
-  if (!rowValue) return false;
-  if (rowValue === viewerValue) return true;
-  // Anchored prefix only (the legit alias shape: "Leo" ↔ "Leomarketing",
-  // "Karen" ↔ "KarenFarias"), never mid-string, shorter side ≥ 3 chars.
-  // Bidirectional .includes() let one buyer's rows scope onto another's the
-  // moment two names overlapped anywhere ("rosara" matched "sara").
-  const [short, long] =
-    rowValue.length <= viewerValue.length ? [rowValue, viewerValue] : [viewerValue, rowValue];
-  if (short.length < 3) return false;
-  return long.startsWith(short);
-};
+// normalizeBuyerName imported from ./lib/scoping.js
+// buyerMatches imported from ./lib/scoping.js (anchored-prefix matching)
 
 const normalizeAdsetMacro = (value) => {
   const raw = String(value || "").trim();
@@ -4755,6 +4717,7 @@ app.use((req, res, next) => {
   // conversion logs to an anonymous caller.
   if (req.path.startsWith("/api/postbacks/") && req.path !== "/api/postbacks/logs") return next();
   if (req.path === "/api/keitaro/cron") return next();
+  if (req.path === "/api/health") return next();
 
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : header;
@@ -4764,6 +4727,17 @@ app.use((req, res, next) => {
   }
   req.user = user;
   return next();
+});
+
+// Unauthenticated health probe for Render's deploy health gate: a new
+// instance only replaces the live one once this returns 200.
+app.get("/api/health", async (req, res) => {
+  try {
+    await query("SELECT 1");
+    return res.json({ ok: true });
+  } catch {
+    return res.status(503).json({ ok: false });
+  }
 });
 
 // ── Audit log ─────────────────────────────────────────────────────────
@@ -8624,37 +8598,14 @@ const refreshBuyerAliases = async () => {
 // A buyer's identity forms: username + alias short-name (env map) + the
 // Keitaro name from their Media Buyers profile (DB). Leomarketing →
 // ["leomarketing", "leo"].
-const buyerShortForms = (buyer) => {
-  const b = String(buyer || "").trim().toLowerCase();
-  const forms = new Set();
-  if (b) forms.add(b);
-  for (const [short, canonical] of buyerAliasMap.entries()) {
-    if (String(canonical || "").trim().toLowerCase() === b) forms.add(String(short).toLowerCase());
-  }
-  const dbAlias = dbBuyerAliasCache.map.get(b);
-  if (dbAlias) forms.add(dbAlias);
-  return [...forms].filter(Boolean);
-};
+const { buyerShortForms, keitaroNameMatchesBuyer, viewerOwnsRow } = makeBuyerScoping({
+  getAliasEntries: () => buyerAliasMap.entries(),
+  getDbAlias: (normalized) => dbBuyerAliasCache.map.get(normalized),
+});
 
-// Does a Keitaro name (offer/group) belong to this buyer? Offers are named
-// inconsistently ("Karen | …", "Leo (InApp) - …", "ZM.APPS - Leo - …") so
-// we match any of the buyer's identity forms as a WHOLE WORD in the name.
-const keitaroNameMatchesBuyer = (name, buyer) => {
-  const text = String(name || "").toLowerCase();
-  return buyerShortForms(buyer).some((form) => {
-    const escaped = form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(text);
-  });
-};
+// keitaroNameMatchesBuyer provided by makeBuyerScoping above
 
-// Does a stats row belong to this viewer? Prefer the whole-word, short-form
-// matcher against the raw campaign name (robust to messy names like
-// "ZM.APPS - Karen - …"), unioned with the legacy parsed-buyer substring check
-// so no buyer who matched before ever loses rows. Used by every buyer-scoped
-// Keitaro endpoint so a buyer reliably sees all of their own data.
-const viewerOwnsRow = (row, viewerBuyer) =>
-  keitaroNameMatchesBuyer(row.campaign_name || row.campaign || row.buyer, viewerBuyer) ||
-  buyerMatches(row.buyer, viewerBuyer);
+// viewerOwnsRow provided by makeBuyerScoping above
 
 // Scope the shared resource lists to one buyer: only their offers and
 // campaign group(s). Traffic sources + tracking domains are shared infra.

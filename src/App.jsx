@@ -8974,7 +8974,9 @@ function LiveClicksDashboard({ authUser, viewerBuyer }) {
   }, [fetchClicks, paused]);
 
   React.useEffect(() => {
-    const id = setInterval(() => setClock((tick) => tick + 1), 1000);
+    // 5s, not 1s: every tick re-renders the visible table rows (they are not
+    // memoized), and second-precision "ago" labels aren't worth 5x the work.
+    const id = setInterval(() => setClock((tick) => tick + 1), 5000);
     return () => clearInterval(id);
   }, []);
 
@@ -9722,7 +9724,9 @@ function ConversionsDashboard({ authUser, viewerBuyer }) {
   }, [fetchConversions, paused]);
 
   React.useEffect(() => {
-    const id = setInterval(() => setClock((tick) => tick + 1), 1000);
+    // 5s, not 1s: every tick re-renders the visible table rows (they are not
+    // memoized), and second-precision "ago" labels aren't worth 5x the work.
+    const id = setInterval(() => setClock((tick) => tick + 1), 5000);
     return () => clearInterval(id);
   }, []);
 
