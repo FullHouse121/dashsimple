@@ -8434,11 +8434,25 @@ const buildTrackingUrl = (domain, alias, params) => {
   return `https://${host}/${path}${qs ? `?${qs}` : ""}`;
 };
 
+// Each traffic tool passes its click identifier under a different macro, so the
+// campaign's external_id placeholder must follow the selected tool. Mirrors
+// TRACKING_TOOL_EXTERNAL_ID in src/App.jsx — keep the two in sync.
+const DEFAULT_EXTERNAL_ID_MACRO = "{external_id}";
+const TRACKING_TOOL_EXTERNAL_ID = {
+  "PWA.GROUP": "{USER_ID}",
+  "PWA PARTNERS": "{user_id}",
+  "LINKI.GROUP": "{client_id}",
+  ZMAPPS: "{exid}",
+  SKAK: "{clickId}",
+};
+const externalIdMacroForTool = (tool) =>
+  TRACKING_TOOL_EXTERNAL_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_EXTERNAL_ID_MACRO;
+
 // Standard link parameter map — mirrors the existing campaigns on this
-// tracker (external_id={exid}, sub1..sub11, adset_id={{adset.id}},
-// fbclid={{fbclid}}) so new campaigns produce identical links.
-const KEITARO_STANDARD_PARAMETERS = {
-  external_id: { placeholder: "{exid}" },
+// tracker (sub1..sub11, adset_id={{adset.id}}, fbclid={{fbclid}}) so new
+// campaigns produce identical links. external_id varies by tool.
+const keitaroStandardParameters = (tool) => ({
+  external_id: { placeholder: externalIdMacroForTool(tool) },
   sub_id_1: { name: "sub1", placeholder: "{sub1}" },
   sub_id_2: { name: "sub2", placeholder: "{sub2}" },
   sub_id_3: { name: "sub3", placeholder: "{sub3}" },
@@ -8451,7 +8465,7 @@ const KEITARO_STANDARD_PARAMETERS = {
   sub_id_10: { name: "sub10", placeholder: "{sub10}" },
   sub_id_11: { name: "sub11", placeholder: "{sub11}" },
   sub_id_12: { name: "fbclid", placeholder: "{{fbclid}}" },
-};
+});
 
 // Keitaro validation errors (422) come back as a flat { field: [messages] }
 // map with no error/message key — format those into a readable string.
@@ -8777,6 +8791,7 @@ const pushCampaignToKeitaro = async ({
   name,
   alias,
   buyer,
+  tool,
   groupId,
   trafficSourceId,
   domainId,
@@ -8803,7 +8818,7 @@ const pushCampaignToKeitaro = async ({
     uniqueness_method: "ip_ua",
     cookies_ttl: 24,
     bind_visitors: "slo",
-    parameters: KEITARO_STANDARD_PARAMETERS,
+    parameters: keitaroStandardParameters(tool),
   };
   // Alias is required by Keitaro on create — generate one when left blank.
   const trimmedAlias = String(alias || "").trim() || generateCampaignAlias();
@@ -9642,6 +9657,7 @@ app.post("/api/tracking-links", async (req, res) => {
       name,
       alias,
       buyer: resolvedBuyer,
+      tool,
       groupId,
       trafficSourceId,
       domainId,
@@ -9712,6 +9728,7 @@ app.post("/api/tracking-links/:id/push", async (req, res) => {
     name: row.name,
     alias: row.alias,
     buyer: row.buyer,
+    tool: row.tool,
     groupId: row.keitaro_group_id,
     trafficSourceId: row.traffic_source_id,
     domainId: row.kdomain_id,
