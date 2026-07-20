@@ -17867,11 +17867,14 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
           useProxy: Boolean(form.useProxy),
         }),
       });
+      const detail = await response.json().catch(() => null);
       if (!response.ok) {
-        const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Failed to save integration.");
       }
       await Promise.all([fetchIntegrations(), fetchKeitaroCosts(), fetchAccountOptions?.()]);
+      const requested = Number(detail?.campaignsRequested || 0);
+      const attached = Number(detail?.campaignsAttached || 0);
+      setCopyFeedback(requested ? `Saved · ${attached}/${requested} campaigns attached` : "Integration saved");
       resetForm();
     } catch (error) {
       setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });

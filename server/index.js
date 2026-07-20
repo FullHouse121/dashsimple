@@ -1701,6 +1701,67 @@ const insertMetaTokenIntegration = async (payload) => {
   return rows[0];
 };
 
+// One integration per (owner, ad account): if a row already exists for this
+// owner+account, update it in place instead of inserting a duplicate. This is
+// what makes retries, token fixes, and double-submits idempotent (and gives
+// "edit" for free — re-saving the same account updates it).
+const upsertMetaTokenIntegration = async (payload) => {
+  const existing = await getRow(
+    `SELECT id FROM meta_token_integrations
+     WHERE owner_id = $1 AND account_number = $2
+     ORDER BY id DESC LIMIT 1`,
+    [payload.owner_id ?? null, payload.account_number]
+  );
+  if (!existing?.id) {
+    const row = await insertMetaTokenIntegration(payload);
+    return { id: row.id, updated: false };
+  }
+  await query(
+    `UPDATE meta_token_integrations SET
+       meta_token = $1,
+       keitaro_token = $2,
+       buyer_name = $3,
+       buyer_id = $4,
+       adset_macro = $5,
+       pixel_id = $6,
+       status = $7,
+       comment = $8,
+       owner_role = $9,
+       meta_binding = $10,
+       is_wired = $11,
+       last_checked_at = $12,
+       keitaro_integration_id = $13,
+       keitaro_last_error = $14,
+       keitaro_api_version = $15,
+       keitaro_interval = $16,
+       keitaro_proxy_enabled = $17,
+       keitaro_campaign_ids = $18
+     WHERE id = $19`,
+    [
+      payload.meta_token,
+      payload.keitaro_token,
+      payload.buyer_name,
+      payload.buyer_id,
+      payload.adset_macro,
+      payload.pixel_id,
+      payload.status,
+      payload.comment,
+      payload.owner_role,
+      payload.meta_binding,
+      payload.is_wired ? 1 : 0,
+      payload.last_checked_at || null,
+      payload.keitaro_integration_id ?? null,
+      payload.keitaro_last_error ?? null,
+      payload.keitaro_api_version ?? null,
+      payload.keitaro_interval ?? null,
+      payload.keitaro_proxy_enabled ? 1 : 0,
+      payload.keitaro_campaign_ids ?? null,
+      existing.id,
+    ]
+  );
+  return { id: existing.id, updated: true };
+};
+
 const deleteMetaTokenIntegration = async (id) =>
   query(`DELETE FROM meta_token_integrations WHERE id = $1`, [id]);
 
@@ -7982,7 +8043,7 @@ app.post("/api/meta-tokens", async (req, res) => {
       payload.status = "Success";
     }
 
-    const info = await insertMetaTokenIntegration(payload);
+    const info = await upsertMetaTokenIntegration(payload);
     await syncAccountFromLatestIntegration({
       accountNumber: payload.account_number,
       ownerId: payload.owner_id,
@@ -7991,11 +8052,14 @@ app.post("/api/meta-tokens", async (req, res) => {
       req,
       entityType: "integration",
       entityId: info.id,
-      title: "New Meta integration added",
-      message: `${req.user?.username || "User"} linked Meta integration for account ${payload.account_number}.`,
+      title: info.updated ? "Meta integration updated" : "New Meta integration added",
+      message: `${req.user?.username || "User"} ${info.updated ? "updated" : "linked"} the Meta integration for account ${payload.account_number}.`,
     });
     const row = await selectMetaTokenIntegrationById(info.id);
-    return res.status(201).json(row ? sanitizeIntegrationRow(row) : { id: info.id });
+    const responseBody = row ? sanitizeIntegrationRow(row) : { id: info.id };
+    responseBody.campaignsRequested = (keitaroPush.requestedCampaigns || []).length;
+    responseBody.campaignsAttached = (keitaroPush.attachedCampaigns || []).length;
+    return res.status(info.updated ? 200 : 201).json(responseBody);
   } catch (error) {
     await createUnexpectedNotification({
       req,
@@ -8603,21 +8667,41 @@ const pushMetaIntegrationToKeitaro = async ({
   if (!account || !tok) return { ok: false, id: null, lastError: "Missing account or token" };
   const version = Number.parseInt(apiVersion, 10) || KEITARO_FB_API_VERSION;
   const everyMinutes = Number.parseInt(interval, 10) || KEITARO_FB_DEFAULT_INTERVAL;
-  const result = await keitaroAdminFetch("/integrations/facebook", {
-    method: "POST",
-    body: JSON.stringify({
-      name: String(name || `DeusMachine ${account}`).slice(0, 120),
-      ad_account_id: account,
-      token: tok,
-      api_version: version,
-      interval: everyMinutes,
-      proxy_enabled: Boolean(proxyEnabled),
-    }),
+  const body = JSON.stringify({
+    name: String(name || `DeusMachine ${account}`).slice(0, 120),
+    ad_account_id: account,
+    token: tok,
+    api_version: version,
+    interval: everyMinutes,
+    proxy_enabled: Boolean(proxyEnabled),
   });
-  if (!result.ok) return { ok: false, id: null, lastError: result.error };
-  const { id, lastError } = readKeitaroFbIntegration(result);
-  const attachedCampaigns = await attachKeitaroFbCampaigns(id, campaignIds);
-  return { ok: true, id, lastError, apiVersion: version, interval: everyMinutes, attachedCampaigns };
+  // Upsert: one FB integration per ad account. If Keitaro already has one for
+  // this account, update it in place (PUT) instead of creating a duplicate;
+  // otherwise create it (POST). This keeps retries and token fixes idempotent.
+  const existing = await findKeitaroFbIntegrationByAccount(account);
+  const created = !(existing.ok && existing.id);
+  const result = created
+    ? await keitaroAdminFetch("/integrations/facebook", { method: "POST", body })
+    : await keitaroAdminFetch(`/integrations/facebook/${existing.id}`, { method: "PUT", body });
+  if (!result.ok) return { ok: false, id: existing.id || null, lastError: result.error, created };
+  const read = readKeitaroFbIntegration(result);
+  const id = read.id || existing.id;
+  // Campaign attach is additive (we never detach campaigns the form didn't
+  // show), so re-saving can only add attributions, never silently drop them.
+  const requested = Array.isArray(campaignIds)
+    ? Array.from(new Set(campaignIds.map((v) => Number.parseInt(v, 10)).filter(Number.isFinite)))
+    : [];
+  const attachedCampaigns = await attachKeitaroFbCampaigns(id, requested);
+  return {
+    ok: true,
+    id,
+    lastError: read.lastError,
+    created,
+    apiVersion: version,
+    interval: everyMinutes,
+    attachedCampaigns,
+    requestedCampaigns: requested,
+  };
 };
 // Re-read a Keitaro FB integration so our status mirrors Keitaro's live health.
 const syncMetaIntegrationFromKeitaro = async (keitaroId) => {
