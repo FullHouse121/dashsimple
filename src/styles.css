@@ -10051,6 +10051,17 @@ select option,
   overflow: visible;
 }
 
+/* `.panel > *` gives every direct panel child `position:relative; z-index:1`,
+   which ties the form holding an open dropdown with the sibling sections below
+   it (e.g. the Meta Token form vs. the "Facebook costs" head + table). Tied
+   z-indexes fall back to DOM order, so the later sibling paints over the menu —
+   whose own z-index:1500 is trapped inside the form's z-index:1 stacking
+   context. Lift the direct child that holds the open menu above its siblings
+   for as long as it's open. Value >= .utm-tool-bar's 50 so it never lowers it. */
+.panel > *:has(.country-select-picker.is-open) {
+  z-index: 50;
+}
+
 .country-select-picker > summary {
   list-style: none;
   outline: none;
