@@ -10686,7 +10686,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const fetchBehavior = React.useCallback(async () => {
     try {
       setBehaviorState({ loading: true, error: null });
-      const response = await apiFetch("/api/user-behavior?limit=5000");
+      // Aggregate server-side over the active window: a global date filter wins,
+      // otherwise the selected period. Without a range the server defaults to the
+      // last 30 days. This is what stops the view from only ever seeing the most
+      // recent day now that the table holds millions of rows.
+      const periodRange = getPeriodDateRange(period, customRange);
+      const globalRange = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+      const range = globalRange.from || globalRange.to ? globalRange : periodRange;
+      const params = new URLSearchParams({ limit: "50000" });
+      if (range.from) params.set("from", range.from);
+      if (range.to) params.set("to", range.to);
+      const response = await apiFetch(`/api/user-behavior?${params.toString()}`);
       if (!response.ok) {
         throw new Error("Failed to load user behavior.");
       }
@@ -10696,7 +10706,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     } catch (error) {
       setBehaviorState({ loading: false, error: error.message || "Failed to load user behavior." });
     }
-  }, []);
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     fetchBehavior();

@@ -407,6 +407,15 @@ const initDb = async () => {
     // ORDER BY date DESC, id DESC LIMIT 1) with a single index seek.
     `CREATE INDEX IF NOT EXISTS idx_user_behavior_extid
       ON user_behavior (external_id, date DESC, id DESC);`,
+    // Covering index for the User Behavior per-user rollup
+    // (selectUserBehaviorAggregated): range-scan by date, group by the keys,
+    // and read the summed measures straight from the index (index-only scan),
+    // so aggregating a month doesn't fall back to millions of heap fetches.
+    // On the live DB this was pre-built CONCURRENTLY; IF NOT EXISTS makes this a
+    // no-op there and an instant build on a fresh/empty schema.
+    `CREATE INDEX IF NOT EXISTS idx_user_behavior_agg
+      ON user_behavior (date, external_id, buyer, country, campaign)
+      INCLUDE (clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue);`,
     `CREATE INDEX IF NOT EXISTS idx_install_events_date_buyer_country
       ON install_events (date, buyer, country);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_install_events_click_campaign
@@ -1149,6 +1158,33 @@ const selectUserBehavior = async (limit) =>
      ORDER BY date DESC, id DESC
      LIMIT $1`,
     [limit]
+  );
+
+// Per-user rollup over a date range, aggregated in Postgres. The User Behavior
+// view is a per-user leaderboard, so we collapse each external_id (kept split by
+// buyer/country/campaign so the client's buyer/country filters and top-campaign
+// still work) and sum the measures. This replaces the old "last N raw rows"
+// query, which — as the table grew past 9M rows — only ever returned the most
+// recent ~1 day and starved every wider period. Ordered by revenue so the
+// leaderboard's top players survive the row cap. Backed by idx_user_behavior_agg
+// (covering: date + group keys INCLUDE measures) for an index-only scan.
+const selectUserBehaviorAggregated = async (from, to, limit) =>
+  getRows(
+    `SELECT external_id, buyer, country, campaign,
+            MAX(date) AS date,
+            SUM(clicks)::int AS clicks,
+            SUM(registers)::int AS registers,
+            SUM(ftds)::int AS ftds,
+            SUM(redeposits)::int AS redeposits,
+            SUM(revenue)::float8 AS revenue,
+            SUM(ftd_revenue)::float8 AS ftd_revenue,
+            SUM(redeposit_revenue)::float8 AS redeposit_revenue
+     FROM user_behavior
+     WHERE date >= $1 AND date <= $2
+     GROUP BY external_id, buyer, country, campaign
+     ORDER BY SUM(revenue) DESC NULLS LAST
+     LIMIT $3`,
+    [from, to, limit]
   );
 
 const insertGoal = async (payload) => {
@@ -6279,76 +6315,62 @@ app.get("/api/media-stats", async (req, res) => {
   res.json(merged.slice(0, limit));
 });
 
+// Aggregating a wide window scans millions of rows and can take up to ~a minute
+// on the DB. Cache the (buyer-agnostic) aggregation per date-range briefly and
+// coalesce concurrent callers onto one query, so several buyers opening the view
+// at once don't each fire the heavy scan. The cache is warmed by whichever query
+// finishes — even if the first HTTP request already timed out, the in-flight
+// query still completes and populates the cache, so the next load is instant.
+const userBehaviorCache = new Map(); // key -> { at, data }
+const userBehaviorInflight = new Map(); // key -> Promise
+const USER_BEHAVIOR_CACHE_MS =
+  Number.parseInt(process.env.USER_BEHAVIOR_CACHE_MS ?? "600000", 10) || 600000;
+const loadUserBehaviorAggregated = async (from, to, limit) => {
+  const key = `${from}|${to}|${limit}`;
+  const cached = userBehaviorCache.get(key);
+  if (cached && Date.now() - cached.at < USER_BEHAVIOR_CACHE_MS) return cached.data;
+  if (userBehaviorInflight.has(key)) return userBehaviorInflight.get(key);
+  const promise = selectUserBehaviorAggregated(from, to, limit)
+    .then((rows) => {
+      userBehaviorCache.set(key, { at: Date.now(), data: rows });
+      return rows;
+    })
+    .finally(() => userBehaviorInflight.delete(key));
+  userBehaviorInflight.set(key, promise);
+  return promise;
+};
+
 app.get("/api/user-behavior", async (req, res) => {
-  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const maxLimitRaw = Number.parseInt(process.env.USER_BEHAVIOR_LIMIT_MAX ?? "5000", 10);
-  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 5000;
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  // Aggregate the per-user leaderboard over the selected date range in Postgres
+  // (see selectUserBehaviorAggregated). The client passes the active period as
+  // from/to (YYYY-MM-DD); defaults keep the endpoint safe if they're missing,
+  // and the window width is clamped so an "All"/huge range can't aggregate the
+  // whole 9M+ row table synchronously and trip a gateway timeout.
+  const dayParam = (v) => {
+    const m = String(v || "").match(/^\d{4}-\d{2}-\d{2}$/);
+    return m ? m[0] : null;
+  };
+  const MAX_RANGE_DAYS = Number.parseInt(process.env.USER_BEHAVIOR_MAX_RANGE_DAYS ?? "45", 10) || 45;
+  const today = isoDay(new Date());
+  let to = dayParam(req.query.to) || today;
+  let from = dayParam(req.query.from) || isoDay(new Date(Date.now() - 29 * 86400000));
+  if (from > to) [from, to] = [to, from];
+  const minFrom = isoDay(
+    new Date(new Date(`${to}T00:00:00Z`).getTime() - (MAX_RANGE_DAYS - 1) * 86400000)
+  );
+  if (from < minFrom) from = minFrom;
+
+  const limitRaw = Number.parseInt(req.query.limit ?? "50000", 10);
+  const maxLimitRaw = Number.parseInt(process.env.USER_BEHAVIOR_LIMIT_MAX ?? "50000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 50000;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 50000;
+
   const viewerBuyer = await resolveViewerBuyer(req.user);
-  let rows = await selectUserBehavior(limit);
-  let installRows = await selectInstallTotalsByExternalId();
+  let rows = await loadUserBehaviorAggregated(from, to, limit);
   if (viewerBuyer) {
     rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
-    installRows = installRows.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
-
-  const merged = new Map();
-  rows.forEach((row) => {
-    const date = String(row.date || "");
-    const externalId = String(row.external_id || "").trim();
-    const buyer = String(row.buyer || "");
-    const country = String(row.country || "");
-    const key = `${date}|${externalId}|${buyer}|${country}`;
-    merged.set(key, {
-      ...row,
-      installs: Number(row.installs || 0),
-    });
-  });
-
-  installRows.forEach((row) => {
-    const date = String(row.date || "");
-    const externalId = String(row.external_id || "").trim();
-    if (!externalId) return;
-    const buyer = String(row.buyer || "");
-    const country = String(row.country || "");
-    const installs = Number(row.installs || 0);
-    const key = `${date}|${externalId}|${buyer}|${country}`;
-    if (merged.has(key)) {
-      const current = merged.get(key);
-      current.installs = Number(current.installs || 0) + installs;
-      if (!current.domain && row.domain) {
-        current.domain = row.domain;
-      }
-      return;
-    }
-
-    merged.set(key, {
-      id: null,
-      date,
-      external_id: externalId,
-      buyer,
-      campaign: null,
-      country,
-      region: null,
-      city: null,
-      placement: null,
-      clicks: 0,
-      registers: 0,
-      ftds: 0,
-      redeposits: 0,
-      revenue: 0,
-      ftd_revenue: 0,
-      redeposit_revenue: 0,
-      installs,
-      domain: row.domain || null,
-      created_at: null,
-    });
-  });
-
-  const output = Array.from(merged.values())
-    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
-    .slice(0, limit);
-  res.json(output);
+  res.json(rows);
 });
 
 app.get("/api/device-stats", async (req, res) => {
