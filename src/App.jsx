@@ -6833,6 +6833,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
   const globalGameFilter = String(filters?.statsGame || "").trim();
   const globalToolFilter = String(filters?.statsTool || "").trim();
   const globalPlacementFilter = String(filters?.statsPlacement || "").trim();
+  const globalCampaignFilter = String(filters?.statsCampaign || "").trim();
   const globalMinClicks = Number(filters?.statsMinClicks || 0);
   const globalMinFtds = Number(filters?.statsMinFtds || 0);
   const globalProfitableOnly = Boolean(filters?.statsProfitableOnly);
@@ -7009,6 +7010,12 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
       ) {
         return;
       }
+      if (
+        globalCampaignFilter &&
+        !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+      ) {
+        return;
+      }
       const date = String(row.date || "");
       const buyer = String(row.buyer || "");
       const country = String(row.country || "");
@@ -7050,7 +7057,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
       if (dateSort !== 0) return dateSort;
       return (b.id || 0) - (a.id || 0);
     });
-  }, [statsEntries, globalBrandFilter, globalGameFilter, globalToolFilter, globalPlacementFilter]);
+  }, [statsEntries, globalBrandFilter, globalGameFilter, globalToolFilter, globalPlacementFilter, globalCampaignFilter]);
 
   // Only the system's active buyers are selectable. The Keitaro data carries
   // many raw buyer/source segments (Leomarketing, KarenFarias, Daniel, Ersan,
@@ -7142,6 +7149,12 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
       ) {
         return false;
       }
+      if (
+        globalCampaignFilter &&
+        !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+      ) {
+        return false;
+      }
       return true;
     };
     const totalsOf = (rows) =>
@@ -7187,6 +7200,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
     globalGameFilter,
     globalToolFilter,
     globalPlacementFilter,
+    globalCampaignFilter,
   ]);
 
   const statsDeltaFor = (key) => {
@@ -7268,6 +7282,12 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         ) {
           return false;
         }
+        if (
+          globalCampaignFilter &&
+          !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+        ) {
+          return false;
+        }
         return true;
       }),
     [
@@ -7283,6 +7303,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
       globalGameFilter,
       globalToolFilter,
       globalPlacementFilter,
+      globalCampaignFilter,
     ]
   );
 
@@ -22120,6 +22141,7 @@ export default function App() {
       statsGame: "",
       statsTool: "",
       statsPlacement: "",
+      statsCampaign: "",
       statsMinClicks: "",
       statsMinFtds: "",
       statsProfitableOnly: false,
@@ -23730,6 +23752,15 @@ export default function App() {
                               ) : null}
                             </div>
                             <input type="text" placeholder="All placements" value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
+                          </div>
+                          <div className={`field field-span-2${filters.statsCampaign ? " is-active" : ""}`}>
+                            <div className="field-label-row">
+                              <label>Campaign</label>
+                              {filters.statsCampaign ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsCampaign: "" }))} aria-label="Clear campaign">Clear</button>
+                              ) : null}
+                            </div>
+                            <input type="text" placeholder="All campaigns — type any part of the name" value={filters.statsCampaign} onChange={updateFilter("statsCampaign")} />
                           </div>
 
                         <div className="modal-section-label">
