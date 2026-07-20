@@ -17403,7 +17403,7 @@ function LogsDashboard({ authUser }) {
   );
 }
 
-function MetaTokenDashboard({ authUser }) {
+function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
   const { t } = useLanguage();
   const canManage = isLeadershipRole(authUser?.role);
   const [integrations, setIntegrations] = React.useState([]);
@@ -17696,18 +17696,12 @@ function MetaTokenDashboard({ authUser }) {
     [pixels]
   );
 
-  const buyerOptions = React.useMemo(() => {
-    const map = new Map();
-    buyers.forEach((buyer) => {
-      const name = String(buyer?.name || "").trim();
-      if (name) map.set(name.toLowerCase(), name);
-    });
-    users.forEach((user) => {
-      const username = String(user?.username || "").trim();
-      if (username) map.set(username.toLowerCase(), username);
-    });
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
-  }, [buyers, users]);
+  // Registered buyers only — sourced live from Keitaro's campaign groups (passed
+  // down from App), so the picker isn't polluted with media-buyer profile names
+  // (e.g. KRBR) or raw logins (e.g. Leomarketing). Attribution stays correct:
+  // the Keitaro FB cost integrations already use these same short buyer names
+  // ("Leo | …", "Matheus | …").
+  const buyerOptions = buyerFilterOptions;
 
   const buyerDropdownOptions = React.useMemo(
     () => buyerOptions.map((name) => ({ value: name, label: name, search: name })),
@@ -23232,7 +23226,7 @@ export default function App() {
             viewerBuyer={effectiveViewerBuyer}
           />
         ) : isMetaToken ? (
-          <MetaTokenDashboard authUser={authUser} />
+          <MetaTokenDashboard authUser={authUser} buyerFilterOptions={buyerFilterOptions} />
         ) : isApi ? (
           <KeitaroApiView />
         ) : isStats ? (
