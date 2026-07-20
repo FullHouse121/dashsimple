@@ -464,6 +464,10 @@ const initDb = async () => {
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS is_wired INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_integration_id INTEGER;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_last_error TEXT;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_api_version INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_interval INTEGER;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_proxy_enabled INTEGER NOT NULL DEFAULT 0;`,
+    `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS keitaro_campaign_ids TEXT;`,
     `ALTER TABLE meta_token_integrations ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMP;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS status TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS pixel_id INTEGER;`,
@@ -1663,9 +1667,13 @@ const insertMetaTokenIntegration = async (payload) => {
       is_wired,
       last_checked_at,
       keitaro_integration_id,
-      keitaro_last_error
+      keitaro_last_error,
+      keitaro_api_version,
+      keitaro_interval,
+      keitaro_proxy_enabled,
+      keitaro_campaign_ids
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
      RETURNING id`,
     [
       payload.account_number,
@@ -1684,6 +1692,10 @@ const insertMetaTokenIntegration = async (payload) => {
       payload.last_checked_at || null,
       payload.keitaro_integration_id ?? null,
       payload.keitaro_last_error ?? null,
+      payload.keitaro_api_version ?? null,
+      payload.keitaro_interval ?? null,
+      payload.keitaro_proxy_enabled ? 1 : 0,
+      payload.keitaro_campaign_ids ?? null,
     ]
   );
   return rows[0];
@@ -7841,7 +7853,14 @@ app.post("/api/meta-tokens", async (req, res) => {
     status,
     comment = "",
     metaBinding = "admin",
+    campaignIds = [],
+    apiVersion = null,
+    updateInterval = null,
+    useProxy = false,
   } = req.body ?? {};
+  const normalizedCampaignIds = Array.isArray(campaignIds)
+    ? Array.from(new Set(campaignIds.map((v) => Number.parseInt(v, 10)).filter(Number.isFinite)))
+    : [];
 
   if (!accountNumber || !token || (!buyerName && isLeadership(req.user))) {
     return res.status(400).json({ error: "Account number, token, and buyer are required." });
@@ -7946,9 +7965,18 @@ app.post("/api/meta-tokens", async (req, res) => {
       name: keitaroName,
       adAccountId: normalizedAccountNumber,
       token: payload.meta_token,
+      apiVersion,
+      interval: updateInterval,
+      proxyEnabled: useProxy,
+      campaignIds: normalizedCampaignIds,
     });
     payload.keitaro_integration_id = keitaroPush.ok ? keitaroPush.id : null;
     payload.keitaro_last_error = keitaroPush.ok ? keitaroPush.lastError || null : keitaroPush.lastError;
+    payload.keitaro_api_version = keitaroPush.apiVersion ?? (Number.parseInt(apiVersion, 10) || null);
+    payload.keitaro_interval = keitaroPush.interval ?? (Number.parseInt(updateInterval, 10) || null);
+    payload.keitaro_proxy_enabled = Boolean(useProxy);
+    // Persist only the campaigns Keitaro actually accepted (empty if push failed).
+    payload.keitaro_campaign_ids = JSON.stringify(keitaroPush.attachedCampaigns || []);
     // Reflect Keitaro's verdict: a clean push with no FB error is "Success".
     if (keitaroPush.ok && !keitaroPush.lastError && !String(status || "").trim()) {
       payload.status = "Success";
@@ -8543,22 +8571,53 @@ const readKeitaroFbIntegration = (result) => {
 // existing integrations use (25 = Graph API v25); override via env if Meta
 // deprecates it. Not in Keitaro's OpenAPI spec, but enforced by the live API.
 const KEITARO_FB_API_VERSION = Number.parseInt(process.env.KEITARO_FB_API_VERSION, 10) || 25;
-const pushMetaIntegrationToKeitaro = async ({ name, adAccountId, token }) => {
+const KEITARO_FB_DEFAULT_INTERVAL = 20; // minutes
+// Attach campaigns to a Keitaro FB cost integration (one call per campaign, per
+// Keitaro's API). Best-effort: returns the ids that attached successfully.
+const attachKeitaroFbCampaigns = async (integrationId, campaignIds) => {
+  const ids = Array.isArray(campaignIds)
+    ? Array.from(new Set(campaignIds.map((v) => Number.parseInt(v, 10)).filter(Number.isFinite)))
+    : [];
+  if (!integrationId || !ids.length) return [];
+  const attached = [];
+  for (const campaignId of ids) {
+    const r = await keitaroAdminFetch(`/integrations/facebook/${integrationId}/campaign`, {
+      method: "POST",
+      body: JSON.stringify({ campaign_id: campaignId }),
+    });
+    if (r.ok) attached.push(campaignId);
+  }
+  return attached;
+};
+const pushMetaIntegrationToKeitaro = async ({
+  name,
+  adAccountId,
+  token,
+  apiVersion,
+  interval,
+  proxyEnabled = false,
+  campaignIds = [],
+}) => {
   const account = String(adAccountId || "").trim();
   const tok = String(token || "").trim();
   if (!account || !tok) return { ok: false, id: null, lastError: "Missing account or token" };
+  const version = Number.parseInt(apiVersion, 10) || KEITARO_FB_API_VERSION;
+  const everyMinutes = Number.parseInt(interval, 10) || KEITARO_FB_DEFAULT_INTERVAL;
   const result = await keitaroAdminFetch("/integrations/facebook", {
     method: "POST",
     body: JSON.stringify({
       name: String(name || `DeusMachine ${account}`).slice(0, 120),
       ad_account_id: account,
       token: tok,
-      api_version: KEITARO_FB_API_VERSION,
+      api_version: version,
+      interval: everyMinutes,
+      proxy_enabled: Boolean(proxyEnabled),
     }),
   });
   if (!result.ok) return { ok: false, id: null, lastError: result.error };
   const { id, lastError } = readKeitaroFbIntegration(result);
-  return { ok: true, id, lastError };
+  const attachedCampaigns = await attachKeitaroFbCampaigns(id, campaignIds);
+  return { ok: true, id, lastError, apiVersion: version, interval: everyMinutes, attachedCampaigns };
 };
 // Re-read a Keitaro FB integration so our status mirrors Keitaro's live health.
 const syncMetaIntegrationFromKeitaro = async (keitaroId) => {
@@ -8941,6 +9000,27 @@ app.get("/api/keitaro/resources", async (req, res) => {
   }
   await refreshBuyerAliases();
   res.json(scopeKeitaroResourcesForBuyer(data, req.user.username));
+});
+
+// Campaigns for a buyer, for the Meta cost integration's "Choose campaigns"
+// picker. Scoped to the buyer's campaigns (matched by the buyer segment in the
+// campaign name). Leadership may pass ?buyer=NAME; other roles are forced to
+// their own campaigns.
+app.get("/api/keitaro/buyer-campaigns", async (req, res) => {
+  const buyer = isLeadership(req.user)
+    ? String(req.query.buyer || "").trim()
+    : String(req.user.username || "").trim();
+  if (!buyer) return res.json({ campaigns: [] });
+  const result = await keitaroAdminFetch("/campaigns?limit=1000");
+  if (!result.ok) {
+    return res.status(502).json({ error: result.error || "Could not load Keitaro campaigns." });
+  }
+  await refreshBuyerAliases();
+  const list = Array.isArray(result.data) ? result.data : [];
+  const campaigns = list
+    .filter((c) => keitaroNameMatchesBuyer(c.name, buyer))
+    .map((c) => ({ id: c.id, name: c.name, state: c.state || "active" }));
+  res.json({ campaigns });
 });
 
 // ── Live Performance data straight from Keitaro's report builder ──────

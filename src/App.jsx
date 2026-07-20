@@ -17437,6 +17437,10 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
     buyerName: "",
     pixelId: "",
     comment: "",
+    campaignIds: [],
+    apiVersion: "25",
+    updateInterval: "20",
+    useProxy: false,
   });
 
   const updateForm = (key) => (event) => {
@@ -17450,6 +17454,10 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
       buyerName: "",
       pixelId: "",
       comment: "",
+      campaignIds: [],
+      apiVersion: "25",
+      updateInterval: "20",
+      useProxy: false,
     });
   };
 
@@ -17716,6 +17724,54 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
     return String(linked?.name || authUser?.username || "").trim();
   }, [canManage, buyers, authUser?.buyerId, authUser?.username]);
 
+  // Campaigns for the selected buyer, for the Keitaro-style "Choose campaigns"
+  // multi-select. Leadership picks the buyer; other roles get their own.
+  const [buyerCampaigns, setBuyerCampaigns] = React.useState([]);
+  const [campaignsState, setCampaignsState] = React.useState({ loading: false, error: null });
+  const campaignBuyer = canManage ? String(form.buyerName || "").trim() : autoBuyerName;
+  React.useEffect(() => {
+    if (!campaignBuyer) {
+      setBuyerCampaigns([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        setCampaignsState({ loading: true, error: null });
+        const qs = canManage ? `?buyer=${encodeURIComponent(campaignBuyer)}` : "";
+        const res = await apiFetch(`/api/keitaro/buyer-campaigns${qs}`);
+        if (!res.ok) throw new Error("Could not load campaigns.");
+        const data = await res.json();
+        if (!cancelled) {
+          setBuyerCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : []);
+          setCampaignsState({ loading: false, error: null });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBuyerCampaigns([]);
+          setCampaignsState({ loading: false, error: error.message || "Could not load campaigns." });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaignBuyer, canManage]);
+
+  // Selected campaigns belong to a buyer — clear them when the buyer changes.
+  React.useEffect(() => {
+    setForm((prev) => (prev.campaignIds?.length ? { ...prev, campaignIds: [] } : prev));
+  }, [campaignBuyer]);
+
+  const toggleFormCampaign = (id) => {
+    setForm((prev) => {
+      const set = new Set((prev.campaignIds || []).map(String));
+      if (set.has(String(id))) set.delete(String(id));
+      else set.add(String(id));
+      return { ...prev, campaignIds: Array.from(set) };
+    });
+  };
+
   const accountDropdownOptions = React.useMemo(
     () =>
       accountOptions
@@ -17805,6 +17861,10 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
           buyerName,
           pixelId: form.pixelId || null,
           comment: form.comment,
+          campaignIds: (form.campaignIds || []).map((id) => Number.parseInt(id, 10)).filter(Number.isFinite),
+          apiVersion: form.apiVersion || "25",
+          updateInterval: form.updateInterval || "20",
+          useProxy: Boolean(form.useProxy),
         }),
       });
       if (!response.ok) {
@@ -18397,6 +18457,65 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
           <div className="field field-span-2">
             <label>Comment</label>
             <input value={form.comment} onChange={updateForm("comment")} placeholder="Optional note for this integration" />
+          </div>
+          <div className="field field-span-3">
+            <label>Campaigns <span className="field-pace-hint">attribute this cost to specific Keitaro campaigns (optional)</span></label>
+            <CountryDropdownPicker
+              multiple
+              removable
+              values={form.campaignIds}
+              onToggle={toggleFormCampaign}
+              options={buyerCampaigns.map((c) => ({ value: String(c.id), label: c.name, search: c.name }))}
+              placeholder={
+                campaignsState.loading
+                  ? "Loading campaigns…"
+                  : !campaignBuyer
+                    ? "Pick a buyer first"
+                    : buyerCampaigns.length
+                      ? "Select campaigns"
+                      : "No campaigns for this buyer"
+              }
+              searchPlaceholder="Find campaign"
+              emptyResultsLabel="No campaigns found."
+            />
+          </div>
+          <div className="field">
+            <label>Facebook API version</label>
+            <Select
+              value={form.apiVersion}
+              onChange={(v) => setForm((prev) => ({ ...prev, apiVersion: v }))}
+              options={["25", "24", "23", "22", "21", "20", "19"].map((v) => ({ value: v, label: `v${v}` }))}
+              placeholder="v25"
+              searchPlaceholder="Version"
+            />
+          </div>
+          <div className="field">
+            <label>Update costs every</label>
+            <Select
+              value={form.updateInterval}
+              onChange={(v) => setForm((prev) => ({ ...prev, updateInterval: v }))}
+              options={[
+                ["10", "10 minutes"],
+                ["15", "15 minutes"],
+                ["20", "20 minutes"],
+                ["30", "30 minutes"],
+                ["60", "1 hour"],
+                ["120", "2 hours"],
+              ].map(([value, label]) => ({ value, label }))}
+              placeholder="20 minutes"
+              searchPlaceholder="Interval"
+            />
+          </div>
+          <div className={`field field-inline ${form.useProxy ? "is-on" : ""}`}>
+            <label className="ios-switch ios-switch-accent">
+              <input
+                type="checkbox"
+                checked={form.useProxy}
+                onChange={(event) => setForm((prev) => ({ ...prev, useProxy: event.target.checked }))}
+              />
+              <span className="ios-switch-track" aria-hidden="true"><span className="ios-switch-knob" /></span>
+              <span className="ios-switch-label">Use proxy</span>
+            </label>
           </div>
           <div className="form-actions">
             <button className="ghost" type="button" onClick={resetForm}>
