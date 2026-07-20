@@ -9094,7 +9094,9 @@ app.get("/api/keitaro/buyer-campaigns", async (req, res) => {
   const buyer = isLeadership(req.user)
     ? String(req.query.buyer || "").trim()
     : String(req.user.username || "").trim();
-  if (!buyer) return res.json({ campaigns: [] });
+  // Non-leadership must be scoped to their own buyer; leadership with no buyer
+  // (e.g. the filter's "All") gets every campaign.
+  if (!isLeadership(req.user) && !buyer) return res.json({ campaigns: [] });
   const result = await keitaroAdminFetch("/campaigns?limit=1000");
   if (!result.ok) {
     return res.status(502).json({ error: result.error || "Could not load Keitaro campaigns." });
@@ -9102,7 +9104,7 @@ app.get("/api/keitaro/buyer-campaigns", async (req, res) => {
   await refreshBuyerAliases();
   const list = Array.isArray(result.data) ? result.data : [];
   const campaigns = list
-    .filter((c) => keitaroNameMatchesBuyer(c.name, buyer))
+    .filter((c) => !buyer || keitaroNameMatchesBuyer(c.name, buyer))
     .map((c) => ({ id: c.id, name: c.name, state: c.state || "active" }));
   res.json({ campaigns });
 });

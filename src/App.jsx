@@ -6833,7 +6833,11 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
   const globalGameFilter = String(filters?.statsGame || "").trim();
   const globalToolFilter = String(filters?.statsTool || "").trim();
   const globalPlacementFilter = String(filters?.statsPlacement || "").trim();
-  const globalCampaignFilter = String(filters?.statsCampaign || "").trim();
+  const globalCampaignFilter = React.useMemo(() => {
+    const raw = filters?.statsCampaign;
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    return new Set(list.map((v) => String(v || "").trim()).filter(Boolean));
+  }, [filters?.statsCampaign]);
   const globalMinClicks = Number(filters?.statsMinClicks || 0);
   const globalMinFtds = Number(filters?.statsMinFtds || 0);
   const globalProfitableOnly = Boolean(filters?.statsProfitableOnly);
@@ -7011,8 +7015,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         return;
       }
       if (
-        globalCampaignFilter &&
-        !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+        globalCampaignFilter.size &&
+        !globalCampaignFilter.has(String(row.campaign || row.campaign_name || ""))
       ) {
         return;
       }
@@ -7150,8 +7154,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         return false;
       }
       if (
-        globalCampaignFilter &&
-        !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+        globalCampaignFilter.size &&
+        !globalCampaignFilter.has(String(row.campaign || row.campaign_name || ""))
       ) {
         return false;
       }
@@ -7283,8 +7287,8 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           return false;
         }
         if (
-          globalCampaignFilter &&
-          !String(row.campaign || row.campaign_name || "").toLowerCase().includes(globalCampaignFilter.toLowerCase())
+          globalCampaignFilter.size &&
+          !globalCampaignFilter.has(String(row.campaign || row.campaign_name || ""))
         ) {
           return false;
         }
@@ -22141,7 +22145,7 @@ export default function App() {
       statsGame: "",
       statsTool: "",
       statsPlacement: "",
-      statsCampaign: "",
+      statsCampaign: [],
       statsMinClicks: "",
       statsMinFtds: "",
       statsProfitableOnly: false,
@@ -22309,6 +22313,57 @@ export default function App() {
     });
     return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
   }, [keitaroBuyerNames]);
+
+  // Campaigns for the Refine modal's "Campaign" multi-select — the selected
+  // buyer's Keitaro campaigns (or all campaigns when Buyer is "All"). Fetched
+  // only while the modal is open, and re-fetched when the buyer changes.
+  const [modalCampaigns, setModalCampaigns] = React.useState([]);
+  const [modalCampaignsLoading, setModalCampaignsLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (!filtersOpen) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        setModalCampaignsLoading(true);
+        // Server forces non-leadership to their own campaigns and ignores this
+        // param; for leadership it scopes to the picked buyer ("" = all buyers).
+        const picked = filters.buyer && filters.buyer !== "All" ? String(filters.buyer).trim() : "";
+        const qs = picked ? `?buyer=${encodeURIComponent(picked)}` : "";
+        const res = await apiFetch(`/api/keitaro/buyer-campaigns${qs}`);
+        const data = res.ok ? await res.json() : { campaigns: [] };
+        if (!cancelled) setModalCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : []);
+      } catch (error) {
+        if (!cancelled) setModalCampaigns([]);
+      } finally {
+        if (!cancelled) setModalCampaignsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [filtersOpen, isLeadership, filters.buyer]);
+
+  // Selected campaigns belong to the picked buyer — clear them when the buyer
+  // changes so stale selections don't silently empty the view.
+  const prevBuyerRef = React.useRef(filters.buyer);
+  React.useEffect(() => {
+    if (prevBuyerRef.current !== filters.buyer) {
+      prevBuyerRef.current = filters.buyer;
+      setFilters((prev) =>
+        (prev.statsCampaign || []).length ? { ...prev, statsCampaign: [] } : prev
+      );
+    }
+  }, [filters.buyer]);
+
+  const toggleStatsCampaign = React.useCallback((name) => {
+    setFilters((prev) => {
+      const cur = Array.isArray(prev.statsCampaign) ? prev.statsCampaign : [];
+      const set = new Set(cur);
+      if (set.has(name)) set.delete(name);
+      else set.add(name);
+      return { ...prev, statsCampaign: Array.from(set) };
+    });
+  }, []);
 
   const viewPermissionMap = React.useMemo(
     () => ({
@@ -23753,14 +23808,29 @@ export default function App() {
                             </div>
                             <input type="text" placeholder="All placements" value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
                           </div>
-                          <div className={`field field-span-2${filters.statsCampaign ? " is-active" : ""}`}>
+                          <div className={`field field-span-2${(filters.statsCampaign || []).length ? " is-active" : ""}`}>
                             <div className="field-label-row">
                               <label>Campaign</label>
-                              {filters.statsCampaign ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsCampaign: "" }))} aria-label="Clear campaign">Clear</button>
+                              {(filters.statsCampaign || []).length ? (
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsCampaign: [] }))} aria-label="Clear campaigns">Clear</button>
                               ) : null}
                             </div>
-                            <input type="text" placeholder="All campaigns — type any part of the name" value={filters.statsCampaign} onChange={updateFilter("statsCampaign")} />
+                            <CountryDropdownPicker
+                              multiple
+                              removable
+                              values={Array.isArray(filters.statsCampaign) ? filters.statsCampaign : []}
+                              onToggle={toggleStatsCampaign}
+                              options={modalCampaigns.map((c) => ({ value: c.name, label: c.name, search: c.name }))}
+                              placeholder={
+                                modalCampaignsLoading
+                                  ? "Loading campaigns…"
+                                  : modalCampaigns.length
+                                    ? (filters.buyer && filters.buyer !== "All" ? `All ${filters.buyer} campaigns` : "All campaigns")
+                                    : "No campaigns found"
+                              }
+                              searchPlaceholder="Find campaign"
+                              emptyResultsLabel="No campaigns found."
+                            />
                           </div>
 
                         <div className="modal-section-label">
