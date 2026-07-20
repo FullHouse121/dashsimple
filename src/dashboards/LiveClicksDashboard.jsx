@@ -108,13 +108,18 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
         entry.uniques += Number(row.unique_clicks) || 0;
         byDay.set(day, entry);
       });
-      return [...byDay.entries()]
+      const daily = [...byDay.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([day, entry]) => ({
           label: day.slice(5),
           clicks: entry.clicks,
           uniques: entry.uniques,
         }));
+      // A window that spans two or more days charts as a daily curve. But a
+      // single-day window (e.g. "This week" on a Monday, when the week only
+      // has today) yields one day-bucket, which a timeline can't draw — fall
+      // through to the intraday (hourly) bucketing of the raw rows below.
+      if (daily.length > 1) return daily;
     }
     if (!filteredRows.length) return [];
     const stepMin =
