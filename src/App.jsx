@@ -8041,6 +8041,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
               </button>
               {isLeadership ? (
                 <Select
+                  className="stats-log-select"
                   value={buyerFilter}
                   onChange={(v) => setBuyerFilter(v)}
                   options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
@@ -22137,6 +22138,53 @@ export default function App() {
     );
   }, [authUser, effectiveViewerBuyer, isLeadership]);
 
+  // Buyer picker options come live from Keitaro's campaign groups — one group
+  // per buyer. Non-buyer buckets ("Inactive" for buyers who left, "Outsource")
+  // are filtered out here, so the list self-maintains with no hardcoded roster:
+  // move a buyer's campaigns into "Inactive" in Keitaro and they drop off.
+  // Leadership only (other roles can't pick a buyer); the resources endpoint is
+  // already leadership-scoped and 5-min cached server side. Falls back to the
+  // static roster if the fetch fails or returns nothing.
+  const [keitaroBuyerNames, setKeitaroBuyerNames] = React.useState([]);
+  React.useEffect(() => {
+    if (!authUser || !isLeadership) {
+      setKeitaroBuyerNames([]);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/keitaro/resources");
+        if (!response.ok) return;
+        const data = await response.json();
+        const nonBuyerGroups = ["inactive", "outsource"];
+        const names = (data.groups || [])
+          .map((g) => String(g?.name || "").trim())
+          .filter(Boolean)
+          .filter((name) => {
+            const lower = name.toLowerCase();
+            return !nonBuyerGroups.some((skip) => lower.includes(skip));
+          });
+        if (!cancelled && names.length) setKeitaroBuyerNames(names);
+      } catch (error) {
+        // keep the static fallback
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser, isLeadership]);
+
+  const buyerFilterOptions = React.useMemo(() => {
+    const source = keitaroBuyerNames.length ? keitaroBuyerNames : priorityBuyers;
+    const map = new Map();
+    source.forEach((name) => {
+      const clean = String(name || "").trim();
+      if (clean) map.set(clean.toLowerCase(), clean);
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [keitaroBuyerNames]);
+
   const viewPermissionMap = React.useMemo(
     () => ({
       home: "dashboard",
@@ -23529,7 +23577,7 @@ export default function App() {
                         <CountryDropdownPicker
                           value={filters.buyer || "All"}
                           onChange={(buyer) => setFilters((prev) => ({ ...prev, buyer }))}
-                          options={buyerOptions.filter((b) => !isAllSelection(b))}
+                          options={buyerFilterOptions}
                           placeholder="All"
                           allOption={{ value: "All", label: "All" }}
                           searchPlaceholder="Find buyer"

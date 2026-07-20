@@ -8537,6 +8537,12 @@ const readKeitaroFbIntegration = (result) => {
     lastError: data.last_error || data.last_raw_error || null,
   };
 };
+// Keitaro's Facebook cost integration requires an api_version (the Meta Graph
+// API version, an integer) — POSTs without it are rejected 422 with
+// "api_version: Api Version is required". Match the version the tracker's
+// existing integrations use (25 = Graph API v25); override via env if Meta
+// deprecates it. Not in Keitaro's OpenAPI spec, but enforced by the live API.
+const KEITARO_FB_API_VERSION = Number.parseInt(process.env.KEITARO_FB_API_VERSION, 10) || 25;
 const pushMetaIntegrationToKeitaro = async ({ name, adAccountId, token }) => {
   const account = String(adAccountId || "").trim();
   const tok = String(token || "").trim();
@@ -8547,6 +8553,7 @@ const pushMetaIntegrationToKeitaro = async ({ name, adAccountId, token }) => {
       name: String(name || `DeusMachine ${account}`).slice(0, 120),
       ad_account_id: account,
       token: tok,
+      api_version: KEITARO_FB_API_VERSION,
     }),
   });
   if (!result.ok) return { ok: false, id: null, lastError: result.error };

@@ -10213,6 +10213,16 @@ select option,
   pointer-events: none;
 }
 
+/* Funnel-log header select: the "All" trigger is tiny and right-aligned, so
+   the default left:0/right:0 menu collapses to the trigger's width and clips.
+   Give it a real width and anchor to the trigger's right edge so it expands
+   leftward into the panel. */
+.stats-log-select .country-select-menu {
+  left: auto;
+  right: 0;
+  min-width: 260px;
+}
+
 /* Keyboard hint footer */
 .country-select-menu::after {
   content: "↑↓  navigate  ·  ↵  select  ·  esc  close";

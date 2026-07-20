@@ -359,8 +359,11 @@ export const categoryOptions = ["Traffic Source", "Tools", "Designs"];
 export const billingOptions = ["Crypto", "Bank Transfer", "Card"];
 export const statusOptions = ["Requested", "Done", "Expired", "Cancelled"];
 export const approachOptions = ["All", "Organic", "Paid Social", "Influencers", "Search"];
+// The current active media buyers. Each has a matching Keitaro campaign
+// group; picker values are normalized before matching, so display casing
+// here is cosmetic. Update this list as buyers join/leave.
 export const priorityBuyers = [
-  "Leo", "Leticia", "Carvalho", "Akku", "Enzo", "Matheus", "Sara", "ZM apps",
+  "Leo", "Leticia", "Matheus", "Karen", "Sara", "Enzo", "Carvalho", "Akku",
 ];
 export const buyerOptions = ["All", ...priorityBuyers];
 export const roleOptions = [
