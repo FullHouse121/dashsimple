@@ -18444,19 +18444,6 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
               />
             </div>
           ) : null}
-          <div className="field">
-            <label>Pixel (optional)</label>
-            <Select
-              value={form.pixelId || ""}
-              onChange={(v) => setForm((prev) => ({ ...prev, pixelId: v }))}
-              options={pixels.map((pixel) => ({
-                value: String(pixel.id),
-                label: `${pixel.pixel_id} · ${pixel.owner_id && userLookup[pixel.owner_id] ? userLookup[pixel.owner_id] : pixel.owner_role || "Owner"}`,
-              }))}
-              placeholder="Select pixel"
-              searchPlaceholder="Find pixel"
-            />
-          </div>
           <div className="field field-span-2">
             <label>Comment</label>
             <input value={form.comment} onChange={updateForm("comment")} placeholder="Optional note for this integration" />
