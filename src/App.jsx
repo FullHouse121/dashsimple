@@ -6817,7 +6817,7 @@ function StatsFunnelFlow({ stages }) {
   );
 }
 
-function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
+function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOptions = [] }) {
   const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
   const globalBuyerFilter = filters?.buyer || "All";
@@ -7052,10 +7052,13 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters }) {
     });
   }, [statsEntries, globalBrandFilter, globalGameFilter, globalToolFilter, globalPlacementFilter]);
 
+  // Only the system's active buyers are selectable. The Keitaro data carries
+  // many raw buyer/source segments (Leomarketing, KarenFarias, Daniel, Ersan,
+  // "Traffic Junkey"…) that would otherwise clutter this picker, so we use the
+  // same Keitaro-sourced roster the performance filters use instead of the row
+  // buyers. Falls back to the static roster when the roster prop is empty.
   const buyers = isLeadership
-    ? Array.from(
-        new Set(["All", ...buyerOptions, ...normalizedEntries.map((row) => row.buyer).filter(Boolean)])
-      )
+    ? ["All", ...(buyerFilterOptions.length ? buyerFilterOptions : priorityBuyers)]
     : [effectiveBuyer].filter(Boolean);
   // Traffic-analysis filters from the Refine modal (brand/game/tool/placement
   // + minimum thresholds) — applied on the grouped rows so the KPI cards,
@@ -23237,6 +23240,7 @@ export default function App() {
             authUser={authUser}
             viewerBuyer={effectiveViewerBuyer}
             filters={filters}
+            buyerFilterOptions={buyerFilterOptions}
           />
         ) : isLiveClicks ? (
           <React.Suspense fallback={<div className="empty-state">Loading…</div>}>
