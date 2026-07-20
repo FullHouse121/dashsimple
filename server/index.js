@@ -1456,6 +1456,10 @@ const selectMetaTokenIntegrationById = async (id) =>
             m.created_at,
             m.keitaro_integration_id,
             m.keitaro_last_error,
+            m.keitaro_api_version,
+            m.keitaro_interval,
+            m.keitaro_proxy_enabled,
+            m.keitaro_campaign_ids,
             ${integrationReceivedSpendSql("m")} AS received_spend,
             ${integrationRecentReceivedSpendSql("m")} AS recent_received_spend,
             u.username AS owner_name,
@@ -8038,10 +8042,11 @@ app.post("/api/meta-tokens", async (req, res) => {
     payload.keitaro_proxy_enabled = Boolean(useProxy);
     // Persist only the campaigns Keitaro actually accepted (empty if push failed).
     payload.keitaro_campaign_ids = JSON.stringify(keitaroPush.attachedCampaigns || []);
-    // Reflect Keitaro's verdict: a clean push with no FB error is "Success".
-    if (keitaroPush.ok && !keitaroPush.lastError && !String(status || "").trim()) {
-      payload.status = "Success";
-    }
+    // Do NOT declare "Success" just because the push was accepted: a brand-new
+    // cost integration hasn't been polled by Facebook yet, so its token could
+    // still be rejected on the first fetch. Status stays "Pending" (autoStatus)
+    // until a later verify sees real received spend or a clean Keitaro poll.
+    // A failed push / FB error is carried in keitaro_last_error for the UI.
 
     const info = await upsertMetaTokenIntegration(payload);
     await syncAccountFromLatestIntegration({
@@ -8328,25 +8333,18 @@ app.post("/api/meta-tokens/:id/test", async (req, res) => {
     issues.push(`No cost received in the last ${RECEIVED_SPEND_WINDOW_DAYS} days`);
   }
 
-  // Re-read Keitaro's own health for the linked cost integration. Records
-  // without a stored link get matched by ad account so the check never
-  // silently skips Keitaro.
-  let keitaroId = integration.keitaro_integration_id || null;
-  let keitaroLastError = integration.keitaro_last_error || null;
-  if (!keitaroId) {
-    const found = await findKeitaroFbIntegrationByAccount(integration.account_number);
-    if (found.ok && found.id) {
-      keitaroId = found.id;
-      keitaroLastError = found.lastError || null;
-      if (keitaroLastError) issues.push(`Keitaro: ${keitaroLastError}`);
-    }
-  } else {
-    const sync = await syncMetaIntegrationFromKeitaro(keitaroId);
-    if (sync.ok) {
-      keitaroId = sync.id || keitaroId;
-      keitaroLastError = sync.lastError || null;
-      if (keitaroLastError) issues.push(`Keitaro: ${keitaroLastError}`);
-    }
+  // Guarantee the cost integration is present in Keitaro and mirror its live
+  // health. Sync if linked, recover by ad account if the link was lost, and
+  // re-push (create) if Keitaro doesn't have it at all — so verifying an
+  // integration whose first push failed repairs it instead of just reporting
+  // "no cost."
+  const ensured = await ensureMetaIntegrationInKeitaro(integration);
+  const keitaroId = ensured.id;
+  const keitaroLastError = ensured.lastError || null;
+  if (ensured.action === "failed") {
+    issues.push(`Keitaro: ${ensured.lastError || "could not create the cost integration"}`);
+  } else if (keitaroLastError) {
+    issues.push(`Keitaro: ${keitaroLastError}`);
   }
 
   const wired = issues.length === 0;
@@ -8729,6 +8727,53 @@ const findKeitaroFbIntegrationByAccount = async (adAccountId) => {
     ok: true,
     id: match.id ?? null,
     lastError: match.last_error || match.last_raw_error || null,
+  };
+};
+// Rebuild the Keitaro push args from a stored integration row so verify/retry
+// re-creates the SAME Facebook COST integration — identical name convention
+// ("Buyer | Comment"), ad account, token, api_version, interval and campaigns.
+const metaIntegrationKeitaroArgs = (integration) => {
+  const name =
+    [integration.buyer_name, String(integration.comment || "").trim()]
+      .filter(Boolean)
+      .join(" | ") || String(integration.account_number || "").trim();
+  let campaignIds = [];
+  try {
+    const parsed = JSON.parse(integration.keitaro_campaign_ids || "[]");
+    if (Array.isArray(parsed)) campaignIds = parsed;
+  } catch {
+    /* malformed stored list — treat as none */
+  }
+  return {
+    name,
+    adAccountId: integration.account_number,
+    token: integration.meta_token,
+    apiVersion: integration.keitaro_api_version,
+    interval: integration.keitaro_interval,
+    proxyEnabled: Boolean(integration.keitaro_proxy_enabled),
+    campaignIds,
+  };
+};
+// Guarantee a stored integration is present in Keitaro's Facebook COST panel:
+// sync if we already hold its id, recover it by ad account if the link was
+// lost, and RE-PUSH (create) if Keitaro doesn't have it at all. This makes
+// "created in the dashboard ⇒ present in Keitaro" hold even when the first
+// push failed (Keitaro down, transient 4xx). Returns { id, lastError, action }.
+const ensureMetaIntegrationInKeitaro = async (integration) => {
+  if (integration.keitaro_integration_id) {
+    const sync = await syncMetaIntegrationFromKeitaro(integration.keitaro_integration_id);
+    if (sync.ok && sync.id) return { id: sync.id, lastError: sync.lastError, action: "synced" };
+    // Stored id no longer resolves in Keitaro — fall through to recover/recreate.
+  }
+  const found = await findKeitaroFbIntegrationByAccount(integration.account_number);
+  if (found.ok && found.id) return { id: found.id, lastError: found.lastError, action: "recovered" };
+  // Keitaro genuinely doesn't have it (or lost it) → push it now.
+  const push = await pushMetaIntegrationToKeitaro(metaIntegrationKeitaroArgs(integration));
+  if (push.ok && push.id) return { id: push.id, lastError: push.lastError, action: "created" };
+  return {
+    id: null,
+    lastError: push.lastError || (found.ok ? null : found.lastError) || "Could not create the cost integration in Keitaro.",
+    action: "failed",
   };
 };
 // Remove the Keitaro FB integration when we delete the local record. Best-effort.
