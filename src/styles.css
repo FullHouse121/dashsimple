@@ -4221,6 +4221,32 @@ select option,
   opacity: 1;
 }
 
+/* Custom date range in live-feed toolbars (Live Clicks / Conversions) */
+.live-custom-range-inputs {
+  display: flex;
+  gap: 6px;
+}
+
+.live-custom-range .live-custom-range-inputs input[type="date"] {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  font-size: 12.5px;
+  padding: 10px 8px;
+  color-scheme: dark;
+}
+
+.live-custom-range .live-custom-range-inputs input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.62) sepia(1) saturate(4) hue-rotate(95deg);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.16s ease;
+}
+
+.live-custom-range .live-custom-range-inputs input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 /* Date preset chips */
 .date-presets {
   display: flex;
@@ -17493,6 +17519,10 @@ select option,
   .live-clicks-toolbar {
     grid-template-columns: minmax(280px, 1fr) 210px 210px 180px;
   }
+  /* Custom range visible: dates get their own wide track */
+  .live-clicks-toolbar.has-custom-range {
+    grid-template-columns: minmax(200px, 1fr) 180px 250px 210px 180px;
+  }
 }
 
 /* GEO cell: flag + city */
@@ -17756,6 +17786,10 @@ select option,
 @media (min-width: 1100px) {
   .conversions-toolbar {
     grid-template-columns: minmax(260px, 1fr) 200px 180px 200px;
+  }
+  /* Custom range visible: dates get their own wide track */
+  .conversions-toolbar.has-custom-range {
+    grid-template-columns: minmax(200px, 1fr) 180px 250px 180px 200px;
   }
 }
 

@@ -9457,6 +9457,15 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     )
       ? String(req.query.interval)
       : null;
+    // Custom calendar range (tracker-tz dates, inclusive) — behaves like an
+    // interval window: Keitaro resolves it, no local rolling filter.
+    const isoDayRe = /^\d{4}-\d{2}-\d{2}$/;
+    const fromQ = String(req.query.from || "");
+    const toQ = String(req.query.to || "");
+    const customRange =
+      !intervalKey && isoDayRe.test(fromQ) && isoDayRe.test(toQ) && fromQ <= toQ
+        ? { from: fromQ, to: toQ }
+        : null;
 
     let range;
     if (intervalKey === "previous_month") {
@@ -9470,6 +9479,8 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
       range = { from: `${prevYear}-${mm}-01`, to: `${prevYear}-${mm}-${lastDay}`, timezone };
     } else if (intervalKey) {
       range = { interval: LIVE_CLICKS_INTERVALS[intervalKey], timezone };
+    } else if (customRange) {
+      range = { from: customRange.from, to: customRange.to, timezone };
     } else {
       // Rolling windows can cross tracker midnight — fetch from the cutoff's
       // calendar day so an early-morning "last hour" keeps last night's events.
@@ -9484,7 +9495,9 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
           : { from: cutoffDay, to: todayStr, timezone };
     }
 
-    const cacheKey = `${intervalKey || "rolling"}:${limit}`;
+    const cacheKey = `${
+      intervalKey || (customRange ? `custom:${customRange.from}:${customRange.to}` : "rolling")
+    }:${limit}`;
     let cached = cache.get(cacheKey);
     if (!cached || Date.now() - cached.at > 10 * 1000) {
       const result = await keitaroAdminFetch(logPath, {
@@ -9513,7 +9526,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     let cutoff = null;
     const rawCapped = cached.rows.length >= limit;
     let truncated = rawCapped;
-    if (!intervalKey) {
+    if (!intervalKey && !customRange) {
       // Rolling window in tracker time — datetimes compare as strings.
       const cutoffMs = Date.parse(`${cached.trackerNow.replace(" ", "T")}Z`) - minutes * 60 * 1000;
       cutoff = new Date(cutoffMs).toISOString().slice(0, 19).replace("T", " ");
@@ -9540,7 +9553,11 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     }
     return res.json({
       rows,
-      window: intervalKey ? { interval: intervalKey } : { minutes, cutoff },
+      window: intervalKey
+        ? { interval: intervalKey }
+        : customRange
+          ? { from: customRange.from, to: customRange.to }
+          : { minutes, cutoff },
       trackerNow: cached.trackerNow,
       timezone,
       truncated,

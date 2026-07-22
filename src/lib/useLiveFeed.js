@@ -3,7 +3,11 @@
 // polls, relative-age labels, elapsed-minutes math for rate/bucket sizing.
 import React from "react";
 import { apiFetch } from "./api.js";
-import { LIVE_CLICKS_IS_ROLLING } from "./live.js";
+import { LIVE_CLICKS_IS_ROLLING, LIVE_CLICKS_IS_CUSTOM } from "./live.js";
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const isValidRange = (range) =>
+  Boolean(range) && ISO_DAY.test(range.from) && ISO_DAY.test(range.to) && range.from <= range.to;
 
 export const parseTrackerMs = (value) => {
   if (!value) return null;
@@ -16,6 +20,12 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
   const [meta, setMeta] = React.useState(null);
   const [feedState, setFeedState] = React.useState({ loading: true, error: null });
   const [windowValue, setWindowValue] = React.useState(defaultWindow);
+  // Custom calendar range (tracker-tz dates, inclusive); defaults to today so
+  // picking "Custom range" shows data immediately.
+  const [customRange, setCustomRange] = React.useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return { from: today, to: today };
+  });
   const [paused, setPaused] = React.useState(false);
   const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
   const [, setClock] = React.useState(0);
@@ -23,8 +33,18 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
   const refresh = React.useCallback(async () => {
     try {
       const rolling = LIVE_CLICKS_IS_ROLLING(windowValue);
+      const custom = LIVE_CLICKS_IS_CUSTOM(windowValue);
+      if (custom && !isValidRange(customRange)) {
+        // Mid-edit (a cleared input) — keep whatever is on screen, no fetch.
+        setFeedState((prev) => ({ ...prev, loading: false }));
+        return;
+      }
       const limit = rolling && Number(windowValue) < 180 ? 600 : 1000;
-      const query = rolling ? `minutes=${windowValue}` : `interval=${windowValue}`;
+      const query = rolling
+        ? `minutes=${windowValue}`
+        : custom
+          ? `from=${customRange.from}&to=${customRange.to}`
+          : `interval=${windowValue}`;
       const response = await apiFetch(`${endpoint}?${query}&limit=${limit}`);
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
@@ -43,7 +63,7 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
     } catch (error) {
       setFeedState({ loading: false, error: error.message || failLabel });
     }
-  }, [endpoint, failLabel, windowValue]);
+  }, [endpoint, failLabel, windowValue, customRange]);
 
   React.useEffect(() => {
     setFeedState((prev) => ({ ...prev, loading: true }));
@@ -85,6 +105,12 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
 
   const windowElapsedMinutes = (() => {
     if (LIVE_CLICKS_IS_ROLLING(windowValue)) return Number(windowValue);
+    if (LIVE_CLICKS_IS_CUSTOM(windowValue)) {
+      if (!isValidRange(customRange)) return 1440;
+      const fromMs = Date.parse(`${customRange.from}T00:00:00Z`);
+      const toMs = Date.parse(`${customRange.to}T00:00:00Z`);
+      return (toMs - fromMs) / 60000 + 1440; // inclusive days
+    }
     const now = meta?.trackerNow ? new Date(`${meta.trackerNow.replace(" ", "T")}Z`) : null;
     if (!now) return 60;
     const midnightMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
@@ -110,6 +136,8 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
     feedState,
     windowValue,
     setWindowValue,
+    customRange,
+    setCustomRange,
     paused,
     setPaused,
     lastFetchedAt,
@@ -124,7 +152,12 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
 // "this week" at the 1,000-row cap holds only the newest day. For those
 // windows the timeline/count cards read Keitaro's aggregated day×campaign
 // report instead (uncapped, 45s-cached and viewer-scoped server-side).
-export const calendarRangeFor = (windowValue, trackerNow) => {
+export const calendarRangeFor = (windowValue, trackerNow, customRange) => {
+  if (LIVE_CLICKS_IS_CUSTOM(windowValue)) {
+    // Always aggregate custom ranges — even a single past day can exceed the
+    // raw-row cap; single-bucket charts fall back to raw rows in the caller.
+    return isValidRange(customRange) ? { from: customRange.from, to: customRange.to } : null;
+  }
   if (!trackerNow) return null;
   const today = String(trackerNow).slice(0, 10);
   const d = new Date(`${today}T00:00:00Z`);
@@ -146,8 +179,8 @@ export const calendarRangeFor = (windowValue, trackerNow) => {
   return null; // today / yesterday / rolling — raw rows cover the window
 };
 
-export const useWindowSeries = ({ windowValue, trackerNow }) => {
-  const range = calendarRangeFor(windowValue, trackerNow);
+export const useWindowSeries = ({ windowValue, trackerNow, customRange }) => {
+  const range = calendarRangeFor(windowValue, trackerNow, customRange);
   const from = range?.from || null;
   const to = range?.to || null;
   // Tag the payload with the range it belongs to: while a new window loads,

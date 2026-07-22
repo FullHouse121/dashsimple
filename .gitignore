@@ -14,3 +14,4 @@ pnpm-debug.log*
 # Local one-off diagnostic/backfill scripts
 scripts/verify-parser.mjs
 scripts/backfill.mjs
+.dev-server.log

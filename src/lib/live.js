@@ -12,7 +12,9 @@ export const LIVE_CLICKS_WINDOWS = [
   { value: "this_week", label: "This week" },
   { value: "this_month", label: "This month" },
   { value: "previous_month", label: "Previous month" },
+  { value: "custom", label: "Custom range" },
 ];
+export const LIVE_CLICKS_IS_CUSTOM = (value) => String(value) === "custom";
 export const LIVE_CLICKS_IS_ROLLING = (value) => /^\d+$/.test(String(value));
 export const LIVE_CLICKS_RENDER_CAP = 120;
 // Team-standard meaning of each sub slot (mirrors the UTM builder's macro

@@ -38,6 +38,8 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     feedState: convState,
     windowValue: windowMinutes,
     setWindowValue: setWindowMinutes,
+    customRange,
+    setCustomRange,
     paused,
     setPaused,
     lastFetchedAt,
@@ -49,7 +51,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   const { toast: copyToast, copyText } = useCopyToast();
   // Multi-day windows exceed the 1,000-row cap — chart and count those from
   // Keitaro's daily aggregate (null for today/yesterday/rolling).
-  const aggregateRows = useWindowSeries({ windowValue: windowMinutes, trackerNow: meta?.trackerNow });
+  const aggregateRows = useWindowSeries({ windowValue: windowMinutes, trackerNow: meta?.trackerNow, customRange });
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
   const [statusFilter, setStatusFilter] = React.useState("All");
@@ -292,7 +294,9 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
             <div>
               <h3 className="panel-title">Conversions Timeline</h3>
               <p className="panel-subtitle">
-                {LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — conversions and revenue.
+                {windowMinutes === "custom"
+                  ? `${customRange.from} → ${customRange.to}`
+                  : LIVE_CLICKS_WINDOWS.find((w) => w.value === windowMinutes)?.label || "Window"} — conversions and revenue.
               </p>
             </div>
           </div>
@@ -415,7 +419,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
             </div>
           </div>
 
-          <div className="pixel-table-toolbar conversions-toolbar">
+          <div className={`pixel-table-toolbar conversions-toolbar${windowMinutes === "custom" ? " has-custom-range" : ""}`}>
             <div className="field registry-search-field">
               <label>Search</label>
               <div className="registry-search">
@@ -447,6 +451,25 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                 placeholder="Window"
               />
             </div>
+            {windowMinutes === "custom" ? (
+              <div className="field live-custom-range">
+                <label>From — To</label>
+                <div className="live-custom-range-inputs">
+                  <input
+                    type="date"
+                    value={customRange.from}
+                    max={customRange.to || undefined}
+                    onChange={(e) => setCustomRange((prev) => ({ ...prev, from: e.target.value }))}
+                  />
+                  <input
+                    type="date"
+                    value={customRange.to}
+                    min={customRange.from || undefined}
+                    onChange={(e) => setCustomRange((prev) => ({ ...prev, to: e.target.value }))}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="field">
               <label>Status</label>
               <Select
