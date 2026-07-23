@@ -15,7 +15,7 @@ export const parseTrackerMs = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", pollMs = 15000 }) => {
+export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", pollMs = 15000, extraParams = null }) => {
   const [rows, setRows] = React.useState([]);
   const [meta, setMeta] = React.useState(null);
   const [feedState, setFeedState] = React.useState({ loading: true, error: null });
@@ -29,6 +29,16 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
   const [paused, setPaused] = React.useState(false);
   const [lastFetchedAt, setLastFetchedAt] = React.useState(null);
   const [, setClock] = React.useState(0);
+
+  // Extra query params (e.g. the server-side status filter). Serialized to a
+  // string so refresh only changes when a VALUE changes, not on every render's
+  // fresh object identity.
+  const extraQuery = extraParams
+    ? Object.entries(extraParams)
+        .filter(([, value]) => value !== undefined && value !== null && String(value) !== "")
+        .map(([key, value]) => `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join("")
+    : "";
 
   const refresh = React.useCallback(async () => {
     try {
@@ -45,7 +55,7 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
         : custom
           ? `from=${customRange.from}&to=${customRange.to}`
           : `interval=${windowValue}`;
-      const response = await apiFetch(`${endpoint}?${query}&limit=${limit}`);
+      const response = await apiFetch(`${endpoint}?${query}&limit=${limit}${extraQuery}`);
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || failLabel);
@@ -63,7 +73,7 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
     } catch (error) {
       setFeedState({ loading: false, error: error.message || failLabel });
     }
-  }, [endpoint, failLabel, windowValue, customRange]);
+  }, [endpoint, failLabel, windowValue, customRange, extraQuery]);
 
   React.useEffect(() => {
     setFeedState((prev) => ({ ...prev, loading: true }));

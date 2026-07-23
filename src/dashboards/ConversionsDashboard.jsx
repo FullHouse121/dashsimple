@@ -32,6 +32,9 @@ const CONVERSION_STATUS_META = {
 
 export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   const isLeadership = isLeadershipRole(authUser?.role);
+  const [statusFilter, setStatusFilter] = React.useState("All");
+  // null when "All"; otherwise the status the whole view is narrowed to.
+  const statusKey = isAllSelection(statusFilter) ? null : statusFilter;
   const {
     rows,
     meta,
@@ -47,25 +50,38 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     trackerNowMs,
     agoLabel,
     windowElapsedMinutes,
-  } = useLiveFeed({ endpoint: "/api/keitaro/conversions-live", failLabel: "Failed to load conversions." });
+  } = useLiveFeed({
+    endpoint: "/api/keitaro/conversions-live",
+    failLabel: "Failed to load conversions.",
+    // Filter in Keitaro, not client-side: the raw fetch caps at the 1,000
+    // NEWEST rows, so filtering locally over a multi-day window only ever saw
+    // matches inside the newest slice.
+    extraParams: { status: statusKey || "" },
+  });
   const { toast: copyToast, copyText } = useCopyToast();
   // Multi-day windows exceed the 1,000-row cap — chart and count those from
   // Keitaro's daily aggregate (null for today/yesterday/rolling).
   const aggregateRows = useWindowSeries({ windowValue: windowMinutes, trackerNow: meta?.trackerNow, customRange });
   const [search, setSearch] = React.useState("");
   const [buyerFilter, setBuyerFilter] = React.useState("All");
-  const [statusFilter, setStatusFilter] = React.useState("All");
   const [expandedId, setExpandedId] = React.useState(null);
 
+  // Union raw + aggregate buyers: a status-filtered (or capped) raw feed only
+  // holds a slice, and the dropdown must not lose options because of it.
   const buyers = React.useMemo(() => {
     const set = new Set();
     rows.forEach((row) => {
       if (row.buyer) set.add(row.buyer);
     });
+    (aggregateRows || []).forEach((row) => {
+      if (row.buyer) set.add(row.buyer);
+    });
     return ["All", ...Array.from(set).sort()];
-  }, [rows]);
+  }, [rows, aggregateRows]);
+  // Known statuses always offered — with the filter applied server-side the
+  // loaded rows are all one status, which must not collapse the options.
   const statuses = React.useMemo(() => {
-    const set = new Set();
+    const set = new Set(Object.keys(CONVERSION_STATUS_META));
     rows.forEach((row) => {
       if (row.status) set.add(row.status);
     });
@@ -113,23 +129,49 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
       { registrations: 0, ftds: 0, redeposits: 0, revenue: 0 }
     );
   }, [scopedAggregate]);
-  // Status filter narrows the table; the aggregate has no per-status split, so
-  // only use it for the unfiltered view.
+  // The daily aggregate splits counts per status (registers/ftds/redeposits),
+  // so it can stand in under a status filter. But the filter runs in Keitaro
+  // now, so a filtered fetch that fits under the row cap is the exact full
+  // window — then the raw rows drive everything and cards/table/chart agree.
+  // The aggregate steps in only when the filtered log overflows the cap (its
+  // counts are Keitaro's deduped metrics, which can differ from log rows).
+  const STATUS_AGG_FIELD = { registration: "registrations", ftd: "ftds", redeposit: "redeposits" };
   const usingAggregate = Boolean(
     aggregateTotals &&
-      isAllSelection(statusFilter) &&
       !search.trim() &&
-      aggregateTotals.registrations + aggregateTotals.ftds + aggregateTotals.redeposits > 0
+      aggregateTotals.registrations + aggregateTotals.ftds + aggregateTotals.redeposits > 0 &&
+      (!statusKey || (STATUS_AGG_FIELD[statusKey] && Boolean(meta?.truncated)))
   );
   const registrations = usingAggregate ? aggregateTotals.registrations : filteredRows.filter((row) => row.status === "registration").length;
   const ftds = usingAggregate ? aggregateTotals.ftds : filteredRows.filter((row) => row.status === "ftd").length;
   const redeposits = usingAggregate ? aggregateTotals.redeposits : filteredRows.filter((row) => row.status === "redeposit").length;
-  const convCount = usingAggregate ? registrations + ftds + redeposits : filteredRows.length;
-  const isCapped = !usingAggregate && Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  const convCount = usingAggregate
+    ? statusKey
+      ? aggregateTotals[STATUS_AGG_FIELD[statusKey]]
+      : registrations + ftds + redeposits
+    : filteredRows.length;
+  // Any count derived from a truncated fetch is a lower bound — filtered or
+  // not — so the cap marker must not disappear when a filter trims the rows.
+  const isCapped = !usingAggregate && Boolean(meta?.truncated);
   const plus = isCapped ? "+" : "";
+  // Revenue under a status filter: the aggregate splits FTD and redeposit
+  // revenue; registrations carry the remainder (≈0 on this tracker). Older API
+  // payloads lack the split — fall back to the loaded rows' sum then.
+  const rawRevenue = filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
+  const aggregateHasSplit = Boolean(scopedAggregate?.some((row) => row.ftd_revenue !== undefined));
   const revenueTotal = usingAggregate
-    ? aggregateTotals.revenue
-    : filteredRows.reduce((acc, row) => acc + (row.revenue || 0), 0);
+    ? statusKey
+      ? aggregateHasSplit
+        ? scopedAggregate.reduce((acc, row) => {
+            const ftdRev = Number(row.ftd_revenue) || 0;
+            const redepRev = Number(row.redeposit_revenue) || 0;
+            if (statusKey === "ftd") return acc + ftdRev;
+            if (statusKey === "redeposit") return acc + redepRev;
+            return acc + Math.max(0, (Number(row.revenue) || 0) - ftdRev - redepRev);
+          }, 0)
+        : rawRevenue
+      : aggregateTotals.revenue
+    : rawRevenue;
 
 
   // Conversions + revenue per bucket for the timeline.
@@ -141,9 +183,22 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
         const day = String(row.date || "").slice(0, 10);
         if (!day) return;
         const entry = byDay.get(day) || { conversions: 0, revenue: 0 };
+        const regs = Number(row.registers) || 0;
+        const ftdCount = Number(row.ftds) || 0;
+        const redepCount = Number(row.redeposits) || 0;
+        const rev = Number(row.revenue) || 0;
+        const ftdRev = Number(row.ftd_revenue) || 0;
+        const redepRev = Number(row.redeposit_revenue) || 0;
         entry.conversions +=
-          (Number(row.registers) || 0) + (Number(row.ftds) || 0) + (Number(row.redeposits) || 0);
-        entry.revenue += Number(row.revenue) || 0;
+          statusKey === "registration" ? regs
+          : statusKey === "ftd" ? ftdCount
+          : statusKey === "redeposit" ? redepCount
+          : regs + ftdCount + redepCount;
+        entry.revenue +=
+          statusKey === "ftd" ? ftdRev
+          : statusKey === "redeposit" ? redepRev
+          : statusKey === "registration" ? Math.max(0, rev - ftdRev - redepRev)
+          : rev;
         byDay.set(day, entry);
       });
       return [...byDay.entries()]
@@ -188,7 +243,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
       });
     }
     return series;
-  }, [filteredRows, windowElapsedMinutes, usingAggregate, scopedAggregate]);
+  }, [filteredRows, windowElapsedMinutes, usingAggregate, scopedAggregate, statusKey]);
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
   const statusChip = (status) => {
@@ -234,7 +289,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     {
       label: "Conversions",
       value: `${convCount.toLocaleString()}${plus}`,
-      meta: isCapped ? "showing the newest 1,000" : "in window",
+      meta: isCapped ? "newest 1,000 loaded — older rows not counted" : "in window",
       tone: convCount > 0 ? "ok" : "bad",
     },
     {

@@ -9305,6 +9305,8 @@ const mapDailyStatsRows = (reportRows, { to }) => {
       ftds: num(r.custom_conversion_8),
       redeposits: num(r.custom_conversion_7),
       revenue,
+      ftd_revenue: ftdRev,
+      redeposit_revenue: redepRev,
     };
   });
 };
@@ -9443,13 +9445,18 @@ const trackerNowString = (timezone) => {
 // One implementation for both polling log feeds (clicks + conversions):
 // rolling/calendar windows with tracker-midnight handling, 10s shared cache
 // with stale-serving, honest truncation, registered-buyer + viewer scoping.
-const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failMessage, mapRow }) => {
+const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failMessage, mapRow, statusFilterable = false }) => {
   const cache = new Map(); // cacheKey -> { at, rows, trackerNow }
   app.get(routePath, async (req, res) => {
     const minutesRaw = Number.parseInt(String(req.query.minutes ?? ""), 10);
     const minutes = Number.isFinite(minutesRaw) ? Math.min(Math.max(minutesRaw, 5), 1440) : 30;
     const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
+    // Status filtered in Keitaro, not client-side: the fetch caps at `limit`
+    // NEWEST rows, so a client-side filter over a multi-day window would only
+    // see matches inside the newest slice.
+    const statusRaw = statusFilterable ? String(req.query.status || "").trim().toLowerCase() : "";
+    const statusFilter = /^[a-z_]{1,32}$/.test(statusRaw) ? statusRaw : null;
     const timezone = resolveKeitaroTimezone();
     const intervalKey = Object.prototype.hasOwnProperty.call(
       LIVE_CLICKS_INTERVALS,
@@ -9497,7 +9504,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
 
     const cacheKey = `${
       intervalKey || (customRange ? `custom:${customRange.from}:${customRange.to}` : "rolling")
-    }:${limit}`;
+    }:${limit}:${statusFilter || "all"}`;
     let cached = cache.get(cacheKey);
     if (!cached || Date.now() - cached.at > 10 * 1000) {
       const result = await keitaroAdminFetch(logPath, {
@@ -9505,6 +9512,9 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
         body: JSON.stringify({
           range,
           columns,
+          ...(statusFilter
+            ? { filters: [{ name: "status", operator: "EQUALS", expression: statusFilter }] }
+            : {}),
           sort: [{ name: sortField, order: "DESC" }],
           limit,
         }),
@@ -9683,6 +9693,7 @@ registerLiveLogEndpoint({
   columns: LIVE_CONVERSIONS_COLUMNS,
   sortField: "postback_datetime",
   failMessage: "Keitaro conversion log failed.",
+  statusFilterable: true,
   mapRow: (row) => {
     const params = row.params && typeof row.params === "object" ? row.params : {};
     return {

@@ -51,13 +51,18 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const [issuesOnly, setIssuesOnly] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState(null); // row inspected
 
+  // Union raw + aggregate buyers: the capped raw feed only holds the newest
+  // slice of a multi-day window, and the dropdown must not lose options.
   const buyers = React.useMemo(() => {
     const set = new Set();
     rows.forEach((row) => {
       if (row.buyer) set.add(row.buyer);
     });
+    (aggregateRows || []).forEach((row) => {
+      if (row.buyer) set.add(row.buyer);
+    });
     return ["All", ...Array.from(set).sort()];
-  }, [rows]);
+  }, [rows, aggregateRows]);
 
   const filteredRows = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -89,18 +94,24 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
       { clicks: 0, uniques: 0 }
     );
   }, [scopedAggregate]);
-  const usingAggregate = Boolean(aggregateTotals && aggregateTotals.clicks > 0);
+  // The aggregate has no per-row detail, so a search or the issues toggle can
+  // only be answered from the raw rows — mixing aggregate totals with counts
+  // from the capped raw slice produced incoherent cards.
+  const hasClientFilters = Boolean(search.trim()) || issuesOnly;
+  const usingAggregate = Boolean(aggregateTotals && aggregateTotals.clicks > 0 && !hasClientFilters);
   const clickCount = usingAggregate ? aggregateTotals.clicks : filteredRows.length;
-  // The raw feed caps at 1000 rows; aggregate windows report exact totals.
-  const isCapped = !usingAggregate && Boolean(meta?.truncated) && filteredRows.length === rows.length;
+  // Any count derived from a truncated fetch is a lower bound — filtered or
+  // not — so the cap marker must not disappear when a filter trims the rows.
+  const isCapped = !usingAggregate && Boolean(meta?.truncated);
   const plus = isCapped ? "+" : "";
   const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
 
   // Clicks-over-time buckets for the chart: adaptive step, zero-filled from
   // the oldest LOADED click (capped windows chart only what's loaded).
   const clicksSeries = React.useMemo(() => {
-    // Aggregate path: one point per day, exact totals, no cap.
-    if (scopedAggregate && scopedAggregate.length) {
+    // Aggregate path: one point per day, exact totals, no cap. Skipped when a
+    // client-side filter is active — the chart must show what the table shows.
+    if (usingAggregate && scopedAggregate && scopedAggregate.length) {
       const byDay = new Map();
       scopedAggregate.forEach((row) => {
         const day = String(row.date || "").slice(0, 10);
@@ -158,7 +169,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
       });
     }
     return series;
-  }, [filteredRows, windowElapsedMinutes, scopedAggregate]);
+  }, [filteredRows, windowElapsedMinutes, scopedAggregate, usingAggregate]);
   const uniqueCount = usingAggregate
     ? aggregateTotals.uniques
     : filteredRows.filter((row) => row.isUnique).length;
@@ -166,6 +177,10 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const proxyCount = filteredRows.filter((row) => row.isProxy).length;
   const issueRows = filteredRows.filter((row) => liveClickSubIssues(row).length > 0);
   const pct = (num) => (clickCount > 0 ? `${((num / clickCount) * 100).toFixed(1)}%` : "—");
+  // Bot/proxy/issue counts only exist per loaded row — their percentages must
+  // use the loaded-row denominator, never the (much larger) aggregate total.
+  const loadedCount = filteredRows.length;
+  const pctLoaded = (num) => (loadedCount > 0 ? `${((num / loadedCount) * 100).toFixed(1)}%` : "—");
 
   const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
 
@@ -244,7 +259,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     {
       label: "Clicks",
       value: `${clickCount.toLocaleString()}${plus}`,
-      meta: isCapped ? "showing the newest 1,000" : `${perMinute.toFixed(1)}/min in window`,
+      meta: isCapped ? "newest 1,000 loaded — older rows not counted" : `${perMinute.toFixed(1)}/min in window`,
       tone: clickCount > 0 ? "ok" : "bad",
     },
     {
@@ -255,9 +270,9 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     },
     {
       label: "Bots / Proxy",
-      value: pct(botCount),
-      meta: `${botCount.toLocaleString()} bots · ${proxyCount.toLocaleString()} proxy`,
-      tone: botCount / Math.max(1, clickCount) > 0.2 ? "warn" : "none",
+      value: pctLoaded(botCount),
+      meta: `${botCount.toLocaleString()} bots · ${proxyCount.toLocaleString()} proxy${usingAggregate && loadedCount < clickCount ? ` · of ${loadedCount.toLocaleString()} loaded` : ""}`,
+      tone: botCount / Math.max(1, loadedCount) > 0.2 ? "warn" : "none",
     },
     {
       label: "UTM Issues",
