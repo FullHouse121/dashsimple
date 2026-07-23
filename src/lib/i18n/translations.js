@@ -950,6 +950,7 @@ export const translations = {
     campaigns: "kampanya",
     regs: "kayıt",
     rev: "gelir",
+    uniques: "tekil",
     rdp: "rdp",
     "Deduplicated by campaign": "Kampanya bazında benzersiz",
     "Sign-ups": "Kayıtlar",

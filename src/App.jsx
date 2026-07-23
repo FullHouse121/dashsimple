@@ -5382,7 +5382,7 @@ function MyFlowsDashboard({ authUser }) {
   const flowStatsByName = React.useMemo(() => {
     if (!flowLive) return null;
     const norm = (v) => String(v || "").trim().toLowerCase();
-    const blank = () => ({ clicks: 0, registers: 0, ftds: 0, revenue: 0 });
+    const blank = () => ({ uniques: 0, registers: 0, ftds: 0, revenue: 0 });
     const map = new Map();
     flowLive.rows.forEach((row) => {
       const key = norm(row.campaign || row.campaign_name);
@@ -5390,7 +5390,7 @@ function MyFlowsDashboard({ authUser }) {
       if (!map.has(key)) map.set(key, { today: blank(), week: blank() });
       const entry = map.get(key);
       const add = (acc) => {
-        acc.clicks += Number(row.clicks) || 0;
+        acc.uniques += Number(row.unique_clicks) || 0;
         acc.registers += Number(row.registers) || 0;
         acc.ftds += Number(row.ftds) || 0;
         acc.revenue += Number(row.revenue) || 0;
@@ -6027,8 +6027,8 @@ function MyFlowsDashboard({ authUser }) {
                       <div className={`flow-stats-block is-${tone}${s.ftds > 0 ? " has-ftd" : ""}`}>
                         <span className="flow-stats-tag">{tag}</span>
                         <span className="flow-stat">
-                          <strong>{s.clicks.toLocaleString()}</strong>
-                          <em>{t("clicks")}</em>
+                          <strong>{s.uniques.toLocaleString()}</strong>
+                          <em>{t("uniques")}</em>
                         </span>
                         <span className="flow-stat">
                           <strong>{s.registers.toLocaleString()}</strong>
