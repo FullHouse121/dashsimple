@@ -949,6 +949,7 @@ export const translations = {
     "GEO breakdown": "GEO kırılımı",
     campaigns: "kampanya",
     regs: "kayıt",
+    rev: "gelir",
     rdp: "rdp",
     "Deduplicated by campaign": "Kampanya bazında benzersiz",
     "Sign-ups": "Kayıtlar",

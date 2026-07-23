@@ -14517,16 +14517,45 @@ select option,
 .flow-count-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.03); font-size: 12px; font-weight: 650; color: var(--text); cursor: default; }
 .flow-count-pill svg { color: #6ad6ff; }
 
-/* Live per-flow performance strip (today + last 7 days) */
-.flow-stats-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.02); font-size: 12.5px; }
-.flow-stats-strip.is-empty { color: var(--faint, #6b7079); font-size: 12px; }
-.flow-stats-group { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.flow-stats-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.03); }
-.flow-stat { display: inline-flex; align-items: baseline; gap: 4px; font-family: ui-monospace, Menlo, monospace; font-weight: 650; color: var(--text); }
-.flow-stat em { font-style: normal; font-family: inherit; font-size: 10.5px; font-weight: 500; color: var(--muted); }
-.flow-stat.is-good { color: var(--green); }
-.flow-stat.is-rev { color: var(--green); }
-.flow-stats-divider { width: 1px; align-self: stretch; background: var(--stroke); }
+/* Live per-flow performance strip (today + last 7 days) — two accent-coded
+   stat blocks: blue = today, green = the 7-day window. */
+.flow-stats-strip { display: flex; flex-wrap: wrap; gap: 10px; }
+.flow-stats-strip.is-empty { padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--stroke); color: var(--faint, #6b7079); font-size: 12px; }
+.flow-stats-block {
+  position: relative; overflow: hidden;
+  flex: 1 1 250px; display: flex; align-items: center; gap: 16px;
+  padding: 10px 16px 10px 18px; border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012));
+}
+.flow-stats-block::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--fs-accent, #64b8ff);
+  box-shadow: 0 0 14px var(--fs-accent, #64b8ff);
+}
+.flow-stats-block.is-today { --fs-accent: #64b8ff; }
+.flow-stats-block.is-week { --fs-accent: #36d07c; }
+.flow-stats-block.has-ftd { border-color: rgba(54, 208, 124, 0.3); }
+.flow-stats-block.has-ftd::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(120% 140% at 100% 50%, rgba(54,208,124,0.09), transparent 55%);
+}
+.flow-stats-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+}
+.flow-stats-block.is-today .flow-stats-tag { color: #8ecbff; background: rgba(100, 184, 255, 0.13); border: 1px solid rgba(100, 184, 255, 0.28); }
+.flow-stats-block.is-week .flow-stats-tag { color: #5fe3a1; background: rgba(54, 208, 124, 0.13); border: 1px solid rgba(54, 208, 124, 0.28); }
+.flow-stat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.flow-stat strong {
+  font-family: ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 750;
+  line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.flow-stat em { font-style: normal; font-size: 9px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.flow-stat.is-good strong { color: var(--green); text-shadow: 0 0 14px rgba(54, 208, 124, 0.4); }
+.flow-stat.is-good em { color: rgba(95, 227, 161, 0.75); }
+.flow-stat.is-rev strong { color: var(--green); }
+.flow-stat.is-rev em { color: rgba(95, 227, 161, 0.75); }
 
 .flow-card-tree { position: relative; margin-top: 2px; padding: 14px 0 2px 22px; border-top: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 12px; }
 .flow-card-tree::before { content: ""; position: absolute; left: 7px; top: 16px; bottom: 16px; width: 2px; background: var(--stroke-strong, #3a3e47); border-radius: 2px; }

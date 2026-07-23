@@ -6023,20 +6023,33 @@ function MyFlowsDashboard({ authUser }) {
                         <div className="flow-stats-strip is-empty">{t("No traffic in the last 7 days.")}</div>
                       ) : null;
                     }
-                    const group = (tag, s) => (
-                      <span className="flow-stats-group">
+                    const group = (tag, s, tone) => (
+                      <div className={`flow-stats-block is-${tone}${s.ftds > 0 ? " has-ftd" : ""}`}>
                         <span className="flow-stats-tag">{tag}</span>
-                        <span className="flow-stat">{s.clicks.toLocaleString()} <em>{t("clicks")}</em></span>
-                        <span className="flow-stat">{s.registers.toLocaleString()} <em>{t("regs")}</em></span>
-                        <span className={`flow-stat${s.ftds > 0 ? " is-good" : ""}`}>{s.ftds.toLocaleString()} <em>FTD</em></span>
-                        {s.revenue > 0 ? <span className="flow-stat is-rev">{formatCurrency(s.revenue)}</span> : null}
-                      </span>
+                        <span className="flow-stat">
+                          <strong>{s.clicks.toLocaleString()}</strong>
+                          <em>{t("clicks")}</em>
+                        </span>
+                        <span className="flow-stat">
+                          <strong>{s.registers.toLocaleString()}</strong>
+                          <em>{t("regs")}</em>
+                        </span>
+                        <span className={`flow-stat${s.ftds > 0 ? " is-good" : ""}`}>
+                          <strong>{s.ftds.toLocaleString()}</strong>
+                          <em>FTD</em>
+                        </span>
+                        {s.revenue > 0 ? (
+                          <span className="flow-stat is-rev">
+                            <strong>{formatCurrency(s.revenue)}</strong>
+                            <em>{t("rev")}</em>
+                          </span>
+                        ) : null}
+                      </div>
                     );
                     return (
                       <div className="flow-stats-strip">
-                        {group(t("Today"), stats.today)}
-                        <span className="flow-stats-divider" aria-hidden="true" />
-                        {group(t("7 days"), stats.week)}
+                        {group(t("Today"), stats.today, "today")}
+                        {group(t("7 days"), stats.week, "week")}
                       </div>
                     );
                   })()}
