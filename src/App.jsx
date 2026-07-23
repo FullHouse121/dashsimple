@@ -109,6 +109,10 @@ import pwaPartnersLogo from "./assets/brands/pwa-partners-white.svg";
 
 // Canonical single-path Telegram glyph (tint-able via currentColor) — used in
 // place of the heavy multi-shade source logo for small inline UI.
+// Stable fallback so views' row-filter memos don't recompute when the global
+// flow filter is unset (a fresh [] every render would break memoization).
+const EMPTY_FLOW_FILTER = [];
+
 const TelegramGlyph = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <path d="M23.91 3.79L20.3 20.84c-.25 1.21-.98 1.5-2 .94l-5.5-4.07-2.66 2.57c-.3.3-.55.56-1.13.56l.41-5.75 10.42-9.42c.45-.4-.1-.63-.7-.23L6.36 12.79l-5.4-1.68c-1.16-.36-1.19-1.17.24-1.73L22.5 2.24c.98-.36 1.83.22 1.41 1.55z" />
@@ -223,6 +227,7 @@ import {
   matchesBuyerName,
   matchesBuyerFilter,
   matchesCountryFilter,
+  matchesCampaignListFilter,
 } from "./lib/filters.js";
 import { toggleSortConfig, compareSortValues, getSortIndicator } from "./lib/sort.js";
 
@@ -1182,6 +1187,7 @@ function HomeDashboard({
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
+  const flowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
 
   const sum = (value) => Number(value || 0);
   const readNumeric = (value) => {
@@ -1258,6 +1264,7 @@ function HomeDashboard({
     return homeRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
       if (!matchesCountry(row.country)) return false;
+      if (!matchesCampaignListFilter(row.campaign || row.campaign_name, flowFilter)) return false;
       if (!isDateInRange(row.date, effectiveRange)) return false;
       return true;
     });
@@ -1265,6 +1272,7 @@ function HomeDashboard({
     homeRows,
     buyerFilter,
     countryFilter,
+    flowFilter,
     effectiveRange.from,
     effectiveRange.to,
     isLeadership,
@@ -1322,6 +1330,7 @@ function HomeDashboard({
         (row) =>
           matchesBuyer(row.buyer) &&
           matchesCountry(row.country) &&
+          matchesCampaignListFilter(row.campaign || row.campaign_name, flowFilter) &&
           isDateInRange(row.date, prevRange)
       )
       .reduce(
@@ -1334,7 +1343,7 @@ function HomeDashboard({
         }),
         { spend: 0, clicks: 0, registers: 0, ftds: 0, revenue: 0 }
       );
-  }, [compareOn, prevRange.from, prevRange.to, homeRows, buyerFilter, countryFilter, isLeadership, viewerBuyer]);
+  }, [compareOn, prevRange.from, prevRange.to, homeRows, buyerFilter, countryFilter, flowFilter, isLeadership, viewerBuyer]);
 
   // Relative % change vs the previous period. `positiveIsGood` flips the
   // good/bad colour for cost metrics (a drop in CPC is good).
@@ -2628,6 +2637,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
 
   const buyerFilter = filters?.buyer || "All";
   const countryFilter = filters?.country || "All";
+  const flowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
   const regionFilter = filters?.city || "All";
   const cityFilter = filters?.geoCity || "All";
   const domainFilter = filters?.geoDomain || "All";
@@ -2692,6 +2702,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
     const dateRange = normalizeDateRange(dateFrom, dateTo);
     return geoRows.filter((row) => {
       if (!matchesBuyer(row.buyer)) return false;
+      if (!matchesCampaignListFilter(row.campaign || row.campaign_name, flowFilter)) return false;
       const rowCountry = normalizeFilterValue(row.country);
       if (!isAllSelection(countryFilter) && rowCountry !== normalizedCountry) return false;
       const rowRegion = normalizeFilterValue(row.region || row.city);
@@ -2721,6 +2732,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
     geoRows,
     buyerFilter,
     countryFilter,
+    flowFilter,
     regionFilter,
     cityFilter,
     domainFilter,
@@ -5339,6 +5351,56 @@ function MyFlowsDashboard({ authUser }) {
     }
   };
 
+  // Live performance per flow (last 7 days), keyed by Keitaro campaign name.
+  // Best-effort: the tree renders without it; the strip appears when it lands.
+  const [flowLive, setFlowLive] = React.useState(null); // { rows, today }
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const from = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+        const response = await apiFetch(`/api/keitaro/live-stats?from=${from}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setFlowLive({
+            rows: Array.isArray(data?.rows) ? data.rows : [],
+            // The tracker's "today" (server range end), not the browser's.
+            today: data?.range?.to || new Date().toISOString().slice(0, 10),
+          });
+        }
+      } catch (error) {
+        /* stats strip is best-effort */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // campaign name (normalized) → { today, week } totals
+  const flowStatsByName = React.useMemo(() => {
+    if (!flowLive) return null;
+    const norm = (v) => String(v || "").trim().toLowerCase();
+    const blank = () => ({ clicks: 0, registers: 0, ftds: 0, revenue: 0 });
+    const map = new Map();
+    flowLive.rows.forEach((row) => {
+      const key = norm(row.campaign || row.campaign_name);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, { today: blank(), week: blank() });
+      const entry = map.get(key);
+      const add = (acc) => {
+        acc.clicks += Number(row.clicks) || 0;
+        acc.registers += Number(row.registers) || 0;
+        acc.ftds += Number(row.ftds) || 0;
+        acc.revenue += Number(row.revenue) || 0;
+      };
+      add(entry.week);
+      if (String(row.date || "").slice(0, 10) === flowLive.today) add(entry.today);
+    });
+    return map;
+  }, [flowLive]);
+
   const fetchAll = React.useCallback(async () => {
     try {
       setState({ loading: true, error: null });
@@ -5374,19 +5436,30 @@ function MyFlowsDashboard({ authUser }) {
     return map;
   }, [pixels]);
 
+  // A domain can be bound to several links (tracking_link_ids from the join
+  // table); the single tracking_link_id is the legacy fallback for old rows.
+  const domainLinkIds = (d) => {
+    const list = Array.isArray(d.tracking_link_ids)
+      ? d.tracking_link_ids
+      : d.tracking_link_id
+        ? [d.tracking_link_id]
+        : [];
+    return list.map(Number).filter(Boolean);
+  };
+
   const domainsByLink = React.useMemo(() => {
     const map = new Map();
     domains.forEach((d) => {
-      const linkId = d.tracking_link_id;
-      if (!linkId) return;
-      if (!map.has(linkId)) map.set(linkId, []);
-      map.get(linkId).push(d);
+      domainLinkIds(d).forEach((linkId) => {
+        if (!map.has(linkId)) map.set(linkId, []);
+        map.get(linkId).push(d);
+      });
     });
     return map;
   }, [domains]);
 
   const unboundDomains = React.useMemo(
-    () => domains.filter((d) => !d.tracking_link_id),
+    () => domains.filter((d) => domainLinkIds(d).length === 0),
     [domains]
   );
 
@@ -5444,26 +5517,15 @@ function MyFlowsDashboard({ authUser }) {
     setBindModal((prev) => ({ ...prev, saving: true, error: null }));
     try {
       const linkId = bindModal.link.id;
-      const before = new Set((domainsByLink.get(linkId) || []).map((d) => String(d.id)));
-      const after = new Set(bindModal.selected);
-      const toBind = [...after].filter((id) => !before.has(id));
-      const toUnbind = [...before].filter((id) => !after.has(id));
-      await Promise.all([
-        ...toBind.map((id) =>
-          apiFetch(`/api/domains/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackingLinkId: linkId }),
-          })
-        ),
-        ...toUnbind.map((id) =>
-          apiFetch(`/api/domains/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackingLinkId: null }),
-          })
-        ),
-      ]);
+      const response = await apiFetch(`/api/tracking-links/${linkId}/domains`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainIds: bindModal.selected }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to bind domains.");
+      }
       setBindModal({ open: false, link: null, saving: false, error: null, selected: [] });
       await fetchAll();
     } catch (error) {
@@ -5473,11 +5535,28 @@ function MyFlowsDashboard({ authUser }) {
 
   const bindOptions = React.useMemo(() => {
     if (!bindModal.link) return [];
-    // domains that are unbound OR already bound to THIS link
-    return domains
-      .filter((d) => !d.tracking_link_id || d.tracking_link_id === bindModal.link.id)
-      .map((d) => ({ value: String(d.id), label: d.domain, search: d.domain }));
-  }, [domains, bindModal.link]);
+    // Every registered domain is selectable — a domain can serve several
+    // links at once. Flag the ones already used elsewhere, and colour by
+    // status so nobody binds a banned domain without noticing.
+    const statusDot = (status) => {
+      const s = String(status || "Active").toLowerCase();
+      if (s === "active") return "#36d07c";
+      if (["banned", "blocked", "expired", "dead"].includes(s)) return "#ff6b6b";
+      return "#f5b83d";
+    };
+    return domains.map((d) => {
+      const otherLinks = domainLinkIds(d).filter((id) => id !== bindModal.link.id).length;
+      const status = String(d.status || "Active");
+      const parts = [d.domain];
+      if (status.toLowerCase() !== "active") parts.push(t(status));
+      if (otherLinks) {
+        parts.push(
+          otherLinks === 1 ? t("also on 1 other link") : t("also on {n} other links").replace("{n}", String(otherLinks))
+        );
+      }
+      return { value: String(d.id), label: parts.join("  ·  "), search: `${d.domain} ${status}`, dot: statusDot(status) };
+    });
+  }, [domains, bindModal.link, t]);
 
   return (
     <section className="form-section">
@@ -5513,7 +5592,19 @@ function MyFlowsDashboard({ authUser }) {
                     searchPlaceholder={t("Find domain")}
                     emptyResultsLabel={t("No domains available.")}
                   />
-                  <p className="field-hint">{t("Only unbound domains and this link's domains are listed. Register PWA domains in the Domains section first.")}</p>
+                  <p className="field-hint">{t("Pick as many domains as you need — a domain can serve several tracking links at once. Register PWA domains in the Domains section first.")}</p>
+                  {(() => {
+                    const inactive = bindModal.selected
+                      .map((id) => domains.find((d) => String(d.id) === id))
+                      .filter((d) => d && String(d.status || "Active").toLowerCase() !== "active");
+                    if (!inactive.length) return null;
+                    return (
+                      <p className="field-hint flow-bind-warning">
+                        <AlertTriangle size={12} /> {t("Careful — these domains are not Active:")}{" "}
+                        {inactive.map((d) => `${d.domain} (${t(d.status)})`).join(", ")}
+                      </p>
+                    );
+                  })()}
                 </div>
                 {bindModal.error ? <div className="field field-span-2"><div className="api-status error">{bindModal.error}</div></div> : null}
               </div>
@@ -5851,7 +5942,20 @@ function MyFlowsDashboard({ authUser }) {
                 0
               );
               const seg = linkSegments(link);
-              const geos = splitGeos(seg.geo);
+              // Every country this flow touches: the link's own geo segment
+              // plus all countries of its bound domains, deduped by ISO code
+              // (the link geo is "FR"-style, domain countries are full names).
+              const geos = [];
+              const seenGeoKeys = new Set();
+              [
+                ...splitGeos(seg.geo),
+                ...linkDomains.flatMap((d) => normalizeCountryListValue(d.country)),
+              ].forEach((g) => {
+                const key = resolveCountryIso(g) || String(g).trim().toLowerCase();
+                if (!key || seenGeoKeys.has(key)) return;
+                seenGeoKeys.add(key);
+                geos.push(g);
+              });
               const filterCount = countLinkFilters(link);
               const isActive = String(link.state || "active") === "active";
               const inKeitaro = String(link.keitaro_status || "") === "created" || !!link.keitaro_id;
@@ -5910,6 +6014,33 @@ function MyFlowsDashboard({ authUser }) {
                     {createdAt ? <span className="flow-meta-item flow-meta-muted"><CalendarIcon size={11} /> {createdAt}</span> : null}
                   </div>
 
+                  {(() => {
+                    if (!flowStatsByName) return null;
+                    const stats = flowStatsByName.get(String(link.name || "").trim().toLowerCase());
+                    if (!stats) {
+                      // Local-only links have no Keitaro campaign — no traffic is expected.
+                      return inKeitaro ? (
+                        <div className="flow-stats-strip is-empty">{t("No traffic in the last 7 days.")}</div>
+                      ) : null;
+                    }
+                    const group = (tag, s) => (
+                      <span className="flow-stats-group">
+                        <span className="flow-stats-tag">{tag}</span>
+                        <span className="flow-stat">{s.clicks.toLocaleString()} <em>{t("clicks")}</em></span>
+                        <span className="flow-stat">{s.registers.toLocaleString()} <em>{t("regs")}</em></span>
+                        <span className={`flow-stat${s.ftds > 0 ? " is-good" : ""}`}>{s.ftds.toLocaleString()} <em>FTD</em></span>
+                        {s.revenue > 0 ? <span className="flow-stat is-rev">{formatCurrency(s.revenue)}</span> : null}
+                      </span>
+                    );
+                    return (
+                      <div className="flow-stats-strip">
+                        {group(t("Today"), stats.today)}
+                        <span className="flow-stats-divider" aria-hidden="true" />
+                        {group(t("7 days"), stats.week)}
+                      </div>
+                    );
+                  })()}
+
                   {isOpen ? (
                     <div className="flow-card-tree">
                       {linkDomains.length === 0 ? (
@@ -5933,8 +6064,7 @@ function MyFlowsDashboard({ authUser }) {
                                 {domain.platform ? (resolveBrandLogo(domain.platform) ? <BrandMark value={domain.platform} height={13} /> : <span className="flow-node-tag">{domain.platform}</span>) : null}
                                 {dGeos.length ? (
                                   <span className="flow-node-geos" title={dGeos.join(", ")}>
-                                    {dGeos.slice(0, 3).map((g) => <CountryFlag key={g} value={g} />)}
-                                    {dGeos.length > 3 ? <span className="flow-domain-geo-more">+{dGeos.length - 3}</span> : null}
+                                    {dGeos.map((g) => <CountryFlag key={g} value={g} />)}
                                   </span>
                                 ) : null}
                                 <span className={`accounts-status-pill acc-st-${dStatus.toLowerCase()}`}>{t(dStatus)}</span>
@@ -8597,6 +8727,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalFlowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
   const globalPlacementFilter = filters?.placementName || "All";
   const globalPlacementDomainFilter = filters?.placementDomain || "All";
   const placementMinClicksFilter = Number(filters?.placementMinClicks || 0);
@@ -8620,6 +8751,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         return false;
       }
       if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+      if (!matchesCampaignListFilter(row.campaign || row.campaign_name, globalFlowFilter)) return false;
       const placementLabel = normalizePlacementLabel(row.placement);
       if (
         !isAllSelection(globalPlacementFilter) &&
@@ -8666,6 +8798,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     effectiveDateRange.to,
     globalBuyerFilter,
     globalCountryFilter,
+    globalFlowFilter,
     globalPlacementFilter,
     globalPlacementDomainFilter,
     placementMinClicksFilter,
@@ -9247,14 +9380,16 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalFlowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
 
-  // Global scoping: date window, buyer visibility, country filter.
+  // Global scoping: date window, buyer visibility, country + flow filters.
   const scopedRows = React.useMemo(
     () =>
       campaignEntries.filter((row) => {
         if (!isDateInRange(row.date, effectiveDateRange)) return false;
         if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) return false;
         if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        if (!matchesCampaignListFilter(row.campaign || row.campaign_name, globalFlowFilter)) return false;
         return true;
       }),
     [
@@ -9263,6 +9398,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       effectiveDateRange.to,
       globalBuyerFilter,
       globalCountryFilter,
+      globalFlowFilter,
       effectiveBuyer,
       isLeadership,
     ]
@@ -9435,6 +9571,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       .filter((row) => {
         if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) return false;
         if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        if (!matchesCampaignListFilter(row.campaign || row.campaign_name, globalFlowFilter)) return false;
         return true;
       })
       .reduce(
@@ -9448,7 +9585,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         },
         { uniqueClicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }
       );
-  }, [prevRows, globalBuyerFilter, globalCountryFilter, effectiveBuyer, isLeadership]);
+  }, [prevRows, globalBuyerFilter, globalCountryFilter, globalFlowFilter, effectiveBuyer, isLeadership]);
 
   const deltaFor = (key) => {
     if (!prevTotals) return null;
@@ -10732,6 +10869,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     globalDateRange.from || globalDateRange.to ? globalDateRange : periodRange;
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
+  const globalFlowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
   const globalUserDomainFilter = filters?.userDomain || "All";
   const globalUserCampaignFilter = filters?.userCampaign || "All";
   const globalUserExternalIdFilter = filters?.userExternalId || "";
@@ -10760,6 +10898,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           return false;
         }
         if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
+        if (!matchesCampaignListFilter(row.campaign, globalFlowFilter)) return false;
         const rowDomain = normalizeFilterValue(row.domain || row.source || row.site || row.flow || row.flows);
         if (
           !isAllSelection(globalUserDomainFilter) &&
@@ -10782,6 +10921,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       effectiveDateRange.to,
       globalBuyerFilter,
       globalCountryFilter,
+      globalFlowFilter,
       globalUserDomainFilter,
       globalUserCampaignFilter,
       effectiveBuyer,
@@ -12694,6 +12834,30 @@ function DomainsDashboard({ authUser }) {
   const toggleTableFilter = (setter) => (value) =>
     setter((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
 
+  // Link id → name for the Flows column (which tracking links each domain
+  // serves). Best-effort: the table renders fine with bare #ids meanwhile.
+  const [trackingLinkNamesById, setTrackingLinkNamesById] = React.useState(() => new Map());
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/tracking-links?limit=500");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setTrackingLinkNamesById(
+            new Map((Array.isArray(data) ? data : []).map((l) => [Number(l.id), l.name]))
+          );
+        }
+      } catch (error) {
+        /* names are cosmetic */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const updateDomainForm = (key) => (event) => {
     setDomainForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
@@ -13574,6 +13738,7 @@ function DomainsDashboard({ authUser }) {
                       </button>
                     </th>
                   ))}
+                  <th>{t("Flows")}</th>
                   <th className="col-actions">{t("Actions")}</th>
                 </tr>
               </thead>
@@ -13625,6 +13790,22 @@ function DomainsDashboard({ authUser }) {
                           {t(domain.status)}
                         </span>
                       )}
+                    </td>
+                    <td>
+                      {(() => {
+                        const ids = Array.isArray(domain.tracking_link_ids)
+                          ? domain.tracking_link_ids
+                          : domain.tracking_link_id
+                            ? [domain.tracking_link_id]
+                            : [];
+                        if (!ids.length) return <span className="offer-muted">—</span>;
+                        const names = ids.map((id) => trackingLinkNamesById.get(Number(id)) || `#${id}`);
+                        return (
+                          <span className="flow-count-pill" title={names.join("\n")}>
+                            <FlowsIcon size={12} /> {ids.length}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>
                       {(canManageDomains || domain.owner_id === authUser?.id) ? (
@@ -23064,23 +23245,68 @@ export default function App() {
               let activeCount = 0;
               if (filters.country && filters.country !== "All") activeCount++;
               if (filters.buyer && filters.buyer !== "All" && isLeadership) activeCount++;
+              if ((filters.statsCampaign || []).length) activeCount++;
               if (filters.city) activeCount++;
               if (filters.category && filters.category !== "All") activeCount++;
               if (filters.billing && filters.billing !== "All") activeCount++;
               if (filters.status && filters.status !== "All") activeCount++;
               if (filters.approach && filters.approach !== "All") activeCount++;
+              // Visible chips for the headline filters — a forgotten Country/
+              // Buyer/Flow selection silently reshapes every number on screen,
+              // so it must be visible (and clearable) without opening the modal.
+              const chips = [];
+              if (filters.country && filters.country !== "All") {
+                chips.push({
+                  key: "country",
+                  label: filters.country,
+                  clear: () => setFilters((prev) => ({ ...prev, country: "All" })),
+                });
+              }
+              if (filters.buyer && filters.buyer !== "All" && isLeadership) {
+                chips.push({
+                  key: "buyer",
+                  label: filters.buyer,
+                  clear: () => setFilters((prev) => ({ ...prev, buyer: "All" })),
+                });
+              }
+              const flowCount = (filters.statsCampaign || []).length;
+              if (flowCount) {
+                chips.push({
+                  key: "flows",
+                  label:
+                    flowCount === 1
+                      ? String(filters.statsCampaign[0])
+                      : `${flowCount} ${t("flows")}`,
+                  clear: () => setFilters((prev) => ({ ...prev, statsCampaign: [] })),
+                });
+              }
               return (
-                <button
-                  className={`action-pill filters-trigger${activeCount > 0 ? " has-active" : ""}`}
-                  type="button"
-                  onClick={() => setFiltersOpen(true)}
-                >
-                  <SlidersHorizontal size={18} />
-                  {t("Filters")}
-                  {activeCount > 0 ? (
-                    <span className="filters-trigger-count">{activeCount}</span>
-                  ) : null}
-                </button>
+                <div className="filters-trigger-row">
+                  <button
+                    className={`action-pill filters-trigger${activeCount > 0 ? " has-active" : ""}`}
+                    type="button"
+                    onClick={() => setFiltersOpen(true)}
+                  >
+                    <SlidersHorizontal size={18} />
+                    {t("Filters")}
+                    {activeCount > 0 ? (
+                      <span className="filters-trigger-count">{activeCount}</span>
+                    ) : null}
+                  </button>
+                  {chips.map((chip) => (
+                    <span className="topbar-filter-chip" key={chip.key} title={chip.label}>
+                      <span className="topbar-filter-chip-label">{chip.label}</span>
+                      <button
+                        type="button"
+                        className="topbar-filter-chip-clear"
+                        aria-label={`${t("Clear")} ${chip.label}`}
+                        onClick={chip.clear}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               );
             })()
           ) : (
@@ -23573,7 +23799,7 @@ export default function App() {
             >
               <div className="modal-head">
                 <h2 id="filters-title">
-                  {isGeos ? "Refine geos" : "Refine performance"}
+                  {isGeos ? t("Refine geos") : t("Refine performance")}
                 </h2>
                 <button className="icon-btn" type="button" onClick={() => setFiltersOpen(false)}>
                   <X size={18} />
@@ -23583,10 +23809,10 @@ export default function App() {
               <div className="modal-body">
                 <div className="modal-section-label">
                   <Clock size={11} />
-                  <span>Time</span>
+                  <span>{t("Time")}</span>
                 </div>
                 <div className="field field-wide">
-                  <label>Date</label>
+                  <label>{t("Date")}</label>
                   {(() => {
                     const fmt = (d) => {
                       const y = d.getFullYear();
@@ -23649,7 +23875,7 @@ export default function App() {
                             className={`date-preset${isActivePreset(p.label) ? " is-active" : ""}`}
                             onClick={p.action}
                           >
-                            {p.label}
+                            {t(p.label)}
                           </button>
                         ))}
                       </div>
@@ -23659,13 +23885,13 @@ export default function App() {
                     <DeusDatePicker
                       value={filters.dateFrom}
                       onChange={(v) => setFilters((prev) => ({ ...prev, dateFrom: v }))}
-                      placeholder="Start date"
+                      placeholder={t("Start date")}
                     />
                     <span className="field-sep">to</span>
                     <DeusDatePicker
                       value={filters.dateTo}
                       onChange={(v) => setFilters((prev) => ({ ...prev, dateTo: v }))}
-                      placeholder="End date"
+                      placeholder={t("End date")}
                     />
                   </div>
                   {(() => {
@@ -23677,7 +23903,7 @@ export default function App() {
                     const fmt = (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: from.getFullYear() !== to.getFullYear() ? "numeric" : undefined });
                     return (
                       <div className="date-summary">
-                        <strong>{days} {days === 1 ? "day" : "days"}</strong>
+                        <strong>{days} {days === 1 ? t("day") : t("days")}</strong>
                         <span>·</span>
                         <span>{fmt(from)} → {fmt(to)}</span>
                       </div>
@@ -23693,7 +23919,7 @@ export default function App() {
                       <span className="compare-toggle-thumb" />
                     </span>
                     <span className="compare-toggle-text">
-                      Compare to previous period
+                      {t("Compare to previous period")}
                     </span>
                     {filters.compareToPrev && filters.dateFrom && filters.dateTo ? (() => {
                       const from = new Date(filters.dateFrom);
@@ -23711,7 +23937,7 @@ export default function App() {
                             {sameDay ? fmt(prevFrom) : `${fmt(prevFrom)} — ${fmt(prevTo)}`}
                           </span>
                           <span className="compare-preview-dot">·</span>
-                          <span className="compare-preview-days">{days} {days === 1 ? "day" : "days"}</span>
+                          <span className="compare-preview-days">{days} {days === 1 ? t("day") : t("days")}</span>
                         </span>
                       );
                     })() : null}
@@ -23720,12 +23946,12 @@ export default function App() {
 
                 <div className="modal-section-label">
                   <Users size={11} />
-                  <span>Audience</span>
+                  <span>{t("Audience")}</span>
                 </div>
 
                 <div className={`field${filters.country && filters.country !== "All" ? " is-active" : ""}`}>
                   <div className="field-label-row">
-                    <label>Country</label>
+                    <label>{t("Country")}</label>
                     {filters.country && filters.country !== "All" ? (
                       <button
                         type="button"
@@ -23741,10 +23967,10 @@ export default function App() {
                     value={filters.country}
                     onChange={(country) => setFilters((prev) => ({ ...prev, country }))}
                     options={countryOptions}
-                    placeholder="All"
-                    allOption={{ value: "All", label: "All" }}
-                    searchPlaceholder="Type to find countries"
-                    emptyResultsLabel="No countries found."
+                    placeholder={t("All")}
+                    allOption={{ value: "All", label: t("All") }}
+                    searchPlaceholder={t("Type to find countries")}
+                    emptyResultsLabel={t("No countries found.")}
                   />
                 </div>
 
@@ -23753,7 +23979,7 @@ export default function App() {
                     {(isHome || isGeos || isStats || isPlacements || isUserBehavior) && isLeadership ? (
                       <div className={`field${filters.buyer && filters.buyer !== "All" ? " is-active" : ""}`}>
                         <div className="field-label-row">
-                          <label>Buyer</label>
+                          <label>{t("Buyer")}</label>
                           {filters.buyer && filters.buyer !== "All" ? (
                             <button
                               type="button"
@@ -23769,10 +23995,36 @@ export default function App() {
                           value={filters.buyer || "All"}
                           onChange={(buyer) => setFilters((prev) => ({ ...prev, buyer }))}
                           options={buyerFilterOptions}
-                          placeholder="All"
-                          allOption={{ value: "All", label: "All" }}
-                          searchPlaceholder="Find buyer"
-                          emptyResultsLabel="No buyers found."
+                          placeholder={t("All")}
+                          allOption={{ value: "All", label: t("All") }}
+                          searchPlaceholder={t("Find buyer")}
+                          emptyResultsLabel={t("No buyers found.")}
+                        />
+                      </div>
+                    ) : null}
+                    {!isDevices ? (
+                      <div className={`field field-span-2${(filters.statsCampaign || []).length ? " is-active" : ""}`}>
+                        <div className="field-label-row">
+                          <label>{t("Flow")}</label>
+                          {(filters.statsCampaign || []).length ? (
+                            <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsCampaign: [] }))} aria-label="Clear flows">{t("Clear")}</button>
+                          ) : null}
+                        </div>
+                        <CountryDropdownPicker
+                          multiple
+                          removable
+                          values={Array.isArray(filters.statsCampaign) ? filters.statsCampaign : []}
+                          onToggle={toggleStatsCampaign}
+                          options={modalCampaigns.map((c) => ({ value: c.name, label: c.name, search: c.name }))}
+                          placeholder={
+                            modalCampaignsLoading
+                              ? t("Loading flows…")
+                              : modalCampaigns.length
+                                ? (filters.buyer && filters.buyer !== "All" ? t("All {buyer} flows", { buyer: filters.buyer }) : t("All flows"))
+                                : t("No flows found")
+                          }
+                          searchPlaceholder={t("Find flow")}
+                          emptyResultsLabel={t("No flows found.")}
                         />
                       </div>
                     ) : null}
@@ -23780,87 +24032,62 @@ export default function App() {
                       <>
                         <div className="modal-section-label">
                           <Megaphone size={11} />
-                          <span>Traffic</span>
+                          <span>{t("Traffic")}</span>
                         </div>
                           <div className={`field${filters.statsBrand ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Brand</label>
+                              <label>{t("Brand")}</label>
                               {filters.statsBrand ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsBrand: "" }))} aria-label="Clear brand">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsBrand: "" }))} aria-label="Clear brand">{t("Clear")}</button>
                               ) : null}
                             </div>
-                            <input type="text" placeholder="All brands" value={filters.statsBrand} onChange={updateFilter("statsBrand")} />
+                            <input type="text" placeholder={t("All brands")} value={filters.statsBrand} onChange={updateFilter("statsBrand")} />
                           </div>
                           <div className={`field${filters.statsGame ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Game / Offer</label>
+                              <label>{t("Game / Offer")}</label>
                               {filters.statsGame ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsGame: "" }))} aria-label="Clear game">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsGame: "" }))} aria-label="Clear game">{t("Clear")}</button>
                               ) : null}
                             </div>
-                            <input type="text" placeholder="All games" value={filters.statsGame} onChange={updateFilter("statsGame")} />
+                            <input type="text" placeholder={t("All games")} value={filters.statsGame} onChange={updateFilter("statsGame")} />
                           </div>
                           <div className={`field${filters.statsTool ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Tool / Source</label>
+                              <label>{t("Tool / Source")}</label>
                               {filters.statsTool ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsTool: "" }))} aria-label="Clear tool">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsTool: "" }))} aria-label="Clear tool">{t("Clear")}</button>
                               ) : null}
                             </div>
-                            <input type="text" placeholder="All tools" value={filters.statsTool} onChange={updateFilter("statsTool")} />
+                            <input type="text" placeholder={t("All tools")} value={filters.statsTool} onChange={updateFilter("statsTool")} />
                           </div>
                           <div className={`field${filters.statsPlacement ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Placement</label>
+                              <label>{t("Placement")}</label>
                               {filters.statsPlacement ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsPlacement: "" }))} aria-label="Clear placement">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsPlacement: "" }))} aria-label="Clear placement">{t("Clear")}</button>
                               ) : null}
                             </div>
-                            <input type="text" placeholder="All placements" value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
+                            <input type="text" placeholder={t("All placements")} value={filters.statsPlacement} onChange={updateFilter("statsPlacement")} />
                           </div>
-                          <div className={`field field-span-2${(filters.statsCampaign || []).length ? " is-active" : ""}`}>
-                            <div className="field-label-row">
-                              <label>Campaign</label>
-                              {(filters.statsCampaign || []).length ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsCampaign: [] }))} aria-label="Clear campaigns">Clear</button>
-                              ) : null}
-                            </div>
-                            <CountryDropdownPicker
-                              multiple
-                              removable
-                              values={Array.isArray(filters.statsCampaign) ? filters.statsCampaign : []}
-                              onToggle={toggleStatsCampaign}
-                              options={modalCampaigns.map((c) => ({ value: c.name, label: c.name, search: c.name }))}
-                              placeholder={
-                                modalCampaignsLoading
-                                  ? "Loading campaigns…"
-                                  : modalCampaigns.length
-                                    ? (filters.buyer && filters.buyer !== "All" ? `All ${filters.buyer} campaigns` : "All campaigns")
-                                    : "No campaigns found"
-                              }
-                              searchPlaceholder="Find campaign"
-                              emptyResultsLabel="No campaigns found."
-                            />
-                          </div>
-
                         <div className="modal-section-label">
                           <Filter size={11} />
-                          <span>Thresholds</span>
+                          <span>{t("Thresholds")}</span>
                         </div>
                           <div className={`field${filters.statsMinClicks ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Min clicks</label>
+                              <label>{t("Min clicks")}</label>
                               {filters.statsMinClicks ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinClicks: "" }))} aria-label="Clear min clicks">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinClicks: "" }))} aria-label="Clear min clicks">{t("Clear")}</button>
                               ) : null}
                             </div>
                             <input type="number" min="0" placeholder="0" value={filters.statsMinClicks} onChange={updateFilter("statsMinClicks")} />
                           </div>
                           <div className={`field${filters.statsMinFtds ? " is-active" : ""}`}>
                             <div className="field-label-row">
-                              <label>Min FTDs</label>
+                              <label>{t("Min FTDs")}</label>
                               {filters.statsMinFtds ? (
-                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinFtds: "" }))} aria-label="Clear min FTDs">Clear</button>
+                                <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, statsMinFtds: "" }))} aria-label="Clear min FTDs">{t("Clear")}</button>
                               ) : null}
                             </div>
                             <input type="number" min="0" placeholder="0" value={filters.statsMinFtds} onChange={updateFilter("statsMinFtds")} />
@@ -23872,7 +24099,7 @@ export default function App() {
                           aria-pressed={filters.statsProfitableOnly}
                         >
                           <span className="filter-toggle-dot" aria-hidden="true" />
-                          Profitable rows only (revenue &gt; spend)
+                          {t("Profitable rows only (revenue > spend)")}
                         </button>
                       </>
                     ) : null}
@@ -23880,32 +24107,32 @@ export default function App() {
                       <>
                         <div className="modal-section-label">
                           <MapIcon size={11} />
-                          <span>Geography</span>
+                          <span>{t("Geography")}</span>
                         </div>
                         <div className={`field${filters.city ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Region / State</label>
+                            <label>{t("Region / State")}</label>
                             {filters.city ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, city: "" }))} aria-label="Clear region">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, city: "" }))} aria-label="Clear region">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.city}
                             onChange={updateFilter("city")}
                           />
                         </div>
                         <div className={`field${filters.geoCity ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>City</label>
+                            <label>{t("City")}</label>
                             {filters.geoCity ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoCity: "" }))} aria-label="Clear city">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoCity: "" }))} aria-label="Clear city">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.geoCity}
                             onChange={updateFilter("geoCity")}
                           />
@@ -23913,46 +24140,46 @@ export default function App() {
 
                         <div className="modal-section-label">
                           <Link2 size={11} />
-                          <span>Source</span>
+                          <span>{t("Source")}</span>
                         </div>
                         <div className={`field${filters.geoDomain ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Domain / Source</label>
+                            <label>{t("Domain / Source")}</label>
                             {filters.geoDomain ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDomain: "" }))} aria-label="Clear domain">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDomain: "" }))} aria-label="Clear domain">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.geoDomain}
                             onChange={updateFilter("geoDomain")}
                           />
                         </div>
                         <div className={`field${filters.geoPlacement ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Placement</label>
+                            <label>{t("Placement")}</label>
                             {filters.geoPlacement ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoPlacement: "" }))} aria-label="Clear placement">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoPlacement: "" }))} aria-label="Clear placement">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.geoPlacement}
                             onChange={updateFilter("geoPlacement")}
                           />
                         </div>
                         <div className={`field${filters.geoDevice ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Device</label>
+                            <label>{t("Device")}</label>
                             {filters.geoDevice ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDevice: "" }))} aria-label="Clear device">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoDevice: "" }))} aria-label="Clear device">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.geoDevice}
                             onChange={updateFilter("geoDevice")}
                           />
@@ -23960,13 +24187,13 @@ export default function App() {
 
                         <div className="modal-section-label">
                           <BarChart3 size={11} />
-                          <span>Performance</span>
+                          <span>{t("Performance")}</span>
                         </div>
                         <div className={`field${Number(filters.geoMinClicks) > 0 ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Min Clicks</label>
+                            <label>{t("Min Clicks")}</label>
                             {Number(filters.geoMinClicks) > 0 ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinClicks: "" }))} aria-label="Clear min clicks">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinClicks: "" }))} aria-label="Clear min clicks">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <div className="threshold-input">
@@ -23982,9 +24209,9 @@ export default function App() {
                         </div>
                         <div className={`field${Number(filters.geoMinFtds) > 0 ? " is-active" : ""}`}>
                           <div className="field-label-row">
-                            <label>Min FTDs</label>
+                            <label>{t("Min FTDs")}</label>
                             {Number(filters.geoMinFtds) > 0 ? (
-                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinFtds: "" }))} aria-label="Clear min FTDs">Clear</button>
+                              <button type="button" className="field-clear" onClick={() => setFilters((prev) => ({ ...prev, geoMinFtds: "" }))} aria-label="Clear min FTDs">{t("Clear")}</button>
                             ) : null}
                           </div>
                           <div className="threshold-input">
@@ -24003,25 +24230,25 @@ export default function App() {
                     {isPlacements ? (
                       <>
                         <div className="field">
-                          <label>Placement</label>
+                          <label>{t("Placement")}</label>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.placementName}
                             onChange={updateFilter("placementName")}
                           />
                         </div>
                         <div className="field">
-                          <label>Domain / Source</label>
+                          <label>{t("Domain / Source")}</label>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.placementDomain}
                             onChange={updateFilter("placementDomain")}
                           />
                         </div>
                         <div className="field">
-                          <label>Min Clicks</label>
+                          <label>{t("Min Clicks")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24031,7 +24258,7 @@ export default function App() {
                           />
                         </div>
                         <div className="field">
-                          <label>Min Registers</label>
+                          <label>{t("Min Registers")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24041,7 +24268,7 @@ export default function App() {
                           />
                         </div>
                         <div className="field">
-                          <label>Min FTDs</label>
+                          <label>{t("Min FTDs")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24057,7 +24284,7 @@ export default function App() {
                               checked={Boolean(filters.placementRevenueOnly)}
                               onChange={updateFilter("placementRevenueOnly")}
                             />
-                            Only revenue {'>'} 0
+                            {t("Only revenue > 0")}
                           </label>
                         </div>
                       </>
@@ -24065,34 +24292,34 @@ export default function App() {
                     {isUserBehavior ? (
                       <>
                         <div className="field">
-                          <label>Domain / Source</label>
+                          <label>{t("Domain / Source")}</label>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.userDomain}
                             onChange={updateFilter("userDomain")}
                           />
                         </div>
                         <div className="field">
-                          <label>Campaign</label>
+                          <label>{t("Campaign")}</label>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.userCampaign}
                             onChange={updateFilter("userCampaign")}
                           />
                         </div>
                         <div className="field">
-                          <label>External ID</label>
+                          <label>{t("External ID")}</label>
                           <input
                             type="text"
-                            placeholder="All"
+                            placeholder={t("All")}
                             value={filters.userExternalId}
                             onChange={updateFilter("userExternalId")}
                           />
                         </div>
                         <div className="field">
-                          <label>Min Revenue</label>
+                          <label>{t("Min Revenue")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24103,7 +24330,7 @@ export default function App() {
                           />
                         </div>
                         <div className="field">
-                          <label>Min FTDs</label>
+                          <label>{t("Min FTDs")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24113,7 +24340,7 @@ export default function App() {
                           />
                         </div>
                         <div className="field">
-                          <label>Min Redeposits</label>
+                          <label>{t("Min Redeposits")}</label>
                           <input
                             type="number"
                             min="0"
@@ -24129,7 +24356,7 @@ export default function App() {
                               checked={Boolean(filters.userRevenueOnly)}
                               onChange={updateFilter("userRevenueOnly")}
                             />
-                            Only users with revenue {'>'} 0
+                            {t("Only users with revenue > 0")}
                           </label>
                         </div>
                       </>
@@ -24138,35 +24365,35 @@ export default function App() {
                 ) : (
                   <>
                     <div className="field">
-                      <label>Category</label>
+                      <label>{t("Category")}</label>
                       <Select
                         value={filters.category || "All"}
                         onChange={(v) => setFilters((prev) => ({ ...prev, category: v }))}
                         options={categoryOptions}
-                        allOption={{ value: "All", label: "All" }}
-                        placeholder="All"
+                        allOption={{ value: "All", label: t("All") }}
+                        placeholder={t("All")}
                       />
                     </div>
 
                     <div className="field">
-                      <label>Billing type</label>
+                      <label>{t("Billing type")}</label>
                       <Select
                         value={filters.billing || "All"}
                         onChange={(v) => setFilters((prev) => ({ ...prev, billing: v }))}
                         options={billingOptions}
-                        allOption={{ value: "All", label: "All" }}
-                        placeholder="All"
+                        allOption={{ value: "All", label: t("All") }}
+                        placeholder={t("All")}
                       />
                     </div>
 
                     <div className="field">
-                      <label>Status</label>
+                      <label>{t("Status")}</label>
                       <Select
                         value={filters.status || "All"}
                         onChange={(v) => setFilters((prev) => ({ ...prev, status: v }))}
                         options={statusOptions}
-                        allOption={{ value: "All", label: "All" }}
-                        placeholder="All"
+                        allOption={{ value: "All", label: t("All") }}
+                        placeholder={t("All")}
                       />
                     </div>
                   </>
@@ -24214,14 +24441,14 @@ export default function App() {
                     setPeriod("Custom range");
                   }}
                 >
-                  Reset all
+                  {t("Reset all")}
                 </button>
                 <button
                   className={`action-pill${filtersDirty ? " is-dirty" : ""}`}
                   type="button"
                   onClick={() => setFiltersOpen(false)}
                 >
-                  Apply Filters
+                  {t("Apply Filters")}
                 </button>
               </div>
             </motion.div>

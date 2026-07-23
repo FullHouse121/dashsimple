@@ -689,6 +689,23 @@ const initDb = async () => {
     `UPDATE expenses
         SET project_id = (SELECT id FROM brands WHERE name = 'Unassigned')
       WHERE project_id IS NULL;`,
+
+    // My Flows: a PWA domain can serve several tracking links (M:N).
+    // This join table is the source of truth; the legacy single-value
+    // domains.tracking_link_id column is kept in sync (first binding wins)
+    // so older clients and the unbound-banner fallback keep working.
+    `CREATE TABLE IF NOT EXISTS domain_link_bindings (
+      domain_id INTEGER NOT NULL,
+      tracking_link_id INTEGER NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (domain_id, tracking_link_id)
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_domain_link_bindings_link
+       ON domain_link_bindings (tracking_link_id);`,
+    `INSERT INTO domain_link_bindings (domain_id, tracking_link_id)
+       SELECT id, tracking_link_id FROM domains
+        WHERE tracking_link_id IS NOT NULL
+       ON CONFLICT DO NOTHING;`,
   ];
 
   // Schema gate: the statement list above is 170+ ALTER/UPDATE statements
@@ -1823,10 +1840,18 @@ const insertDomain = async (payload) => {
   return rows[0];
 };
 
+// Every tracking link a domain is bound to (M:N via domain_link_bindings).
+const TRACKING_LINK_IDS_SQL = `COALESCE(
+  (SELECT json_agg(b.tracking_link_id ORDER BY b.created_at ASC, b.tracking_link_id ASC)
+     FROM domain_link_bindings b WHERE b.domain_id = d.id),
+  '[]'::json
+) AS tracking_link_ids`;
+
 const selectDomains = async (limit) =>
   getRows(
     `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
             d.tracking_link_id,
+            ${TRACKING_LINK_IDS_SQL},
             u.username AS owner_name
      FROM domains d
      LEFT JOIN users u ON u.id = d.owner_id
@@ -1839,6 +1864,7 @@ const selectDomainsByOwner = async (ownerId, limit) =>
   getRows(
     `SELECT d.id, d.domain, d.status, d.game, d.platform, d.owner_role, d.owner_id, d.country,
             d.tracking_link_id,
+            ${TRACKING_LINK_IDS_SQL},
             u.username AS owner_name
      FROM domains d
      LEFT JOIN users u ON u.id = d.owner_id
@@ -1874,6 +1900,24 @@ const selectDomainByNameWithOwner = async (domain) =>
   ).then(mapDomainRow);
 
 const deleteDomain = async (id) => query(`DELETE FROM domains WHERE id = $1`, [id]);
+
+// Mirror the M:N bindings into the legacy single-value column (oldest binding
+// wins, NULL when none) so older clients keep seeing a sensible value.
+const syncDomainLegacyLinkColumn = async (domainIds) => {
+  const ids = (domainIds || []).map(Number).filter((v) => Number.isFinite(v));
+  if (!ids.length) return;
+  await query(
+    `UPDATE domains
+        SET tracking_link_id = (
+          SELECT b.tracking_link_id FROM domain_link_bindings b
+           WHERE b.domain_id = domains.id
+           ORDER BY b.created_at ASC, b.tracking_link_id ASC
+           LIMIT 1
+        )
+      WHERE id = ANY($1::int[])`,
+    [ids]
+  );
+};
 
 const normalizeNumericIds = (value) => {
   if (value === null || value === undefined || value === "") return [];
@@ -6899,11 +6943,14 @@ app.patch("/api/domains/:id", async (req, res) => {
     updates.push(`owner_id = $${updates.length + 1}`);
     params.push(parsedOwner);
   }
-  // Bind / unbind this domain to a tracking link (My Flows).
+  // Bind / unbind this domain to a tracking link (legacy My Flows path —
+  // replace semantics: the domain ends up bound to exactly this link).
+  let legacyBindLinkId;
   if (body.trackingLinkId !== undefined) {
     const parsed = Number(body.trackingLinkId);
+    legacyBindLinkId = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
     updates.push(`tracking_link_id = $${updates.length + 1}`);
-    params.push(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+    params.push(legacyBindLinkId);
   }
 
   if (!updates.length) {
@@ -6912,6 +6959,16 @@ app.patch("/api/domains/:id", async (req, res) => {
 
   params.push(id);
   await query(`UPDATE domains SET ${updates.join(", ")} WHERE id = $${params.length}`, params);
+  if (legacyBindLinkId !== undefined) {
+    await query(`DELETE FROM domain_link_bindings WHERE domain_id = $1`, [id]);
+    if (legacyBindLinkId !== null) {
+      await query(
+        `INSERT INTO domain_link_bindings (domain_id, tracking_link_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [id, legacyBindLinkId]
+      );
+    }
+  }
   if (body.status !== undefined && String(domain.status || "").trim() !== String(body.status || "").trim()) {
     await createResourceUpdatedNotification({
       req,
@@ -7238,6 +7295,7 @@ app.delete("/api/domains/:id", async (req, res) => {
   if (!isLeadership(req.user) && domain.owner_id !== req.user.id) {
     return res.status(403).json({ error: "Forbidden." });
   }
+  await query(`DELETE FROM domain_link_bindings WHERE domain_id = $1`, [id]);
   await deleteDomain(id);
   await createResourceDeletedNotification({
     req,
@@ -9452,11 +9510,13 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     const minutes = Number.isFinite(minutesRaw) ? Math.min(Math.max(minutesRaw, 5), 1440) : 30;
     const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
-    // Status filtered in Keitaro, not client-side: the fetch caps at `limit`
-    // NEWEST rows, so a client-side filter over a multi-day window would only
-    // see matches inside the newest slice.
+    // Status/campaign filtered in Keitaro, not client-side: the fetch caps at
+    // `limit` NEWEST rows, so a client-side filter over a multi-day window
+    // would only see matches inside the newest slice.
     const statusRaw = statusFilterable ? String(req.query.status || "").trim().toLowerCase() : "";
     const statusFilter = /^[a-z_]{1,32}$/.test(statusRaw) ? statusRaw : null;
+    const campaignRaw = String(req.query.campaign_id || "").trim();
+    const campaignFilter = /^\d{1,12}$/.test(campaignRaw) ? campaignRaw : null;
     const timezone = resolveKeitaroTimezone();
     const intervalKey = Object.prototype.hasOwnProperty.call(
       LIVE_CLICKS_INTERVALS,
@@ -9504,17 +9564,21 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
 
     const cacheKey = `${
       intervalKey || (customRange ? `custom:${customRange.from}:${customRange.to}` : "rolling")
-    }:${limit}:${statusFilter || "all"}`;
+    }:${limit}:${statusFilter || "all"}:${campaignFilter || "all"}`;
     let cached = cache.get(cacheKey);
     if (!cached || Date.now() - cached.at > 10 * 1000) {
+      const logFilters = [
+        ...(statusFilter ? [{ name: "status", operator: "EQUALS", expression: statusFilter }] : []),
+        ...(campaignFilter
+          ? [{ name: "campaign_id", operator: "EQUALS", expression: Number(campaignFilter) }]
+          : []),
+      ];
       const result = await keitaroAdminFetch(logPath, {
         method: "POST",
         body: JSON.stringify({
           range,
           columns,
-          ...(statusFilter
-            ? { filters: [{ name: "status", operator: "EQUALS", expression: statusFilter }] }
-            : {}),
+          ...(logFilters.length ? { filters: logFilters } : {}),
           sort: [{ name: sortField, order: "DESC" }],
           limit,
         }),
@@ -10164,6 +10228,60 @@ app.get("/api/tracking-links/:id/verify", async (req, res) => {
   });
 });
 
+// Replace the set of PWA domains bound to a tracking link (My Flows).
+// M:N — a domain may be bound to several links at once. Buyers may only
+// add/remove their own domains (and only on their own links).
+app.put("/api/tracking-links/:id/domains", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
+  const link = await getRow(`SELECT id, owner_id FROM tracking_links WHERE id = $1`, [id]);
+  if (!link) return res.status(404).json({ error: "Link not found." });
+  if (!isLeadership(req.user) && link.owner_id !== req.user.id) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const wanted = Array.from(
+    new Set(
+      (Array.isArray(req.body?.domainIds) ? req.body.domainIds : [])
+        .map((v) => Number.parseInt(v, 10))
+        .filter((v) => Number.isFinite(v) && v > 0)
+    )
+  );
+  const current = (
+    await getRows(`SELECT domain_id FROM domain_link_bindings WHERE tracking_link_id = $1`, [id])
+  ).map((r) => Number(r.domain_id));
+  const currentSet = new Set(current);
+  const wantedSet = new Set(wanted);
+  const toAdd = wanted.filter((d) => !currentSet.has(d));
+  const toRemove = current.filter((d) => !wantedSet.has(d));
+  const touched = [...toAdd, ...toRemove];
+  if (touched.length) {
+    const rows = await getRows(`SELECT id, owner_id FROM domains WHERE id = ANY($1::int[])`, [touched]);
+    const byId = new Map(rows.map((r) => [Number(r.id), r]));
+    for (const domainId of touched) {
+      const dom = byId.get(domainId);
+      if (!dom) return res.status(404).json({ error: `Domain #${domainId} not found.` });
+      if (!isLeadership(req.user) && dom.owner_id !== req.user.id) {
+        return res.status(403).json({ error: "You can only bind your own domains." });
+      }
+    }
+    if (toRemove.length) {
+      await query(
+        `DELETE FROM domain_link_bindings WHERE tracking_link_id = $1 AND domain_id = ANY($2::int[])`,
+        [id, toRemove]
+      );
+    }
+    for (const domainId of toAdd) {
+      await query(
+        `INSERT INTO domain_link_bindings (domain_id, tracking_link_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [domainId, id]
+      );
+    }
+    await syncDomainLegacyLinkColumn(touched);
+  }
+  res.json({ ok: true, added: toAdd.length, removed: toRemove.length });
+});
+
 app.delete("/api/tracking-links/:id", async (req, res) => {
   const id = Number.parseInt(req.params.id, 10);
   if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid link id." });
@@ -10181,8 +10299,17 @@ app.delete("/api/tracking-links/:id", async (req, res) => {
       return res.status(502).json({ error: `Keitaro campaign delete failed: ${del.error}` });
     }
   }
-  // Unbind any domains that pointed at this link.
-  await query(`UPDATE domains SET tracking_link_id = NULL WHERE tracking_link_id = $1`, [id]);
+  // Unbind any domains that pointed at this link (bindings first, then the
+  // legacy column falls back to each domain's next remaining binding).
+  const boundDomainIds = (
+    await getRows(
+      `SELECT domain_id AS id FROM domain_link_bindings WHERE tracking_link_id = $1
+       UNION SELECT id FROM domains WHERE tracking_link_id = $1`,
+      [id]
+    )
+  ).map((r) => Number(r.id));
+  await query(`DELETE FROM domain_link_bindings WHERE tracking_link_id = $1`, [id]);
+  await syncDomainLegacyLinkColumn(boundDomainIds);
   await query(`DELETE FROM tracking_links WHERE id = $1`, [id]);
   res.json({ ok: true, keitaroDeleted });
 });

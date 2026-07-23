@@ -25,6 +25,30 @@ import {
 // empty subs or unfilled {macro} literals — the minute a campaign launches.
 export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const isLeadership = isLeadershipRole(authUser?.role);
+  // Flow filter — the viewer's Keitaro campaigns (buyer-scoped server-side).
+  // Filtered IN Keitaro via campaign_id: the capped fetch means a client-side
+  // filter would only see matches inside the newest slice.
+  const [flowOptions, setFlowOptions] = React.useState([]);
+  const [flowFilter, setFlowFilter] = React.useState("");
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/keitaro/buyer-campaigns");
+        const data = response.ok ? await response.json() : { campaigns: [] };
+        if (!cancelled) setFlowOptions(Array.isArray(data?.campaigns) ? data.campaigns : []);
+      } catch {
+        if (!cancelled) setFlowOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const flowName = React.useMemo(
+    () => flowOptions.find((c) => String(c.id) === String(flowFilter))?.name || "",
+    [flowOptions, flowFilter]
+  );
   const {
     rows,
     meta,
@@ -40,7 +64,11 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     trackerNowMs,
     agoLabel,
     windowElapsedMinutes,
-  } = useLiveFeed({ endpoint: "/api/keitaro/clicks-live", failLabel: "Failed to load live clicks." });
+  } = useLiveFeed({
+    endpoint: "/api/keitaro/clicks-live",
+    failLabel: "Failed to load live clicks.",
+    extraParams: { campaign_id: flowFilter || "" },
+  });
   const { toast: copyToast, copyText } = useCopyToast();
   // Multi-day windows exceed the 1,000-row cap, so the raw feed only holds
   // the newest day — chart and count those windows from Keitaro's daily
@@ -78,12 +106,17 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
 
 
   const newestClick = filteredRows[0] || null;
-  // Scope the aggregate to the same buyer the table is filtered to.
+  // Scope the aggregate to the same buyer/flow the table is filtered to (the
+  // daily aggregate is uncapped, so a client-side campaign match is safe here).
   const scopedAggregate = React.useMemo(() => {
     if (!aggregateRows) return null;
-    if (!isLeadership || isAllSelection(buyerFilter)) return aggregateRows;
-    return aggregateRows.filter((row) => row.buyer === buyerFilter);
-  }, [aggregateRows, isLeadership, buyerFilter]);
+    let scoped = aggregateRows;
+    if (flowName) scoped = scoped.filter((row) => row.campaign === flowName);
+    if (isLeadership && !isAllSelection(buyerFilter)) {
+      scoped = scoped.filter((row) => row.buyer === buyerFilter);
+    }
+    return scoped;
+  }, [aggregateRows, isLeadership, buyerFilter, flowName]);
   const aggregateTotals = React.useMemo(() => {
     if (!scopedAggregate) return null;
     return scopedAggregate.reduce(
@@ -489,6 +522,19 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                   options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
                   placeholder="Buyer"
                   searchPlaceholder="Find buyer"
+                />
+              </div>
+            ) : null}
+            {flowOptions.length ? (
+              <div className="field">
+                <label>Flow</label>
+                <Select
+                  value={flowFilter}
+                  onChange={(v) => setFlowFilter(v === "" ? "" : String(v))}
+                  options={flowOptions.map((c) => ({ value: String(c.id), label: c.name }))}
+                  allOption={{ value: "", label: "All flows" }}
+                  placeholder="All flows"
+                  searchPlaceholder="Find flow"
                 />
               </div>
             ) : null}

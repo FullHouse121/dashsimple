@@ -35,6 +35,30 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   const [statusFilter, setStatusFilter] = React.useState("All");
   // null when "All"; otherwise the status the whole view is narrowed to.
   const statusKey = isAllSelection(statusFilter) ? null : statusFilter;
+  // Flow filter — the viewer's Keitaro campaigns (buyer-scoped server-side).
+  // Like status, filtered IN Keitaro via campaign_id so the row cap can't
+  // hide matches outside the newest slice.
+  const [flowOptions, setFlowOptions] = React.useState([]);
+  const [flowFilter, setFlowFilter] = React.useState("");
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/keitaro/buyer-campaigns");
+        const data = response.ok ? await response.json() : { campaigns: [] };
+        if (!cancelled) setFlowOptions(Array.isArray(data?.campaigns) ? data.campaigns : []);
+      } catch {
+        if (!cancelled) setFlowOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const flowName = React.useMemo(
+    () => flowOptions.find((c) => String(c.id) === String(flowFilter))?.name || "",
+    [flowOptions, flowFilter]
+  );
   const {
     rows,
     meta,
@@ -56,7 +80,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     // Filter in Keitaro, not client-side: the raw fetch caps at the 1,000
     // NEWEST rows, so filtering locally over a multi-day window only ever saw
     // matches inside the newest slice.
-    extraParams: { status: statusKey || "" },
+    extraParams: { status: statusKey || "", campaign_id: flowFilter || "" },
   });
   const { toast: copyToast, copyText } = useCopyToast();
   // Multi-day windows exceed the 1,000-row cap — chart and count those from
@@ -112,11 +136,17 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     return `${Math.floor(seconds / 86400)}d after click`;
   };
 
+  // Buyer/flow scoping on the aggregate (uncapped, so a client-side campaign
+  // match is safe — unlike the capped raw log).
   const scopedAggregate = React.useMemo(() => {
     if (!aggregateRows) return null;
-    if (!isLeadership || isAllSelection(buyerFilter)) return aggregateRows;
-    return aggregateRows.filter((row) => row.buyer === buyerFilter);
-  }, [aggregateRows, isLeadership, buyerFilter]);
+    let scoped = aggregateRows;
+    if (flowName) scoped = scoped.filter((row) => row.campaign === flowName);
+    if (isLeadership && !isAllSelection(buyerFilter)) {
+      scoped = scoped.filter((row) => row.buyer === buyerFilter);
+    }
+    return scoped;
+  }, [aggregateRows, isLeadership, buyerFilter, flowName]);
   const aggregateTotals = React.useMemo(() => {
     if (!scopedAggregate) return null;
     return scopedAggregate.reduce(
@@ -546,6 +576,19 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                   options={buyers.map((buyer) => ({ value: buyer, label: buyer }))}
                   placeholder="Buyer"
                   searchPlaceholder="Find buyer"
+                />
+              </div>
+            ) : null}
+            {flowOptions.length ? (
+              <div className="field">
+                <label>Flow</label>
+                <Select
+                  value={flowFilter}
+                  onChange={(v) => setFlowFilter(v === "" ? "" : String(v))}
+                  options={flowOptions.map((c) => ({ value: String(c.id), label: c.name }))}
+                  allOption={{ value: "", label: "All flows" }}
+                  placeholder="All flows"
+                  searchPlaceholder="Find flow"
                 />
               </div>
             ) : null}

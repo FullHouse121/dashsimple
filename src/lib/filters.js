@@ -39,3 +39,13 @@ export const matchesCountryFilter = (country, selectedCountry) => {
   if (isAllSelection(selectedCountry)) return true;
   return normalizeFilterValue(country) === normalizeFilterValue(selectedCountry);
 };
+
+// Flow / campaign multi-select: an empty selection matches everything,
+// otherwise the row's campaign name must equal one of the picked names.
+export const matchesCampaignListFilter = (campaign, selectedList) => {
+  const list = Array.isArray(selectedList) ? selectedList : [];
+  if (!list.length) return true;
+  const row = normalizeFilterValue(campaign);
+  if (!row) return false;
+  return list.some((name) => normalizeFilterValue(name) === row);
+};
