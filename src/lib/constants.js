@@ -291,6 +291,11 @@ export const resolveCountryIso = (value) => {
   return COUNTRY_NAME_TO_ISO[key] || COUNTRY_NAME_TO_ISO[String(raw).toLowerCase()] || null;
 };
 
+// ISO-2 → canonical country name, for labelling filters that key off a code.
+const ISO_TO_COUNTRY_NAME = new Map(ALL_COUNTRIES.map(([name, iso]) => [iso, name]));
+export const countryNameFromIso = (value) =>
+  ISO_TO_COUNTRY_NAME.get(String(value || "").trim().toLowerCase()) || "";
+
 export const normalizeCountryValueKey = (value) =>
   String(value || "")
     .normalize("NFD")

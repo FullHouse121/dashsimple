@@ -93,6 +93,7 @@ import {
   Maximize2,
   ScrollText,
   RefreshCw,
+  Unlink,
   Star,
   Play,
   Pause,
@@ -242,6 +243,7 @@ import {
   accountRegistryCountryOptions,
   defaultCountryOption,
   resolveCountryIso,
+  countryNameFromIso,
   normalizeCountryValueKey,
   supportedCountryValueMap,
   normalizeCountryListValue,
@@ -5286,6 +5288,49 @@ function TrackingLinksDashboard({ authUser }) {
   );
 }
 
+// Shows enough of an EAAG token to recognise it, never enough to use it.
+const maskEaagToken = (value) => {
+  const token = String(value || "");
+  if (!token) return "—";
+  return token.length <= 14 ? token : `${token.slice(0, 8)}••••${token.slice(-4)}`;
+};
+
+// 7-day unique-clicks curve for a flow card — deliberately axis-free: it
+// only has to answer "is this flow climbing, flat, or dying?".
+function FlowSparkline({ values, width = 92, height = 30 }) {
+  const series = Array.isArray(values) && values.length ? values.map((v) => Number(v) || 0) : null;
+  if (!series || series.length < 2) return null;
+  // All zeros: a solid line would read as data. Show a dashed baseline.
+  if (!series.some((v) => v > 0)) {
+    return (
+      <svg className="flow-spark is-empty" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+        <line x1="0" y1={height - 4} x2={width} y2={height - 4} stroke="currentColor" strokeWidth="1.4" strokeDasharray="3 4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  const max = Math.max(...series, 1);
+  const stepX = width / (series.length - 1);
+  const y = (v) => height - 3 - (v / max) * (height - 7);
+  const points = series.map((v, i) => [i * stepX, y(v)]);
+  const line = points.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  const [lastX, lastY] = points[points.length - 1];
+  const gradientId = `flow-spark-${series.join("-")}-${width}`;
+  return (
+    <svg className="flow-spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--green, #36d07c)" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="var(--green, #36d07c)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradientId})`} />
+      <path d={line} fill="none" stroke="var(--green, #36d07c)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lastX} cy={lastY} r="2.4" fill="var(--green, #36d07c)" />
+    </svg>
+  );
+}
+
 // ── My Flows ──────────────────────────────────────────────────────────
 // Buyer-centric tree: Tracking Link → bound PWA domains → pixels on each
 // domain. Buyers bind domains to a link and pixels already carry domains.
@@ -5301,6 +5346,31 @@ function MyFlowsDashboard({ authUser }) {
   const [flowViz, setFlowViz] = React.useState({ open: false, link: null });
   const [copied, setCopied] = React.useState(null);
   const [sortBy, setSortBy] = React.useState("recent");
+  // Leadership sees every buyer's flows, so they get a buyer filter; a buyer's
+  // own list is already scoped server-side and needs none.
+  const canFilterByBuyer = isLeadershipRole(authUser?.role);
+  // One filter object: text search + four dimension pickers + health flags.
+  // The flags answer the ops questions this page exists for ("which flows
+  // can't run?"), which no dimension filter can express.
+  const EMPTY_FLOW_FILTERS = { search: "", buyers: [], countries: [], domains: [], brands: [], flags: [] };
+  const [filters, setFilters] = React.useState(EMPTY_FLOW_FILTERS);
+  const setFilterList = (key) => (value) =>
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].includes(value) ? prev[key].filter((x) => x !== value) : [...prev[key], value],
+    }));
+  const activeFilterCount =
+    (filters.search ? 1 : 0) +
+    filters.buyers.length +
+    filters.countries.length +
+    filters.domains.length +
+    filters.brands.length +
+    filters.flags.length;
+  // Unbinding is destructive-ish, so the ✕ arms first and only fires on the
+  // second click ("link:domain" key, auto-disarms).
+  const [unbindArmed, setUnbindArmed] = React.useState(null);
+  const [unbinding, setUnbinding] = React.useState(null);
+  const unbindTimerRef = React.useRef(null);
 
   const maskToken = (v) => {
     const s = String(v || "");
@@ -5358,7 +5428,8 @@ function MyFlowsDashboard({ authUser }) {
     let cancelled = false;
     (async () => {
       try {
-        const from = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+        // 14 days: the last 7 drive the strip, the 7 before them the trend.
+        const from = new Date(Date.now() - 13 * 86400000).toISOString().slice(0, 10);
         const response = await apiFetch(`/api/keitaro/live-stats?from=${from}`);
         if (!response.ok) return;
         const data = await response.json();
@@ -5378,16 +5449,27 @@ function MyFlowsDashboard({ authUser }) {
     };
   }, []);
 
-  // campaign name (normalized) → { today, week } totals
+  // campaign name (normalized) → { today, week, prev, series }. `series` is
+  // the 7-day unique-clicks curve behind the sparkline (oldest first) and
+  // `prev` the week before it, which gives the 7-day block its trend.
   const flowStatsByName = React.useMemo(() => {
     if (!flowLive) return null;
     const norm = (v) => String(v || "").trim().toLowerCase();
     const blank = () => ({ uniques: 0, registers: 0, ftds: 0, revenue: 0 });
+    // Fixed axis ending on the tracker's today, so every sparkline spans the
+    // same window even when a flow has gaps.
+    const end = new Date(`${flowLive.today}T00:00:00Z`);
+    const axis = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      axis.push(new Date(end.getTime() - i * 86400000).toISOString().slice(0, 10));
+    }
+    const axisIndex = new Map(axis.map((day, i) => [day, i]));
+    const prevFrom = new Date(end.getTime() - 13 * 86400000).toISOString().slice(0, 10);
     const map = new Map();
     flowLive.rows.forEach((row) => {
       const key = norm(row.campaign || row.campaign_name);
       if (!key) return;
-      if (!map.has(key)) map.set(key, { today: blank(), week: blank() });
+      if (!map.has(key)) map.set(key, { today: blank(), week: blank(), prev: blank(), series: axis.map(() => 0) });
       const entry = map.get(key);
       const add = (acc) => {
         acc.uniques += Number(row.unique_clicks) || 0;
@@ -5395,8 +5477,15 @@ function MyFlowsDashboard({ authUser }) {
         acc.ftds += Number(row.ftds) || 0;
         acc.revenue += Number(row.revenue) || 0;
       };
-      add(entry.week);
-      if (String(row.date || "").slice(0, 10) === flowLive.today) add(entry.today);
+      const day = String(row.date || "").slice(0, 10);
+      const slot = axisIndex.get(day);
+      if (slot !== undefined) {
+        add(entry.week);
+        entry.series[slot] += Number(row.unique_clicks) || 0;
+        if (day === flowLive.today) add(entry.today);
+      } else if (day >= prevFrom) {
+        add(entry.prev);
+      }
     });
     return map;
   }, [flowLive]);
@@ -5472,8 +5561,123 @@ function MyFlowsDashboard({ authUser }) {
     [domainsByLink, pixelsByDomain]
   );
 
+  // Everything a filter or the search box can match, computed once per link.
+  const flowFacts = React.useMemo(() => {
+    const map = new Map();
+    links.forEach((link) => {
+      const seg = linkSegments(link);
+      const linkDomains = domainsByLink.get(link.id) || [];
+      const hosts = linkDomains.map((d) => String(d.domain || "").toLowerCase()).filter(Boolean);
+      const flowPixels = hosts.flatMap((host) => pixelsByDomain.get(host) || []);
+      // A flow's geo is its own segment plus every country its domains target.
+      const countries = new Set();
+      [...splitGeos(seg.geo), ...linkDomains.flatMap((d) => normalizeCountryListValue(d.country))].forEach((g) => {
+        const iso = resolveCountryIso(g);
+        if (iso) countries.add(iso);
+      });
+      const stats = flowStatsByName?.get(String(link.name || "").trim().toLowerCase()) || null;
+      map.set(link.id, {
+        buyer: String(seg.buyer || "").trim(),
+        brand: String(seg.brand || "").trim(),
+        countries: [...countries],
+        hosts,
+        pixelIds: flowPixels.map((p) => String(p.pixel_id || "")),
+        paused: String(link.state || "active") !== "active",
+        inKeitaro: String(link.keitaro_status || "") === "created" || !!link.keitaro_id,
+        domainCount: linkDomains.length,
+        pixelCount: flowPixels.length,
+        weekUniques: stats ? stats.week.uniques : 0,
+        haystack: [link.name, link.alias, link.url, seg.tool, seg.game, seg.brand, ...hosts, ...flowPixels.map((p) => p.pixel_id)]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase(),
+      });
+    });
+    return map;
+  }, [links, domainsByLink, pixelsByDomain, flowStatsByName]);
+
+  // Option lists are built from the flows on screen, each with its own count,
+  // so a picker never offers a value that matches nothing.
+  const optionsFrom = React.useCallback((pick, decorate) => {
+    const counts = new Map();
+    links.forEach((link) => {
+      const facts = flowFacts.get(link.id);
+      if (!facts) return;
+      const values = pick(facts);
+      (Array.isArray(values) ? values : [values]).filter(Boolean).forEach((value) => {
+        counts.set(value, (counts.get(value) || 0) + 1);
+      });
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+      .map(([value, count]) => ({ value, count, ...(decorate ? decorate(value, count) : {}) }));
+  }, [links, flowFacts]);
+
+  const buyerOptions = React.useMemo(
+    () => optionsFrom((f) => f.buyer, (v, c) => ({ label: `${v}  ·  ${c}`, search: v, dot: "#36d07c" })),
+    [optionsFrom]
+  );
+  const countryOptionsForFlows = React.useMemo(
+    () => optionsFrom((f) => f.countries, (v, c) => ({ label: `${countryNameFromIso(v) || v}  ·  ${c}`, search: `${v} ${countryNameFromIso(v) || ""}` })),
+    [optionsFrom]
+  );
+  const domainOptionsForFlows = React.useMemo(
+    () => optionsFrom((f) => f.hosts, (v, c) => ({ label: c > 1 ? `${v}  ·  ${c}` : v, search: v, dot: "#6ad6ff" })),
+    [optionsFrom]
+  );
+  const brandOptions = React.useMemo(
+    () => optionsFrom((f) => f.brand, (v, c) => ({ label: `${v}  ·  ${c}`, search: v })),
+    [optionsFrom]
+  );
+
+  // Health flags — the "what's broken / what's alive" cut of the list.
+  const FLOW_FLAGS = React.useMemo(
+    () => [
+      { value: "no-domains", label: t("No domains"), match: (f) => f.domainCount === 0, tone: "warn" },
+      { value: "no-pixels", label: t("No pixels"), match: (f) => f.pixelCount === 0, tone: "warn" },
+      { value: "live", label: t("Traffic in 7d"), match: (f) => f.weekUniques > 0, tone: "good" },
+      { value: "idle", label: t("No traffic in 7d"), match: (f) => f.weekUniques === 0, tone: "muted" },
+      { value: "paused", label: t("Paused"), match: (f) => f.paused, tone: "muted" },
+      { value: "local", label: t("Not in Keitaro"), match: (f) => !f.inKeitaro, tone: "warn" },
+    ],
+    [t]
+  );
+  const flagCounts = React.useMemo(() => {
+    const counts = new Map(FLOW_FLAGS.map((flag) => [flag.value, 0]));
+    links.forEach((link) => {
+      const facts = flowFacts.get(link.id);
+      if (!facts) return;
+      FLOW_FLAGS.forEach((flag) => {
+        if (flag.match(facts)) counts.set(flag.value, counts.get(flag.value) + 1);
+      });
+    });
+    return counts;
+  }, [links, flowFacts, FLOW_FLAGS]);
+
+  const filteredLinks = React.useMemo(() => {
+    const query = filters.search.trim().toLowerCase();
+    const buyers = canFilterByBuyer ? filters.buyers.map((b) => b.toLowerCase()) : [];
+    if (!query && !buyers.length && !filters.countries.length && !filters.domains.length && !filters.brands.length && !filters.flags.length) {
+      return links;
+    }
+    const activeFlags = FLOW_FLAGS.filter((flag) => filters.flags.includes(flag.value));
+    return links.filter((link) => {
+      const facts = flowFacts.get(link.id);
+      if (!facts) return false;
+      if (query && !facts.haystack.includes(query)) return false;
+      if (buyers.length && !buyers.includes(facts.buyer.toLowerCase())) return false;
+      // Dimension pickers are OR within a dimension, AND across dimensions.
+      if (filters.countries.length && !filters.countries.some((iso) => facts.countries.includes(iso))) return false;
+      if (filters.domains.length && !filters.domains.some((host) => facts.hosts.includes(host))) return false;
+      if (filters.brands.length && !filters.brands.includes(facts.brand)) return false;
+      // Flags stack the other way — every one picked must hold.
+      if (activeFlags.length && !activeFlags.every((flag) => flag.match(facts))) return false;
+      return true;
+    });
+  }, [links, filters, canFilterByBuyer, flowFacts, FLOW_FLAGS]);
+
   const sortedLinks = React.useMemo(() => {
-    const arr = [...links];
+    const arr = [...filteredLinks];
     const domainCount = (l) => (domainsByLink.get(l.id) || []).length;
     const byRecent = (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0);
     arr.sort((a, b) => {
@@ -5491,7 +5695,7 @@ function MyFlowsDashboard({ authUser }) {
       return av - bv || byRecent(a, b);
     });
     return arr;
-  }, [links, sortBy, domainsByLink, pixelCountForLink]);
+  }, [filteredLinks, sortBy, domainsByLink, pixelCountForLink]);
 
   const SORT_OPTIONS = [
     { value: "recent", label: t("Newest first") },
@@ -5533,6 +5737,218 @@ function MyFlowsDashboard({ authUser }) {
     }
   };
 
+  // ── Edit Flow ──────────────────────────────────────────────────────
+  // Everything a flow is, in one dialog: the campaign segments and offer,
+  // its Keitaro state, the domains bound to it and the pixels on each.
+  // Segments/offer/state/domains save together; pixel wiring applies on
+  // click, because it writes to the pixel record rather than the link.
+  const EMPTY_FLOW_EDIT_FORM = { buyer: "", game: "", geo: "", brand: "", offerId: "", state: "active", domainIds: [] };
+  const [flowEdit, setFlowEdit] = React.useState({ open: false, link: null, saving: false, error: null, form: EMPTY_FLOW_EDIT_FORM });
+  const [ktOffers, setKtOffers] = React.useState({ loaded: false, list: [] });
+  const [pixelWire, setPixelWire] = React.useState({ busy: null, error: null });
+
+  const openFlowEdit = (link) => {
+    setFlowEdit({
+      open: true,
+      link,
+      saving: false,
+      error: null,
+      form: {
+        buyer: link.buyer || linkSegments(link).buyer || "",
+        game: link.game || linkSegments(link).game || "",
+        geo: link.geo || linkSegments(link).geo || "",
+        brand: link.brand || linkSegments(link).brand || "",
+        offerId: String(link.offerId ?? link.offer_id ?? ""),
+        state: String(link.state || "active") === "active" ? "active" : "disabled",
+        domainIds: (domainsByLink.get(link.id) || []).map((d) => String(d.id)),
+      },
+    });
+    setPixelWire({ busy: null, error: null });
+    // Offers only matter once someone opens the editor — fetch them then.
+    if (!ktOffers.loaded) {
+      (async () => {
+        try {
+          const response = await apiFetch("/api/keitaro/resources");
+          const data = await response.json().catch(() => ({}));
+          setKtOffers({ loaded: true, list: Array.isArray(data?.offers) ? data.offers : [] });
+        } catch (error) {
+          setKtOffers({ loaded: true, list: [] });
+        }
+      })();
+    }
+  };
+  const closeFlowEdit = () => setFlowEdit({ open: false, link: null, saving: false, error: null, form: EMPTY_FLOW_EDIT_FORM });
+  const updateFlowEdit = (key) => (value) => setFlowEdit((prev) => ({ ...prev, form: { ...prev.form, [key]: value } }));
+
+  // The name Keitaro will carry after saving — "-" marks a deliberate gap.
+  const flowEditName = React.useMemo(() => {
+    if (!flowEdit.link) return "";
+    const seg = (v) => String(v || "").trim() || "-";
+    const f = flowEdit.form;
+    return [seg(f.buyer), seg(flowEdit.link.tool || linkSegments(flowEdit.link).tool), seg(f.game), seg(f.geo), seg(f.brand)].join(" | ");
+  }, [flowEdit.link, flowEdit.form]);
+
+  const saveFlowEdit = async () => {
+    const link = flowEdit.link;
+    if (!link) return;
+    const f = flowEdit.form;
+    setFlowEdit((prev) => ({ ...prev, saving: true, error: null }));
+    try {
+      const before = {
+        buyer: link.buyer || linkSegments(link).buyer || "",
+        game: link.game || linkSegments(link).game || "",
+        geo: link.geo || linkSegments(link).geo || "",
+        brand: link.brand || linkSegments(link).brand || "",
+        offerId: String(link.offerId ?? link.offer_id ?? ""),
+      };
+      const identityChanged = ["buyer", "game", "geo", "brand", "offerId"].some((k) => String(f[k] || "") !== String(before[k] || ""));
+      // The endpoint routes on which keys are present, so identity and state
+      // have to go as two calls.
+      if (identityChanged) {
+        const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ buyer: f.buyer, game: f.game, geo: f.geo, brand: f.brand, offerId: f.offerId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Failed to save the campaign.");
+      }
+      const stateBefore = String(link.state || "active") === "active" ? "active" : "disabled";
+      if (f.state !== stateBefore) {
+        const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state: f.state }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Failed to change the state.");
+      }
+      const domainsBefore = (domainsByLink.get(link.id) || []).map((d) => String(d.id));
+      const sameDomains =
+        domainsBefore.length === f.domainIds.length && domainsBefore.every((id) => f.domainIds.includes(id));
+      if (!sameDomains) {
+        const response = await apiFetch(`/api/tracking-links/${link.id}/domains`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domainIds: f.domainIds }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || "Failed to save the domains.");
+      }
+      await fetchAll();
+      closeFlowEdit();
+    } catch (error) {
+      setFlowEdit((prev) => ({ ...prev, saving: false, error: error.message || "Failed to save the flow." }));
+    }
+  };
+
+  // Pixel ↔ domain wiring from inside the flow editor. Same contract as the
+  // Domains registry: attachment lives on the pixel's `flows` list.
+  const setPixelDomains = async (pixel, hosts, key) => {
+    setPixelWire({ busy: key, error: null });
+    try {
+      const response = await apiFetch(`/api/pixels/${pixel.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flows: hosts }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to update the pixel.");
+      }
+      await fetchAll();
+      setPixelWire({ busy: null, error: null });
+    } catch (error) {
+      setPixelWire({ busy: null, error: error.message || "Failed to update the pixel." });
+    }
+  };
+  const attachPixelToHost = (pixelId, host) => {
+    const pixel = pixels.find((p) => String(p.id) === String(pixelId));
+    if (!pixel || !host) return;
+    setPixelDomains(pixel, Array.from(new Set([...normalizeDomainInputList(pixel.flows), host])), `attach-${pixel.id}-${host}`);
+  };
+  const detachPixelFromHost = (pixel, host) =>
+    setPixelDomains(pixel, normalizeDomainInputList(pixel.flows).filter((h) => h !== host), `detach-${pixel.id}-${host}`);
+
+  // Kept as a secondary escape hatch: the Tracking Links form owns the
+  // pieces this dialog deliberately doesn't (params, stream filters).
+  const openInTrackingLinks = (link) => {
+    try {
+      sessionStorage.setItem("pending-edit-campaign", String(link.name || "").trim());
+    } catch {
+      /* private mode — the Tracking Links search still opens */
+    }
+    window.dispatchEvent(new CustomEvent("dash:navigate", { detail: { view: "tracking" } }));
+  };
+
+  // Detach a single domain from a link — same replace-set endpoint as the
+  // bind modal, just with this domain dropped from the list.
+  const armUnbind = (key) => {
+    if (unbindTimerRef.current) clearTimeout(unbindTimerRef.current);
+    setUnbindArmed(key);
+    unbindTimerRef.current = setTimeout(() => setUnbindArmed((prev) => (prev === key ? null : prev)), 4000);
+  };
+  React.useEffect(() => () => {
+    if (unbindTimerRef.current) clearTimeout(unbindTimerRef.current);
+  }, []);
+  const unbindDomain = async (link, domain) => {
+    const key = `${link.id}:${domain.id}`;
+    setUnbinding(key);
+    setUnbindArmed(null);
+    try {
+      const remaining = (domainsByLink.get(link.id) || [])
+        .filter((d) => String(d.id) !== String(domain.id))
+        .map((d) => String(d.id));
+      const response = await apiFetch(`/api/tracking-links/${link.id}/domains`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domainIds: remaining }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to unbind domain.");
+      }
+      await fetchAll();
+    } catch (error) {
+      setState((prev) => ({ ...prev, error: error.message || "Failed to unbind domain." }));
+    } finally {
+      setUnbinding(null);
+    }
+  };
+
+  // Same option list as the bind modal, for the flow editor's domain field.
+  const flowEditDomainOptions = React.useMemo(() => {
+    if (!flowEdit.link) return [];
+    const statusDot = (status) => {
+      const s = String(status || "Active").toLowerCase();
+      if (s === "active") return "#36d07c";
+      if (["banned", "blocked", "expired", "dead"].includes(s)) return "#ff6b6b";
+      return "#f5b83d";
+    };
+    const boundNow = new Set((domainsByLink.get(flowEdit.link.id) || []).map((d) => String(d.id)));
+    return domains
+      .map((d) => {
+        const otherLinks = domainLinkIds(d).filter((id) => id !== flowEdit.link.id).length;
+        const status = String(d.status || "Active");
+        const parts = [d.domain];
+        if (status.toLowerCase() !== "active") parts.push(t(status));
+        if (otherLinks) {
+          parts.push(
+            otherLinks === 1 ? t("also on 1 other link") : t("also on {n} other links").replace("{n}", String(otherLinks))
+          );
+        }
+        return {
+          value: String(d.id),
+          label: parts.join("  ·  "),
+          search: `${d.domain} ${status}`,
+          dot: statusDot(status),
+          _bound: boundNow.has(String(d.id)) ? 0 : 1,
+          _name: String(d.domain || ""),
+        };
+      })
+      .sort((a, b) => a._bound - b._bound || a._name.localeCompare(b._name));
+  }, [domains, domainsByLink, flowEdit.link, t]);
+
   const bindOptions = React.useMemo(() => {
     if (!bindModal.link) return [];
     // Every registered domain is selectable — a domain can serve several
@@ -5544,19 +5960,32 @@ function MyFlowsDashboard({ authUser }) {
       if (["banned", "blocked", "expired", "dead"].includes(s)) return "#ff6b6b";
       return "#f5b83d";
     };
-    return domains.map((d) => {
-      const otherLinks = domainLinkIds(d).filter((id) => id !== bindModal.link.id).length;
-      const status = String(d.status || "Active");
-      const parts = [d.domain];
-      if (status.toLowerCase() !== "active") parts.push(t(status));
-      if (otherLinks) {
-        parts.push(
-          otherLinks === 1 ? t("also on 1 other link") : t("also on {n} other links").replace("{n}", String(otherLinks))
-        );
-      }
-      return { value: String(d.id), label: parts.join("  ·  "), search: `${d.domain} ${status}`, dot: statusDot(status) };
-    });
-  }, [domains, bindModal.link, t]);
+    // Already-bound domains float to the top so removing one doesn't mean
+    // hunting through hundreds of rows. Ordering keys off the saved binding,
+    // not the pending selection, so rows don't jump while you click.
+    const boundNow = new Set((domainsByLink.get(bindModal.link.id) || []).map((d) => String(d.id)));
+    return domains
+      .map((d) => {
+        const otherLinks = domainLinkIds(d).filter((id) => id !== bindModal.link.id).length;
+        const status = String(d.status || "Active");
+        const parts = [d.domain];
+        if (status.toLowerCase() !== "active") parts.push(t(status));
+        if (otherLinks) {
+          parts.push(
+            otherLinks === 1 ? t("also on 1 other link") : t("also on {n} other links").replace("{n}", String(otherLinks))
+          );
+        }
+        return {
+          value: String(d.id),
+          label: parts.join("  ·  "),
+          search: `${d.domain} ${status}`,
+          dot: statusDot(status),
+          _bound: boundNow.has(String(d.id)) ? 0 : 1,
+          _name: String(d.domain || ""),
+        };
+      })
+      .sort((a, b) => a._bound - b._bound || a._name.localeCompare(b._name));
+  }, [domains, domainsByLink, bindModal.link, t]);
 
   return (
     <section className="form-section">
@@ -5585,6 +6014,8 @@ function MyFlowsDashboard({ authUser }) {
                   <label>{t("PWA Domains for this tracking link")}</label>
                   <CountryDropdownPicker
                     multiple
+                    removable
+                    maxVisibleChips={4}
                     values={bindModal.selected}
                     onToggle={toggleBindDomain}
                     options={bindOptions}
@@ -5592,7 +6023,7 @@ function MyFlowsDashboard({ authUser }) {
                     searchPlaceholder={t("Find domain")}
                     emptyResultsLabel={t("No domains available.")}
                   />
-                  <p className="field-hint">{t("Pick as many domains as you need — a domain can serve several tracking links at once. Register PWA domains in the Domains section first.")}</p>
+                  <p className="field-hint">{t("Bound domains sit at the top of the list. Click a row (or the ✕ on a chip) to remove it — a domain can serve several tracking links at once.")}</p>
                   {(() => {
                     const inactive = bindModal.selected
                       .map((id) => domains.find((d) => String(d.id) === id))
@@ -5614,6 +6045,264 @@ function MyFlowsDashboard({ authUser }) {
                   {bindModal.saving ? t("Saving…") : t("Save binding")}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {flowEdit.open ? (
+          <motion.div className="modal-overlay modal-overlay-scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeFlowEdit}>
+            <motion.div
+              className="modal pixel-edit-modal flow-edit-modal edit-modal-accent flow-edit-accent"
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(() => {
+                const link = flowEdit.link || {};
+                const seg = linkSegments(link);
+                const editDomains = flowEdit.form.domainIds
+                  .map((id) => domains.find((d) => String(d.id) === String(id)))
+                  .filter(Boolean)
+                  .sort((a, b) => String(a.domain || "").localeCompare(String(b.domain || "")));
+                const inKeitaro = String(link.keitaro_status || "") === "created" || !!link.keitaro_id;
+                const linkUrl = link.url || `https://${String(link.domain || "")}/${String(link.alias || "")}`;
+                const filterCount = countLinkFilters(link);
+                return (
+                  <>
+                    <div className="modal-head">
+                      <div>
+                        <p className="modal-kicker">{t("Edit Flow")}</p>
+                        <h2>{link.name}</h2>
+                      </div>
+                      <button className="icon-btn" type="button" onClick={closeFlowEdit}>
+                        <X size={18} />
+                      </button>
+                    </div>
+                    <div className="modal-body flow-edit-body">
+                      {/* 1 — the campaign name's segments */}
+                      <div className="flow-edit-section field-span-2">
+                        <div className="flow-edit-section-head"><Megaphone size={13} /> {t("Campaign")}</div>
+                        <p className="flow-edit-note">{t("These five segments are the campaign name. Saving renames it in Keitaro too.")}</p>
+                      </div>
+                      <div className="field">
+                        <label>{t("Buyer")}</label>
+                        {canFilterByBuyer ? (
+                          <CountryDropdownPicker
+                            value={flowEdit.form.buyer}
+                            onChange={updateFlowEdit("buyer")}
+                            options={buyerOptions.map((b) => ({ value: b.value, label: b.value, search: b.value }))}
+                            allowCustom
+                            placeholder={t("Select or type a buyer")}
+                            searchPlaceholder={t("Find or type a buyer")}
+                            emptyResultsLabel={t("Type to add a buyer.")}
+                          />
+                        ) : (
+                          <input value={flowEdit.form.buyer} readOnly />
+                        )}
+                      </div>
+                      <div className="field">
+                        <label>{t("Tool")} <span className="field-pace-hint">{t("read-only")}</span></label>
+                        <input value={seg.tool || "-"} readOnly title={t("The tool is bound to a Keitaro traffic source — change it in Tracking Links.")} />
+                      </div>
+                      <div className="field">
+                        <label>{t("Game / Offer")}</label>
+                        <input value={flowEdit.form.game} onChange={(e) => updateFlowEdit("game")(e.target.value)} placeholder="Chicken Road" />
+                      </div>
+                      <div className="field">
+                        <label>{t("GEO")}</label>
+                        <input value={flowEdit.form.geo} onChange={(e) => updateFlowEdit("geo")(e.target.value)} placeholder="BR" />
+                      </div>
+                      <div className="field">
+                        <label>{t("Brand")}</label>
+                        <input value={flowEdit.form.brand} onChange={(e) => updateFlowEdit("brand")(e.target.value)} placeholder="JASINO" />
+                      </div>
+                      <div className="field">
+                        <label>{t("Status")}</label>
+                        <div className="flow-edit-state" role="group">
+                          {[
+                            { value: "active", label: t("Active") },
+                            { value: "disabled", label: t("Paused") },
+                          ].map((opt) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              className={`flow-edit-state-btn${flowEdit.form.state === opt.value ? " is-active" : ""}`}
+                              onClick={() => updateFlowEdit("state")(opt.value)}
+                            >
+                              {opt.value === "active" ? <Play size={12} /> : <Pause size={12} />} {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="field field-span-2 flow-edit-namepreview">
+                        <label>{t("New campaign name")}</label>
+                        <code className={flowEditName !== link.name ? "is-changed" : ""}>{flowEditName}</code>
+                      </div>
+
+                      {/* 2 — where Keitaro sends the click */}
+                      <div className="field field-span-2">
+                        <label>{t("Keitaro Offer")}</label>
+                        <CountryDropdownPicker
+                          value={flowEdit.form.offerId}
+                          onChange={(v) => updateFlowEdit("offerId")(v || "")}
+                          options={ktOffers.list.map((offer) => ({
+                            value: String(offer.id),
+                            label: offer.country ? `${offer.name} · ${offer.country}` : offer.name,
+                            search: `${offer.name} ${offer.country || ""} ${offer.id}`,
+                          }))}
+                          placeholder={
+                            !ktOffers.loaded ? t("Loading...") : ktOffers.list.length ? t("Select an offer") : t("No offers loaded from Keitaro")
+                          }
+                          searchPlaceholder={t("Type to find offers")}
+                          emptyResultsLabel={t("No offers found.")}
+                        />
+                        <p className="field-hint">{t("Saving rebinds the campaign's stream in Keitaro to this offer. Traffic follows it immediately.")}</p>
+                      </div>
+
+                      {/* 3 — the domains this flow runs on */}
+                      <div className="flow-edit-section field-span-2">
+                        <div className="flow-edit-section-head"><Globe size={13} /> {t("PWA domains")}<span className="flow-edit-count">{editDomains.length}</span></div>
+                      </div>
+                      <div className="field field-span-2">
+                        <CountryDropdownPicker
+                          multiple
+                          removable
+                          maxVisibleChips={4}
+                          values={flowEdit.form.domainIds}
+                          onToggle={(value) =>
+                            setFlowEdit((prev) => ({
+                              ...prev,
+                              form: {
+                                ...prev.form,
+                                domainIds: prev.form.domainIds.includes(value)
+                                  ? prev.form.domainIds.filter((x) => x !== value)
+                                  : [...prev.form.domainIds, value],
+                              },
+                            }))
+                          }
+                          options={flowEditDomainOptions}
+                          placeholder={t("No domains selected")}
+                          searchPlaceholder={t("Find domain")}
+                          emptyResultsLabel={t("No domains available.")}
+                        />
+                        <p className="field-hint">{t("Bound domains sit at the top of the list. Click a row (or the ✕ on a chip) to remove it — a domain can serve several tracking links at once.")}</p>
+                      </div>
+
+                      {/* 4 — pixels, per bound domain */}
+                      <div className="flow-edit-section field-span-2">
+                        <div className="flow-edit-section-head">
+                          <Zap size={13} /> {t("Pixels")}
+                          <span className="field-pace-hint">{t("applied immediately")}</span>
+                        </div>
+                      </div>
+                      <div className="field field-span-2 flow-edit-pixels">
+                        {editDomains.length === 0 ? (
+                          <p className="flow-edit-empty">{t("Bind a domain first — pixels attach to domains, not to the link.")}</p>
+                        ) : (
+                          editDomains.map((domain) => {
+                            const host = String(domain.domain || "").toLowerCase();
+                            const attached = [...(pixelsByDomain.get(host) || [])].sort((a, b) =>
+                              String(a.pixel_id || "").localeCompare(String(b.pixel_id || ""), undefined, { numeric: true })
+                            );
+                            const attachedIds = new Set(attached.map((p) => String(p.id)));
+                            const free = pixels.filter((p) => !attachedIds.has(String(p.id)));
+                            const saved = (domainsByLink.get(link.id) || []).some((d) => String(d.id) === String(domain.id));
+                            return (
+                              <div className="flow-edit-domain" key={domain.id}>
+                                <div className="flow-edit-domain-head">
+                                  <Globe size={12} />
+                                  <span className="flow-edit-domain-name">{domain.domain}</span>
+                                  <span className={`accounts-status-pill acc-st-${String(domain.status || "Active").toLowerCase()}`}>{t(domain.status || "Active")}</span>
+                                  {!saved ? <span className="flow-edit-pending">{t("binds on save")}</span> : null}
+                                </div>
+                                <div className="flow-edit-pixelrow">
+                                  {attached.length ? (
+                                    attached.map((pixel) => {
+                                      const busy = pixelWire.busy === `detach-${pixel.id}-${host}`;
+                                      return (
+                                        <span className="flow-edit-pixel" key={pixel.id} title={pixel.comment || ""}>
+                                          <span className={`flow-pixel-dot${String(pixel.status || "Active").toLowerCase() === "active" ? " is-active" : " is-off"}`} />
+                                          <span className="flow-edit-pixel-id">{pixel.pixel_id}</span>
+                                          <CountryFlag value={normalizeCountryListValue(pixel.geo)[0]} className="flow-pixel-flag" />
+                                          <button
+                                            type="button"
+                                            className="flow-edit-pixel-remove"
+                                            disabled={!!pixelWire.busy || !saved}
+                                            title={saved ? t("Remove this pixel from the domain") : t("Save the binding first")}
+                                            aria-label={t("Remove this pixel from the domain")}
+                                            onClick={() => detachPixelFromHost(pixel, host)}
+                                          >
+                                            {busy ? "…" : <X size={11} />}
+                                          </button>
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="flow-edit-nopixel">{t("No pixels yet")}</span>
+                                  )}
+                                  <Select
+                                    className="flow-edit-attach"
+                                    value=""
+                                    onChange={(value) => attachPixelToHost(value, host)}
+                                    options={free.map((p) => ({
+                                      value: String(p.id),
+                                      label: `${p.pixel_id}${normalizeCountryListValue(p.geo).length ? ` · ${normalizeCountryListValue(p.geo).join(", ")}` : ""}`,
+                                    }))}
+                                    placeholder={free.length ? t("Attach a pixel…") : t("Every pixel is already attached")}
+                                    searchPlaceholder={t("Find pixel")}
+                                    emptyResultsLabel={t("No pixels found.")}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        {pixelWire.error ? <div className="pw-error">{pixelWire.error}</div> : null}
+                      </div>
+
+                      {/* 5 — the parts that are facts, not settings */}
+                      <div className="field field-span-2 flow-edit-facts">
+                        <div className="flow-edit-fact">
+                          <span>{t("Tracking link")}</span>
+                          <button type="button" className="flow-edit-copy" onClick={copyValue(`edit-${link.id}`, linkUrl)}>
+                            <code>{`${String(link.domain || "")}/${String(link.alias || "")}`}</code>
+                            {copied === `edit-${link.id}` ? <CheckCircle size={12} /> : <Copy size={12} />}
+                          </button>
+                        </div>
+                        <div className="flow-edit-fact">
+                          <span>{t("Keitaro")}</span>
+                          <strong>{inKeitaro ? `#${link.keitaro_id}` : t("Local only")}</strong>
+                        </div>
+                        <div className="flow-edit-fact">
+                          <span>{t("Filters")}</span>
+                          <strong>{filterCount ? `${filterCount} ${filterCount === 1 ? t("rule") : t("rules")}` : t("None")}</strong>
+                        </div>
+                        <div className="flow-edit-fact">
+                          <span>{t("Created")}</span>
+                          <strong>{link.created_at ? new Date(link.created_at).toLocaleDateString() : "—"}</strong>
+                        </div>
+                      </div>
+
+                      {flowEdit.error ? <div className="field field-span-2"><div className="api-status error">{flowEdit.error}</div></div> : null}
+                    </div>
+                    <div className="modal-actions modal-actions-split">
+                      <button type="button" className="flow-edit-external" onClick={() => openInTrackingLinks(link)}>
+                        <ExternalLink size={13} /> {t("Params & filters in Tracking Links")}
+                      </button>
+                      <div className="flow-edit-actions-right">
+                        <button className="ghost" type="button" onClick={closeFlowEdit}>{t("Cancel")}</button>
+                        <button className="action-pill" type="button" onClick={saveFlowEdit} disabled={flowEdit.saving}>
+                          {flowEdit.saving ? t("Saving…") : t("Save changes")}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </motion.div>
           </motion.div>
         ) : null}
@@ -5890,7 +6579,117 @@ function MyFlowsDashboard({ authUser }) {
             </div>
           </div>
           <div className="panel-head-actions">
-            {links.length ? (
+            <span className="roles-count">
+              {filteredLinks.length === links.length
+                ? `${links.length} ${t("links")}`
+                : `${filteredLinks.length} / ${links.length} ${t("links")}`}
+            </span>
+          </div>
+        </div>
+
+        {links.length ? (
+          <>
+            <div className="pixel-table-toolbar flow-toolbar">
+              <div className="field registry-search-field">
+                <label>{t("Search")}</label>
+                <div className="registry-search">
+                  <Search size={14} aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={filters.search}
+                    onChange={(e) => setFilters((prev) => ({ ...prev, search: e.target.value }))}
+                    placeholder={t("Campaign, alias, domain or pixel…")}
+                  />
+                  {filters.search ? (
+                    <button type="button" className="registry-search-clear" onClick={() => setFilters((prev) => ({ ...prev, search: "" }))} aria-label={t("Clear search")}>
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              {canFilterByBuyer && buyerOptions.length ? (
+                <div className="field">
+                  <label>{t("Buyer")}</label>
+                  <CountryDropdownPicker
+                    multiple
+                    removable
+                    values={filters.buyers}
+                    onToggle={setFilterList("buyers")}
+                    options={buyerOptions}
+                    placeholder={t("All buyers")}
+                    searchPlaceholder={t("Type to find buyers")}
+                    emptyResultsLabel={t("No buyers found.")}
+                  />
+                </div>
+              ) : null}
+              <div className="field">
+                <label>{t("Country")}</label>
+                <CountryDropdownPicker
+                  multiple
+                  removable
+                  values={filters.countries}
+                  onToggle={setFilterList("countries")}
+                  options={countryOptionsForFlows}
+                  placeholder={t("All countries")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              <div className="field">
+                <label>{t("Domain")}</label>
+                <CountryDropdownPicker
+                  multiple
+                  removable
+                  values={filters.domains}
+                  onToggle={setFilterList("domains")}
+                  options={domainOptionsForFlows}
+                  placeholder={domainOptionsForFlows.length ? t("All domains") : t("No domains bound")}
+                  searchPlaceholder={t("Find domain")}
+                  emptyResultsLabel={t("No domains available.")}
+                />
+              </div>
+              {brandOptions.length > 1 ? (
+                <div className="field">
+                  <label>{t("Brand")}</label>
+                  <CountryDropdownPicker
+                    multiple
+                    removable
+                    values={filters.brands}
+                    onToggle={setFilterList("brands")}
+                    options={brandOptions}
+                    placeholder={t("All brands")}
+                    searchPlaceholder={t("Find brand")}
+                    emptyResultsLabel={t("No brands found.")}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flow-toolbar-row">
+              <div className="flow-flags" role="group" aria-label={t("Filter by health")}>
+                {FLOW_FLAGS.map((flag) => {
+                  const count = flagCounts.get(flag.value) || 0;
+                  const on = filters.flags.includes(flag.value);
+                  if (!count && !on) return null;
+                  return (
+                    <button
+                      key={flag.value}
+                      type="button"
+                      className={`flow-flag tone-${flag.tone}${on ? " is-active" : ""}`}
+                      onClick={() => setFilterList("flags")(flag.value)}
+                      aria-pressed={on}
+                    >
+                      {flag.label}
+                      <span className="flow-flag-count">{count}</span>
+                    </button>
+                  );
+                })}
+                {activeFilterCount ? (
+                  <button type="button" className="flow-flag is-clear" onClick={() => setFilters(EMPTY_FLOW_FILTERS)}>
+                    <X size={12} /> {t("Clear filters")}
+                  </button>
+                ) : null}
+              </div>
               <div className="flow-sort" role="group" aria-label={t("Sort flows")}>
                 <ArrowDownUp size={13} />
                 {SORT_OPTIONS.map((opt) => (
@@ -5904,10 +6703,9 @@ function MyFlowsDashboard({ authUser }) {
                   </button>
                 ))}
               </div>
-            ) : null}
-            <span className="roles-count">{links.length} {t("links")}</span>
-          </div>
-        </div>
+            </div>
+          </>
+        ) : null}
 
         {unboundDomains.length ? (
           <div className="flow-unbound-banner">
@@ -5930,6 +6728,11 @@ function MyFlowsDashboard({ authUser }) {
           <div className="empty-state error">{state.error}</div>
         ) : links.length === 0 ? (
           <div className="empty-state">{t("No tracking links yet. Create one in Tracking Links first.")}</div>
+        ) : sortedLinks.length === 0 ? (
+          <div className="empty-state">
+            {t("No flows match these filters.")}{" "}
+            <button type="button" className="flow-empty-cta" onClick={() => setFilters(EMPTY_FLOW_FILTERS)}>{t("Clear filters")}</button>
+          </div>
         ) : (
           <div className="flow-tree">
             {sortedLinks.map((link) => {
@@ -6023,33 +6826,82 @@ function MyFlowsDashboard({ authUser }) {
                         <div className="flow-stats-strip is-empty">{t("No traffic in the last 7 days.")}</div>
                       ) : null;
                     }
-                    const group = (tag, s, tone) => (
-                      <div className={`flow-stats-block is-${tone}${s.ftds > 0 ? " has-ftd" : ""}`}>
-                        <span className="flow-stats-tag">{tag}</span>
-                        <span className="flow-stat">
-                          <strong>{s.uniques.toLocaleString()}</strong>
-                          <em>{t("uniques")}</em>
-                        </span>
-                        <span className="flow-stat">
-                          <strong>{s.registers.toLocaleString()}</strong>
-                          <em>{t("regs")}</em>
-                        </span>
-                        <span className={`flow-stat${s.ftds > 0 ? " is-good" : ""}`}>
-                          <strong>{s.ftds.toLocaleString()}</strong>
-                          <em>FTD</em>
-                        </span>
-                        {s.revenue > 0 ? (
-                          <span className="flow-stat is-rev">
-                            <strong>{formatCurrency(s.revenue)}</strong>
-                            <em>{t("rev")}</em>
-                          </span>
-                        ) : null}
-                      </div>
-                    );
+                    // Rate of the step below it — the two numbers a buyer
+                    // actually judges a flow on.
+                    const rate = (num, den) => {
+                      if (!(den > 0)) return "—";
+                      if (!num) return "0%";
+                      const pct = (num / den) * 100;
+                      return `${pct.toFixed(pct >= 10 ? 0 : 1)}%`;
+                    };
+                    // Week-over-week on uniques: the one number that says
+                    // whether a flow is being scaled or is bleeding out.
+                    const trend = (() => {
+                      const now = stats.week.uniques;
+                      const before = stats.prev.uniques;
+                      if (!before) return now > 0 ? { dir: "new", label: t("new") } : null;
+                      const change = ((now - before) / before) * 100;
+                      if (Math.abs(change) < 1) return { dir: "flat", label: "0%" };
+                      return {
+                        dir: change > 0 ? "up" : "down",
+                        label: `${change > 0 ? "+" : "−"}${Math.abs(change) >= 10 ? Math.round(Math.abs(change)) : Math.abs(change).toFixed(1)}%`,
+                      };
+                    })();
+                    const group = (tag, s, tone, options = {}) => {
+                      const quiet = s.uniques === 0 && s.registers === 0;
+                      return (
+                        <div className={`flow-stats-block is-${tone}${s.ftds > 0 ? " has-ftd" : ""}${quiet ? " is-quiet" : ""}`}>
+                          <div className="flow-stats-blockhead">
+                            <span className="flow-stats-tag">{tag}</span>
+                            {options.trend ? (
+                              <span className={`flow-trend is-${options.trend.dir}`} title={t("Unique clicks vs the previous 7 days")}>
+                                {options.trend.dir === "up" ? <TrendingUp size={11} /> : null}
+                                {options.trend.dir === "down" ? <TrendingDown size={11} /> : null}
+                                {options.trend.label}
+                              </span>
+                            ) : null}
+                            <span className="flow-stats-rates">
+                              <span className="flow-rate" title={t("Registrations per unique click")}>
+                                <em>CR</em> {rate(s.registers, s.uniques)}
+                              </span>
+                              <span className={`flow-rate${s.ftds > 0 ? " is-good" : ""}`} title={t("FTDs per registration")}>
+                                <em>FTD</em> {rate(s.ftds, s.registers)}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flow-stats-row">
+                            <span className="flow-stat">
+                              <strong>{s.uniques.toLocaleString()}</strong>
+                              <em>{t("uniques")}</em>
+                            </span>
+                            <span className="flow-stat">
+                              <strong>{s.registers.toLocaleString()}</strong>
+                              <em>{t("regs")}</em>
+                            </span>
+                            <span className={`flow-stat${s.ftds > 0 ? " is-good" : ""}`}>
+                              <strong>{s.ftds.toLocaleString()}</strong>
+                              <em>FTD</em>
+                            </span>
+                            <span className={`flow-stat is-rev${s.revenue > 0 ? "" : " is-zero"}`}>
+                              <strong>{formatCurrency(s.revenue)}</strong>
+                              <em>{t("revenue")}</em>
+                            </span>
+                            {options.extra}
+                          </div>
+                        </div>
+                      );
+                    };
                     return (
                       <div className="flow-stats-strip">
                         {group(t("Today"), stats.today, "today")}
-                        {group(t("7 days"), stats.week, "week")}
+                        {group(t("Last 7 days"), stats.week, "week", {
+                          trend,
+                          extra: (
+                            <span className="flow-spark-wrap" title={t("Unique clicks, last 7 days")}>
+                              <FlowSparkline values={stats.series} />
+                            </span>
+                          ),
+                        })}
                       </div>
                     );
                   })()}
@@ -6084,6 +6936,25 @@ function MyFlowsDashboard({ authUser }) {
                                 <button type="button" className="icon-btn flow-node-detail" aria-label={t("Detailed information")} data-tip={t("Details")} onClick={() => setDetail({ open: true, link, domain, pixels: dPixels })}>
                                   <Eye size={14} />
                                 </button>
+                                {(() => {
+                                  const unbindKey = `${link.id}:${domain.id}`;
+                                  const armed = unbindArmed === unbindKey;
+                                  const busy = unbinding === unbindKey;
+                                  return (
+                                    <button
+                                      type="button"
+                                      className={`flow-node-unbind${armed ? " is-armed" : ""}`}
+                                      disabled={busy}
+                                      aria-label={t("Unbind domain from this link")}
+                                      title={t("Unbind domain from this link")}
+                                      onClick={() => (armed ? unbindDomain(link, domain) : armUnbind(unbindKey))}
+                                    >
+                                      <Unlink size={13} />
+                                      {armed ? <span>{t("Confirm")}</span> : null}
+                                      {busy ? <span>{t("Removing…")}</span> : null}
+                                    </button>
+                                  );
+                                })()}
                               </div>
                               {dPixels.length ? (
                                 <div className="flow-node-pixels">
@@ -6115,6 +6986,9 @@ function MyFlowsDashboard({ authUser }) {
                     </button>
                     <button type="button" className="flow-action-ghost" onClick={() => setFlowViz({ open: true, link: { ...link, _domains: linkDomains, _pixelsByDomain: pixelsByDomain } })}>
                       <Zap size={13} /> {t("Traffic flow")}
+                    </button>
+                    <button type="button" className="flow-action-ghost" onClick={() => openFlowEdit(link)} title={t("Edit everything about this flow")}>
+                      <Pencil size={13} /> {t("Edit flow")}
                     </button>
                   </div>
                 </div>
@@ -12920,9 +13794,16 @@ function DomainsDashboard({ authUser }) {
     error: null,
     form: { domain: "", game: "", platform: "PWA Group", countries: [], ownerId: "" },
   });
+  const [pixels, setPixels] = React.useState([]);
+  // Pixel wiring inside the domain modal — applies straight away (it writes
+  // to the pixel, not the domain), so it keeps its own busy/error state.
+  const [pixelWire, setPixelWire] = React.useState({ busy: null, error: null, replacing: null, adding: false });
+  const [newPixelForm, setNewPixelForm] = React.useState({ pixelId: "", tokenEaag: "", geos: [] });
 
   const openDomainEdit = (domain) => {
     if (!domain?.id) return;
+    setPixelWire({ busy: null, error: null, replacing: null, adding: false });
+    setNewPixelForm({ pixelId: "", tokenEaag: "", geos: [] });
     setDomainEdit({
       open: true,
       domain,
@@ -12942,6 +13823,122 @@ function DomainsDashboard({ authUser }) {
 
   const closeDomainEdit = () => {
     setDomainEdit({ open: false, domain: null, saving: false, error: null, form: { domain: "", game: "", platform: "PWA Group", countries: [], ownerId: "" } });
+    setPixelWire({ busy: null, error: null, replacing: null, adding: false });
+    setNewPixelForm({ pixelId: "", tokenEaag: "", geos: [] });
+  };
+
+  // ── Pixels on the domain being edited ──────────────────────────────
+  // Attachment lives on the pixel's `flows` list, keyed by the domain host
+  // as saved (renaming the domain is a separate, explicit Save Changes).
+  const editHost = React.useMemo(
+    () => normalizeDomainInputList(domainEdit.domain?.domain)[0] || "",
+    [domainEdit.domain]
+  );
+  const pixelHosts = React.useCallback((pixel) => normalizeDomainInputList(pixel?.flows), []);
+  const attachedPixels = React.useMemo(() => {
+    if (!editHost) return [];
+    return pixels
+      .filter((p) => pixelHosts(p).includes(editHost))
+      .sort((a, b) => String(a.pixel_id || "").localeCompare(String(b.pixel_id || ""), undefined, { numeric: true }));
+  }, [pixels, editHost, pixelHosts]);
+  const detachedPixels = React.useMemo(() => {
+    if (!editHost) return [];
+    return pixels
+      .filter((p) => !pixelHosts(p).includes(editHost))
+      .sort((a, b) => String(a.pixel_id || "").localeCompare(String(b.pixel_id || ""), undefined, { numeric: true }));
+  }, [pixels, editHost, pixelHosts]);
+
+  const patchPixelFlows = async (pixel, nextHosts) => {
+    const response = await apiFetch(`/api/pixels/${pixel.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ flows: nextHosts }),
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail?.error || "Failed to update the pixel.");
+    }
+  };
+
+  const attachPixelToDomain = async (pixelId) => {
+    const pixel = pixels.find((p) => String(p.id) === String(pixelId));
+    if (!pixel || !editHost) return;
+    setPixelWire((prev) => ({ ...prev, busy: `attach-${pixel.id}`, error: null }));
+    try {
+      await patchPixelFlows(pixel, Array.from(new Set([...pixelHosts(pixel), editHost])));
+      await fetchPixels();
+      setPixelWire({ busy: null, error: null, replacing: null, adding: false });
+    } catch (error) {
+      setPixelWire((prev) => ({ ...prev, busy: null, error: error.message || "Failed to attach the pixel." }));
+    }
+  };
+
+  const detachPixelFromDomain = async (pixel) => {
+    if (!pixel || !editHost) return;
+    setPixelWire((prev) => ({ ...prev, busy: `detach-${pixel.id}`, error: null }));
+    try {
+      await patchPixelFlows(pixel, pixelHosts(pixel).filter((host) => host !== editHost));
+      await fetchPixels();
+      setPixelWire((prev) => ({ ...prev, busy: null, replacing: null }));
+    } catch (error) {
+      setPixelWire((prev) => ({ ...prev, busy: null, error: error.message || "Failed to remove the pixel." }));
+    }
+  };
+
+  // Swap one pixel for another in a single step: the old one loses this
+  // domain, the new one gains it. Its other domains are left untouched.
+  const replacePixelOnDomain = async (oldPixel, nextPixelId) => {
+    const next = pixels.find((p) => String(p.id) === String(nextPixelId));
+    if (!oldPixel || !next || !editHost) return;
+    setPixelWire((prev) => ({ ...prev, busy: `replace-${oldPixel.id}`, error: null }));
+    try {
+      await patchPixelFlows(oldPixel, pixelHosts(oldPixel).filter((host) => host !== editHost));
+      await patchPixelFlows(next, Array.from(new Set([...pixelHosts(next), editHost])));
+      await fetchPixels();
+      setPixelWire({ busy: null, error: null, replacing: null, adding: false });
+    } catch (error) {
+      setPixelWire((prev) => ({ ...prev, busy: null, error: error.message || "Failed to replace the pixel." }));
+    }
+  };
+
+  const toggleNewPixelGeo = React.useCallback((geo) => {
+    const normalized = String(geo || "").trim();
+    if (!normalized) return;
+    setNewPixelForm((prev) => {
+      const current = normalizeCountryListValue(prev.geos);
+      return {
+        ...prev,
+        geos: current.includes(normalized) ? current.filter((g) => g !== normalized) : [...current, normalized],
+      };
+    });
+  }, []);
+
+  const createPixelOnDomain = async () => {
+    if (!editHost) return;
+    const pixelId = String(newPixelForm.pixelId || "").trim();
+    const tokenEaag = String(newPixelForm.tokenEaag || "").trim();
+    const geos = normalizeCountryListValue(newPixelForm.geos);
+    if (!pixelId || !tokenEaag || !geos.length) {
+      setPixelWire((prev) => ({ ...prev, error: "Pixel ID, EAAG token and at least one GEO are required." }));
+      return;
+    }
+    setPixelWire((prev) => ({ ...prev, busy: "create", error: null }));
+    try {
+      const response = await apiFetch("/api/pixels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pixelId, tokenEaag, geos, flows: [editHost], status: "Active" }),
+      });
+      if (!response.ok) {
+        const detail = await response.json().catch(() => null);
+        throw new Error(detail?.error || "Failed to create the pixel.");
+      }
+      setNewPixelForm({ pixelId: "", tokenEaag: "", geos: [] });
+      await fetchPixels();
+      setPixelWire({ busy: null, error: null, replacing: null, adding: false });
+    } catch (error) {
+      setPixelWire((prev) => ({ ...prev, busy: null, error: error.message || "Failed to create the pixel." }));
+    }
   };
 
   // Open Graph / Sharing Debugger modal (Meta domain verification preview)
@@ -13119,10 +14116,24 @@ function DomainsDashboard({ authUser }) {
     }
   }, []);
 
+  // Pixels are attached to a domain through their own `flows` list, so the
+  // domain editor manages them by rewriting that list on the pixel.
+  const fetchPixels = React.useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/pixels?limit=500");
+      if (!response.ok) return;
+      const data = await response.json();
+      setPixels(Array.isArray(data) ? data : []);
+    } catch (error) {
+      /* the pixel section degrades to empty */
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchDomains();
     fetchUsers();
-  }, [fetchDomains, fetchUsers]);
+    fetchPixels();
+  }, [fetchDomains, fetchUsers, fetchPixels]);
 
   const userMap = React.useMemo(() => {
     const map = new Map();
@@ -13913,7 +14924,7 @@ function DomainsDashboard({ authUser }) {
       <AnimatePresence>
         {domainEdit.open ? (
           <motion.div
-            className="modal-overlay"
+            className="modal-overlay modal-overlay-scroll"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -13986,6 +14997,166 @@ function DomainsDashboard({ authUser }) {
                     emptyResultsLabel={t("No countries found.")}
                   />
                 </div>
+
+                {/* Pixels wired to this domain — add, swap or detach. These
+                    write to the pixel, so they apply on click, not on Save. */}
+                <div className="field field-span-2 domain-pixels-field">
+                  <label>
+                    <Zap size={12} /> {t("Pixels on this domain")}
+                    <span className="domain-pixels-count">{attachedPixels.length}</span>
+                    <span className="field-pace-hint">{t("applied immediately")}</span>
+                  </label>
+                  {attachedPixels.length ? (
+                    <div className="domain-pixel-list">
+                      {attachedPixels.map((pixel) => {
+                        const active = String(pixel.status || "Active").toLowerCase() === "active";
+                        const geos = normalizeCountryListValue(pixel.geo);
+                        const others = pixelHosts(pixel).filter((host) => host !== editHost);
+                        const busyKey = pixelWire.busy;
+                        const isReplacing = String(pixelWire.replacing) === String(pixel.id);
+                        return (
+                          <div className={`domain-pixel-row${isReplacing ? " is-replacing" : ""}`} key={pixel.id}>
+                            <div className="domain-pixel-main">
+                              <span className={`flow-pixel-dot${active ? " is-active" : " is-off"}`} />
+                              <span className="domain-pixel-id">{pixel.pixel_id}</span>
+                              {geos.length ? (
+                                <span className="domain-pixel-geos" title={geos.join(", ")}>
+                                  {geos.map((g) => <CountryFlag key={g} value={g} />)}
+                                </span>
+                              ) : null}
+                              <code className="domain-pixel-token" title={pixel.token_eaag}>{maskEaagToken(pixel.token_eaag)}</code>
+                              {others.length ? (
+                                <span className="domain-pixel-shared" title={others.join(", ")}>
+                                  {others.length === 1
+                                    ? t("also on 1 other domain")
+                                    : t("also on {n} other domains").replace("{n}", String(others.length))}
+                                </span>
+                              ) : null}
+                              <div className="domain-pixel-actions">
+                                <button
+                                  type="button"
+                                  className="domain-pixel-btn"
+                                  disabled={!!busyKey || !detachedPixels.length}
+                                  title={detachedPixels.length ? t("Replace with another pixel") : t("No other pixels available")}
+                                  onClick={() => setPixelWire((prev) => ({ ...prev, replacing: isReplacing ? null : pixel.id, error: null }))}
+                                >
+                                  <RefreshCw size={13} /> {t("Replace")}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="domain-pixel-btn is-danger"
+                                  disabled={!!busyKey}
+                                  title={t("Remove this pixel from the domain")}
+                                  onClick={() => detachPixelFromDomain(pixel)}
+                                >
+                                  {busyKey === `detach-${pixel.id}` ? t("Removing…") : <><X size={13} /> {t("Remove")}</>}
+                                </button>
+                              </div>
+                            </div>
+                            {isReplacing ? (
+                              <div className="domain-pixel-replace">
+                                <Select
+                                  value=""
+                                  onChange={(value) => replacePixelOnDomain(pixel, value)}
+                                  options={detachedPixels.map((p) => ({
+                                    value: String(p.id),
+                                    label: `${p.pixel_id}${normalizeCountryListValue(p.geo).length ? ` · ${normalizeCountryListValue(p.geo).join(", ")}` : ""}`,
+                                  }))}
+                                  placeholder={busyKey === `replace-${pixel.id}` ? t("Replacing…") : t("Pick the replacement pixel")}
+                                  searchPlaceholder={t("Find pixel")}
+                                  emptyResultsLabel={t("No pixels found.")}
+                                />
+                                <button type="button" className="domain-pixel-btn" onClick={() => setPixelWire((prev) => ({ ...prev, replacing: null }))}>
+                                  {t("Cancel")}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="domain-pixel-empty">{t("No pixels attached to this domain yet.")}</div>
+                  )}
+
+                  {/* Pixels point at the host by name, so a rename would leave
+                      them on the old one — say so before Save Changes. */}
+                  {attachedPixels.length &&
+                  normalizeDomainInputList(domainEdit.form.domain)[0] &&
+                  normalizeDomainInputList(domainEdit.form.domain)[0] !== editHost ? (
+                    <p className="field-hint domain-pixel-rename-warning">
+                      <AlertTriangle size={12} />{" "}
+                      {t("Saving the new domain name leaves these pixels on {host} — re-attach them afterwards.").replace("{host}", editHost)}
+                    </p>
+                  ) : null}
+
+                  <div className="domain-pixel-attach">
+                    <Select
+                      className="domain-pixel-attach-select"
+                      value=""
+                      onChange={(value) => attachPixelToDomain(value)}
+                      options={detachedPixels.map((p) => ({
+                        value: String(p.id),
+                        label: `${p.pixel_id}${normalizeCountryListValue(p.geo).length ? ` · ${normalizeCountryListValue(p.geo).join(", ")}` : ""}`,
+                      }))}
+                      placeholder={detachedPixels.length ? t("Attach an existing pixel…") : t("Every pixel is already attached")}
+                      searchPlaceholder={t("Find pixel")}
+                      emptyResultsLabel={t("No pixels found.")}
+                    />
+                    <button
+                      type="button"
+                      className={`domain-pixel-btn is-add${pixelWire.adding ? " is-active" : ""}`}
+                      onClick={() => setPixelWire((prev) => ({ ...prev, adding: !prev.adding, error: null }))}
+                    >
+                      {pixelWire.adding ? <><X size={13} /> {t("Close")}</> : <><Plus size={13} strokeWidth={2.5} /> {t("New pixel")}</>}
+                    </button>
+                  </div>
+
+                  {pixelWire.adding ? (
+                    <div className="domain-pixel-new">
+                      <div className="field">
+                        <label>{t("Pixel ID")}</label>
+                        <input
+                          value={newPixelForm.pixelId}
+                          onChange={(e) => setNewPixelForm((prev) => ({ ...prev, pixelId: e.target.value }))}
+                          placeholder="123456789012345"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>{t("EAAG Token")}</label>
+                        <input
+                          value={newPixelForm.tokenEaag}
+                          onChange={(e) => setNewPixelForm((prev) => ({ ...prev, tokenEaag: e.target.value }))}
+                          placeholder="EAAG…"
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                      <div className="field field-span-2">
+                        <label>{t("Geos")}</label>
+                        <CountryDropdownPicker
+                          multiple
+                          removable
+                          values={newPixelForm.geos}
+                          onToggle={toggleNewPixelGeo}
+                          options={countryOptions}
+                          placeholder={t("Pick countries")}
+                          searchPlaceholder={t("Type to find countries")}
+                          emptyResultsLabel={t("No countries found.")}
+                        />
+                      </div>
+                      <div className="domain-pixel-new-actions">
+                        <button type="button" className="action-pill" disabled={pixelWire.busy === "create"} onClick={createPixelOnDomain}>
+                          {pixelWire.busy === "create" ? t("Saving…") : t("Create & attach")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {pixelWire.error ? <div className="pw-error domain-pixel-error">{pixelWire.error}</div> : null}
+                </div>
+
                 {domainEdit.error ? <div className="field field-span-2"><div className="pw-error">{domainEdit.error}</div></div> : null}
               </div>
               <div className="modal-actions">

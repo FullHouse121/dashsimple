@@ -1988,6 +1988,13 @@ select {
   gap: 18px;
 }
 
+/* Tall dialogs (Edit Domain with its pixel block) scroll the overlay rather
+   than the modal body, so the dropdown menus inside stay unclipped. */
+.modal-overlay-scroll { overflow-y: auto; padding: 28px 16px; align-items: start; }
+@supports (align-items: safe center) {
+  .modal-overlay-scroll { align-items: safe center; }
+}
+
 .dashboard-filters-modal {
   width: min(620px, 94vw);
   position: relative;
@@ -14517,45 +14524,96 @@ select option,
 .flow-count-pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 8px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.03); font-size: 12px; font-weight: 650; color: var(--text); cursor: default; }
 .flow-count-pill svg { color: #6ad6ff; }
 
-/* Live per-flow performance strip (today + last 7 days) — two accent-coded
-   stat blocks: blue = today, green = the 7-day window. */
+/* Live per-flow performance strip (today + last 7 days). Two blocks that
+   read as one instrument: a quiet "today" pulse and the emerald 7-day
+   window that carries the rates, the revenue and the sparkline. */
 .flow-stats-strip { display: flex; flex-wrap: wrap; gap: 10px; }
-.flow-stats-strip.is-empty { padding: 8px 12px; border-radius: 10px; border: 1px dashed var(--stroke); color: var(--faint, #6b7079); font-size: 12px; }
+.flow-stats-strip.is-empty {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 12px;
+  border: 1px dashed var(--stroke); color: var(--faint, #6b7079); font-size: 12px;
+  letter-spacing: 0.01em;
+}
 .flow-stats-block {
   position: relative; overflow: hidden;
-  flex: 1 1 260px; display: flex; align-items: center; gap: 22px;
-  padding: 13px 18px 13px 20px; border-radius: 12px;
+  flex: 1 1 300px; display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 16px 13px; border-radius: 14px;
   border: 1px solid var(--stroke);
-  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012));
+  background:
+    radial-gradient(130% 150% at 0% 0%, color-mix(in srgb, var(--fs-accent) 9%, transparent), transparent 62%),
+    linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.008));
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
 .flow-stats-block::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-  background: var(--fs-accent, #64b8ff);
-  box-shadow: 0 0 14px var(--fs-accent, #64b8ff);
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--fs-accent, #36d07c);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--fs-accent) 55%, transparent);
 }
-.flow-stats-block.is-today { --fs-accent: #64b8ff; }
+.flow-stats-block.is-today { --fs-accent: #8f9aa8; }
 .flow-stats-block.is-week { --fs-accent: #36d07c; }
-.flow-stats-block.has-ftd { border-color: rgba(54, 208, 124, 0.3); }
-.flow-stats-block.has-ftd::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(120% 140% at 100% 50%, rgba(54,208,124,0.09), transparent 55%);
+.flow-stats-block.has-ftd { border-color: color-mix(in srgb, var(--green) 32%, var(--stroke)); }
+
+.flow-stats-blockhead { display: flex; align-items: center; gap: 8px; }
+.flow-stats-blockhead .flow-stats-rates { margin-left: auto; }
+/* Idle windows stay legible but stop shouting — dozens of them scroll past. */
+.flow-stats-block.is-quiet { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005)); }
+.flow-stats-block.is-quiet::before { opacity: 0.35; box-shadow: none; }
+.flow-stats-block.is-quiet .flow-stat strong { color: var(--muted, #8f96a3); }
+.flow-stats-block.is-quiet .flow-stat em { color: var(--faint, #6b7079); }
+.flow-stats-block.is-quiet .flow-spark { color: var(--stroke-strong, #3a3e47); }
+
+/* Week-over-week on uniques */
+.flow-trend {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 2px 8px; border-radius: 7px;
+  color: var(--muted-strong, #a9adb7); border: 1px solid var(--stroke); background: rgba(255,255,255,0.025);
 }
+.flow-trend.is-up { color: #7fe8ae; border-color: rgba(54,208,124,0.3); background: rgba(54,208,124,0.08); }
+.flow-trend.is-down { color: #ff9b9b; border-color: rgba(255,107,107,0.28); background: rgba(255,107,107,0.07); }
+.flow-trend.is-new { color: #8ecbff; border-color: rgba(100,184,255,0.28); background: rgba(100,184,255,0.08); text-transform: uppercase; letter-spacing: 0.08em; font-size: 9.5px; }
 .flow-stats-tag {
-  font-size: 9.5px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
-  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 7px; white-space: nowrap;
+  color: color-mix(in srgb, var(--fs-accent) 78%, #ffffff);
+  background: color-mix(in srgb, var(--fs-accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fs-accent) 26%, transparent);
 }
-.flow-stats-block.is-today .flow-stats-tag { color: #8ecbff; background: rgba(100, 184, 255, 0.13); border: 1px solid rgba(100, 184, 255, 0.28); }
-.flow-stats-block.is-week .flow-stats-tag { color: #5fe3a1; background: rgba(54, 208, 124, 0.13); border: 1px solid rgba(54, 208, 124, 0.28); }
+.flow-stats-rates { display: inline-flex; align-items: center; gap: 6px; }
+.flow-rate {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums;
+  color: var(--muted-strong, #a9adb7);
+  padding: 2px 8px; border-radius: 7px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.025);
+}
+.flow-rate em {
+  font-style: normal; font-size: 9px; font-weight: 800; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--faint, #6b7079);
+}
+.flow-rate.is-good { color: #7fe8ae; border-color: rgba(54,208,124,0.28); background: rgba(54,208,124,0.07); }
+.flow-rate.is-good em { color: rgba(127, 232, 174, 0.7); }
+
+.flow-stats-row { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; }
 .flow-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .flow-stat strong {
-  font-family: ui-monospace, Menlo, monospace; font-size: 24px; font-weight: 750;
+  font-family: ui-monospace, Menlo, monospace; font-size: 22px; font-weight: 750;
   line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
-.flow-stat em { font-style: normal; font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.flow-stat.is-good strong { color: var(--green); text-shadow: 0 0 14px rgba(54, 208, 124, 0.4); }
+.flow-stat em { font-style: normal; font-size: 9.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.flow-stat.is-good strong { color: var(--green); text-shadow: 0 0 16px rgba(54, 208, 124, 0.35); }
 .flow-stat.is-good em { color: rgba(95, 227, 161, 0.75); }
 .flow-stat.is-rev strong { color: var(--green); }
 .flow-stat.is-rev em { color: rgba(95, 227, 161, 0.75); }
+.flow-stat.is-rev.is-zero strong { color: var(--faint, #6b7079); text-shadow: none; }
+.flow-stat.is-rev.is-zero em { color: var(--faint, #6b7079); }
+
+.flow-spark-wrap { margin-left: auto; display: flex; align-items: flex-end; padding-bottom: 2px; }
+.flow-spark { display: block; overflow: visible; color: var(--stroke-strong, #3a3e47); }
 
 .flow-card-tree { position: relative; margin-top: 2px; padding: 14px 0 2px 22px; border-top: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 12px; }
 .flow-card-tree::before { content: ""; position: absolute; left: 7px; top: 16px; bottom: 16px; width: 2px; background: var(--stroke-strong, #3a3e47); border-radius: 2px; }
@@ -14567,6 +14625,47 @@ select option,
 .flow-node-tag { font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--stroke); }
 .flow-node-geos { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .flow-node-detail { width: 30px; height: 30px; }
+/* Unbind arms on the first click and only detaches on the second. */
+.flow-node-unbind {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 9px; border-radius: 9px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.02);
+  color: var(--faint, #6b7079); font-size: 11.5px; font-weight: 650;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.flow-node-unbind:hover { color: #ff9b9b; border-color: rgba(255,107,107,0.4); background: rgba(255,107,107,0.07); }
+.flow-node-unbind.is-armed { color: #ff8a8a; border-color: rgba(255,107,107,0.6); background: rgba(255,107,107,0.12); }
+.flow-node-unbind:disabled { opacity: 0.6; }
+
+/* ── My Flows toolbar ───────────────────────────────────────────────
+   Dimension pickers on top (search / buyer / country / domain / brand),
+   health flags + sort underneath. The flags are the cut a media buyer
+   actually needs: which flows can't run, and which are alive. */
+.flow-toolbar { margin-bottom: 10px; }
+.flow-toolbar-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px 16px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.flow-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+.flow-flag {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 28px; padding: 0 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 600; color: var(--muted-strong, #a9adb7);
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.flow-flag:hover { color: var(--text); border-color: var(--stroke-strong, #3a3e47); }
+.flow-flag-count {
+  font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: 5px;
+  color: var(--faint, #6b7079); background: rgba(255,255,255,0.05);
+}
+.flow-flag.is-active { color: #071108; border-color: transparent; background: var(--green); }
+.flow-flag.is-active .flow-flag-count { color: rgba(7, 17, 8, 0.65); background: rgba(7, 17, 8, 0.14); }
+.flow-flag.tone-warn.is-active { background: var(--yellow, #f5b83d); }
+.flow-flag.tone-muted.is-active { background: var(--muted-strong, #a9adb7); }
+.flow-flag.is-clear { color: var(--faint, #6b7079); border-style: dashed; }
+.flow-flag.is-clear:hover { color: #ff9b9b; border-color: rgba(255,107,107,0.4); }
 .flow-node-pixels { margin: 8px 0 0 12px; padding-left: 16px; border-left: 2px solid var(--stroke); display: flex; flex-wrap: wrap; gap: 8px; }
 .flow-node-pixel { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.02); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
 .flow-pixel-icon { color: var(--yellow, #f7c625); }
@@ -14610,6 +14709,106 @@ select option,
 .flow-kt-dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7079; }
 .flow-kt.is-live { color: #9cf0c3; border-color: rgba(54, 208, 124, 0.3); }
 .flow-kt.is-live .flow-kt-dot { background: var(--green); box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.15); }
+
+/* ── Edit Flow modal ────────────────────────────────────────────────
+   One dialog for the whole flow: campaign segments, offer, state, bound
+   domains and the pixels on each. Sections are separated by rules so the
+   "saves on Save" parts read apart from the pixel wiring, which doesn't. */
+.flow-edit-modal { width: min(700px, 94vw); }
+.flow-edit-body { gap: 14px 16px; }
+/* Section headers and the wide blocks always take the full grid row. */
+.flow-edit-body > .flow-edit-section,
+.flow-edit-body > .field-span-2 { grid-column: 1 / -1; }
+.flow-edit-section { margin-top: 4px; padding-top: 13px; border-top: 1px solid var(--stroke); }
+.flow-edit-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.flow-edit-section-head {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--section-accent, #36d07c) 76%, #ffffff);
+}
+.flow-edit-section-head > svg { color: var(--section-accent, #36d07c); }
+.flow-edit-section-head .field-pace-hint { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; }
+.flow-edit-count {
+  display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 6px;
+  border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0;
+  color: var(--text); border: 1px solid var(--stroke); background: rgba(255,255,255,0.04);
+}
+.flow-edit-note { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+
+.flow-edit-state { display: flex; gap: 6px; }
+.flow-edit-state-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 38px; border-radius: 10px; font-size: 12.5px; font-weight: 650;
+  color: var(--muted-strong, #a9adb7); border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.flow-edit-state-btn:hover { color: var(--text); border-color: var(--stroke-strong, #3a3e47); }
+.flow-edit-state-btn.is-active { color: #071108; border-color: transparent; background: var(--green); }
+.flow-edit-state-btn.is-active:last-child { background: var(--muted-strong, #a9adb7); }
+
+.flow-edit-namepreview code {
+  display: block; padding: 10px 12px; border-radius: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px;
+  color: var(--muted-strong, #a9adb7); border: 1px solid var(--stroke); background: rgba(0,0,0,0.22);
+}
+.flow-edit-namepreview code.is-changed {
+  color: color-mix(in srgb, var(--green) 85%, #ffffff);
+  border-color: rgba(54,208,124,0.35); background: rgba(54,208,124,0.07);
+}
+
+.flow-edit-pixels { display: flex; flex-direction: column; gap: 10px; }
+.flow-edit-empty, .flow-edit-nopixel { font-size: 12px; color: var(--faint, #6b7079); }
+.flow-edit-domain { padding: 10px 12px; border-radius: 11px; border: 1px solid var(--stroke); background: rgba(255,255,255,0.02); }
+.flow-edit-domain-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flow-edit-domain-head > svg { color: #6ad6ff; }
+.flow-edit-domain-name { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; font-weight: 650; color: var(--text); }
+.flow-edit-pending {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 6px;
+  color: var(--yellow, #f5b83d); border: 1px solid rgba(245,184,61,0.3); background: rgba(245,184,61,0.09);
+}
+.flow-edit-pixelrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+.flow-edit-pixel {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 9px; border-radius: 8px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.03);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+}
+.flow-edit-pixel-id { color: var(--text); }
+.flow-edit-pixel-remove {
+  display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px;
+  color: var(--faint, #6b7079); background: transparent; border: 0;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+.flow-edit-pixel-remove:hover:not(:disabled) { color: #ff9b9b; background: rgba(255,107,107,0.12); }
+.flow-edit-pixel-remove:disabled { opacity: 0.4; cursor: not-allowed; }
+.flow-edit-attach { margin-left: auto; min-width: 210px; }
+
+.flow-edit-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px;
+  margin-top: 4px; padding-top: 13px; border-top: 1px solid var(--stroke);
+}
+.flow-edit-fact { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.flow-edit-fact > span { font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint, #6b7079); }
+.flow-edit-fact > strong { font-size: 12.5px; font-weight: 650; color: var(--muted-strong, #a9adb7); }
+.flow-edit-copy {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0;
+  color: var(--muted-strong, #a9adb7); background: transparent; border: 0; padding: 0;
+}
+.flow-edit-copy code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-edit-copy:hover { color: var(--green); }
+
+.flow-edit-external {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 600; color: var(--faint, #6b7079);
+  background: transparent; border: 0; padding: 0;
+  transition: color 0.16s ease;
+}
+.flow-edit-external:hover { color: var(--text); text-decoration: underline; }
+.flow-edit-actions-right { display: flex; gap: 12px; }
+@media (max-width: 640px) {
+  .flow-edit-facts { grid-template-columns: 1fr; }
+  .flow-edit-attach { margin-left: 0; width: 100%; }
+}
 
 /* Traffic Flow modal — premium */
 .traffic-flow-modal { width: min(600px, 94vw); }
@@ -14852,6 +15051,7 @@ select option,
    Each edit modal gets its section accent so Edit Domain/Pixel/Account
    feel of a piece with their registries (and their add-forms). */
 .domain-edit-accent   { --section-accent: #49e0c4; }
+.flow-edit-accent     { --section-accent: #36d07c; }
 .pixel-edit-accent    { --section-accent: #f7c625; }
 .accounts-edit-accent { --section-accent: #a15bff; }
 
@@ -14874,6 +15074,10 @@ select option,
   z-index: 0;
 }
 .edit-modal-accent > * { position: relative; z-index: 1; }
+/* …but the body has to outrank the footer, or an open dropdown menu paints
+   under Cancel / Save Changes (same z-index → later sibling wins). */
+.edit-modal-accent > .modal-body { z-index: 3; }
+.edit-modal-accent > .modal-actions { z-index: 2; }
 
 /* Header kicker + icon adopt the accent */
 .edit-modal-accent .modal-kicker {
@@ -14897,6 +15101,91 @@ select option,
 /* Label hint suffixes in the modal pick up the accent too */
 .edit-modal-accent .field-pace-hint {
   color: color-mix(in srgb, var(--section-accent, #36d07c) 62%, var(--muted-strong, #a9adb7));
+}
+
+/* ── Edit Domain → pixels on this domain ────────────────────────────
+   Attach / replace / remove pixels without leaving the domain. These
+   write to the pixel record, so they apply on click — the block is
+   visually separated from the Save-Changes fields above it. */
+.domain-pixels-field {
+  margin-top: 4px; padding-top: 14px;
+  border-top: 1px solid var(--stroke);
+}
+.domain-pixels-field > label { display: flex; align-items: center; gap: 7px; }
+.domain-pixels-field > label > svg { color: var(--yellow, #f7c625); }
+.domain-pixels-count {
+  display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 6px;
+  border-radius: 6px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--text); border: 1px solid var(--stroke); background: rgba(255,255,255,0.04);
+}
+.domain-pixels-field .field-pace-hint { margin-left: auto; font-weight: 600; }
+
+.domain-pixel-list { display: flex; flex-direction: column; gap: 8px; }
+.domain-pixel-row {
+  padding: 9px 11px; border-radius: 11px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.domain-pixel-row:hover { border-color: var(--stroke-strong, #3a3e47); }
+.domain-pixel-row.is-replacing {
+  border-color: color-mix(in srgb, var(--section-accent, #36d07c) 45%, transparent);
+  background: color-mix(in srgb, var(--section-accent, #36d07c) 6%, rgba(255,255,255,0.022));
+}
+.domain-pixel-main { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.domain-pixel-id {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; font-weight: 650;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.domain-pixel-geos { display: inline-flex; align-items: center; gap: 3px; }
+.domain-pixel-token {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px;
+  color: var(--faint, #6b7079); padding: 2px 7px; border-radius: 6px;
+  border: 1px solid var(--stroke); background: rgba(0,0,0,0.2);
+}
+.domain-pixel-shared { font-size: 11px; color: var(--faint, #6b7079); }
+.domain-pixel-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.domain-pixel-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 10px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 650; color: var(--muted-strong, #a9adb7);
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.025);
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.domain-pixel-btn:hover:not(:disabled) { color: var(--text); border-color: var(--stroke-strong, #3a3e47); }
+.domain-pixel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.domain-pixel-btn.is-danger:hover:not(:disabled) { color: #ff9b9b; border-color: rgba(255,107,107,0.42); background: rgba(255,107,107,0.08); }
+.domain-pixel-btn.is-add,
+.domain-pixel-btn.is-add.is-active {
+  color: color-mix(in srgb, var(--section-accent, #36d07c) 80%, #ffffff);
+  border-color: color-mix(in srgb, var(--section-accent, #36d07c) 38%, transparent);
+  background: color-mix(in srgb, var(--section-accent, #36d07c) 9%, transparent);
+  height: 34px; flex-shrink: 0;
+}
+.domain-pixel-replace { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.domain-pixel-replace > div:first-child { flex: 1; min-width: 0; }
+.domain-pixel-empty {
+  padding: 11px 13px; border-radius: 11px; border: 1px dashed var(--stroke);
+  font-size: 12px; color: var(--faint, #6b7079);
+}
+.domain-pixel-attach { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.domain-pixel-attach-select { flex: 1; min-width: 0; }
+.domain-pixel-new {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  margin-top: 10px; padding: 13px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--section-accent, #36d07c) 24%, var(--stroke));
+  background: color-mix(in srgb, var(--section-accent, #36d07c) 5%, rgba(255,255,255,0.012));
+}
+.domain-pixel-new .field-span-2 { grid-column: span 2; }
+.domain-pixel-new-actions { grid-column: span 2; display: flex; justify-content: flex-end; }
+.domain-pixel-error { margin-top: 10px; }
+.domain-pixel-rename-warning {
+  display: flex; align-items: center; gap: 6px; margin-top: 9px;
+  color: var(--yellow, #f5b83d) !important;
+}
+@media (max-width: 640px) {
+  .domain-pixel-new { grid-template-columns: 1fr; }
+  .domain-pixel-new .field-span-2, .domain-pixel-new-actions { grid-column: span 1; }
+  .domain-pixel-actions { margin-left: 0; }
 }
 
 /* ── Operations: mobile spacing refinements ─────────────────────────
