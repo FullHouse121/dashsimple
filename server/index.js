@@ -12391,10 +12391,12 @@ const runAlertRules = async () => {
           issues.length === 1
             ? issues[0].title
             : `${issues.length} × ${issues[0].title.toLowerCase()}`,
+        // The client lists the affected entities itself, so the message
+        // stays a sentence rather than a truncated roll-call.
         message:
           issues.length === 1
             ? `${issues[0].label}: ${issues[0].detail}`
-            : `${sample}${issues.length > 3 ? ` and ${issues.length - 3} more` : ""}. ${issues[0].fix}`,
+            : `${issues[0].detail} ${issues[0].fix}`,
         entityType: issues[0].entityType,
         entityId: issues.length === 1 ? issues[0].entityId : null,
         entityLabel: issues.length === 1 ? issues[0].label : `${issues.length} items`,
