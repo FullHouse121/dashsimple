@@ -1,13 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// The dev UI talks to the deployed API by default, so a plain `npm run dev`
+// shows live data. Point it at a local server to exercise server changes
+// before they ship:  VITE_API_TARGET=http://localhost:5174 npm run dev:client
+// (log in again — a local API signs tokens with the local AUTH_SECRET).
+const API_TARGET = process.env.VITE_API_TARGET || "https://dashsimple.onrender.com";
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
       "/api": {
-        target: "https://dashsimple.onrender.com",
+        target: API_TARGET,
         changeOrigin: true,
         secure: true,
         ws: false,

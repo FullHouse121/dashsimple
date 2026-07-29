@@ -325,6 +325,7 @@ const navItems = [
   { key: "pixels", label: "Pixels", icon: Zap },
   { key: "accounts", label: "Accounts", icon: UserPlus },
   { key: "roles", label: "Roles", icon: ShieldCheck },
+  { key: "health", label: "Health", icon: ShieldCheck },
   { key: "logs", label: "Logs", icon: ScrollText },
   { key: "profile", label: "Profile", icon: User },
   { key: "meta_token", label: "Meta Token $", icon: CreditCard },
@@ -334,7 +335,7 @@ const navItems = [
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "live_clicks", "conversions", "campaigns", "placements", "user_behavior", "devices"] },
-  { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts"] },
+  { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts", "health"] },
   { title: "Administration", items: ["roles", "logs"] },
   { title: "Account", items: ["profile"] },
   { title: "Integrations", items: ["meta_token", "api"] },
@@ -5288,6 +5289,90 @@ function TrackingLinksDashboard({ authUser }) {
   );
 }
 
+// ── Per-entity change history ─────────────────────────────────────────
+// The audit trail already records who changed what; this reads one
+// entity's slice of it so "why did this drop on the 12th" is answerable
+// next to the thing that dropped, not in a global log.
+function EntityHistory({ type, id, limit = 12 }) {
+  const { t } = useLanguage();
+  const [state, setState] = React.useState({ loading: true, error: null, rows: [] });
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!type || !id) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        setState({ loading: true, error: null, rows: [] });
+        const response = await apiFetch(`/api/logs/entity?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}&limit=40`);
+        if (response.status === 403) {
+          if (!cancelled) setState({ loading: false, error: null, rows: [] });
+          return;
+        }
+        const data = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(data?.error || "Failed to load history.");
+        if (!cancelled) setState({ loading: false, error: null, rows: Array.isArray(data) ? data : [] });
+      } catch (error) {
+        if (!cancelled) setState({ loading: false, error: error.message || "Failed to load history.", rows: [] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [type, id]);
+
+  // The audit row stores the request body; show the fields that changed
+  // rather than raw JSON, since that's the part anyone reads.
+  const describe = (row) => {
+    const details = row.details;
+    if (!details || typeof details !== "object") return null;
+    const keys = Object.keys(details).filter((k) => details[k] !== null && details[k] !== "");
+    if (!keys.length) return null;
+    return keys
+      .slice(0, 4)
+      .map((key) => {
+        const value = details[key];
+        const printed = Array.isArray(value) ? `${value.length}` : String(value);
+        return `${key}: ${printed.length > 28 ? `${printed.slice(0, 28)}…` : printed}`;
+      })
+      .join(" · ");
+  };
+
+  if (state.loading) return <p className="entity-history-empty">{t("Loading history…")}</p>;
+  if (state.error) return <p className="entity-history-empty">{state.error}</p>;
+  if (!state.rows.length) return <p className="entity-history-empty">{t("No changes recorded yet.")}</p>;
+
+  const visible = expanded ? state.rows : state.rows.slice(0, limit);
+  return (
+    <div className="entity-history">
+      {visible.map((row) => {
+        const failed = Number(row.status || 0) >= 400;
+        const summary = describe(row);
+        return (
+          <div className={`entity-history-row${failed ? " is-failed" : ""}`} key={row.id}>
+            <span className={`entity-history-dot is-${String(row.action || "updated")}`} />
+            <div className="entity-history-main">
+              <span className="entity-history-line">
+                <strong>{row.actor_name || t("Unknown")}</strong> {t(String(row.action || "updated"))}
+                {failed ? <span className="entity-history-failed">{t("failed")}</span> : null}
+              </span>
+              {summary ? <span className="entity-history-detail">{summary}</span> : null}
+            </div>
+            <time className="entity-history-time" title={new Date(row.created_at).toLocaleString()}>
+              {new Date(row.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
+            </time>
+          </div>
+        );
+      })}
+      {state.rows.length > limit ? (
+        <button type="button" className="entity-history-more" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? t("Show less") : `${t("Show all")} (${state.rows.length})`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 // Shows enough of an EAAG token to recognise it, never enough to use it.
 const maskEaagToken = (value) => {
   const token = String(value || "");
@@ -5328,6 +5413,428 @@ function FlowSparkline({ values, width = 92, height = 30 }) {
       <path d={line} fill="none" stroke="var(--green, #36d07c)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx={lastX} cy={lastY} r="2.4" fill="var(--green, #36d07c)" />
     </svg>
+  );
+}
+
+// ── Health ────────────────────────────────────────────────────────────
+// The three questions the dashboard could never answer on its own: what
+// broke, is cost data still arriving, and is the wiring capable of
+// working at all. Alerts are incidents over time; Setup is structural
+// state; Cost is the money pipeline, which fails silently end to end.
+function HealthDashboard({ authUser }) {
+  const { t } = useLanguage();
+  const isLeadership = isLeadershipRole(authUser?.role);
+  const [tab, setTab] = React.useState("alerts");
+  const [alertState, setAlertState] = React.useState({ loading: true, error: null, data: null });
+  const [alertStatus, setAlertStatus] = React.useState("open");
+  const [running, setRunning] = React.useState(false);
+  const [costState, setCostState] = React.useState({ loading: false, error: null, data: null });
+  const [setupState, setSetupState] = React.useState({ loading: false, error: null, data: null });
+  const [busyAlert, setBusyAlert] = React.useState(null);
+  const [setupOpenGroups, setSetupOpenGroups] = React.useState({});
+
+  const fetchAlerts = React.useCallback(async (status) => {
+    try {
+      setAlertState((prev) => ({ ...prev, loading: true, error: null }));
+      const response = await apiFetch(`/api/alerts?status=${status}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to load alerts.");
+      setAlertState({ loading: false, error: null, data });
+    } catch (error) {
+      setAlertState({ loading: false, error: error.message || "Failed to load alerts.", data: null });
+    }
+  }, []);
+  const fetchCost = React.useCallback(async () => {
+    try {
+      setCostState({ loading: true, error: null, data: null });
+      const response = await apiFetch("/api/cost-health");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to read the cost pipeline.");
+      setCostState({ loading: false, error: null, data });
+    } catch (error) {
+      setCostState({ loading: false, error: error.message || "Failed to read the cost pipeline.", data: null });
+    }
+  }, []);
+  const fetchSetup = React.useCallback(async () => {
+    try {
+      setSetupState({ loading: true, error: null, data: null });
+      const response = await apiFetch("/api/integrity");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Integrity scan failed.");
+      setSetupState({ loading: false, error: null, data });
+    } catch (error) {
+      setSetupState({ loading: false, error: error.message || "Integrity scan failed.", data: null });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchAlerts(alertStatus);
+  }, [fetchAlerts, alertStatus]);
+  React.useEffect(() => {
+    if (tab === "cost" && isLeadership && !costState.data && !costState.loading) fetchCost();
+    if (tab === "setup" && !setupState.data && !setupState.loading) fetchSetup();
+  }, [tab, isLeadership, costState.data, costState.loading, setupState.data, setupState.loading, fetchCost, fetchSetup]);
+
+  const runChecks = async () => {
+    setRunning(true);
+    try {
+      const response = await apiFetch("/api/alerts/run", { method: "POST" });
+      await response.json().catch(() => ({}));
+      await fetchAlerts(alertStatus);
+    } catch (error) {
+      /* the list keeps whatever it had */
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const actOnAlert = async (alert, action) => {
+    setBusyAlert(alert.id);
+    try {
+      await apiFetch(`/api/alerts/${alert.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      await fetchAlerts(alertStatus);
+    } catch (error) {
+      /* ignore — the refresh shows the truth */
+    } finally {
+      setBusyAlert(null);
+    }
+  };
+
+  const counts = alertState.data?.counts || {};
+  const alerts = alertState.data?.alerts || [];
+  const severityIcon = (severity) =>
+    severity === "critical" ? <AlertTriangle size={14} /> : severity === "warning" ? <AlertTriangle size={14} /> : <Bell size={14} />;
+  const relative = (value) => {
+    if (!value) return "—";
+    const diff = Date.now() - new Date(value).getTime();
+    if (Number.isNaN(diff)) return "—";
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return t("just now");
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    return `${Math.floor(hours / 24)}d`;
+  };
+
+  const TABS = [
+    { key: "alerts", label: t("Alerts"), Icon: Bell },
+    ...(isLeadership ? [{ key: "cost", label: t("Cost pipeline"), Icon: DollarSign }] : []),
+    { key: "setup", label: t("Setup"), Icon: Wrench },
+  ];
+
+  return (
+    <section className="form-section">
+      <motion.div className="panel registry-dashboard-panel health-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+        <div className="panel-head">
+          <div className="panel-head-title">
+            <span className="panel-icon-badge"><ShieldCheck size={20} /></span>
+            <div>
+              <h3 className="panel-title">{t("Health")}</h3>
+              <p className="panel-subtitle">
+                {t("What broke, whether cost data is still arriving, and whether the wiring can work at all.")}
+              </p>
+            </div>
+          </div>
+          <div className="panel-head-actions">
+            {alertState.data?.lastRunAt ? (
+              <span className="health-lastrun">{t("Checked")} {relative(alertState.data.lastRunAt)} {t("ago")}</span>
+            ) : null}
+            {isLeadership ? (
+              <button type="button" className="offers-mode-toggle" onClick={runChecks} disabled={running}>
+                <RefreshCw size={13} className={running ? "is-spinning" : undefined} /> {running ? t("Running…") : t("Run checks now")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="health-tabs" role="tablist">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.key}
+              className={`health-tab${tab === item.key ? " is-active" : ""}`}
+              onClick={() => setTab(item.key)}
+            >
+              <item.Icon size={13} /> {item.label}
+              {item.key === "alerts" && (counts.critical || counts.warning) ? (
+                <span className={`health-tab-badge${counts.critical ? " is-critical" : ""}`}>
+                  {(counts.critical || 0) + (counts.warning || 0)}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
+        {tab === "alerts" ? (
+          <>
+            <div className="accounts-summary-strip">
+              {[
+                { key: "critical", tone: "danger", label: t("Critical"), value: counts.critical || 0, Icon: AlertTriangle },
+                { key: "warning", tone: "warning", label: t("Warning"), value: counts.warning || 0, Icon: AlertTriangle },
+                { key: "info", tone: "neutral", label: t("Info"), value: counts.info || 0, Icon: Bell },
+              ].map((kpi) => (
+                <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+                  <div className="accounts-summary-top">
+                    <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
+                    <span className="accounts-summary-label">{kpi.label}</span>
+                  </div>
+                  <strong>{kpi.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="flow-toolbar-row">
+              <div className="flow-flags">
+                {[
+                  { value: "open", label: t("Open") },
+                  { value: "acknowledged", label: t("Acknowledged") },
+                  { value: "resolved", label: t("Resolved") },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`flow-flag${alertStatus === option.value ? " is-active" : ""}`}
+                    onClick={() => setAlertStatus(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {alertState.loading ? (
+              <div className="empty-state">{t("Loading alerts…")}</div>
+            ) : alertState.error ? (
+              <div className="empty-state error">{alertState.error}</div>
+            ) : !alerts.length ? (
+              <div className="empty-state health-clear">
+                <CheckCircle size={18} /> {alertStatus === "open" ? t("Nothing is broken right now.") : t("Nothing here.")}
+              </div>
+            ) : (
+              <div className="health-list">
+                {alerts.map((alert) => (
+                  <div className={`health-alert sev-${alert.severity}${alert.status === "acknowledged" ? " is-ack" : ""}`} key={alert.id}>
+                    <span className="health-alert-icon">{severityIcon(alert.severity)}</span>
+                    <div className="health-alert-body">
+                      <div className="health-alert-head">
+                        <strong>{alert.title}</strong>
+                        <span className="health-alert-rule">{alert.rule}</span>
+                        {alert.status === "acknowledged" ? (
+                          <span className="health-alert-ack">{t("Acknowledged")} · {alert.acknowledged_by}</span>
+                        ) : null}
+                      </div>
+                      <p className="health-alert-message">{alert.message}</p>
+                      <div className="health-alert-meta">
+                        {alert.entity_label ? <span>{alert.entity_label}</span> : null}
+                        <span>{t("First seen")} {relative(alert.first_seen_at)} {t("ago")}</span>
+                        <span>{t("Last seen")} {relative(alert.last_seen_at)} {t("ago")}</span>
+                        {alert.occurrences > 1 ? <span>×{alert.occurrences}</span> : null}
+                        {alert.details?.fix ? <span className="health-alert-fix">{alert.details.fix}</span> : null}
+                      </div>
+                    </div>
+                    <div className="health-alert-actions">
+                      {alert.status !== "resolved" ? (
+                        <>
+                          {alert.status !== "acknowledged" ? (
+                            <button type="button" className="domain-pixel-btn" disabled={busyAlert === alert.id} onClick={() => actOnAlert(alert, "acknowledge")}>
+                              {t("Acknowledge")}
+                            </button>
+                          ) : null}
+                          <button type="button" className="domain-pixel-btn" disabled={busyAlert === alert.id} onClick={() => actOnAlert(alert, "resolve")}>
+                            <CheckCircle size={13} /> {t("Resolve")}
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" className="domain-pixel-btn" disabled={busyAlert === alert.id} onClick={() => actOnAlert(alert, "reopen")}>
+                          {t("Reopen")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {tab === "cost" && isLeadership ? (
+          costState.loading ? (
+            <div className="empty-state">{t("Reading the cost pipeline…")}</div>
+          ) : costState.error ? (
+            <div className="empty-state error">{costState.error}</div>
+          ) : costState.data ? (
+            (() => {
+              const data = costState.data;
+              const broken = data.summary.brokenTokens > 0;
+              const stalled = data.keitaro.trafficWithoutCost || (data.keitaro.costPrev7 > 0 && data.keitaro.costLast7 === 0);
+              return (
+                <>
+                  <div className={`health-pipeline${broken || stalled ? " is-bad" : " is-ok"}`}>
+                    <span className="health-pipeline-icon">{broken || stalled ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}</span>
+                    <div>
+                      <strong>
+                        {stalled
+                          ? t("Cost is not reaching the tracker")
+                          : broken
+                            ? t("Cost is arriving, but some tokens are dead")
+                            : t("Cost is arriving normally")}
+                      </strong>
+                      <p>
+                        {t("Meta token → Keitaro integration → cost → every ROI number. This reads the end of the chain, not the flags along it.")}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="accounts-summary-strip">
+                    {[
+                      { key: "cost7", tone: data.keitaro.costLast7 > 0 ? "success" : "danger", label: t("Keitaro cost · 7d"), value: formatCurrency(data.keitaro.costLast7), Icon: DollarSign },
+                      { key: "prev7", tone: "neutral", label: t("Previous 7d"), value: formatCurrency(data.keitaro.costPrev7), Icon: Clock },
+                      { key: "clicks", tone: "neutral", label: t("Clicks · 7d"), value: data.keitaro.clicksLast7.toLocaleString(), Icon: MousePointerClick },
+                      { key: "tokens", tone: broken ? "danger" : "success", label: t("Dead tokens"), value: data.summary.brokenTokens, Icon: AlertTriangle },
+                    ].map((kpi) => (
+                      <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+                        <div className="accounts-summary-top">
+                          <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
+                          <span className="accounts-summary-label">{kpi.label}</span>
+                        </div>
+                        <strong>{kpi.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="health-section-title">{t("Keitaro Facebook integrations")}</div>
+                  {data.integrations.length ? (
+                    <div className="health-list">
+                      {data.integrations.map((integration) => (
+                        <div className={`health-alert${integration.token_error ? " sev-critical" : " sev-ok"}`} key={integration.keitaro_integration_id}>
+                          <span className="health-alert-icon">{integration.token_error ? <AlertTriangle size={14} /> : <CheckCircle size={14} />}</span>
+                          <div className="health-alert-body">
+                            <div className="health-alert-head">
+                              <strong>{integration.name}</strong>
+                              {integration.ad_account_id ? <span className="health-alert-rule">{integration.ad_account_id}</span> : null}
+                            </div>
+                            <p className="health-alert-message">
+                              {integration.token_error
+                                ? `${t("Token error")}: ${integration.token_error} — ${t("no cost is arriving for this account.")}`
+                                : t("No errors reported by Keitaro.")}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">{t("Keitaro reports no Facebook integrations.")}</div>
+                  )}
+
+                  <div className="health-section-title">{t("Wired ad accounts")}</div>
+                  <div className="health-grid">
+                    {data.wired.filter((account) => account.is_wired).map((account) => (
+                      <div className={`health-account${account.linked ? "" : " is-bad"}`} key={account.id}>
+                        <span className="health-account-name">{account.account_number}</span>
+                        <span className="health-account-buyer">{account.buyer_name || "—"}</span>
+                        <span className={`health-account-state${account.linked ? " is-ok" : ""}`}>
+                          {account.linked ? `${t("Linked")} #${account.keitaro_integration_id}` : t("Not linked in Keitaro")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()
+          ) : null
+        ) : null}
+
+        {tab === "setup" ? (
+          setupState.loading ? (
+            <div className="empty-state">{t("Scanning…")}</div>
+          ) : setupState.error ? (
+            <div className="empty-state error">{setupState.error}</div>
+          ) : setupState.data ? (
+            <>
+              <div className="accounts-summary-strip">
+                {[
+                  { key: "critical", tone: "danger", label: t("Blocking"), value: setupState.data.counts.critical || 0, Icon: AlertTriangle },
+                  { key: "warning", tone: "warning", label: t("Should fix"), value: setupState.data.counts.warning || 0, Icon: Wrench },
+                  { key: "info", tone: "neutral", label: t("Housekeeping"), value: setupState.data.counts.info || 0, Icon: Bell },
+                  { key: "scanned", tone: "neutral", label: t("Scanned"), value: `${setupState.data.scanned.flows} / ${setupState.data.scanned.domains} / ${setupState.data.scanned.pixels}`, Icon: ShieldCheck },
+                ].map((kpi) => (
+                  <div key={kpi.key} className={`accounts-summary-item tone-${kpi.tone}`}>
+                    <div className="accounts-summary-top">
+                      <span className="accounts-summary-icon"><kpi.Icon size={18} /></span>
+                      <span className="accounts-summary-label">{kpi.label}</span>
+                    </div>
+                    <strong>{kpi.value}</strong>
+                  </div>
+                ))}
+              </div>
+              {!setupState.data.issues.length ? (
+                <div className="empty-state health-clear"><CheckCircle size={18} /> {t("Every flow, domain and pixel is wired correctly.")}</div>
+              ) : (
+                // Grouped by class: 63 identical "no domain bound" cards is a
+                // wall, one group with 63 names under it is a work list.
+                (() => {
+                  const groups = [];
+                  const byCode = new Map();
+                  setupState.data.issues.forEach((issue) => {
+                    if (!byCode.has(issue.code)) {
+                      byCode.set(issue.code, { code: issue.code, severity: issue.severity, title: issue.title, fix: issue.fix, items: [] });
+                      groups.push(byCode.get(issue.code));
+                    }
+                    byCode.get(issue.code).items.push(issue);
+                  });
+                  return (
+                    <div className="health-list">
+                      {groups.map((group) => {
+                        const open = !!setupOpenGroups[group.code];
+                        const shown = open ? group.items : group.items.slice(0, 3);
+                        return (
+                          <div className={`health-alert sev-${group.severity}`} key={group.code}>
+                            <span className="health-alert-icon"><Wrench size={14} /></span>
+                            <div className="health-alert-body">
+                              <div className="health-alert-head">
+                                <strong>{group.title}</strong>
+                                <span className="health-issue-count">{group.items.length}</span>
+                                <span className="health-alert-rule">{group.code}</span>
+                              </div>
+                              <div className="health-issue-items">
+                                {shown.map((issue, index) => (
+                                  <div className="health-issue-item" key={`${group.code}-${issue.entityId ?? index}`}>
+                                    <span className="health-issue-entity">{issue.label}</span>
+                                    <span className="health-issue-detail">{issue.detail}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="health-alert-meta">
+                                <span className="health-alert-fix">{group.fix}</span>
+                                {group.items.length > 3 ? (
+                                  <button
+                                    type="button"
+                                    className="entity-history-more"
+                                    onClick={() => setSetupOpenGroups((prev) => ({ ...prev, [group.code]: !prev[group.code] }))}
+                                  >
+                                    {open ? t("Show less") : `${t("Show all")} (${group.items.length})`}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()
+              )}
+            </>
+          ) : null
+        ) : null}
+      </motion.div>
+    </section>
   );
 }
 
@@ -6264,7 +6771,15 @@ function MyFlowsDashboard({ authUser }) {
                         {pixelWire.error ? <div className="pw-error">{pixelWire.error}</div> : null}
                       </div>
 
-                      {/* 5 — the parts that are facts, not settings */}
+                      {/* 5 — what changed here, and who changed it */}
+                      <div className="flow-edit-section field-span-2">
+                        <div className="flow-edit-section-head"><ScrollText size={13} /> {t("History")}</div>
+                      </div>
+                      <div className="field field-span-2">
+                        <EntityHistory type="tracking_link" id={link.id} limit={6} />
+                      </div>
+
+                      {/* 6 — the parts that are facts, not settings */}
                       <div className="field field-span-2 flow-edit-facts">
                         <div className="flow-edit-fact">
                           <span>{t("Tracking link")}</span>
@@ -15157,6 +15672,11 @@ function DomainsDashboard({ authUser }) {
                   {pixelWire.error ? <div className="pw-error domain-pixel-error">{pixelWire.error}</div> : null}
                 </div>
 
+                <div className="field field-span-2 domain-pixels-field">
+                  <label><ScrollText size={12} /> {t("History")}</label>
+                  <EntityHistory type="domain" id={domainEdit.domain?.id} limit={5} />
+                </div>
+
                 {domainEdit.error ? <div className="field field-span-2"><div className="pw-error">{domainEdit.error}</div></div> : null}
               </div>
               <div className="modal-actions">
@@ -23555,6 +24075,7 @@ export default function App() {
   const isAccounts = activeView === "accounts";
   const isRoles = activeView === "roles";
   const isLogs = activeView === "logs";
+  const isHealth = activeView === "health";
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isProfile = activeView === "profile";
@@ -24808,6 +25329,8 @@ export default function App() {
           <TrackingLinksDashboard authUser={authUser} />
         ) : isFlows ? (
           <MyFlowsDashboard authUser={authUser} />
+        ) : isHealth ? (
+          <HealthDashboard authUser={authUser} />
         ) : isGoals ? (
           <GoalsDashboard authUser={authUser} />
         ) : isDomains ? (

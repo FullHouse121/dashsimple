@@ -706,6 +706,37 @@ const initDb = async () => {
        SELECT id, tracking_link_id FROM domains
         WHERE tracking_link_id IS NOT NULL
        ON CONFLICT DO NOTHING;`,
+
+    // Alerting: one row per distinct problem, keyed so a rule that keeps
+    // firing updates the same row (occurrences/last_seen) instead of
+    // producing a wall of duplicates. Rows resolve themselves when the
+    // condition clears, which is what makes the list trustworthy.
+    `CREATE TABLE IF NOT EXISTS alerts (
+      id SERIAL PRIMARY KEY,
+      rule TEXT NOT NULL,
+      alert_key TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'warning',
+      status TEXT NOT NULL DEFAULT 'open',
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      entity_label TEXT,
+      owner_id INTEGER,
+      details TEXT,
+      occurrences INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      acknowledged_at TIMESTAMP,
+      acknowledged_by TEXT,
+      resolved_at TIMESTAMP
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_alerts_status_seen
+       ON alerts (status, last_seen_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_alerts_key
+       ON alerts (alert_key);`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
+       ON audit_logs (entity_type, entity_id, created_at DESC);`,
   ];
 
   // Schema gate: the statement list above is 170+ ALTER/UPDATE statements
@@ -4943,6 +4974,7 @@ app.use((req, res, next) => {
   // conversion logs to an anonymous caller.
   if (req.path.startsWith("/api/postbacks/") && req.path !== "/api/postbacks/logs") return next();
   if (req.path === "/api/keitaro/cron") return next();
+  if (req.path === "/api/health/cron") return next();
   if (req.path === "/api/health") return next();
 
   const header = req.headers.authorization || "";
@@ -4976,6 +5008,8 @@ const AUDIT_SKIP_PATHS = [
   /^\/api\/notifications(\/|$)/,
   /^\/api\/postbacks(\/|$)/,
   /^\/api\/keitaro\/cron(\/|$)/,
+  /^\/api\/health\/cron(\/|$)/,
+  /^\/api\/alerts\/run(\/|$)/,
 ];
 const AUDIT_REDACT_PATTERN = /pass|token|secret|api_?key|authorization|hash/i;
 const AUDIT_ACTION_BY_METHOD = { POST: "created", PUT: "updated", PATCH: "updated", DELETE: "deleted" };
@@ -11713,6 +11747,901 @@ app.get("/api/keitaro/campaign-format-check", async (req, res) => {
       entityType: "keitaro",
     });
     res.status(502).json({ error: error.message || "Could not reach Keitaro." });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// Health: alerting engine, cost-pipeline truth, and setup integrity.
+//
+// The dashboard used to only tell you things when somebody opened it —
+// which is how four dead Meta tokens zeroed the cost pipeline for three
+// weeks while every ROI figure on the page stayed confidently wrong.
+// These three surfaces answer, without being asked: what broke, is money
+// data still arriving, and is the wiring even capable of working.
+// ═══════════════════════════════════════════════════════════════════════
+
+const ALERT_SEVERITIES = ["critical", "warning", "info"];
+const normalizeAlertSeverity = (value) => {
+  const v = String(value || "warning").trim().toLowerCase();
+  return ALERT_SEVERITIES.includes(v) ? v : "warning";
+};
+
+// Upsert by alert_key: a condition that is still true bumps last_seen and
+// occurrences on the existing row. Re-firing an acknowledged alert leaves
+// the acknowledgement alone (it is still the same, known problem), but a
+// previously resolved one comes back as open — it regressed.
+const raiseAlert = async (finding) => {
+  const key = String(finding.key || "").trim();
+  if (!key) return null;
+  const severity = normalizeAlertSeverity(finding.severity);
+  const existing = await getRow(
+    `SELECT id, status, occurrences FROM alerts WHERE alert_key = $1 ORDER BY id DESC LIMIT 1`,
+    [key]
+  );
+  const details = finding.details ? JSON.stringify(finding.details).slice(0, 4000) : null;
+  if (existing?.id) {
+    const reopened = existing.status === "resolved";
+    await query(
+      `UPDATE alerts
+          SET severity = $1, title = $2, message = $3, details = $4,
+              entity_label = $5, owner_id = $6,
+              occurrences = occurrences + 1, last_seen_at = NOW(),
+              status = CASE WHEN status = 'resolved' THEN 'open' ELSE status END,
+              resolved_at = CASE WHEN status = 'resolved' THEN NULL ELSE resolved_at END,
+              acknowledged_at = CASE WHEN status = 'resolved' THEN NULL ELSE acknowledged_at END,
+              acknowledged_by = CASE WHEN status = 'resolved' THEN NULL ELSE acknowledged_by END
+        WHERE id = $7`,
+      [
+        severity,
+        String(finding.title || "Alert").slice(0, 200),
+        String(finding.message || "").slice(0, 1000),
+        details,
+        finding.entityLabel ? String(finding.entityLabel).slice(0, 200) : null,
+        Number.isFinite(Number(finding.ownerId)) ? Number(finding.ownerId) : null,
+        existing.id,
+      ]
+    );
+    return { id: existing.id, created: false, reopened };
+  }
+  const { rows } = await query(
+    `INSERT INTO alerts
+       (rule, alert_key, severity, status, title, message, entity_type, entity_id, entity_label, owner_id, details)
+     VALUES ($1,$2,$3,'open',$4,$5,$6,$7,$8,$9,$10)
+     RETURNING id`,
+    [
+      String(finding.rule || "custom").slice(0, 60),
+      key,
+      severity,
+      String(finding.title || "Alert").slice(0, 200),
+      String(finding.message || "").slice(0, 1000),
+      finding.entityType ? String(finding.entityType).slice(0, 40) : null,
+      finding.entityId !== undefined && finding.entityId !== null ? String(finding.entityId).slice(0, 40) : null,
+      finding.entityLabel ? String(finding.entityLabel).slice(0, 200) : null,
+      Number.isFinite(Number(finding.ownerId)) ? Number(finding.ownerId) : null,
+      details,
+    ]
+  );
+  return { id: rows[0]?.id || null, created: true, reopened: false };
+};
+
+// Optional outbound push. Both are no-ops until the env is set, so the
+// engine is useful (in-app) before anyone wires a channel.
+const pushAlertOutbound = async (alert) => {
+  const webhook = String(process.env.ALERT_WEBHOOK_URL || "").trim();
+  const tgToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  const tgChat = String(process.env.TELEGRAM_CHAT_ID || "").trim();
+  const icon = alert.severity === "critical" ? "🔴" : alert.severity === "warning" ? "🟡" : "🔵";
+  const text = `${icon} ${alert.title}\n${alert.message}`;
+  const jobs = [];
+  if (webhook) {
+    jobs.push(
+      fetch(webhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, alert }),
+        signal: AbortSignal.timeout(8000),
+      }).catch((error) => console.warn("Alert webhook failed:", error?.message || error))
+    );
+  }
+  if (tgToken && tgChat) {
+    jobs.push(
+      fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: tgChat, text, disable_web_page_preview: true }),
+        signal: AbortSignal.timeout(8000),
+      }).catch((error) => console.warn("Telegram alert failed:", error?.message || error))
+    );
+  }
+  if (jobs.length) await Promise.all(jobs);
+};
+
+// ── Cost pipeline truth ────────────────────────────────────────────────
+// The chain is: Meta token → Keitaro FB integration → Keitaro `cost` →
+// every ROI number in the product. It fails silently at each link, so
+// this reads the actual end of the chain (cost landing in Keitaro now)
+// rather than any of the hopeful flags earlier in it.
+const buildCostHealth = async () => {
+  const today = new Date();
+  const dayMs = 86400000;
+  const windowFrom = isoDay(new Date(today.getTime() - 6 * dayMs));
+  const [integrationsRes, costReport, prevCostReport] = await Promise.all([
+    keitaroAdminFetch("/integrations/facebook"),
+    keitaroReportBuild({
+      from: windowFrom,
+      to: isoDay(today),
+      grouping: ["campaign"],
+      metrics: ["cost", "clicks"],
+      limit: 5000,
+    }),
+    keitaroReportBuild({
+      from: isoDay(new Date(today.getTime() - 13 * dayMs)),
+      to: isoDay(new Date(today.getTime() - 7 * dayMs)),
+      grouping: ["campaign"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+  ]);
+
+  const sumCost = (report) =>
+    (report.ok ? report.rows : []).reduce((acc, row) => acc + (Number(row.cost) || 0), 0);
+  const costLast7 = sumCost(costReport);
+  const costPrev7 = sumCost(prevCostReport);
+  const clicksLast7 = (costReport.ok ? costReport.rows : []).reduce(
+    (acc, row) => acc + (Number(row.clicks) || 0),
+    0
+  );
+
+  // Per ad account: what Keitaro thinks of the integration, and whether the
+  // token behind it is actually still alive.
+  const integrations = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
+  // Keitaro echoes the failing request back in last_raw_error — including
+  // the access token in the query string. Never store or ship that.
+  const redactSecrets = (value) =>
+    String(value || "")
+      .replace(/access_token=[^&\s`'"]+/gi, "access_token=***")
+      .replace(/EAA[A-Za-z0-9]{20,}/g, "EAA***");
+  const accounts = integrations.map((row) => {
+    // The tracker exposes the failure as status:"error" plus a message key
+    // (e.g. third_party_integration.errors.token) — this is the exact
+    // signal that went unnoticed for three weeks.
+    const failing = String(row.status || "").toLowerCase() === "error" || !!row.last_error;
+    const lastUpdate = Number(row.last_update) ? new Date(Number(row.last_update) * 1000).toISOString() : null;
+    return {
+      keitaro_integration_id: row.id ?? null,
+      name: row.name || row.title || `#${row.id}`,
+      ad_account_id: row.ad_account_id || row.account_id || null,
+      state: row.state || null,
+      status: row.status || null,
+      last_update: lastUpdate,
+      token_error: failing ? String(row.last_error || row.status || "error") : null,
+      error_detail: failing ? redactSecrets(row.last_raw_error).slice(0, 300) : null,
+    };
+  });
+
+  // Our own wiring records, so an account we believe is wired but Keitaro
+  // has never heard of still shows up.
+  const wired = await query(
+    `SELECT id, account_number, buyer_name, status, is_wired, keitaro_integration_id, last_checked_at
+       FROM meta_token_integrations
+      ORDER BY account_number ASC`
+  ).then((r) => r.rows || []);
+
+  const spendRows = await query(
+    `SELECT MAX(date) AS last_date,
+            SUM(CASE WHEN date >= to_char(NOW() - INTERVAL '7 days', 'YYYY-MM-DD') THEN spend ELSE 0 END) AS spend_7d
+       FROM media_stats`
+  ).then((r) => r.rows?.[0] || {});
+
+  const brokenTokens = accounts.filter((a) => a.token_error).length;
+  const unlinked = wired.filter((w) => w.is_wired && !w.keitaro_integration_id).length;
+  return {
+    checkedAt: new Date().toISOString(),
+    keitaro: {
+      reachable: costReport.ok,
+      error: costReport.ok ? null : costReport.error || null,
+      costLast7,
+      costPrev7,
+      clicksLast7,
+      // Clicks with zero cost is the signature of a broken pipeline: traffic
+      // is flowing and being paid for, but the spend never arrives.
+      receiving: costLast7 > 0,
+      trafficWithoutCost: clicksLast7 > 0 && costLast7 === 0,
+    },
+    meta: {
+      lastSpendDate: spendRows.last_date || null,
+      spend7d: Number(spendRows.spend_7d) || 0,
+    },
+    integrations: accounts,
+    wired: wired.map((w) => ({
+      id: w.id,
+      account_number: w.account_number,
+      buyer_name: w.buyer_name,
+      status: w.status,
+      is_wired: !!w.is_wired,
+      keitaro_integration_id: w.keitaro_integration_id,
+      last_checked_at: w.last_checked_at,
+      linked: !!w.keitaro_integration_id,
+    })),
+    summary: {
+      accounts: accounts.length,
+      brokenTokens,
+      unlinked,
+      wiredCount: wired.filter((w) => w.is_wired).length,
+    },
+  };
+};
+
+// ── Setup integrity ────────────────────────────────────────────────────
+// Entities here are linked by name strings (a pixel points at a domain by
+// host), which rots quietly. These checks read the whole graph once and
+// report every place it doesn't hold together.
+const buildIntegrityReport = async (user) => {
+  const scoped = !isLeadership(user);
+  const ownerId = user?.id;
+  const [links, domains, pixels, bindings] = await Promise.all([
+    query(`SELECT id, name, buyer, tool, game, geo, brand, state, keitaro_id, keitaro_status, owner_id, created_at
+             FROM tracking_links`).then((r) => r.rows || []),
+    query(`SELECT id, domain, game, platform, country, status, owner_id, tracking_link_id
+             FROM domains`).then((r) => r.rows || []),
+    query(`SELECT id, pixel_id, token_eaag, flows, geo, status, owner_id FROM pixels`).then((r) => r.rows || []),
+    query(`SELECT domain_id, tracking_link_id FROM domain_link_bindings`).then((r) => r.rows || []),
+  ]);
+
+  const mine = (row) => !scoped || Number(row.owner_id) === Number(ownerId);
+  const linkById = new Map(links.map((l) => [Number(l.id), l]));
+  const domainById = new Map(domains.map((d) => [Number(d.id), d]));
+  const hostSet = new Set(domains.map((d) => String(d.domain || "").trim().toLowerCase()).filter(Boolean));
+  const linksByDomain = new Map();
+  const domainsByLink = new Map();
+  bindings.forEach((b) => {
+    const dId = Number(b.domain_id);
+    const lId = Number(b.tracking_link_id);
+    if (!domainById.has(dId) || !linkById.has(lId)) return;
+    if (!linksByDomain.has(dId)) linksByDomain.set(dId, []);
+    linksByDomain.get(dId).push(lId);
+    if (!domainsByLink.has(lId)) domainsByLink.set(lId, []);
+    domainsByLink.get(lId).push(dId);
+  });
+  const pixelHosts = (pixel) =>
+    String(pixel.flows || "")
+      .split(/[\s,;]+/)
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean);
+  const pixelsByHost = new Map();
+  pixels.forEach((p) => {
+    pixelHosts(p).forEach((host) => {
+      if (!pixelsByHost.has(host)) pixelsByHost.set(host, []);
+      pixelsByHost.get(host).push(p);
+    });
+  });
+
+  const issues = [];
+  const add = (issue) => issues.push(issue);
+  const isLive = (link) => String(link.keitaro_status || "") === "created" || !!link.keitaro_id;
+  const isActive = (link) => String(link.state || "active") === "active";
+
+  // 1. A live, active campaign with nowhere to send people.
+  links.filter(mine).forEach((link) => {
+    if (!isLive(link) || !isActive(link)) return;
+    if ((domainsByLink.get(Number(link.id)) || []).length === 0) {
+      add({
+        code: "flow_no_domain",
+        severity: "critical",
+        entityType: "tracking_link",
+        entityId: link.id,
+        label: link.name,
+        title: "Active flow with no domain bound",
+        detail: "The campaign is live in Keitaro but has no PWA domain, so it cannot receive traffic.",
+        fix: "Bind a domain in My Flows.",
+        ownerId: link.owner_id,
+      });
+    }
+  });
+
+  // 2. Traffic lands, nothing reports it back to Meta.
+  domains.filter(mine).forEach((domain) => {
+    const boundLinks = (linksByDomain.get(Number(domain.id)) || []).map((id) => linkById.get(id)).filter(Boolean);
+    if (!boundLinks.length) return;
+    const host = String(domain.domain || "").trim().toLowerCase();
+    if (!(pixelsByHost.get(host) || []).length) {
+      add({
+        code: "domain_no_pixel",
+        severity: "warning",
+        entityType: "domain",
+        entityId: domain.id,
+        label: domain.domain,
+        title: "Bound domain has no pixel",
+        detail: `Serving ${boundLinks.length} flow${boundLinks.length === 1 ? "" : "s"} with no Meta pixel attached — conversions never reach the ad account.`,
+        fix: "Attach a pixel in Domains → Edit.",
+        ownerId: domain.owner_id,
+      });
+    }
+    // 3. A domain nobody should be sending traffic to.
+    const status = String(domain.status || "Active").toLowerCase();
+    if (["banned", "blocked", "expired", "dead"].includes(status)) {
+      add({
+        code: "domain_dead_but_bound",
+        severity: "critical",
+        entityType: "domain",
+        entityId: domain.id,
+        label: domain.domain,
+        title: `Bound domain is ${domain.status}`,
+        detail: `Still bound to ${boundLinks.map((l) => l.name).slice(0, 3).join(", ")}${boundLinks.length > 3 ? "…" : ""}.`,
+        fix: "Unbind it in My Flows and replace it.",
+        ownerId: domain.owner_id,
+      });
+    }
+  });
+
+  // 4. Pixel pointing at a host that no longer exists — the silent cost of
+  //    renaming a domain, since attachment is by name.
+  pixels.filter(mine).forEach((pixel) => {
+    const hosts = pixelHosts(pixel);
+    const orphans = hosts.filter((host) => !hostSet.has(host));
+    if (orphans.length) {
+      add({
+        code: "pixel_orphan_host",
+        severity: "warning",
+        entityType: "pixel",
+        entityId: pixel.id,
+        label: pixel.pixel_id,
+        title: "Pixel points at an unknown domain",
+        detail: `No registered domain matches ${orphans.join(", ")} — the attachment is dead.`,
+        fix: "Re-attach the pixel to a live domain.",
+        ownerId: pixel.owner_id,
+      });
+    }
+    if (!hosts.length) {
+      add({
+        code: "pixel_unattached",
+        severity: "info",
+        entityType: "pixel",
+        entityId: pixel.id,
+        label: pixel.pixel_id,
+        title: "Pixel is not attached to any domain",
+        detail: "Registered but firing nowhere.",
+        fix: "Attach it to a domain, or archive it.",
+        ownerId: pixel.owner_id,
+      });
+    }
+  });
+
+  // 5. The same pixel ID registered twice — two owners, one Meta pixel,
+  //    and no way to tell whose conversions are whose.
+  const byPixelId = new Map();
+  pixels.forEach((p) => {
+    const key = String(p.pixel_id || "").trim();
+    if (!key) return;
+    if (!byPixelId.has(key)) byPixelId.set(key, []);
+    byPixelId.get(key).push(p);
+  });
+  [...byPixelId.entries()]
+    .filter(([, list]) => list.length > 1)
+    .forEach(([pixelId, list]) => {
+      if (scoped && !list.some(mine)) return;
+      add({
+        code: "pixel_duplicate",
+        severity: "warning",
+        entityType: "pixel",
+        entityId: list[0].id,
+        label: pixelId,
+        title: "Pixel ID registered more than once",
+        detail: `${list.length} records share pixel ${pixelId}.`,
+        fix: "Keep one record and delete the copies.",
+        ownerId: list[0].owner_id,
+      });
+    });
+
+  // 6. GEO disagreements across the chain. Not fatal, but it means the
+  //    targeting the campaign promises isn't what the domain serves.
+  const isoOf = (value) => {
+    const raw = String(value || "").trim().toLowerCase();
+    if (!raw) return null;
+    return /^[a-z]{2}$/.test(raw) ? raw : null;
+  };
+  links.filter(mine).forEach((link) => {
+    const linkGeos = String(link.geo || "")
+      .split(/[,/]+/)
+      .map((g) => isoOf(g))
+      .filter(Boolean);
+    if (!linkGeos.length) return;
+    (domainsByLink.get(Number(link.id)) || []).forEach((dId) => {
+      const domain = domainById.get(dId);
+      if (!domain) return;
+      const host = String(domain.domain || "").trim().toLowerCase();
+      (pixelsByHost.get(host) || []).forEach((pixel) => {
+        const pixelGeos = String(pixel.geo || "")
+          .split(/[,;|]+/)
+          .map((g) => isoOf(g))
+          .filter(Boolean);
+        if (!pixelGeos.length) return;
+        if (!pixelGeos.some((g) => linkGeos.includes(g))) {
+          add({
+            code: "geo_mismatch",
+            severity: "info",
+            entityType: "pixel",
+            entityId: pixel.id,
+            label: `${pixel.pixel_id} · ${domain.domain}`,
+            title: "Pixel GEO doesn't match the flow",
+            detail: `Flow targets ${linkGeos.join(", ").toUpperCase()}, pixel is set to ${pixelGeos.join(", ").toUpperCase()}.`,
+            fix: "Align the pixel's GEO, or attach a pixel for this market.",
+            ownerId: pixel.owner_id,
+          });
+        }
+      });
+    });
+  });
+
+  // 7. Domains registered and paid for, bound to nothing.
+  const unbound = domains.filter(mine).filter((d) => !(linksByDomain.get(Number(d.id)) || []).length);
+  if (unbound.length) {
+    add({
+      code: "domains_unbound",
+      severity: "info",
+      entityType: "domain",
+      entityId: null,
+      label: `${unbound.length} domains`,
+      title: `${unbound.length} PWA domain${unbound.length === 1 ? "" : "s"} bound to nothing`,
+      detail: unbound.slice(0, 5).map((d) => d.domain).join(", ") + (unbound.length > 5 ? "…" : ""),
+      fix: "Bind them to a flow in My Flows, or retire them.",
+      ownerId: null,
+    });
+  }
+
+  const bySeverity = { critical: 0, warning: 0, info: 0 };
+  issues.forEach((issue) => {
+    bySeverity[issue.severity] = (bySeverity[issue.severity] || 0) + 1;
+  });
+  const order = { critical: 0, warning: 1, info: 2 };
+  issues.sort((a, b) => order[a.severity] - order[b.severity] || String(a.code).localeCompare(String(b.code)));
+  return {
+    checkedAt: new Date().toISOString(),
+    counts: { total: issues.length, ...bySeverity },
+    scanned: { flows: links.length, domains: domains.length, pixels: pixels.length },
+    issues,
+  };
+};
+
+// ── The rules ──────────────────────────────────────────────────────────
+// Each returns findings; the runner persists them and resolves anything
+// the rules stopped reporting.
+const runAlertRules = async () => {
+  const findings = [];
+  const dayMs = 86400000;
+  const today = new Date();
+
+  // Rule 1 — a Meta token behind a cost integration has died. This is the
+  // failure that cost three weeks of blind ROI.
+  let costHealth = null;
+  try {
+    costHealth = await buildCostHealth();
+    costHealth.integrations
+      .filter((integration) => integration.token_error)
+      .forEach((integration) => {
+        findings.push({
+          rule: "meta_token_dead",
+          key: `meta_token_dead:${integration.keitaro_integration_id}`,
+          severity: "critical",
+          title: `Meta token failed on ${integration.name}`,
+          message: `Keitaro reports "${integration.token_error}" for this Facebook integration. Cost has stopped arriving for it — every ROI figure that uses this account is now wrong.`,
+          entityType: "integration",
+          entityId: integration.keitaro_integration_id,
+          entityLabel: integration.name,
+          details: { error: integration.error_detail, adAccount: integration.ad_account_id },
+        });
+      });
+
+    // Rule 2 — traffic is being bought but no cost is landing at all.
+    if (costHealth.keitaro.reachable && costHealth.keitaro.trafficWithoutCost) {
+      findings.push({
+        rule: "cost_stalled",
+        key: "cost_stalled:global",
+        severity: "critical",
+        title: "No cost data received in 7 days",
+        message: `Keitaro recorded ${costHealth.keitaro.clicksLast7.toLocaleString()} clicks but $0 of cost in the last 7 days. Spend is not reaching the tracker, so ROI, ROAS and profit are all understated.`,
+        entityType: "cost",
+        entityId: null,
+        entityLabel: "Cost pipeline",
+        details: { clicksLast7: costHealth.keitaro.clicksLast7, costPrev7: costHealth.keitaro.costPrev7 },
+      });
+    } else if (costHealth.keitaro.reachable && costHealth.keitaro.costPrev7 > 0 && costHealth.keitaro.costLast7 === 0) {
+      findings.push({
+        rule: "cost_stalled",
+        key: "cost_stalled:global",
+        severity: "critical",
+        title: "Cost data stopped arriving",
+        message: `$${costHealth.keitaro.costPrev7.toFixed(2)} of cost landed the previous week and $0 this week.`,
+        entityType: "cost",
+        entityId: null,
+        entityLabel: "Cost pipeline",
+        details: { costPrev7: costHealth.keitaro.costPrev7 },
+      });
+    }
+
+    // Rule 3 — we believe an account is wired, Keitaro has no such link.
+    costHealth.wired
+      .filter((account) => account.is_wired && !account.linked)
+      .forEach((account) => {
+        findings.push({
+          rule: "integration_unlinked",
+          key: `integration_unlinked:${account.id}`,
+          severity: "warning",
+          title: `${account.account_number} is marked wired but not linked in Keitaro`,
+          message: `No Keitaro integration id is stored for this ad account, so its Meta spend has no route into the tracker.`,
+          entityType: "meta_integration",
+          entityId: account.id,
+          entityLabel: account.account_number,
+          ownerId: null,
+          details: { buyer: account.buyer_name },
+        });
+      });
+  } catch (error) {
+    console.warn("Cost rules failed:", error?.message || error);
+  }
+
+  // Rule 4 — a live flow fell off a cliff. Compares the last 3 days with
+  // the 4 before them, and only fires with a baseline worth trusting.
+  try {
+    const [recent, baseline] = await Promise.all([
+      keitaroReportBuild({
+        from: isoDay(new Date(today.getTime() - 2 * dayMs)),
+        to: isoDay(today),
+        grouping: ["campaign"],
+        metrics: ["campaign_unique_clicks", "custom_conversion_8"],
+        limit: 5000,
+      }),
+      keitaroReportBuild({
+        from: isoDay(new Date(today.getTime() - 6 * dayMs)),
+        to: isoDay(new Date(today.getTime() - 3 * dayMs)),
+        grouping: ["campaign"],
+        metrics: ["campaign_unique_clicks", "custom_conversion_8"],
+        limit: 5000,
+      }),
+    ]);
+    if (recent.ok && baseline.ok) {
+      const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      const index = (rows) => {
+        const map = new Map();
+        rows.forEach((row) => {
+          const key = String(row.campaign || "").trim().toLowerCase();
+          if (!key) return;
+          const prev = map.get(key) || { uniques: 0, ftds: 0, name: row.campaign };
+          prev.uniques += num(row.campaign_unique_clicks);
+          prev.ftds += num(row.custom_conversion_8);
+          map.set(key, prev);
+        });
+        return map;
+      };
+      const recentIndex = index(recent.rows);
+      const baselineIndex = index(baseline.rows);
+      const links = await query(
+        `SELECT id, name, owner_id, state FROM tracking_links WHERE COALESCE(state, 'active') = 'active'`
+      ).then((r) => r.rows || []);
+      links.forEach((link) => {
+        const key = String(link.name || "").trim().toLowerCase();
+        const now = recentIndex.get(key);
+        const before = baselineIndex.get(key);
+        if (!before) return;
+        // Per-day rates, because the windows are 3 and 4 days long.
+        const beforeRate = before.uniques / 4;
+        const nowRate = (now?.uniques || 0) / 3;
+        if (beforeRate < 20) return; // too small to mean anything
+        const drop = (beforeRate - nowRate) / beforeRate;
+        if (drop < 0.6) return;
+        findings.push({
+          rule: "flow_traffic_drop",
+          key: `flow_traffic_drop:${link.id}`,
+          severity: nowRate === 0 ? "critical" : "warning",
+          title: nowRate === 0 ? `${link.name} stopped receiving traffic` : `${link.name} traffic down ${Math.round(drop * 100)}%`,
+          message: `Unique clicks fell from ~${Math.round(beforeRate)}/day to ~${Math.round(nowRate)}/day over the last 3 days.`,
+          entityType: "tracking_link",
+          entityId: link.id,
+          entityLabel: link.name,
+          ownerId: link.owner_id,
+          details: { beforeRate, nowRate, ftdsBefore: before.ftds, ftdsNow: now?.ftds || 0 },
+        });
+      });
+
+      // Rule 5 — paused campaign that is somehow still taking clicks.
+      const pausedLinks = await query(
+        `SELECT id, name, owner_id FROM tracking_links WHERE COALESCE(state, 'active') <> 'active'`
+      ).then((r) => r.rows || []);
+      pausedLinks.forEach((link) => {
+        const now = recentIndex.get(String(link.name || "").trim().toLowerCase());
+        if (!now || now.uniques < 10) return;
+        findings.push({
+          rule: "paused_with_traffic",
+          key: `paused_with_traffic:${link.id}`,
+          severity: "warning",
+          title: `${link.name} is paused but still receiving clicks`,
+          message: `${now.uniques.toLocaleString()} unique clicks in the last 3 days on a flow marked paused — either the ads are still live or the pause never reached Keitaro.`,
+          entityType: "tracking_link",
+          entityId: link.id,
+          entityLabel: link.name,
+          ownerId: link.owner_id,
+          details: { uniques: now.uniques },
+        });
+      });
+    }
+  } catch (error) {
+    console.warn("Traffic rules failed:", error?.message || error);
+  }
+
+  // Rule 6 — structural breakage worth waking someone for. Rolled up one
+  // alert per class: 63 separate "no domain bound" rows would bury the
+  // incidents that actually need a human. The per-entity list is the
+  // Setup tab's job.
+  try {
+    const integrity = await buildIntegrityReport({ role: "Boss" });
+    const byCode = new Map();
+    integrity.issues
+      .filter((issue) => issue.severity === "critical")
+      .forEach((issue) => {
+        if (!byCode.has(issue.code)) byCode.set(issue.code, []);
+        byCode.get(issue.code).push(issue);
+      });
+    byCode.forEach((issues, code) => {
+      const sample = issues.slice(0, 3).map((issue) => issue.label).join(", ");
+      findings.push({
+        rule: `integrity_${code}`,
+        key: `integrity:${code}`,
+        severity: "warning",
+        title:
+          issues.length === 1
+            ? issues[0].title
+            : `${issues.length} × ${issues[0].title.toLowerCase()}`,
+        message:
+          issues.length === 1
+            ? `${issues[0].label}: ${issues[0].detail}`
+            : `${sample}${issues.length > 3 ? ` and ${issues.length - 3} more` : ""}. ${issues[0].fix}`,
+        entityType: issues[0].entityType,
+        entityId: issues.length === 1 ? issues[0].entityId : null,
+        entityLabel: issues.length === 1 ? issues[0].label : `${issues.length} items`,
+        ownerId: null,
+        details: { fix: issues[0].fix, count: issues.length, sample: issues.slice(0, 10).map((i) => i.label) },
+      });
+    });
+  } catch (error) {
+    console.warn("Integrity rules failed:", error?.message || error);
+  }
+
+  return findings;
+};
+
+let alertRunState = { running: false, startedAt: null, lastRunAt: null, lastResult: null };
+
+const runAlertEvaluation = async ({ notify = true, dryRun = false } = {}) => {
+  // Dry run answers "what would fire right now" without persisting or
+  // notifying — safe to hit while tuning thresholds.
+  if (dryRun) {
+    const findings = await runAlertRules();
+    return { dryRun: true, ranAt: new Date().toISOString(), findings: findings.length, wouldFire: findings };
+  }
+  if (alertRunState.running) return { skipped: true, reason: "already running" };
+  alertRunState = { ...alertRunState, running: true, startedAt: new Date().toISOString() };
+  try {
+    const findings = await runAlertRules();
+    const seenKeys = new Set(findings.map((f) => f.key));
+    let created = 0;
+    let reopened = 0;
+    for (const finding of findings) {
+      const result = await raiseAlert(finding);
+      if (result?.created) created += 1;
+      if (result?.reopened) reopened += 1;
+      // Only brand-new or regressed problems are worth interrupting for.
+      if (notify && (result?.created || result?.reopened)) {
+        await createSystemNotification({
+          event_type: `alert_${finding.rule}`,
+          severity: finding.severity === "critical" ? "critical" : "warning",
+          title: finding.title,
+          message: finding.message,
+          entity_type: finding.entityType || "alert",
+          entity_id: Number.isFinite(Number(finding.entityId)) ? Number(finding.entityId) : null,
+          actor_name: "Health monitor",
+          dedupeWindowSeconds: 6 * 60 * 60,
+        });
+        await pushAlertOutbound(finding);
+      }
+    }
+    // Anything still open that no rule reported has fixed itself.
+    const openRows = await query(`SELECT id, alert_key FROM alerts WHERE status <> 'resolved'`).then(
+      (r) => r.rows || []
+    );
+    const stale = openRows.filter((row) => !seenKeys.has(row.alert_key)).map((row) => row.id);
+    if (stale.length) {
+      await query(
+        `UPDATE alerts SET status = 'resolved', resolved_at = NOW() WHERE id = ANY($1::int[])`,
+        [stale]
+      );
+    }
+    const result = {
+      ranAt: new Date().toISOString(),
+      findings: findings.length,
+      created,
+      reopened,
+      resolved: stale.length,
+    };
+    alertRunState = { running: false, startedAt: null, lastRunAt: result.ranAt, lastResult: result };
+    return result;
+  } catch (error) {
+    alertRunState = { ...alertRunState, running: false, startedAt: null };
+    throw error;
+  }
+};
+
+app.get("/api/alerts", async (req, res) => {
+  const status = String(req.query.status || "open").toLowerCase();
+  const clauses = [];
+  const params = [];
+  if (status === "open") clauses.push("status <> 'resolved'");
+  else if (["acknowledged", "resolved"].includes(status)) {
+    params.push(status);
+    clauses.push(`status = $${params.length}`);
+  }
+  // A buyer sees the problems that are theirs to fix, plus the global ones
+  // that affect everyone's numbers.
+  if (!isLeadership(req.user)) {
+    params.push(req.user.id);
+    clauses.push(`(owner_id IS NULL OR owner_id = $${params.length})`);
+  }
+  const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  // The timestamp columns are naive UTC; without the explicit AT TIME ZONE
+  // the driver reads them as local time and every "4h ago" is wrong.
+  const rows = await query(
+    `SELECT id, rule, alert_key, severity, status, title, message,
+            entity_type, entity_id, entity_label, owner_id, details, occurrences,
+            first_seen_at AT TIME ZONE 'UTC' AS first_seen_at,
+            last_seen_at  AT TIME ZONE 'UTC' AS last_seen_at,
+            acknowledged_at AT TIME ZONE 'UTC' AS acknowledged_at,
+            acknowledged_by,
+            resolved_at AT TIME ZONE 'UTC' AS resolved_at
+       FROM alerts
+      ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+      ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+               last_seen_at DESC
+      LIMIT ${limit}`,
+    params
+  ).then((r) => r.rows || []);
+  const counts = await query(
+    `SELECT severity, COUNT(*)::int AS n FROM alerts WHERE status <> 'resolved' GROUP BY severity`
+  ).then((r) => r.rows || []);
+  res.json({
+    alerts: rows.map((row) => ({
+      ...row,
+      details: (() => {
+        try {
+          return row.details ? JSON.parse(row.details) : null;
+        } catch (error) {
+          return null;
+        }
+      })(),
+    })),
+    counts: counts.reduce((acc, row) => ({ ...acc, [row.severity]: row.n }), {}),
+    lastRunAt: alertRunState.lastRunAt,
+    running: alertRunState.running,
+  });
+});
+
+app.patch("/api/alerts/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid alert id." });
+  const action = String(req.body?.action || "").toLowerCase();
+  const current = await getRow(`SELECT * FROM alerts WHERE id = $1`, [id]);
+  if (!current) return res.status(404).json({ error: "Alert not found." });
+  if (!isLeadership(req.user) && current.owner_id && Number(current.owner_id) !== Number(req.user.id)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  if (action === "acknowledge") {
+    await query(
+      `UPDATE alerts SET status = 'acknowledged', acknowledged_at = NOW(), acknowledged_by = $1 WHERE id = $2`,
+      [req.user?.username || "Unknown", id]
+    );
+  } else if (action === "resolve") {
+    await query(`UPDATE alerts SET status = 'resolved', resolved_at = NOW() WHERE id = $1`, [id]);
+  } else if (action === "reopen") {
+    await query(
+      `UPDATE alerts SET status = 'open', resolved_at = NULL, acknowledged_at = NULL, acknowledged_by = NULL WHERE id = $1`,
+      [id]
+    );
+  } else {
+    return res.status(400).json({ error: "action must be acknowledge, resolve or reopen." });
+  }
+  const updated = await getRow(`SELECT * FROM alerts WHERE id = $1`, [id]);
+  res.json(updated);
+});
+
+// Manual run from the UI (leadership) — the scheduled run comes through
+// /api/health/cron with the shared cron secret.
+app.post("/api/alerts/run", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const dryRun = ["1", "true", "yes"].includes(String(req.query.dry || "").toLowerCase());
+  try {
+    const result = await runAlertEvaluation({ notify: !dryRun, dryRun });
+    res.json(result);
+  } catch (error) {
+    res.status(502).json({ error: error.message || "Alert evaluation failed." });
+  }
+});
+
+app.get("/api/cost-health", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  try {
+    res.json(await buildCostHealth());
+  } catch (error) {
+    res.status(502).json({ error: error.message || "Could not read the cost pipeline." });
+  }
+});
+
+app.get("/api/integrity", async (req, res) => {
+  try {
+    res.json(await buildIntegrityReport(req.user));
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Integrity scan failed." });
+  }
+});
+
+// ── Per-entity change history ──────────────────────────────────────────
+// audit_logs already records entity_type/entity_id for every mutation; this
+// just reads one entity's slice of it, so "why did this drop on the 12th"
+// is answerable next to the chart instead of in a global log.
+const ENTITY_OWNER_TABLES = {
+  tracking_link: "tracking_links",
+  domain: "domains",
+  pixel: "pixels",
+};
+app.get("/api/logs/entity", async (req, res) => {
+  const type = String(req.query.type || "").trim().toLowerCase();
+  const id = String(req.query.id || "").trim();
+  if (!type || !id) return res.status(400).json({ error: "type and id are required." });
+  // Buyers may read the history of things they own; leadership reads all.
+  if (!isLeadership(req.user)) {
+    const table = ENTITY_OWNER_TABLES[type];
+    if (!table) return res.status(403).json({ error: "Forbidden." });
+    const owned = await getRow(`SELECT owner_id FROM ${table} WHERE id = $1`, [Number(id)]);
+    if (!owned || Number(owned.owner_id) !== Number(req.user.id)) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+  }
+  const limitRaw = Number.parseInt(req.query.limit ?? "40", 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 40;
+  // Audit rows carry the plural REST segment ("tracking-links"), so match on
+  // both the derived entity_type and the path itself.
+  const rows = await query(
+    `SELECT id, created_at AT TIME ZONE 'UTC' AS created_at,
+            actor_name, actor_role, method, path, action, status, details
+       FROM audit_logs
+      WHERE entity_id = $1
+        AND (entity_type = $2 OR path LIKE $3)
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${limit}`,
+    [id, type, `/api/${type.replace(/_/g, "-")}s/%`]
+  ).then((r) => r.rows || []);
+  res.json(
+    rows.map((row) => ({
+      ...row,
+      details: (() => {
+        try {
+          return row.details ? JSON.parse(row.details) : null;
+        } catch (error) {
+          return null;
+        }
+      })(),
+    }))
+  );
+});
+
+// Scheduled health run — same shared-secret contract as the Keitaro cron.
+app.all("/api/health/cron", async (req, res) => {
+  const secret = normalizeSecretValue(req.headers["x-cron-secret"] || req.query.secret || "");
+  if (!keitaroCronSecret) return res.status(503).json({ error: "Cron is not configured." });
+  if (!secretEquals(secret, keitaroCronSecret)) return res.status(401).json({ error: "Unauthorized." });
+  try {
+    const result = await runAlertEvaluation({ notify: true });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message || "Alert evaluation failed." });
   }
 });
 

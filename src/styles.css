@@ -14810,6 +14810,129 @@ select option,
   .flow-edit-attach { margin-left: 0; width: 100%; }
 }
 
+/* ── Health view ────────────────────────────────────────────────────
+   Alerts (incidents), Cost pipeline (money data), Setup (structure).
+   Severity is carried by a left edge + icon tint, never by colour alone. */
+.health-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.health-tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 13px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 650; color: var(--muted-strong, #a9adb7);
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.health-tab:hover { color: var(--text); border-color: var(--stroke-strong, #3a3e47); }
+.health-tab.is-active { color: #071108; border-color: transparent; background: var(--green); }
+.health-tab-badge {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 6px;
+  display: inline-grid; place-items: center;
+  font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--yellow, #f5b83d); background: rgba(245,184,61,0.16);
+}
+.health-tab-badge.is-critical { color: #ff9b9b; background: rgba(255,107,107,0.18); }
+.health-tab.is-active .health-tab-badge { color: rgba(7,17,8,0.7); background: rgba(7,17,8,0.14); }
+.health-lastrun { font-size: 11.5px; color: var(--faint, #6b7079); }
+.is-spinning { animation: health-spin 1s linear infinite; }
+@keyframes health-spin { to { transform: rotate(360deg); } }
+
+.health-section-title {
+  margin: 20px 0 10px; font-size: 11px; font-weight: 800;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--faint, #6b7079);
+}
+.health-list { display: flex; flex-direction: column; gap: 9px; }
+.health-alert {
+  position: relative; overflow: hidden;
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 13px 15px 13px 17px; border-radius: 13px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+}
+.health-alert::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--hl-accent, #8f9aa8);
+}
+.health-alert.sev-critical { --hl-accent: #ff6b6b; border-color: rgba(255,107,107,0.28); background: rgba(255,107,107,0.045); }
+.health-alert.sev-warning  { --hl-accent: #f5b83d; border-color: rgba(245,184,61,0.24); }
+.health-alert.sev-info     { --hl-accent: #64b8ff; }
+.health-alert.sev-ok       { --hl-accent: #36d07c; }
+.health-alert.is-ack { opacity: 0.72; }
+.health-alert-icon { color: var(--hl-accent, #8f9aa8); display: grid; place-items: center; padding-top: 2px; }
+.health-alert-body { flex: 1; min-width: 0; }
+.health-alert-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.health-alert-head strong { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.health-alert-rule {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 10.5px;
+  padding: 2px 7px; border-radius: 6px; color: var(--faint, #6b7079);
+  border: 1px solid var(--stroke); background: rgba(0,0,0,0.2);
+}
+.health-alert-ack { font-size: 11px; color: var(--faint, #6b7079); }
+.health-alert-message { margin: 5px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted-strong, #a9adb7); }
+.health-issue-entity { font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--text); }
+.health-alert-meta {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 7px;
+  font-size: 11px; color: var(--faint, #6b7079);
+}
+.health-alert-fix { color: color-mix(in srgb, var(--green) 70%, #ffffff); }
+.health-alert-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.health-clear { display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--green); }
+
+.health-pipeline {
+  display: flex; align-items: flex-start; gap: 13px;
+  padding: 15px 17px; border-radius: 14px; margin-bottom: 16px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+}
+.health-pipeline strong { display: block; font-size: 14px; color: var(--text); }
+.health-pipeline p { margin: 5px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.health-pipeline.is-ok { border-color: rgba(54,208,124,0.3); background: rgba(54,208,124,0.05); }
+.health-pipeline.is-ok .health-pipeline-icon { color: var(--green); }
+.health-pipeline.is-bad { border-color: rgba(255,107,107,0.32); background: rgba(255,107,107,0.05); }
+.health-pipeline.is-bad .health-pipeline-icon { color: #ff8a8a; }
+
+.health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 9px; }
+.health-account {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 11px 13px; border-radius: 11px;
+  border: 1px solid var(--stroke); background: rgba(255,255,255,0.022);
+}
+.health-account.is-bad { border-color: rgba(245,184,61,0.32); background: rgba(245,184,61,0.05); }
+.health-account-name { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; font-weight: 650; color: var(--text); }
+.health-account-buyer { font-size: 11.5px; color: var(--muted); }
+.health-account-state { font-size: 11px; color: var(--yellow, #f5b83d); }
+.health-account-state.is-ok { color: var(--faint, #6b7079); }
+
+/* ── Per-entity history timeline ────────────────────────────────────── */
+.entity-history { display: flex; flex-direction: column; }
+.entity-history-empty { margin: 0; font-size: 12px; color: var(--faint, #6b7079); }
+.entity-history-row {
+  position: relative; display: flex; align-items: flex-start; gap: 10px;
+  padding: 7px 0 7px 4px;
+}
+.entity-history-row + .entity-history-row { border-top: 1px solid rgba(255,255,255,0.04); }
+.entity-history-dot {
+  width: 7px; height: 7px; border-radius: 50%; margin-top: 6px; flex-shrink: 0;
+  background: var(--muted, #8f96a3);
+}
+.entity-history-dot.is-created { background: var(--green); }
+.entity-history-dot.is-deleted { background: #ff6b6b; }
+.entity-history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.entity-history-line { font-size: 12.5px; color: var(--muted-strong, #a9adb7); }
+.entity-history-line strong { color: var(--text); font-weight: 650; }
+.entity-history-failed {
+  margin-left: 7px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #ff9b9b;
+}
+.entity-history-detail {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px;
+  color: var(--faint, #6b7079); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.entity-history-time { font-size: 11px; color: var(--faint, #6b7079); flex-shrink: 0; }
+.entity-history-more {
+  align-self: flex-start; margin-top: 6px; padding: 0;
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+  background: transparent; border: 0;
+}
+.entity-history-more:hover { color: var(--text); text-decoration: underline; }
+.entity-history-row.is-failed .entity-history-line strong { color: #ff9b9b; }
+
 /* Traffic Flow modal — premium */
 .traffic-flow-modal { width: min(600px, 94vw); }
 .traffic-flow-titlewrap h2 { margin: 3px 0 0; font-size: 20px; letter-spacing: -0.01em; }
@@ -18222,3 +18345,19 @@ select option,
   box-shadow: 0 0 8px rgba(88, 177, 255, 0.6);
   flex-shrink: 0;
 }
+
+/* Setup issues, grouped by class */
+.health-issue-count {
+  min-width: 20px; height: 19px; padding: 0 6px; border-radius: 6px;
+  display: inline-grid; place-items: center;
+  font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--text); border: 1px solid var(--stroke); background: rgba(255,255,255,0.05);
+}
+.health-issue-items { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.health-issue-item { display: flex; gap: 10px; align-items: baseline; font-size: 12px; min-width: 0; }
+.health-issue-item .health-issue-entity {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  color: var(--text); flex-shrink: 0; max-width: 46%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.health-issue-detail { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
