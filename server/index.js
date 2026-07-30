@@ -11760,6 +11760,15 @@ app.get("/api/keitaro/campaign-format-check", async (req, res) => {
 // data still arriving, and is the wiring even capable of working.
 // ═══════════════════════════════════════════════════════════════════════
 
+// Ownerless findings are org-level and must stay NULL: Number(null) is 0,
+// which would otherwise write a real-looking owner id that belongs to
+// nobody and quietly leak past the buyer scope.
+const toOwnerId = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
+
 const ALERT_SEVERITIES = ["critical", "warning", "info"];
 const normalizeAlertSeverity = (value) => {
   const v = String(value || "warning").trim().toLowerCase();
@@ -11797,7 +11806,7 @@ const raiseAlert = async (finding) => {
         String(finding.message || "").slice(0, 1000),
         details,
         finding.entityLabel ? String(finding.entityLabel).slice(0, 200) : null,
-        Number.isFinite(Number(finding.ownerId)) ? Number(finding.ownerId) : null,
+        toOwnerId(finding.ownerId),
         existing.id,
       ]
     );
@@ -11817,7 +11826,7 @@ const raiseAlert = async (finding) => {
       finding.entityType ? String(finding.entityType).slice(0, 40) : null,
       finding.entityId !== undefined && finding.entityId !== null ? String(finding.entityId).slice(0, 40) : null,
       finding.entityLabel ? String(finding.entityLabel).slice(0, 200) : null,
-      Number.isFinite(Number(finding.ownerId)) ? Number(finding.ownerId) : null,
+      toOwnerId(finding.ownerId),
       details,
     ]
   );
@@ -12195,10 +12204,17 @@ const buildIntegrityReport = async (user) => {
   });
   const order = { critical: 0, warning: 1, info: 2 };
   issues.sort((a, b) => order[a.severity] - order[b.severity] || String(a.code).localeCompare(String(b.code)));
+  // "Scanned" must describe the caller's own estate, not the team's, or a
+  // buyer is told how many domains the whole company runs.
+  const visible = { flows: links.filter(mine), domains: domains.filter(mine), pixels: pixels.filter(mine) };
   return {
     checkedAt: new Date().toISOString(),
     counts: { total: issues.length, ...bySeverity },
-    scanned: { flows: links.length, domains: domains.length, pixels: pixels.length },
+    scanned: {
+      flows: visible.flows.length,
+      domains: visible.domains.length,
+      pixels: visible.pixels.length,
+    },
     issues,
   };
 };
@@ -12439,7 +12455,7 @@ const runAlertEvaluation = async ({ notify = true, dryRun = false } = {}) => {
           title: finding.title,
           message: finding.message,
           entity_type: finding.entityType || "alert",
-          entity_id: Number.isFinite(Number(finding.entityId)) ? Number(finding.entityId) : null,
+          entity_id: toOwnerId(finding.entityId),
           actor_name: "Health monitor",
           dedupeWindowSeconds: 6 * 60 * 60,
         });
@@ -12481,11 +12497,13 @@ app.get("/api/alerts", async (req, res) => {
     params.push(status);
     clauses.push(`status = $${params.length}`);
   }
-  // A buyer sees the problems that are theirs to fix, plus the global ones
-  // that affect everyone's numbers.
-  if (!isLeadership(req.user)) {
+  // A buyer sees only their own work. Ownerless rows are org-level — dead
+  // Meta tokens, the cost pipeline, structural rollups — and belong to
+  // leadership, who are the only ones who can act on them anyway.
+  const scoped = !isLeadership(req.user);
+  if (scoped) {
     params.push(req.user.id);
-    clauses.push(`(owner_id IS NULL OR owner_id = $${params.length})`);
+    clauses.push(`owner_id = $${params.length}`);
   }
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
@@ -12507,7 +12525,11 @@ app.get("/api/alerts", async (req, res) => {
     params
   ).then((r) => r.rows || []);
   const counts = await query(
-    `SELECT severity, COUNT(*)::int AS n FROM alerts WHERE status <> 'resolved' GROUP BY severity`
+    `SELECT severity, COUNT(*)::int AS n
+       FROM alerts
+      WHERE status <> 'resolved'${scoped ? " AND owner_id = $1" : ""}
+      GROUP BY severity`,
+    scoped ? [req.user.id] : []
   ).then((r) => r.rows || []);
   res.json({
     alerts: rows.map((row) => ({
@@ -12532,7 +12554,9 @@ app.patch("/api/alerts/:id", async (req, res) => {
   const action = String(req.body?.action || "").toLowerCase();
   const current = await getRow(`SELECT * FROM alerts WHERE id = $1`, [id]);
   if (!current) return res.status(404).json({ error: "Alert not found." });
-  if (!isLeadership(req.user) && current.owner_id && Number(current.owner_id) !== Number(req.user.id)) {
+  // Unowned (org-level) alerts are leadership's to close, so a missing
+  // owner must fail the check rather than pass it.
+  if (!isLeadership(req.user) && Number(current.owner_id) !== Number(req.user.id)) {
     return res.status(403).json({ error: "Forbidden." });
   }
   if (action === "acknowledge") {
