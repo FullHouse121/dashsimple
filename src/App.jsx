@@ -97,6 +97,7 @@ import {
   Star,
   Play,
   Pause,
+  FileSpreadsheet,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 import keitaroLogo from "./assets/brands/keitaro.svg";
@@ -190,6 +191,7 @@ const DocumentationDashboard = React.lazy(() => import("./dashboards/Documentati
 const CommandPalette = React.lazy(() => import("./components/CommandPalette.jsx"));
 const LiveClicksDashboard = React.lazy(() => import("./dashboards/LiveClicksDashboard.jsx"));
 const ConversionsDashboard = React.lazy(() => import("./dashboards/ConversionsDashboard.jsx"));
+const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { liveClickSubIssues } from "./lib/live.js";
@@ -321,6 +323,7 @@ const navItems = [
   { key: "placements", label: "Placement", icon: MousePointerClick },
   { key: "user_behavior", label: "User Behavior", icon: Users },
   { key: "devices", label: "Devices", icon: Smartphone },
+  { key: "reports", label: "Reports", icon: FileSpreadsheet },
   { key: "domains", label: "Domains", icon: Globe },
   { key: "pixels", label: "Pixels", icon: Zap },
   { key: "accounts", label: "Accounts", icon: UserPlus },
@@ -334,7 +337,7 @@ const navItems = [
 
 const navSections = [
   { title: "Overview", items: ["home", "geos", "streams"] },
-  { title: "Performance", items: ["statistics", "live_clicks", "conversions", "campaigns", "placements", "user_behavior", "devices"] },
+  { title: "Performance", items: ["statistics", "live_clicks", "conversions", "campaigns", "placements", "user_behavior", "devices", "reports"] },
   { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts", "health"] },
   { title: "Administration", items: ["roles", "logs"] },
   { title: "Account", items: ["profile"] },
@@ -24260,6 +24263,7 @@ export default function App() {
   const isHealth = activeView === "health";
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
+  const isReports = activeView === "reports";
   const isProfile = activeView === "profile";
   const isLeadership = isLeadershipRole(authUser?.role);
   const canManageExpenses = isLeadershipRole(authUser?.role);
@@ -24458,6 +24462,7 @@ export default function App() {
       placements: "placements",
       user_behavior: "user_behavior",
       devices: "devices",
+      reports: "statistics",
       domains: "domains",
       pixels: "pixels",
       accounts: "accounts",
@@ -25551,6 +25556,10 @@ export default function App() {
         ) : isConversions ? (
           <React.Suspense fallback={<div className="empty-state">Loading…</div>}>
             <ConversionsDashboard authUser={authUser} viewerBuyer={effectiveViewerBuyer} />
+          </React.Suspense>
+        ) : isReports ? (
+          <React.Suspense fallback={<div className="empty-state">Loading…</div>}>
+            <ReportsDashboard authUser={authUser} />
           </React.Suspense>
         ) : isCampaigns ? (
           <CampaignsDashboard

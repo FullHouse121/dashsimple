@@ -7,6 +7,30 @@ import {
   makeBuyerScoping,
 } from "./lib/scoping.js";
 import { createTokenCodec } from "./lib/auth.js";
+import {
+  REPORT_SOURCES,
+  normalizeReportRequest,
+  toKeitaroPayload,
+  describeColumns,
+  buildScopeFilter,
+  OPERATORS_BY_TYPE,
+  MAX_EXPORT_ROWS,
+  MAX_PDF_ROWS,
+  EXPORT_FORMATS,
+  csvCell,
+  exportValue,
+  exportFilename,
+  buildDashboardQuery,
+  applyDerived,
+  sortRows,
+  csvHeaderLine,
+  csvRowLine,
+  previewCell,
+  exportNotes,
+  estimateExportBytes,
+} from "./lib/reports.js";
+import ExcelJS from "exceljs";
+import PDFDocument from "pdfkit";
 import fs from "fs";
 
 // Render "Secret Files" mount at /etc/secrets/<NAME> but do NOT populate
@@ -706,6 +730,27 @@ const initDb = async () => {
        SELECT id, tracking_link_id FROM domains
         WHERE tracking_link_id IS NOT NULL
        ON CONFLICT DO NOTHING;`,
+
+    // Saved report definitions: which source, which columns, which filters,
+    // which range. `config` is the whole builder state as JSON so a preset
+    // survives new fields being added to the catalog. A preset is private
+    // until its owner shares it with the team.
+    `CREATE TABLE IF NOT EXISTS report_presets (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      source TEXT NOT NULL DEFAULT 'performance',
+      config TEXT NOT NULL DEFAULT '{}',
+      is_shared BOOLEAN NOT NULL DEFAULT FALSE,
+      owner_id INTEGER,
+      owner_role TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_report_presets_owner
+       ON report_presets (owner_id, updated_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS idx_report_presets_shared
+       ON report_presets (is_shared, updated_at DESC);`,
 
     // Alerting: one row per distinct problem, keyed so a rule that keeps
     // firing updates the same row (occurrences/last_seen) instead of
@@ -9919,6 +9964,469 @@ app.put("/api/market-cpa", async (req, res) => {
   } catch (error) {
     return res.status(500).json({ error: "Failed to save CPA rates." });
   }
+});
+
+// ── Reports ────────────────────────────────────────────────────────────
+// A generic builder over the tracker: pick a source, pick the columns, pick
+// the filters, run it, export it, save it as a preset. The field catalog and
+// all validation live in ./lib/reports.js (probe-verified against this
+// tracker — see the header there before adding a field).
+
+// Buyer scoping for every report path. Returns the Keitaro-side filter, or
+// `denied` when a non-leadership viewer has no usable identity — in that case
+// we refuse rather than run unscoped. An unscoped report is a data leak, so
+// the failure mode has to be a 403, never "no filter".
+const resolveReportScope = async (user, scopeField) => {
+  if (isLeadership(user)) return { ok: true, filter: null, viewerBuyer: null };
+  const viewerBuyer = await resolveViewerBuyer(user);
+  if (!viewerBuyer) return { ok: false, denied: true };
+  const filter = buildScopeFilter(buyerShortForms(viewerBuyer), scopeField);
+  if (!filter) return { ok: false, denied: true };
+  return { ok: true, filter, viewerBuyer };
+};
+
+const reportRowsOf = (data) => (Array.isArray(data) ? data : data?.rows || []);
+
+// Dashboard-data reports read our own Postgres, so scoping is a WHERE clause
+// rather than a tracker filter. Leadership-only entities (expenses, the audit
+// log) are refused outright for buyers instead of returning an empty table —
+// an empty finance report reads as "no expenses", which is a lie.
+const runDashboardReport = async (request, user) => {
+  const entityDef = REPORT_SOURCES.dashboard.entities[request.entity];
+  if (entityDef.leadershipOnly && !isLeadership(user)) {
+    return { ok: false, status: 403, error: `${entityDef.label} is leadership-only.` };
+  }
+  let viewerId = null;
+  let buyerForms = [];
+  if (!isLeadership(user)) {
+    viewerId = Number(user.id);
+    const viewerBuyer = await resolveViewerBuyer(user);
+    buyerForms = viewerBuyer ? buyerShortForms(viewerBuyer) : [];
+  }
+  const { sql, params, countSql, countParams } = buildDashboardQuery(request, { viewerId, buyerForms });
+  try {
+    const [rowsResult, countResult] = await Promise.all([
+      query(sql, params),
+      query(countSql, countParams),
+    ]);
+    return {
+      ok: true,
+      rows: rowsResult.rows || [],
+      summary: null,
+      total: countResult.rows?.[0]?.total ?? (rowsResult.rows || []).length,
+    };
+  } catch (error) {
+    return { ok: false, status: 500, error: error.message || "The query failed." };
+  }
+};
+
+// One entry point for both run and export, so the two can never drift on
+// which rows a viewer is allowed to see.
+const executeReport = async (request, user, options = {}) => {
+  if (request.kind === "table") return runDashboardReport(request, user);
+  const scope = await resolveReportScope(user, request.scopeField);
+  if (!scope.ok) {
+    return { ok: false, status: 403, error: "No buyer identity is mapped to your account." };
+  }
+  const run = await executeKeitaroReport(request, scope, options);
+  return run.ok ? run : { ok: false, status: 502, error: run.error };
+};
+
+// Run a validated request against the tracker and apply the second scoping
+// gate. The Keitaro-side filter already excludes other buyers' traffic; when
+// the campaign column is in the output we re-check each row with the same
+// viewerOwnsRow() the rest of the dashboard uses, so Reports can never be
+// looser than the views it sits next to.
+const executeKeitaroReport = async (request, scope, { timeoutMs = 15000 } = {}) => {
+  const payload = toKeitaroPayload(request, scope.filter);
+  const result = await keitaroAdminFetch(request.path, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!result.ok) return { ok: false, error: result.error || "Keitaro report failed." };
+  const data = result.data || {};
+  let rows = reportRowsOf(data);
+  if (scope.viewerBuyer && rows.length && Object.hasOwn(rows[0] || {}, request.scopeField)) {
+    rows = rows.filter((row) => viewerOwnsRow(row, scope.viewerBuyer));
+  }
+
+  // Compute the ratios and unit economics Keitaro does not return.
+  const summary = data.summary ? { ...data.summary } : null;
+  if (request.derivedKeys?.length) {
+    applyDerived(rows, request.derivedKeys);
+    // The totals row is recomputed from the summed bases, never averaged from
+    // the per-row rates — a 1-click day must not weigh as much as a 100k one.
+    if (summary) applyDerived([summary], request.derivedKeys);
+  }
+
+  let total = Number.isFinite(Number(data.total)) ? Number(data.total) : rows.length;
+  // Keitaro could not sort by a column it never computed, so do it here and
+  // only then cut the page the caller asked for.
+  if (request.derivedSort) {
+    total = rows.length;
+    sortRows(rows, request.sort);
+    rows = rows.slice(request.offset, request.offset + request.limit);
+  }
+
+  return { ok: true, rows, summary, total };
+};
+
+// The catalog the builder UI renders itself from. Static (this tracker has no
+// /report/labels endpoint), so it is safe to cache hard on the client.
+app.get("/api/reports/catalog", async (req, res) => {
+  const leadership = isLeadership(req.user);
+  const sources = Object.values(REPORT_SOURCES).map((def) => {
+    const base = { id: def.id, label: def.label, kind: def.kind, defaults: def.defaults };
+    if (def.kind === "aggregated") {
+      return { ...base, dimensions: def.dimensions, measures: def.measures };
+    }
+    if (def.kind === "table") {
+      // Don't advertise a data set the viewer would be refused — a visible
+      // tab that always 403s is worse than no tab.
+      const entities = Object.entries(def.entities)
+        .filter(([, entity]) => leadership || !entity.leadershipOnly)
+        .map(([id, entity]) => ({ id, label: entity.label, columns: entity.columns }));
+      return { ...base, entities };
+    }
+    return { ...base, columns: def.columns };
+  });
+  res.json({ sources, operators: OPERATORS_BY_TYPE, maxExportRows: MAX_EXPORT_ROWS });
+});
+
+app.post("/api/reports/run", async (req, res) => {
+  const parsed = normalizeReportRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const request = parsed.request;
+
+  const run = await executeReport(request, req.user);
+  if (!run.ok) return res.status(run.status || 502).json({ error: run.error });
+
+  res.json({
+    source: request.source,
+    entity: request.entity,
+    range: request.range,
+    columns: describeColumns(request),
+    rows: run.rows,
+    totals: run.summary,
+    total: run.total,
+    // The preview is capped; the export is not. Say so instead of letting a
+    // buyer read a truncated table as the whole answer.
+    truncated: run.total > run.rows.length + request.offset,
+  });
+});
+
+// ── Export ─────────────────────────────────────────────────────────────
+// The preview is capped at 500 rows; this is not. The file is written
+// straight to the response as rows are formatted, so the server never holds
+// a whole extract in memory.
+//
+// Errors are the awkward part of streaming: once bytes are on the wire the
+// status line is already sent, so a late Keitaro failure cannot become a 502.
+// Everything that can fail — validation, scoping, the tracker call — is done
+// BEFORE the first byte, and the only post-headers failure path destroys the
+// socket so the browser reports a broken download instead of silently saving
+// a truncated file that looks complete.
+const writeCsvExport = (res, columns, rows) => {
+  res.write(csvHeaderLine(columns) + "\n");
+  for (const row of rows) res.write(csvRowLine(columns, row) + "\n");
+  res.end();
+};
+
+const writeJsonExport = (res, columns, rows, meta) => {
+  res.write(`{"meta":${JSON.stringify(meta)},"columns":${JSON.stringify(columns)},"rows":[`);
+  rows.forEach((row, index) => {
+    const picked = {};
+    for (const column of columns) picked[column.key] = row[column.key] ?? null;
+    res.write((index ? "," : "") + JSON.stringify(picked));
+  });
+  res.write("]}");
+  res.end();
+};
+
+// Streaming xlsx. Order matters and is not forgiving: in a WorkbookWriter a
+// row is flushed the moment it commits, so column formats and frozen panes
+// have to be declared BEFORE the first row — setting them afterwards is
+// silently lost at best and throws at worst.
+const numFmtFor = (column) => {
+  if (column.format === "money") return "#,##0.00";
+  if (column.format === "percent") return '#,##0.00"%"';
+  if (column.type === "number") return "#,##0";
+  return undefined;
+};
+
+const writeXlsxExport = async (res, columns, rows, meta) => {
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useStyles: true });
+
+  const sheet = workbook.addWorksheet("Report", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  sheet.columns = columns.map((column) => ({
+    header: column.label,
+    key: column.key,
+    width: Math.min(Math.max(String(column.label).length + 4, 12), 40),
+    style: { numFmt: numFmtFor(column) },
+  }));
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true };
+  headerRow.commit();
+
+  for (const row of rows) {
+    const record = {};
+    for (const column of columns) record[column.key] = exportValue(row[column.key], column);
+    sheet.addRow(record).commit();
+  }
+  sheet.commit();
+
+  const info = workbook.addWorksheet("About");
+  info.columns = [
+    { header: "Field", key: "field", width: 22 },
+    { header: "Value", key: "value", width: 70 },
+  ];
+  const infoHeader = info.getRow(1);
+  infoHeader.font = { bold: true };
+  infoHeader.commit();
+  for (const [key, value] of Object.entries(meta)) {
+    if (value === "") continue;
+    info.addRow({ field: key, value: String(value) }).commit();
+  }
+  info.commit();
+
+  await workbook.commit();
+};
+
+const writePdfExport = (res, columns, rows, meta) => {
+  const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 });
+  doc.pipe(res);
+  doc.fontSize(16).text(`${meta.source} report`, { continued: false });
+  doc.fontSize(9).fillColor("#555")
+    .text(`${meta.range}  ·  ${meta.rows} rows  ·  generated ${meta.generated}`);
+  if (meta.note) doc.fillColor("#a33").text(meta.note);
+  doc.moveDown(0.6).fillColor("#000");
+
+  const usable = doc.page.width - doc.options.margin * 2;
+  const width = usable / columns.length;
+  const drawHeader = () => {
+    const y = doc.y;
+    doc.fontSize(7.5).font("Helvetica-Bold");
+    columns.forEach((column, index) => {
+      doc.text(String(column.label), doc.options.margin + index * width, y, { width: width - 4, ellipsis: true });
+    });
+    doc.font("Helvetica").moveDown(0.4);
+    doc.moveTo(doc.options.margin, doc.y).lineTo(doc.page.width - doc.options.margin, doc.y)
+      .strokeColor("#ccc").stroke();
+    doc.moveDown(0.2);
+  };
+  drawHeader();
+  for (const row of rows) {
+    if (doc.y > doc.page.height - 40) { doc.addPage(); drawHeader(); }
+    const y = doc.y;
+    doc.fontSize(7);
+    columns.forEach((column, index) => {
+      doc.text(String(row[column.key] ?? ""), doc.options.margin + index * width, y, {
+        width: width - 4, height: 10, ellipsis: true, lineBreak: false,
+      });
+    });
+    doc.y = y + 10;
+  }
+  doc.end();
+};
+
+// "What exactly am I about to download?" — the same query, the same renderers,
+// but only a handful of rows. Answers the two questions the on-screen table
+// cannot: how the values are formatted once they leave the browser, and how
+// many rows the file will really contain (the table shows 500; the file does
+// not stop there).
+app.post("/api/reports/export/preview", async (req, res) => {
+  const format = String(req.body?.format || "csv").toLowerCase();
+  if (!EXPORT_FORMATS.has(format)) return res.status(400).json({ error: `Unsupported format: ${format}` });
+
+  const parsed = normalizeReportRequest(req.body, { forExport: true });
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const request = parsed.request;
+
+  // Fetch a dozen rows, not the whole extract: both Keitaro's `total` and our
+  // SQL count are the full row count regardless of `limit`, so the preview
+  // costs a page while still reporting the real file size.
+  const PREVIEW_ROWS = 12;
+  const previewRequest = { ...request, limit: PREVIEW_ROWS, offset: 0 };
+  const full = await executeReport(previewRequest, req.user, { timeoutMs: 60000 });
+  if (!full.ok) return res.status(full.status || 502).json({ error: full.error });
+
+  const columns = describeColumns(request);
+  const sampleRows = full.rows.slice(0, PREVIEW_ROWS);
+  const totalRows = full.total;
+
+  res.json({
+    format,
+    filename: exportFilename(request.entity || request.source, request.range, format),
+    columns,
+    totalRows,
+    rowsInFile: format === "pdf" ? Math.min(totalRows, MAX_PDF_ROWS) : Math.min(totalRows, MAX_EXPORT_ROWS),
+    estimatedBytes: estimateExportBytes({ format, columns, sampleRows, totalRows }),
+    notes: exportNotes(format, totalRows),
+    // Rendered exactly as the writer would render it.
+    header: format === "csv" ? csvHeaderLine(columns) : null,
+    lines: format === "csv" ? sampleRows.map((row) => csvRowLine(columns, row)) : null,
+    sample: sampleRows.map((row) => {
+      const out = {};
+      for (const column of columns) out[column.key] = previewCell(row[column.key], column, format);
+      return out;
+    }),
+  });
+});
+
+app.post("/api/reports/export", async (req, res) => {
+  const format = String(req.body?.format || "csv").toLowerCase();
+  if (!EXPORT_FORMATS.has(format)) return res.status(400).json({ error: `Unsupported format: ${format}` });
+
+  const parsed = normalizeReportRequest(req.body, { forExport: true });
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const request = parsed.request;
+  if (format === "pdf") request.limit = Math.min(request.limit, MAX_PDF_ROWS);
+
+  // A full extract is far heavier than a preview — give the tracker room.
+  const run = await executeReport(request, req.user, { timeoutMs: 120000 });
+  if (!run.ok) return res.status(run.status || 502).json({ error: run.error });
+
+  const columns = describeColumns(request);
+  const filename = exportFilename(request.entity || request.source, request.range, format);
+  const meta = {
+    source: request.entity ? `${request.source} · ${request.entity}` : request.source,
+    range: request.range.from
+      ? `${request.range.from} → ${request.range.to} (${request.range.timezone})`
+      : "all time",
+    rows: run.rows.length,
+    generated: new Date().toISOString(),
+    note: format === "pdf" && run.total > run.rows.length
+      ? `Showing the first ${run.rows.length} of ${run.total} rows — export as CSV or Excel for the full set.`
+      : "",
+  };
+
+  const contentType = {
+    csv: "text/csv; charset=utf-8",
+    json: "application/json; charset=utf-8",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pdf: "application/pdf",
+  }[format];
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  // Row count travels in a header so the client can warn about a capped pull
+  // without parsing the file it just downloaded.
+  res.setHeader("X-Report-Rows", String(run.rows.length));
+  res.setHeader("X-Report-Total", String(run.total));
+  res.setHeader("Access-Control-Expose-Headers", "X-Report-Rows, X-Report-Total, Content-Disposition");
+
+  try {
+    if (format === "csv") return writeCsvExport(res, columns, run.rows);
+    if (format === "json") return writeJsonExport(res, columns, run.rows, meta);
+    if (format === "pdf") return writePdfExport(res, columns, run.rows, meta);
+    return await writeXlsxExport(res, columns, run.rows, meta);
+  } catch (error) {
+    // Headers are already out — a truncated file that looks whole is worse
+    // than a download the browser flags as failed. Log it, or a broken export
+    // leaves no trace anywhere.
+    console.error("[reports] export failed mid-stream:", format, error);
+    res.destroy(error);
+  }
+});
+
+// ── Saved report presets ───────────────────────────────────────────────
+// Yours by default; flag one shared and the team can run it too. Leadership
+// sees everything, matching how budget/rate plans already behave.
+const mapPresetRow = (row) => {
+  let config = {};
+  try {
+    config = JSON.parse(row.config || "{}");
+  } catch {
+    config = {};
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    source: row.source,
+    config,
+    isShared: Boolean(row.is_shared),
+    ownerId: row.owner_id,
+    ownerName: row.owner_name || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+const readPresetBody = (body) => {
+  const name = String(body?.name || "").trim().slice(0, 120);
+  const source = String(body?.source || "performance");
+  const config = body?.config && typeof body.config === "object" ? body.config : {};
+  return {
+    name,
+    description: body?.description ? String(body.description).trim().slice(0, 500) : null,
+    source: REPORT_SOURCES[source] ? source : "performance",
+    // Store the builder state verbatim, but cap it — a preset is a definition,
+    // not a payload dump.
+    config: JSON.stringify(config).slice(0, 20000),
+    isShared: Boolean(body?.isShared),
+  };
+};
+
+app.get("/api/report-presets", async (req, res) => {
+  const scoped = !isLeadership(req.user);
+  const rows = await query(
+    `SELECT p.*, u.username AS owner_name,
+            p.created_at AT TIME ZONE 'UTC' AS created_at,
+            p.updated_at AT TIME ZONE 'UTC' AS updated_at
+       FROM report_presets p
+       LEFT JOIN users u ON u.id = p.owner_id
+      ${scoped ? "WHERE p.owner_id = $1 OR p.is_shared = TRUE" : ""}
+      ORDER BY p.updated_at DESC, p.id DESC
+      LIMIT 300`,
+    scoped ? [req.user.id] : []
+  ).then((r) => r.rows || []);
+  res.json(rows.map(mapPresetRow));
+});
+
+app.post("/api/report-presets", async (req, res) => {
+  const payload = readPresetBody(req.body);
+  if (!payload.name) return res.status(400).json({ error: "Give the report a name." });
+  const { rows } = await query(
+    `INSERT INTO report_presets (name, description, source, config, is_shared, owner_id, owner_role)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [payload.name, payload.description, payload.source, payload.config, payload.isShared,
+     req.user.id, req.user?.role || null]
+  );
+  res.status(201).json({ id: rows[0]?.id || null });
+});
+
+app.patch("/api/report-presets/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid preset id." });
+  const current = await getRow(`SELECT owner_id FROM report_presets WHERE id = $1`, [id]);
+  if (!current) return res.status(404).json({ error: "Preset not found." });
+  if (!isLeadership(req.user) && Number(current.owner_id) !== Number(req.user.id)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const payload = readPresetBody(req.body);
+  if (!payload.name) return res.status(400).json({ error: "Give the report a name." });
+  await query(
+    `UPDATE report_presets
+        SET name=$1, description=$2, source=$3, config=$4, is_shared=$5, updated_at=NOW()
+      WHERE id=$6`,
+    [payload.name, payload.description, payload.source, payload.config, payload.isShared, id]
+  );
+  res.json({ ok: true });
+});
+
+app.delete("/api/report-presets/:id", async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid preset id." });
+  const current = await getRow(`SELECT owner_id FROM report_presets WHERE id = $1`, [id]);
+  if (!current) return res.status(404).json({ error: "Preset not found." });
+  if (!isLeadership(req.user) && Number(current.owner_id) !== Number(req.user.id)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  await query(`DELETE FROM report_presets WHERE id = $1`, [id]);
+  res.json({ ok: true });
 });
 
 // ── Campaign states + pause/resume straight from the dashboard ─────────

@@ -18517,3 +18517,307 @@ select option,
   font-size: 12.5px; font-weight: 650; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* ── Reports ──────────────────────────────────────────────────────────
+   Only what the design system does not already provide. Panels, cards,
+   tabs, tables, toolbars, icon tiles and count badges all come from the
+   existing classes — anything invented here is a piece that genuinely did
+   not exist before (field pickers, filter rows, the export dialog).
+   Deliberately NOT here: a sticky tfoot. Chrome mis-repaints it, which is
+   why no other table in this app has one.                              */
+
+.cards.report { margin-bottom: 2px; }
+.card-value.is-negative { color: var(--red); }
+
+.report-toolbar { margin-top: 4px; }
+/* Two date inputs share one toolbar cell. Their intrinsic width is ~180px
+   each, so without min-width:0 they refuse to shrink and spill out of the
+   cell as soon as the viewport narrows (or the user zooms). */
+.report-range .live-custom-range-inputs { display: flex; gap: 8px; min-width: 0; }
+.report-range .live-custom-range-inputs input { min-width: 0; flex: 1 1 0; }
+/* The toolbar is an auto-fit 1fr grid, so a button placed in a field would
+   stretch to a whole column. Keep it button-sized and pinned right. */
+.report-run-field { display: grid; justify-items: end; }
+.report-run-btn { width: auto; min-width: 150px; justify-content: center; }
+
+/* Metric bundles — dashed until chosen, so they read as "add this" */
+.report-bundles { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 14px 0 12px; }
+.report-bundles-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); font-weight: 600; margin-right: 2px;
+}
+.report-bundle {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 11px; border-radius: 999px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted-strong); font-size: 12px; font-weight: 600;
+  transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+.report-bundle:hover {
+  color: var(--green); border-color: rgba(54, 208, 124, 0.55);
+  border-style: solid; background: rgba(54, 208, 124, 0.1);
+}
+
+/* Field pickers */
+.report-pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.report-pickers.is-single { grid-template-columns: 1fr; }
+@media (max-width: 1000px) { .report-pickers { grid-template-columns: 1fr; } }
+
+.report-picker {
+  display: grid; gap: 12px; align-content: start; min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.report-picker-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.report-picker-head-right { display: flex; align-items: center; gap: 10px; flex: none; }
+.report-picker-title { display: block; font-size: 13px; font-weight: 650; color: var(--text); }
+.report-picker-hint { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+.report-picker-clear { border: none; background: transparent; color: var(--muted); font-size: 11px; padding: 0; }
+.report-picker-clear:hover { color: var(--red); }
+
+/* The shared input reset is scoped to `.pixel-table-toolbar .registry-search
+   input`, and these pickers are not in a toolbar — without repeating it the
+   input falls back to the browser's default 2px inset border and grey box,
+   which paints a second field inside the search bar. */
+.report-picker-search { min-height: 42px; height: 42px; }
+.report-picker-search input,
+.report-picker-search input:hover,
+.report-picker-search input:focus {
+  flex: 1; min-width: 0; min-height: 0; height: 100%;
+  padding: 0; margin: 0;
+  border: none; outline: none; box-shadow: none;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit; font-size: 13px; line-height: normal;
+}
+
+.report-picker-list {
+  max-height: 264px; overflow-y: auto;
+  display: grid; gap: 10px; align-content: start; padding-right: 4px;
+}
+.report-picker-group { display: grid; gap: 2px; }
+.report-picker-group-label {
+  position: sticky; top: 0; z-index: 1;
+  padding: 5px 2px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--faint);
+  background: #191b1f;
+}
+.report-field-option {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 7px 9px; border-radius: 9px;
+  border: 1px solid transparent; background: transparent;
+  color: var(--muted-strong); font-size: 12px; text-align: left;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.report-field-option:hover { background: rgba(255, 255, 255, 0.04); color: var(--text); }
+.report-field-option.is-selected {
+  color: var(--text);
+  background: rgba(54, 208, 124, 0.1);
+  border-color: rgba(54, 208, 124, 0.3);
+}
+.report-field-text { display: grid; gap: 1px; min-width: 0; }
+.report-field-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-field-formula {
+  font-size: 10.5px; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.report-field-option.is-selected .report-field-formula { color: rgba(156, 240, 195, 0.75); }
+.report-field-check { color: var(--green); font-size: 11px; flex: none; line-height: 1.4; }
+.report-picker-empty { font-size: 12px; color: var(--faint); padding: 10px 2px; }
+
+/* Chosen columns, in output order */
+.report-selected { display: grid; gap: 7px; margin-top: 14px; }
+.report-selected-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint);
+}
+.report-selected-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Same badge as the topbar's active-filter chips: green-tinted pill, 12px
+   600, circular clear that goes red on hover. The reorder arrows are a
+   secondary action, so they stay hidden until the chip is hovered rather than
+   sitting in the badge competing with the label. */
+.report-selected-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 260px; padding: 5px 6px 5px 11px; border-radius: 999px;
+  border: 1px solid rgba(54, 208, 124, 0.45);
+  background: rgba(54, 208, 124, 0.08);
+  font-size: 12px; font-weight: 600; color: var(--text);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.report-selected-chip:hover { border-color: rgba(54, 208, 124, 0.7); background: rgba(54, 208, 124, 0.13); }
+.report-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-chip-move {
+  display: grid; place-items: center;
+  width: 0; height: 18px; padding: 0; border: none; border-radius: 50%;
+  background: transparent; color: var(--muted);
+  opacity: 0; overflow: hidden;
+  transition: width 0.14s ease, opacity 0.14s ease, color 0.15s ease, background 0.15s ease;
+}
+.report-selected-chip:hover .report-chip-move,
+.report-selected-chip:focus-within .report-chip-move { width: 18px; opacity: 1; }
+.report-chip-move:hover:not(:disabled) { color: var(--text); background: rgba(255, 255, 255, 0.1); }
+.report-chip-move:disabled { opacity: 0.25; cursor: default; }
+.report-chip-remove {
+  display: grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, 0.06); color: var(--muted);
+  font-size: 13px; line-height: 1; flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.report-chip-remove:hover { color: #ff8a8a; background: rgba(255, 107, 107, 0.14); }
+
+/* Filter builder */
+.report-filters { display: grid; gap: 8px; margin-top: 12px; }
+.report-filter-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.1fr) minmax(140px, 0.8fr) minmax(170px, 1.1fr) auto;
+  gap: 8px; align-items: end;
+}
+@media (max-width: 900px) { .report-filter-row { grid-template-columns: 1fr 1fr; } }
+.report-filter-row .field { margin: 0; }
+.report-filter-pair { display: flex; gap: 6px; }
+.report-filter-novalue { font-size: 12px; color: var(--faint); font-style: italic; padding: 9px 2px; }
+.report-filter-and {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--faint); padding-left: 4px;
+}
+
+/* Result table — inherits .entries-table; only the extras live here */
+/* `.panel` is a flex column, so this child defaults to min-width:auto and
+   refuses to shrink below the table's intrinsic width — the table then pushes
+   the whole page sideways instead of scrolling inside its wrapper. Visible at
+   110% zoom and above, where the table no longer fits. Same trap that `.main`
+   already carries a min-width:0 for. */
+.report-table-wrap { overflow-x: auto; min-width: 0; max-width: 100%; }
+.report-table-wrap.is-busy { opacity: 0.5; transition: opacity 0.2s ease; }
+.report-table { border-collapse: separate; border-spacing: 0; min-width: 100%; }
+.report-table thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: #171a1e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  white-space: nowrap;
+}
+.report-table th.is-measure .sortable-header { justify-content: flex-end; width: 100%; }
+.report-table td.is-measure, .report-table th.is-measure { text-align: right; }
+.report-table td.is-negative { color: var(--red); }
+.report-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.014); }
+.report-table tbody tr:hover td { background: rgba(255, 255, 255, 0.042); }
+.report-table tfoot td {
+  font-weight: 700; color: var(--text);
+  background: rgba(18, 20, 24, 0.85);
+  border-top: 1px solid var(--stroke-strong);
+  border-bottom: none;
+}
+.report-rownum {
+  width: 46px; text-align: right;
+  color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums;
+}
+.report-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 14px; }
+
+/* Saved reports */
+.report-preset-save { margin-top: 14px; }
+.report-preset-group { display: grid; gap: 7px; margin-top: 14px; }
+.report-preset-group-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint);
+}
+.report-preset-list { display: grid; gap: 6px; }
+.report-preset {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.report-preset:hover { border-color: rgba(255, 255, 255, 0.1); }
+.report-preset.is-active { border-color: rgba(54, 208, 124, 0.5); background: rgba(54, 208, 124, 0.08); }
+.report-preset-main {
+  flex: 1; display: grid; gap: 2px; justify-items: start;
+  background: transparent; border: none; text-align: left; min-width: 0;
+}
+.report-preset-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.report-preset-meta { font-size: 11px; color: var(--faint); }
+
+/* Export dialog */
+.report-modal-backdrop {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(6, 7, 9, 0.74);
+  backdrop-filter: blur(4px);
+}
+.report-modal {
+  width: min(940px, 100%); max-height: 88vh; overflow-y: auto;
+  display: grid; gap: 15px; align-content: start;
+  padding: 22px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, rgba(31, 33, 38, 0.98), rgba(22, 24, 28, 0.97));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+.report-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.report-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+
+.report-format-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.report-format-tile {
+  display: grid; gap: 3px; justify-items: start;
+  padding: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted-strong); text-align: left;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+.report-format-tile:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.12); }
+.report-format-tile.is-active {
+  color: var(--text);
+  border-color: rgba(54, 208, 124, 0.55);
+  background: rgba(54, 208, 124, 0.1);
+}
+.report-format-tile.is-active > svg { color: var(--green); }
+.report-format-name { font-size: 13px; font-weight: 650; }
+.report-format-desc { font-size: 10.5px; color: var(--faint); }
+
+.report-export-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.report-fact { display: grid; gap: 4px; min-width: 0; }
+.report-fact-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint);
+}
+.report-fact-value {
+  font-size: 14px; font-weight: 650; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
+.report-fact-value em { font-style: normal; font-weight: 400; color: var(--faint); }
+
+.report-export-notes {
+  display: grid; gap: 6px; margin: 0;
+  padding: 11px 13px 11px 27px;
+  border-radius: 12px;
+  border: 1px solid rgba(247, 198, 37, 0.25);
+  background: rgba(247, 198, 37, 0.06);
+  color: var(--muted-strong); font-size: 11.5px; line-height: 1.55;
+}
+.report-preview-label {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint);
+}
+.report-preview-raw {
+  margin: 0; padding: 13px; max-height: 290px; overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  background: var(--bg-deep);
+  font-size: 11.5px; line-height: 1.75; white-space: pre;
+  color: var(--muted-strong);
+}
+.report-preview-headerline { color: var(--green); font-weight: 600; }
+.report-preview-table-wrap { max-height: 290px; overflow: auto; }
+.report-preview-empty { color: var(--faint); font-style: italic; }
+.report-preview-foot { margin: 0; font-size: 11px; color: var(--faint); }

@@ -1168,5 +1168,191 @@ export const translations = {
     "Actions this week": "Bu haftaki işlemler",
     "Actions recorded": "Kayıtlı işlemler",
     current: "geçerli",
+
+    // ── Reports (report builder) ──────────────────────────────────
+    Reports: "Raporlar",
+    "Pick a source, choose your columns and filters, then export the result.":
+      "Bir kaynak seçin, sütunlarınızı ve filtrelerinizi belirleyin, sonra sonucu dışa aktarın.",
+    "grouped totals": "gruplanmış toplamlar",
+    "one row per event": "olay başına bir satır",
+    "one row per record": "kayıt başına bir satır",
+    "Data set": "Veri kümesi",
+    "Find a data set": "Veri kümesi bul",
+    "Last 30 days": "Son 30 gün",
+    "Last month": "Geçen ay",
+    "From — To": "Başlangıç — Bitiş",
+    "Find a timezone": "Saat dilimi bul",
+    "Run report": "Raporu çalıştır",
+
+    Columns: "Sütunlar",
+    "Group by decides the rows. Metrics decide what is measured for each row.":
+      "Gruplama satırları belirler. Metrikler her satırda neyin ölçüleceğini belirler.",
+    "Each column you pick becomes a column in the export.":
+      "Seçtiğiniz her alan dışa aktarımda bir sütun olur.",
+    "Leave the dates empty to export every record.":
+      "Tüm kayıtları dışa aktarmak için tarihleri boş bırakın.",
+    "Group by": "Gruplama",
+    "One row per unique combination": "Her benzersiz kombinasyon için bir satır",
+    Metrics: "Metrikler",
+    "The numbers measured per row": "Satır başına ölçülen sayılar",
+    "Every field on the raw event": "Ham olaydaki her alan",
+    "Every field on this record": "Bu kayıttaki her alan",
+    "Grouped by": "Gruplandı",
+    Measuring: "Ölçülen",
+    "Selected columns": "Seçili sütunlar",
+    "Find a field…": "Alan bul…",
+    "Find a field": "Alan bul",
+    "Nothing matches that.": "Eşleşen bir şey yok.",
+    "Move left": "Sola taşı",
+    "Move right": "Sağa taşı",
+    "Quick add": "Hızlı ekle",
+    "{n} selected": "{n} seçili",
+    "{n} active": "{n} aktif",
+    "{n} rows": "{n} satır",
+    "{n} saved": "{n} kayıtlı",
+    "{columns} columns over {from} — {to}. Nothing has been run yet.":
+      "{from} — {to} aralığında {columns} sütun. Henüz çalıştırılmadı.",
+
+    // Metric bundles ("Funnel" is already translated above)
+    "Volume at each step plus the rates between them":
+      "Her adımdaki hacim ve aralarındaki oranlar",
+    "Unit economics": "Birim ekonomisi",
+    "What each step costs and returns": "Her adımın maliyeti ve getirisi",
+    "Revenue split by conversion type": "Dönüşüm türüne göre gelir dağılımı",
+    "Traffic quality": "Trafik kalitesi",
+    "How much of the traffic is real": "Trafiğin ne kadarının gerçek olduğu",
+
+    // Derived metric groups + labels
+    "Funnel rates": "Huni oranları",
+    "Click → Register": "Tıklama → Kayıt",
+    "Click → FTD": "Tıklama → FTD",
+    "Click → Redeposit": "Tıklama → Yeniden yatırma",
+    "Unique → Register": "Tekil → Kayıt",
+    "Unique → FTD": "Tekil → FTD",
+    "Unique → Redeposit": "Tekil → Yeniden yatırma",
+    "Unique rate": "Tekil oranı",
+    "Register → FTD": "Kayıt → FTD",
+    "FTD → Redeposit": "FTD → Yeniden yatırma",
+    "Cost per click": "Tıklama başına maliyet",
+    "Cost per unique": "Tekil başına maliyet",
+    "Cost per register": "Kayıt başına maliyet",
+    "Cost per FTD": "FTD başına maliyet",
+    "Revenue per click": "Tıklama başına gelir",
+    "Revenue per register": "Kayıt başına gelir",
+    "Net profit": "Net kâr",
+    Margin: "Marj",
+
+    "Every condition must be true. Filters run inside the tracker, so they apply to the whole report — not just the rows on screen.":
+      "Her koşulun doğru olması gerekir. Filtreler tracker içinde çalışır, bu yüzden yalnızca ekrandaki satırlara değil tüm rapora uygulanır.",
+    "Add filter": "Filtre ekle",
+    "Remove filter": "Filtreyi kaldır",
+    "No filters — the report covers everything you can see.":
+      "Filtre yok — rapor görebildiğiniz her şeyi kapsıyor.",
+    Field: "Alan",
+    Condition: "Koşul",
+    Min: "En az",
+    Max: "En çok",
+    "No value needed": "Değer gerekmiyor",
+    "Comma-separated, e.g. TR, MX, BR": "Virgülle ayırın, örn. TR, MX, BR",
+
+    // Filter operators
+    equals: "eşittir",
+    "does not equal": "eşit değildir",
+    contains: "içerir",
+    "does not contain": "içermez",
+    "begins with": "ile başlar",
+    "ends with": "ile biter",
+    "is any of": "şunlardan biri",
+    "is none of": "hiçbiri değil",
+    "matches regex": "regex ile eşleşir",
+    "does not match regex": "regex ile eşleşmez",
+    "greater than": "büyüktür",
+    "less than": "küçüktür",
+    "at least": "en az",
+    "at most": "en çok",
+    between: "arasında",
+    "is set": "doludur",
+    "is not set": "boştur",
+    "is true": "doğru",
+    "is false": "yanlış",
+
+    Result: "Sonuç",
+    "Run the report to see the result here.":
+      "Sonucu burada görmek için raporu çalıştırın.",
+    "{shown} of {total} rows shown. Export to get every row.":
+      "{total} satırın {shown} tanesi gösteriliyor. Tümü için dışa aktarın.",
+    "This is the first {shown} rows of {total}. The export contains all of them.":
+      "Bu, {total} satırın ilk {shown} tanesi. Dışa aktarım hepsini içerir.",
+    "No rows matched. Try a wider range or fewer filters.":
+      "Eşleşen satır yok. Daha geniş bir aralık veya daha az filtre deneyin.",
+    "Sort by {label}": "{label} sütununa göre sırala",
+    "Exporting…": "Dışa aktarılıyor…",
+    "Export…": "Dışa aktar…",
+    "Check the file before you download it.":
+      "İndirmeden önce dosyayı kontrol edin.",
+    "Building the preview…": "Önizleme hazırlanıyor…",
+    "Opens anywhere": "Her yerde açılır",
+    "Typed numbers, frozen header": "Sayısal hücreler, sabit başlık",
+    "For scripts and tools": "Betikler ve araçlar için",
+    "To read or send on": "Okumak veya iletmek için",
+    File: "Dosya",
+    "Rows in file": "Dosyadaki satır",
+    "of {total}": "/ {total}",
+    "Approx. size": "Yaklaşık boyut",
+    "First {n} rows, exactly as they will appear in the file":
+      "İlk {n} satır, dosyada görüneceği şekliyle",
+    "Right-aligned columns arrive as numbers Excel can sum and sort.":
+      "Sağa hizalı sütunlar Excel'in toplayıp sıralayabileceği sayılar olarak gelir.",
+    empty: "boş",
+    "Download {format}": "{format} indir",
+    "Downloading…": "İndiriliyor…",
+    "Rows {from}–{to} of {total}": "{total} satırdan {from}–{to}",
+    "Page {page} of {pages}": "Sayfa {page} / {pages}",
+    Previous: "Önceki",
+    Next: "Sonraki",
+    and: "ve",
+
+    "Saved reports": "Kayıtlı raporlar",
+    "Save this setup and run it again later. Share one and your team can run it too.":
+      "Bu kurulumu kaydedin ve sonra tekrar çalıştırın. Paylaşırsanız ekibiniz de çalıştırabilir.",
+    "e.g. Daily FTDs by country": "örn. Ülkeye göre günlük FTD",
+    "Save this report": "Bu raporu kaydet",
+    "Your reports": "Raporlarınız",
+    "Shared with you": "Sizinle paylaşılan",
+    "Share with the team": "Ekiple paylaş",
+    "Shared with the team": "Ekiple paylaşıldı",
+    "Stop sharing": "Paylaşımı durdur",
+    "Only you can see this": "Bunu yalnızca siz görebilirsiniz",
+    "Delete report": "Raporu sil",
+    "You have not saved a report yet.": "Henüz bir rapor kaydetmediniz.",
+    "Loading the field catalog…": "Alan kataloğu yükleniyor…",
+    "Can't reach the API right now. It may be restarting or still deploying.":
+      "Şu anda API'ye ulaşılamıyor. Yeniden başlıyor veya hâlâ yayınlanıyor olabilir.",
+    "Reports is not available on this server yet — the API needs to finish deploying.":
+      "Raporlar bu sunucuda henüz mevcut değil — API'nin yayına alınması gerekiyor.",
+    "Your session expired. Sign in again to load Reports.":
+      "Oturumunuz sona erdi. Raporları yüklemek için tekrar giriş yapın.",
+    "Your role does not have access to Reports.":
+      "Rolünüzün Raporlar'a erişimi yok.",
+    "Reports needs the field catalog from the API before it can show anything.":
+      "Raporlar bir şey gösterebilmek için API'den alan kataloğuna ihtiyaç duyar.",
+    "Records from the dashboard's own tables. Funnel metrics like unique2reg live on the Performance source.":
+      "Panelin kendi tablolarındaki kayıtlar. unique2reg gibi huni metrikleri Performans kaynağındadır.",
+    "Try again": "Tekrar dene",
+    "Retrying…": "Yeniden deneniyor…",
+
+    // Report field groups + dashboard data sets
+    Geo: "Coğrafya",
+    "Sub IDs": "Sub ID'ler",
+    Flags: "Bayraklar",
+    Volume: "Hacim",
+    Funnel: "Huni",
+    Money: "Para",
+    Efficiency: "Verimlilik",
+    Quality: "Kalite",
+    "Dashboard data": "Panel verisi",
+    "Tracking links": "Takip linkleri",
+    Brands: "Markalar",
+    "Audit log": "Denetim kaydı",
   },
 };
