@@ -7624,6 +7624,13 @@ app.post("/api/accounts/:id/totp", async (req, res) => {
 
 // ── Backup mailbox (Microsoft Graph) ──────────────────────────────────
 // Connect once per inbox, then read verification codes from the dashboard.
+// Two independent ways to get a verification code, either or both of which
+// may be configured. Declared before the client so the boot log can report
+// what this instance can actually do.
+const inboundMailSecret = normalizeSecretValue(process.env.INBOUND_MAIL_SECRET || "");
+const mailForwardDomain = String(process.env.MAIL_FORWARD_DOMAIN || "").trim().toLowerCase();
+const inboundCodeTtlHours = Number.parseInt(process.env.INBOUND_CODE_TTL_HOURS || "24", 10) || 24;
+
 const mailboxClient = createMailboxClient({
   clientId: process.env.MS_GRAPH_CLIENT_ID || "",
   clientSecret: process.env.MS_GRAPH_CLIENT_SECRET || "",
@@ -7632,8 +7639,17 @@ const mailboxClient = createMailboxClient({
   tenant: process.env.MS_GRAPH_TENANT || "consumers",
   ...(process.env.MS_GRAPH_SCOPES ? { scopes: process.env.MS_GRAPH_SCOPES } : {}),
 });
-if (!mailboxClient.enabled) {
-  console.warn("[boot] ⚠ MS_GRAPH_CLIENT_ID not set — backup mailboxes cannot be connected.");
+if (mailForwardDomain) {
+  console.log(
+    `[boot] backup mailboxes: forwarding to ${mailForwardDomain}` +
+      (inboundMailSecret ? "" : " — but INBOUND_MAIL_SECRET is unset, so inbound mail will be rejected")
+  );
+} else if (mailboxClient.enabled) {
+  console.log("[boot] backup mailboxes: Microsoft sign-in");
+} else {
+  console.warn(
+    "[boot] ⚠ no mailbox route configured — set MAIL_FORWARD_DOMAIN (forwarding) or MS_GRAPH_CLIENT_ID (Microsoft sign-in)."
+  );
 }
 
 // Device-code sign-ins in progress. Short-lived and disposable: if the process
@@ -7792,10 +7808,6 @@ app.post("/api/accounts/:id/mailbox/connect/poll", async (req, res) => {
 // The mailbox forwards to an address on our own domain; a Cloudflare Worker
 // posts each message here. No consent, no tokens, and the code is waiting
 // before anyone thinks to ask for it.
-const inboundMailSecret = normalizeSecretValue(process.env.INBOUND_MAIL_SECRET || "");
-const mailForwardDomain = String(process.env.MAIL_FORWARD_DOMAIN || "").trim().toLowerCase();
-const inboundCodeTtlHours = Number.parseInt(process.env.INBOUND_CODE_TTL_HOURS || "24", 10) || 24;
-
 const mintForwardAddress = () => `acc-${crypto.randomBytes(4).toString("hex")}@${mailForwardDomain}`;
 
 // Returns the account's forwarding address, creating one on first use.
