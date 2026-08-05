@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 // Reading verification codes out of an account's backup mailbox, so a buyer
 // never has to log into Outlook to finish a login.
 //
@@ -15,6 +17,8 @@ const GRAPH_HOST = "https://graph.microsoft.com/v1.0";
 // tighter grant (no body, no attachments) and works whenever the code is in
 // the subject line — which is the common case for Meta and Microsoft.
 const DEFAULT_SCOPES = "offline_access User.Read Mail.Read";
+
+const sha256Base64Url = (value) => crypto.createHash("sha256").update(value).digest("base64url");
 
 // Access tokens last about an hour. Refresh a minute early so a code request
 // never races the expiry.
@@ -98,6 +102,10 @@ export const readCodesFromMessages = (messages, { now = Date.now() } = {}) =>
 // ── Graph client ──────────────────────────────────────────────────────
 export const createMailboxClient = ({
   clientId,
+  // Optional. The authorization-code exchange happens on our server, which
+  // makes this a confidential client — Azure's "Web" platform expects a
+  // secret. Device code stays public and never sends it.
+  clientSecret = "",
   // "consumers" = personal Outlook/Hotmail/Live accounts, which is what the
   // team's backup mailboxes are. "common" would also accept work accounts.
   tenant = "consumers",
@@ -171,6 +179,50 @@ export const createMailboxClient = ({
     return { state: "error", message: data.error_description || "Sign-in failed." };
   };
 
+  // ── Authorization-code flow (the "sign in from the dashboard" path) ──
+  // A popup goes to Microsoft's real login page and comes back to us with a
+  // code. Nicer than device code — nothing to type — and `prompt=login` stops
+  // Microsoft silently reusing whatever account the browser already has, which
+  // is the failure mode that connects the wrong inbox.
+  const buildAuthorizeUrl = ({ redirectUri, state, codeChallenge, loginHint }) => {
+    requireConfig();
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: "code",
+      redirect_uri: redirectUri,
+      response_mode: "query",
+      scope: SCOPES,
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      prompt: "login",
+    });
+    if (loginHint) params.set("login_hint", loginHint);
+    return `${LOGIN_HOST}/${tenant}/oauth2/v2.0/authorize?${params}`;
+  };
+
+  const exchangeCode = async ({ code, redirectUri, codeVerifier }) => {
+    requireConfig();
+    const { ok, data } = await postForm(`${LOGIN_HOST}/${tenant}/oauth2/v2.0/token`, {
+      grant_type: "authorization_code",
+      client_id: clientId,
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
+    });
+    if (!ok || !data.access_token) {
+      const error = new Error(data.error_description || "Microsoft rejected the sign-in.");
+      error.statusCode = 502;
+      throw error;
+    }
+    return {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token || "",
+      expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
+    };
+  };
+
   const refreshAccessToken = async (refreshToken) => {
     requireConfig();
     const { ok, data } = await postForm(`${LOGIN_HOST}/${tenant}/oauth2/v2.0/token`, {
@@ -178,6 +230,7 @@ export const createMailboxClient = ({
       client_id: clientId,
       refresh_token: refreshToken,
       scope: SCOPES,
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
     });
     if (!ok || !data.access_token) {
       const error = new Error(
@@ -235,11 +288,21 @@ export const createMailboxClient = ({
     enabled,
     startDeviceCode,
     pollDeviceCode,
+    buildAuthorizeUrl,
+    exchangeCode,
     refreshAccessToken,
     getSignedInAddress,
     listMessages,
     TOKEN_SKEW_MS,
   };
+};
+
+// PKCE: proves the browser that started the sign-in is the one finishing it,
+// so an intercepted code is useless on its own. Required for a public client
+// (we hold no client secret).
+export const createPkcePair = (randomBytes) => {
+  const verifier = randomBytes(32).toString("base64url");
+  return { verifier, challenge: sha256Base64Url(verifier) };
 };
 
 // Personal Microsoft accounts sign in under several equivalent spellings, so

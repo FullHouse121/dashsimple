@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  createPkcePair,
   addressesMatch,
   createMailboxClient,
   extractVerificationCode,
@@ -231,5 +232,69 @@ describe("device code flow", () => {
     const client = createMailboxClient({ clientId: "" });
     expect(client.enabled).toBe(false);
     await expect(client.startDeviceCode()).rejects.toThrow(/not configured/i);
+  });
+});
+
+describe("authorization-code flow", () => {
+  const client = createMailboxClient({ clientId: "test-client" });
+
+  it("forces a fresh sign-in and pre-fills the mailbox", () => {
+    const url = new URL(
+      client.buildAuthorizeUrl({
+        redirectUri: "https://api.example.com/api/mailbox/oauth/callback",
+        state: "ST",
+        codeChallenge: "CH",
+        loginHint: "random47@outlook.com",
+      })
+    );
+    const q = url.searchParams;
+    // prompt=login is what stops Microsoft silently reusing the browser's
+    // current account and connecting the wrong inbox.
+    expect(q.get("prompt")).toBe("login");
+    expect(q.get("login_hint")).toBe("random47@outlook.com");
+    expect(q.get("response_type")).toBe("code");
+    expect(q.get("code_challenge_method")).toBe("S256");
+    expect(q.get("code_challenge")).toBe("CH");
+    expect(q.get("state")).toBe("ST");
+    expect(q.get("scope")).toContain("offline_access");
+    expect(url.pathname).toContain("/consumers/oauth2/v2.0/authorize");
+  });
+
+  it("derives a PKCE challenge that verifies against its verifier", async () => {
+    const crypto = await import("node:crypto");
+    const { verifier, challenge } = createPkcePair(crypto.randomBytes);
+    expect(challenge).toBe(crypto.createHash("sha256").update(verifier).digest("base64url"));
+    expect(verifier).not.toBe(challenge);
+    // base64url only — a "+" or "/" would break the query string.
+    expect(verifier).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("sends the verifier when exchanging the code", async () => {
+    let sentBody = "";
+    const spy = createMailboxClient({
+      clientId: "test-client",
+      fetchImpl: async (_url, options) => {
+        sentBody = options.body;
+        return { ok: true, status: 200, json: async () => ({ access_token: "AT", refresh_token: "RT", expires_in: 3600 }) };
+      },
+    });
+    const result = await spy.exchangeCode({
+      code: "CODE",
+      redirectUri: "https://api.example.com/cb",
+      codeVerifier: "VERIFIER",
+    });
+    expect(sentBody).toContain("code_verifier=VERIFIER");
+    expect(sentBody).toContain("grant_type=authorization_code");
+    expect(result.refreshToken).toBe("RT");
+  });
+
+  it("surfaces Microsoft's reason when it rejects the exchange", async () => {
+    const failing = createMailboxClient({
+      clientId: "c",
+      fetchImpl: async () => ({ ok: false, status: 400, json: async () => ({ error_description: "AADSTS70000: bad code" }) }),
+    });
+    await expect(
+      failing.exchangeCode({ code: "x", redirectUri: "y", codeVerifier: "z" })
+    ).rejects.toThrow(/AADSTS70000/);
   });
 });

@@ -19326,3 +19326,19 @@ select option,
 .report-preview-table-wrap { max-height: 290px; overflow: auto; }
 .report-preview-empty { color: var(--faint); font-style: italic; }
 .report-preview-foot { margin: 0; font-size: 11px; color: var(--faint); }
+
+.mailbox-alt-connect {
+  justify-self: start;
+  font-size: 11px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: var(--muted, rgba(255, 255, 255, 0.4));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.mailbox-alt-connect:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.7);
+}

@@ -12,6 +12,7 @@ import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
 import {
   addressesMatch,
   createMailboxClient,
+  createPkcePair,
   isAccessTokenUsable,
   readCodesFromMessages,
 } from "./lib/mailbox.js";
@@ -5128,6 +5129,11 @@ app.use((req, res, next) => {
   if (req.path === "/api/keitaro/cron") return next();
   if (req.path === "/api/health/cron") return next();
   if (req.path === "/api/health") return next();
+  // The mailbox sign-in popup navigates here; a browser navigation cannot
+  // carry an Authorization header. Both are guarded by a single-use `state`
+  // minted by the authenticated /oauth/prepare call.
+  if (req.path === "/api/mailbox/oauth/start") return next();
+  if (req.path === "/api/mailbox/oauth/callback") return next();
 
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : header;
@@ -7595,6 +7601,7 @@ app.post("/api/accounts/:id/totp", async (req, res) => {
 // Connect once per inbox, then read verification codes from the dashboard.
 const mailboxClient = createMailboxClient({
   clientId: process.env.MS_GRAPH_CLIENT_ID || "",
+  clientSecret: process.env.MS_GRAPH_CLIENT_SECRET || "",
   // "consumers" = personal Outlook/Hotmail only, which is what these backup
   // mailboxes are. Use "common" only if a work/school account ever appears.
   tenant: process.env.MS_GRAPH_TENANT || "consumers",
@@ -7748,6 +7755,164 @@ app.post("/api/accounts/:id/mailbox/connect/poll", async (req, res) => {
     return res.json({ state: "connected" });
   } catch (error) {
     return res.status(error.statusCode || 502).json({ state: "error", error: error.message });
+  }
+});
+
+// ── Sign in from the dashboard (authorization code + PKCE) ────────────
+// Three steps because a popup cannot send our Authorization header:
+//   prepare  — authenticated, mints a single-use state
+//   start    — the popup navigates here, we 302 to Microsoft
+//   callback — Microsoft returns here, we exchange and store
+const pendingMailboxOauth = new Map();
+const OAUTH_STATE_TTL_MS = 10 * 60_000;
+
+const oauthRedirectUri = () => {
+  const base = String(process.env.PUBLIC_API_ORIGIN || "").replace(/\/+$/, "");
+  if (base) return `${base}/api/mailbox/oauth/callback`;
+  // Render exposes its own external URL, which is what the app is reached on.
+  const render = String(process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+  if (render) return `${render}/api/mailbox/oauth/callback`;
+  return "http://localhost:5174/api/mailbox/oauth/callback";
+};
+
+const prunePendingOauth = () => {
+  const now = Date.now();
+  for (const [key, entry] of pendingMailboxOauth) {
+    if (entry.expiresAt <= now) pendingMailboxOauth.delete(key);
+  }
+};
+
+// A tiny page for the popup: tell the opener how it went, then close.
+const oauthResultPage = (payload) => `<!doctype html>
+<meta charset="utf-8"><title>${payload.ok ? "Connected" : "Sign-in failed"}</title>
+<style>
+  body{margin:0;height:100vh;display:grid;place-items:center;background:#0e0f13;
+       color:#fff;font:14px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;text-align:center}
+  .box{max-width:420px;padding:28px}
+  .ok{color:#36d07c;font-size:34px}.bad{color:#ff8a8a;font-size:34px}
+  p{color:#9aa0aa;margin:10px 0 0}
+</style>
+<div class="box">
+  <div class="${payload.ok ? "ok" : "bad"}">${payload.ok ? "✓" : "✕"}</div>
+  <h3>${payload.title}</h3>
+  <p>${payload.message}</p>
+</div>
+<script>
+  try { window.opener && window.opener.postMessage(${JSON.stringify(
+    JSON.stringify({ source: "dashsimple-mailbox-oauth", ...payload })
+  )}, "*"); } catch (e) {}
+  if (${payload.ok ? "true" : "false"}) setTimeout(function(){ window.close(); }, 1200);
+</script>`;
+
+app.post("/api/accounts/:id/mailbox/oauth/prepare", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  if (!mailboxClient.enabled) {
+    return res.status(503).json({ error: "Mailbox reading is not configured on the server." });
+  }
+  prunePendingOauth();
+  const state = crypto.randomBytes(24).toString("base64url");
+  const { verifier, challenge } = createPkcePair(crypto.randomBytes);
+  pendingMailboxOauth.set(state, {
+    codeVerifier: verifier,
+    challenge,
+    email: context.email,
+    ownerId: context.account.owner_id,
+    expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
+  });
+  return res.json({ state, email: context.email });
+});
+
+app.get("/api/mailbox/oauth/start", (req, res) => {
+  const state = String(req.query.state || "");
+  const pending = pendingMailboxOauth.get(state);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    pendingMailboxOauth.delete(state);
+    return res
+      .status(410)
+      .send(
+        oauthResultPage({
+          ok: false,
+          title: "This sign-in expired",
+          message: "Close this window and press Request email code again.",
+        })
+      );
+  }
+  return res.redirect(
+    mailboxClient.buildAuthorizeUrl({
+      redirectUri: oauthRedirectUri(),
+      state,
+      codeChallenge: pending.challenge,
+      loginHint: pending.email,
+    })
+  );
+});
+
+app.get("/api/mailbox/oauth/callback", async (req, res) => {
+  const state = String(req.query.state || "");
+  const pending = pendingMailboxOauth.get(state);
+  pendingMailboxOauth.delete(state);
+  if (!pending || pending.expiresAt <= Date.now()) {
+    return res.status(410).send(
+      oauthResultPage({
+        ok: false,
+        title: "This sign-in expired",
+        message: "Close this window and press Request email code again.",
+      })
+    );
+  }
+  if (req.query.error) {
+    return res.status(400).send(
+      oauthResultPage({
+        ok: false,
+        title: "Microsoft refused the sign-in",
+        message: String(req.query.error_description || req.query.error).slice(0, 300),
+      })
+    );
+  }
+  try {
+    const tokens = await mailboxClient.exchangeCode({
+      code: String(req.query.code || ""),
+      redirectUri: oauthRedirectUri(),
+      codeVerifier: pending.codeVerifier,
+    });
+    // Same guard as the device flow: confirm which inbox actually signed in.
+    const signedInAddress = await mailboxClient.getSignedInAddress(tokens.accessToken);
+    if (!addressesMatch(pending.email, signedInAddress)) {
+      return res.status(409).send(
+        oauthResultPage({
+          ok: false,
+          title: "Wrong mailbox",
+          message: `Signed in as ${signedInAddress || "an unknown account"}, but this account's backup email is ${pending.email}. Nothing was saved.`,
+        })
+      );
+    }
+    await upsertMailboxConnection(pending.email, {
+      provider: "microsoft",
+      owner_id: pending.ownerId || null,
+      refresh_token_enc: secretBox.encrypt(tokens.refreshToken),
+      access_token_enc: secretBox.encrypt(tokens.accessToken),
+      access_token_expires_at: new Date(tokens.expiresAt),
+      status: "connected",
+      last_error: null,
+      connected_at: new Date(),
+    });
+    return res.send(
+      oauthResultPage({
+        ok: true,
+        title: "Inbox connected",
+        message: `${pending.email} is now readable from the dashboard.`,
+        email: pending.email,
+      })
+    );
+  } catch (error) {
+    return res.status(error.statusCode || 502).send(
+      oauthResultPage({
+        ok: false,
+        title: "Sign-in failed",
+        message: String(error.message || "Could not complete the sign-in.").slice(0, 300),
+      })
+    );
   }
 });
 

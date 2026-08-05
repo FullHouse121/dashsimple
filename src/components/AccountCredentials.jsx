@@ -349,6 +349,58 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
     };
   }, [loadState]);
 
+  // Preferred path: Microsoft's real login in a popup. Nothing to type, and
+  // the server forces a fresh sign-in so the browser's existing session cannot
+  // connect the wrong inbox.
+  const startPopupConnect = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await apiFetch(`/api/accounts/${accountId}/mailbox/oauth/prepare`, {
+        method: "POST",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || t("Could not start the sign-in."));
+
+      const popup = window.open(
+        `/api/mailbox/oauth/start?state=${encodeURIComponent(data.state)}`,
+        "dashsimple-mailbox",
+        "width=520,height=680,menubar=no,toolbar=no"
+      );
+      if (!popup) {
+        throw new Error(t("Allow pop-ups for this site, then try again."));
+      }
+
+      const onMessage = async (event) => {
+        let payload = null;
+        try {
+          payload = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        } catch {
+          return;
+        }
+        if (payload?.source !== "dashsimple-mailbox-oauth") return;
+        window.removeEventListener("message", onMessage);
+        setBusy(false);
+        if (payload.ok) await loadState();
+        else setError(payload.message || t("The sign-in did not complete."));
+      };
+      window.addEventListener("message", onMessage);
+
+      // The popup may be closed without ever reporting back.
+      const watch = setInterval(() => {
+        if (!popup.closed) return;
+        clearInterval(watch);
+        window.removeEventListener("message", onMessage);
+        setBusy(false);
+        loadState();
+      }, 800);
+    } catch (startError) {
+      setError(startError.message);
+      setBusy(false);
+    }
+  };
+
+  // Fallback for a blocked popup or a mailbox being connected on a phone.
   const startConnect = async () => {
     setBusy(true);
     setError("");
@@ -414,7 +466,7 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
   requestRef.current = () => {
     if (busy) return;
     if (state.connected) fetchMessages();
-    else if (!connect) startConnect();
+    else if (!connect) startPopupConnect();
   };
   React.useEffect(() => {
     if (requestNonce) requestRef.current();
@@ -466,8 +518,11 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
             ? t("This mailbox needs to be reconnected.")
             : t("Connect this inbox once to read its verification codes here.")}
         </p>
-        <button type="button" className="action-pill" onClick={startConnect} disabled={busy}>
-          <Mail size={13} /> {busy ? t("Starting…") : t("Connect inbox")}
+        <button type="button" className="action-pill" onClick={startPopupConnect} disabled={busy}>
+          <Mail size={13} /> {busy ? t("Waiting for sign-in…") : t("Sign in to this inbox")}
+        </button>
+        <button type="button" className="ghost mailbox-alt-connect" onClick={startConnect} disabled={busy}>
+          {t("Pop-up blocked? Use a code instead")}
         </button>
         {error ? <p className="credential-error">{error}</p> : null}
       </div>

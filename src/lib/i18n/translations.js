@@ -1407,6 +1407,10 @@ export const translations = {
     "1. Open": "1. Şunu açın",
     "2. Enter this code, then sign in as": "2. Bu kodu girin, ardından şu hesapla giriş yapın",
     "Waiting for you to finish…": "Tamamlamanız bekleniyor…",
+    "Sign in to this inbox": "Bu gelen kutusuna giriş yap",
+    "Waiting for sign-in…": "Giriş bekleniyor…",
+    "Pop-up blocked? Use a code instead": "Pop-up engellendi mi? Bunun yerine kod kullanın",
+    "Allow pop-ups for this site, then try again.": "Bu site için pop-up'lara izin verip tekrar deneyin.",
     "Use a private window — if your browser is already signed into another Microsoft account it will connect that one instead.":
       "Gizli pencere kullanın — tarayıcınız başka bir Microsoft hesabıyla açıksa o hesap bağlanır.",
     "The sign-in did not complete.": "Giriş tamamlanmadı.",
