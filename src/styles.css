@@ -9918,6 +9918,21 @@ select option,
   background: rgba(125, 211, 252, 0.18);
 }
 
+.mailbox-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #ffb547;
+}
+
+.mailbox-warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
 .mailbox-waiting {
   display: inline-flex;
   align-items: center;

@@ -6,7 +6,18 @@
 // audit middleware records.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy, Eye, EyeOff, KeyRound, Mail, RefreshCw, ShieldCheck, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
+  RefreshCw,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { apiFetch } from "../lib/api.js";
 
 export const CREDENTIAL_MASK = "••••••••";
@@ -436,6 +447,10 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
           {connect.userCode}
           {copied === connect.userCode ? <Check size={13} /> : <Copy size={13} />}
         </button>
+        <p className="mailbox-warning">
+          <AlertTriangle size={12} aria-hidden="true" />
+          {t("Use a private window — if your browser is already signed into another Microsoft account it will connect that one instead.")}
+        </p>
         <p className="mailbox-waiting">
           <RefreshCw size={12} className="spin" /> {t("Waiting for you to finish…")}
         </p>

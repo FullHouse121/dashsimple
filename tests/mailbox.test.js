@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  addressesMatch,
   createMailboxClient,
   extractVerificationCode,
   isAccessTokenUsable,
@@ -92,6 +93,42 @@ describe("picking the right message", () => {
   it("survives junk input", () => {
     expect(readCodesFromMessages(null)).toEqual([]);
     expect(readCodesFromMessages([{}])).toHaveLength(1);
+  });
+});
+
+describe("confirming the right mailbox signed in", () => {
+  it("accepts the same address in any casing or spacing", () => {
+    expect(addressesMatch("Random47@outlook.com", " random47@OUTLOOK.com ")).toBe(true);
+  });
+
+  it("accepts the guest/external spelling Microsoft sometimes returns", () => {
+    expect(addressesMatch("random47@outlook.com", "random47_outlook.com#EXT#@tenant.onmicrosoft.com")).toBe(
+      true
+    );
+  });
+
+  it("rejects a different mailbox — the whole point of the check", () => {
+    expect(addressesMatch("random47@outlook.com", "leo@deusaffiliates.com")).toBe(false);
+    // Same local part, different provider: still the wrong inbox.
+    expect(addressesMatch("random47@outlook.com", "random47@gmail.com")).toBe(false);
+  });
+
+  it("refuses to match on missing information", () => {
+    expect(addressesMatch("random47@outlook.com", "")).toBe(false);
+    expect(addressesMatch("", "random47@outlook.com")).toBe(false);
+    expect(addressesMatch(null, null)).toBe(false);
+  });
+
+  it("reads the address from mail, falling back to userPrincipalName", async () => {
+    const make = (data) =>
+      createMailboxClient({
+        clientId: "c",
+        fetchImpl: async () => ({ ok: true, status: 200, json: async () => data }),
+      });
+    expect(await make({ mail: "a@outlook.com" }).getSignedInAddress("AT")).toBe("a@outlook.com");
+    expect(await make({ userPrincipalName: "b@outlook.com" }).getSignedInAddress("AT")).toBe(
+      "b@outlook.com"
+    );
   });
 });
 

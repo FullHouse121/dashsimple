@@ -9,7 +9,12 @@ import {
 import { createTokenCodec } from "./lib/auth.js";
 import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
 import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
-import { createMailboxClient, isAccessTokenUsable, readCodesFromMessages } from "./lib/mailbox.js";
+import {
+  addressesMatch,
+  createMailboxClient,
+  isAccessTokenUsable,
+  readCodesFromMessages,
+} from "./lib/mailbox.js";
 import {
   REPORT_SOURCES,
   normalizeReportRequest,
@@ -7715,6 +7720,21 @@ app.post("/api/accounts/:id/mailbox/connect/poll", async (req, res) => {
       return res.json({ state: result.state, error: result.message || null });
     }
     pendingMailboxConnects.delete(req.body.handle);
+
+    // Confirm the inbox that just authorised is the one this account expects.
+    // The sign-in happens in whoever's browser, so approving as the wrong
+    // Microsoft account is easy — and storing that token would silently wire
+    // the dashboard to someone else's mail.
+    const signedInAddress = await mailboxClient.getSignedInAddress(result.accessToken);
+    if (!addressesMatch(context.email, signedInAddress)) {
+      return res.status(409).json({
+        state: "wrong_account",
+        error: `Signed in as ${signedInAddress || "an unknown account"}, but this account's backup email is ${context.email}. Sign out of Microsoft (or use a private window) and connect again.`,
+        signedInAs: signedInAddress || null,
+        expected: context.email,
+      });
+    }
+
     await upsertMailboxConnection(context.email, {
       provider: "microsoft",
       owner_id: pending.ownerId || null,

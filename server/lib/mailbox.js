@@ -196,6 +196,22 @@ export const createMailboxClient = ({
     };
   };
 
+  // Which mailbox actually signed in. Device-code sign-in happens in whatever
+  // browser the person has open, so it is entirely possible to approve as the
+  // wrong account — we check rather than trust.
+  const getSignedInAddress = async (accessToken) => {
+    const response = await fetchImpl(`${GRAPH_HOST}/me?$select=mail,userPrincipalName`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data?.error?.message || "Could not confirm which mailbox signed in.");
+      error.statusCode = 502;
+      throw error;
+    }
+    return String(data.mail || data.userPrincipalName || "").trim();
+  };
+
   const listMessages = async (accessToken, { top = 15 } = {}) => {
     const params = new URLSearchParams({
       $top: String(top),
@@ -215,7 +231,30 @@ export const createMailboxClient = ({
     return Array.isArray(data.value) ? data.value : [];
   };
 
-  return { enabled, startDeviceCode, pollDeviceCode, refreshAccessToken, listMessages, TOKEN_SKEW_MS };
+  return {
+    enabled,
+    startDeviceCode,
+    pollDeviceCode,
+    refreshAccessToken,
+    getSignedInAddress,
+    listMessages,
+    TOKEN_SKEW_MS,
+  };
+};
+
+// Personal Microsoft accounts sign in under several equivalent spellings, so
+// compare leniently — but only on the parts that identify the mailbox.
+export const addressesMatch = (expected, actual) => {
+  const normalize = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      // Guest/external accounts arrive as "name_outlook.com#EXT#@tenant"
+      .replace(/#ext#@.*$/, "")
+      .replace(/_([a-z0-9.-]+\.[a-z]{2,})$/, "@$1");
+  const left = normalize(expected);
+  const right = normalize(actual);
+  return Boolean(left) && Boolean(right) && left === right;
 };
 
 export const isAccessTokenUsable = (expiresAt, now = Date.now()) =>
