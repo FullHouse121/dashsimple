@@ -7690,20 +7690,25 @@ const loadMailboxContext = async (req, res) => {
   return { account, email, mailbox: await selectMailboxByEmail(email) };
 };
 
-const mailboxStatePayload = (email, mailbox) => ({
+const mailboxStatePayload = (email, mailbox, account) => ({
   email,
   connected: Boolean(mailbox?.refresh_token_enc) && mailbox?.status === "connected",
   status: mailbox?.status || "disconnected",
   lastError: mailbox?.last_error || null,
   lastReadAt: mailbox?.last_read_at || null,
   connectedAt: mailbox?.connected_at || null,
-  configured: mailboxClient.enabled,
+  // Which routes this server can actually offer, so the UI never sends
+  // someone down a path that is not configured.
+  configured: mailboxClient.enabled || Boolean(mailForwardDomain),
+  graphAvailable: mailboxClient.enabled,
+  forwardingAvailable: Boolean(mailForwardDomain),
+  forwardAddress: account?.forward_address || null,
 });
 
 app.get("/api/accounts/:id/mailbox", async (req, res) => {
   const context = await loadMailboxContext(req, res);
   if (!context) return undefined;
-  return res.json(mailboxStatePayload(context.email, context.mailbox));
+  return res.json(mailboxStatePayload(context.email, context.mailbox, context.account));
 });
 
 // Step 1 — hand back the code the mailbox owner types at microsoft.com/devicelogin.
@@ -7930,7 +7935,11 @@ app.post("/api/accounts/:id/mailbox/oauth/prepare", async (req, res) => {
   const context = await loadMailboxContext(req, res);
   if (!context) return undefined;
   if (!mailboxClient.enabled) {
-    return res.status(503).json({ error: "Mailbox reading is not configured on the server." });
+    return res.status(503).json({
+      error: mailForwardDomain
+        ? "Microsoft sign-in is not configured — this account uses mail forwarding instead."
+        : "No mailbox route is configured. Set MAIL_FORWARD_DOMAIN for forwarding, or MS_GRAPH_CLIENT_ID for Microsoft sign-in.",
+    });
   }
   prunePendingOauth();
   const state = crypto.randomBytes(24).toString("base64url");

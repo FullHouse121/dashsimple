@@ -321,7 +321,7 @@ const relativeAge = (ageMs, t) => {
   return t("{n} d ago").replace("{n}", String(Math.floor(hours / 24)));
 };
 
-function MailboxPanel({ accountId, email, forwardAddress, requestNonce, t }) {
+function MailboxPanel({ accountId, email, forwardAddress: seededAddress, requestNonce, t }) {
   const [state, setState] = React.useState({ loading: true, connected: false, configured: true });
   const [connect, setConnect] = React.useState(null);
   const [messages, setMessages] = React.useState(null);
@@ -329,12 +329,29 @@ function MailboxPanel({ accountId, email, forwardAddress, requestNonce, t }) {
   const [error, setError] = React.useState("");
   const [copied, setCopied] = React.useState("");
   const pollRef = React.useRef(null);
+  // The registry row can be stale; whatever the mailbox endpoint reports wins.
+  const forwardAddress = state.forwardAddress || seededAddress || "";
 
   const loadState = React.useCallback(async () => {
     try {
       const response = await apiFetch(`/api/accounts/${accountId}/mailbox`);
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || t("Could not check the mailbox."));
+
+      // When the server offers forwarding, this account needs an address of
+      // its own. Minting it on first open is what makes the forwarding route
+      // reachable at all — without it the panel would fall through to the
+      // Microsoft path and fail on a server that has no Graph credentials.
+      if (data.forwardingAvailable && !data.forwardAddress) {
+        const minted = await apiFetch(`/api/accounts/${accountId}/forward-address`, {
+          method: "POST",
+        });
+        const mintedData = await minted.json().catch(() => null);
+        if (minted.ok && mintedData?.forwardAddress) {
+          data.forwardAddress = mintedData.forwardAddress;
+        }
+      }
+
       setState({ ...data, loading: false });
     } catch (loadError) {
       setState({ loading: false, connected: false, configured: true });
