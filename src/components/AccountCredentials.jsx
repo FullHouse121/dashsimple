@@ -8,11 +8,14 @@ import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
+  AtSign,
   Check,
   Copy,
   Eye,
   EyeOff,
+  Fingerprint,
   KeyRound,
+  Lock,
   Mail,
   RefreshCw,
   ShieldCheck,
@@ -189,7 +192,7 @@ export function TotpCode({ accountId, active, label }) {
 }
 
 // ── One secret row ────────────────────────────────────────────────────
-function SecretRow({ accountId, field, label, present, t }) {
+function SecretRow({ accountId, field, label, present, icon, t }) {
   const [value, setValue] = React.useState("");
   const [shown, setShown] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -237,11 +240,10 @@ function SecretRow({ accountId, field, label, present, t }) {
   };
 
   return (
-    <div className="credential-row">
-      <span className="credential-label">{label}</span>
-      <span className={`credential-value mono${shown ? " is-revealed" : ""}`}>
+    <VaultRow icon={icon} label={label} empty={!present}>
+      <span className={`vault-value mono${shown ? " is-revealed" : ""}`}>
         {!present ? (
-          <em className="credential-empty">{t("Not set")}</em>
+          <em className="vault-empty">{t("Not set")}</em>
         ) : shown ? (
           value
         ) : (
@@ -249,35 +251,47 @@ function SecretRow({ accountId, field, label, present, t }) {
         )}
       </span>
       {present ? (
-        <span className="credential-actions">
+        <span className="vault-actions">
           <button
             type="button"
-            className="icon-btn"
+            className="vault-btn"
             onClick={handleToggle}
             disabled={busy}
             aria-label={shown ? t("Hide") : t("Reveal")}
             title={shown ? t("Hide") : t("Reveal")}
           >
-            {shown ? <EyeOff size={13} /> : <Eye size={13} />}
+            {shown ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
           <button
             type="button"
-            className={`icon-btn${copied ? " is-done" : ""}`}
+            className={`vault-btn${copied ? " is-done" : ""}`}
             onClick={handleCopy}
             disabled={busy}
             aria-label={t("Copy")}
             title={t("Copy")}
           >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         </span>
       ) : null}
-      {error ? <span className="credential-error">{error}</span> : null}
+      {error ? <span className="vault-error">{error}</span> : null}
+    </VaultRow>
+  );
+}
+
+// One line of the vault. The icon tile carries the section's accent, which is
+// what tells the two identical "Password" rows apart at a glance.
+function VaultRow({ icon: Icon, label, empty, children }) {
+  return (
+    <div className={`vault-row${empty ? " is-empty" : ""}`}>
+      <span className="vault-icon" aria-hidden="true">{Icon ? <Icon size={13} /> : null}</span>
+      <span className="vault-label">{label}</span>
+      {children}
     </div>
   );
 }
 
-function PlainRow({ label, value, t }) {
+function PlainRow({ label, value, icon, t }) {
   const [copied, setCopied] = React.useState(false);
   const handleCopy = async () => {
     if (await copyText(value)) {
@@ -286,25 +300,24 @@ function PlainRow({ label, value, t }) {
     }
   };
   return (
-    <div className="credential-row">
-      <span className="credential-label">{label}</span>
-      <span className="credential-value mono">
-        {value || <em className="credential-empty">{t("Not set")}</em>}
+    <VaultRow icon={icon} label={label} empty={!value}>
+      <span className="vault-value mono">
+        {value || <em className="vault-empty">{t("Not set")}</em>}
       </span>
       {value ? (
-        <span className="credential-actions">
+        <span className="vault-actions">
           <button
             type="button"
-            className={`icon-btn${copied ? " is-done" : ""}`}
+            className={`vault-btn${copied ? " is-done" : ""}`}
             onClick={handleCopy}
             aria-label={t("Copy")}
             title={t("Copy")}
           >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         </span>
       ) : null}
-    </div>
+    </VaultRow>
   );
 }
 
@@ -675,10 +688,10 @@ export function AccountCredentialsModal({ row, onClose, t }) {
             <span className="stats-icon-tile" style={{ "--tile-accent": "#8b5cf6" }}>
               <KeyRound size={16} />
             </span>
-            <div>
+            <div className="vault-identity">
               <p className="modal-kicker">{t("Account access")}</p>
-              <h2>{row.account_number}</h2>
-              {row.nickname ? <p className="panel-subtitle">{row.nickname}</p> : null}
+              <h2 className="mono">{row.account_number}</h2>
+              {row.nickname ? <p className="vault-bm">{row.nickname}</p> : null}
             </div>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("Close")}>
@@ -691,90 +704,89 @@ export function AccountCredentialsModal({ row, onClose, t }) {
             {t("No credentials saved for this account yet. Add them from Edit.")}
           </div>
         ) : (
-          <div className="credentials-body">
-            <PlainRow label={t("UID")} value={row.account_uid} t={t} />
-            <SecretRow
-              accountId={row.id}
-              field="password"
-              label={t("Password")}
-              present={Boolean(row.has_login_password)}
-              t={t}
-            />
+          <div className="vault-body">
 
-            <div className="credential-row credential-row-totp">
-              <span className="credential-label">
-                {t("2FA")}
-                <ShieldCheck size={12} aria-hidden="true" />
-              </span>
-              {!row.has_totp ? (
-                <span className="credential-value">
-                  <em className="credential-empty">{t("Not set")}</em>
-                </span>
-              ) : totpRequested ? (
-                <TotpCode
-                  accountId={row.id}
-                  active
-                  label={{
-                    copy: t("Copy code"),
-                    copied: t("Copied"),
-                    retry: t("Retry"),
-                    show: t("Show code"),
-                  }}
-                />
-              ) : (
-                <span className="credential-value">
-                  <em className="credential-empty">{t("Press Request 2FA code")}</em>
-                </span>
-              )}
-            </div>
-
-            <div className="credentials-divider">
-              <span>{t("Backup email")}</span>
-            </div>
-
-            <PlainRow label={t("Address")} value={row.backup_email} t={t} />
-            <SecretRow
-              accountId={row.id}
-              field="backupEmailPassword"
-              label={t("Password")}
-              present={Boolean(row.has_backup_email_password)}
-              t={t}
-            />
-            {row.backup_email ? (
-              <MailboxPanel
+            <section className="vault-group" data-accent="account">
+              <h4 className="vault-group-head">{t("Ad account")}</h4>
+              <PlainRow icon={Fingerprint} label={t("UID")} value={row.account_uid} t={t} />
+              <SecretRow
                 accountId={row.id}
-                email={row.backup_email}
-                forwardAddress={row.forward_address}
-                requestNonce={mailNonce}
+                field="password"
+                label={t("Password")}
+                present={Boolean(row.has_login_password)}
+                icon={Lock}
                 t={t}
               />
-            ) : null}
+              <VaultRow icon={ShieldCheck} label={t("2FA")} empty={!row.has_totp}>
+                {!row.has_totp ? (
+                  <span className="vault-value"><em className="vault-empty">{t("Not set")}</em></span>
+                ) : totpRequested ? (
+                  <TotpCode
+                    accountId={row.id}
+                    active
+                    label={{
+                      copy: t("Copy code"),
+                      copied: t("Copied"),
+                      retry: t("Retry"),
+                      show: t("Show code"),
+                    }}
+                  />
+                ) : (
+                  // A placeholder shaped like a code, not an instruction —
+                  // the button below says what to do.
+                  <span className="vault-value mono vault-pending">••• •••</span>
+                )}
+              </VaultRow>
+            </section>
 
-            <div className="credentials-actions">
+            <section className="vault-group" data-accent="mail">
+              <h4 className="vault-group-head">{t("Backup mailbox")}</h4>
+              <PlainRow icon={AtSign} label={t("Address")} value={row.backup_email} t={t} />
+              <SecretRow
+                accountId={row.id}
+                field="backupEmailPassword"
+                label={t("Password")}
+                present={Boolean(row.has_backup_email_password)}
+                icon={Lock}
+                t={t}
+              />
+              {row.backup_email ? (
+                <MailboxPanel
+                  accountId={row.id}
+                  email={row.backup_email}
+                  forwardAddress={row.forward_address}
+                  requestNonce={mailNonce}
+                  t={t}
+                />
+              ) : null}
+            </section>
+
+            <div className="vault-actions-bar">
               <button
                 type="button"
-                className="action-pill"
+                className="vault-action is-account"
                 onClick={() => setTotpRequested(true)}
                 disabled={!row.has_totp || totpRequested}
                 title={row.has_totp ? undefined : t("No 2FA secret saved for this account.")}
               >
-                <ShieldCheck size={14} /> {t("Request 2FA code")}
+                <ShieldCheck size={15} /> {totpRequested ? t("2FA code shown") : t("Request 2FA code")}
               </button>
               <button
                 type="button"
-                className="action-pill"
+                className="vault-action is-mail"
                 onClick={() => setMailNonce((value) => value + 1)}
                 disabled={!row.backup_email}
                 title={row.backup_email ? undefined : t("No backup email saved for this account.")}
               >
-                <Mail size={14} /> {t("Request email code")}
+                <Mail size={15} /> {t("Request email code")}
               </button>
             </div>
           </div>
         )}
 
-        <p className="credentials-footnote">
-          {t("Codes are generated on our server — the 2FA secret never leaves it. Every reveal is logged.")}
+        <p className="vault-footnote">
+          <Lock size={11} aria-hidden="true" />
+          {t("Generated on our server. The 2FA secret never leaves it, and every reveal is logged.")}
         </p>
       </motion.div>
     </motion.div>

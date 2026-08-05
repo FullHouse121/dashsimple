@@ -1385,6 +1385,11 @@ export const translations = {
     "Codes are generated on our server — the 2FA secret never leaves it. Every reveal is logged.":
       "Kodlar sunucumuzda üretilir — 2FA anahtarı sunucudan hiç çıkmaz. Her görüntüleme kayda geçer.",
     "Show code": "Kodu göster",
+    "Ad account": "Reklam hesabı",
+    "Backup mailbox": "Yedek posta kutusu",
+    "2FA code shown": "2FA kodu gösteriliyor",
+    "Generated on our server. The 2FA secret never leaves it, and every reveal is logged.":
+      "Sunucumuzda üretilir. 2FA anahtarı sunucudan hiç çıkmaz ve her görüntüleme kayda geçer.",
     "Request 2FA code": "2FA kodu iste",
     "Request email code": "E-posta kodu iste",
     "Press Request 2FA code": "2FA kodu iste'ye basın",

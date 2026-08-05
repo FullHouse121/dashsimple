@@ -19359,3 +19359,208 @@ select option,
 .mailbox-forward-address:hover {
   border-color: rgba(54, 208, 124, 0.45);
 }
+
+/* ── Credential vault ─────────────────────────────────────────────────
+   Two groups, each with its own accent: the ad account (purple) and the
+   backup mailbox (green). The accent is what tells the two identical
+   "Password" rows apart without reading the section header. */
+
+.credentials-modal {
+  max-width: 540px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.credentials-modal .modal-head {
+  padding: 22px 22px 18px;
+  border-bottom: 1px solid var(--stroke);
+  align-items: flex-start;
+}
+
+.vault-identity { min-width: 0; }
+
+.vault-identity .modal-kicker {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 3px;
+}
+
+.credentials-modal .modal-head h2 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.vault-bm {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.vault-body { padding: 6px 22px 20px; }
+
+.vault-group { padding: 14px 0 4px; }
+.vault-group + .vault-group { border-top: 1px solid var(--stroke); margin-top: 6px; }
+
+.vault-group[data-accent="account"] { --vault-accent: var(--purple); }
+.vault-group[data-accent="mail"] { --vault-accent: var(--green); }
+
+.vault-group-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--vault-accent);
+}
+
+.vault-group-head::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, color-mix(in srgb, var(--vault-accent) 30%, transparent), transparent);
+}
+
+.vault-row {
+  display: grid;
+  grid-template-columns: 26px 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px 7px 6px;
+  margin: 0 -8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.16s var(--ease-smooth);
+}
+
+.vault-row:hover { background: rgba(255, 255, 255, 0.028); }
+
+.vault-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vault-accent) 13%, transparent);
+  color: var(--vault-accent);
+}
+
+.vault-row.is-empty .vault-icon { background: rgba(255, 255, 255, 0.04); color: var(--faint); }
+
+.vault-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vault-value {
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.vault-value.is-revealed { user-select: all; }
+.vault-empty { font-style: normal; color: var(--faint); font-size: 12.5px; }
+.vault-pending { color: var(--faint); letter-spacing: 0.18em; }
+
+/* Actions stay quiet until the row is hovered — six bordered squares was
+   the loudest thing in the panel. */
+.vault-actions { display: inline-flex; gap: 3px; }
+
+.vault-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition: background 0.16s var(--ease-smooth), color 0.16s var(--ease-smooth);
+}
+
+.vault-row:hover .vault-btn { color: var(--muted-strong); }
+.vault-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+.vault-btn:focus-visible { outline: 2px solid var(--vault-accent); outline-offset: 1px; }
+.vault-btn.is-done { color: var(--green); }
+.vault-btn:disabled { opacity: 0.4; cursor: default; }
+
+.vault-error { grid-column: 3 / -1; font-size: 11.5px; color: var(--red); }
+
+/* Action bar — one button per group, each carrying its group's accent so
+   they read as belonging to their section rather than competing. */
+.vault-actions-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.vault-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--vault-accent) 34%, transparent);
+  background: color-mix(in srgb, var(--vault-accent) 12%, transparent);
+  color: var(--vault-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s var(--ease-smooth), transform 0.16s var(--ease-smooth);
+}
+
+.vault-action.is-account { --vault-accent: var(--purple); }
+.vault-action.is-mail { --vault-accent: var(--green); }
+.vault-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vault-accent) 20%, transparent);
+  transform: translateY(-1px);
+}
+.vault-action:focus-visible { outline: 2px solid var(--vault-accent); outline-offset: 2px; }
+.vault-action:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.vault-footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--stroke);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+.vault-footnote svg { flex-shrink: 0; margin-top: 3px; }
+
+/* The mailbox panel sits inside the mail group, so it inherits that accent. */
+.vault-group .mailbox-panel {
+  margin: 10px 0 2px;
+  background: rgba(255, 255, 255, 0.022);
+  border-color: var(--stroke);
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 560px) {
+  .vault-row {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+  .vault-label { grid-column: 2 / -1; }
+  .vault-value { grid-column: 2 / 3; }
+  .vault-actions-bar { grid-template-columns: 1fr; }
+}
