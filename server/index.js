@@ -10085,6 +10085,11 @@ app.get("/api/keitaro/buyer-campaigns", async (req, res) => {
   // (e.g. the filter's "All") gets every campaign.
   if (!isLeadership(req.user) && !buyer) return res.json({ campaigns: [] });
   const result = await keitaroAdminFetch("/campaigns?limit=1000");
+  // The REST list has no filter parameter, so drop external groups here.
+  const externalIds = new Set((await getExternalCampaignGroupIds()).map(Number));
+  if (result.ok && Array.isArray(result.data) && externalIds.size) {
+    result.data = result.data.filter((row) => !externalIds.has(Number(row?.group_id)));
+  }
   if (!result.ok) {
     return res.status(502).json({ error: result.error || "Could not load Keitaro campaigns." });
   }
@@ -10382,6 +10387,61 @@ const buildBuyerPrefilter = (usernames) => {
   };
 };
 
+// ── External campaign groups ──────────────────────────────────────────
+// Some Keitaro campaigns belong to other departments (Propeller, Youtarget
+// and friends). They share the tracker but not the dashboard: their volume
+// dwarfs the team's — 588 of the newest 600 clicks on one sample — and their
+// numbers are not ours to report on.
+//
+// The exclusion is by GROUP, not by campaign name, so the team decides what
+// is external from inside Keitaro without a code change. Names are matched
+// case-insensitively; ids may be given directly.
+const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "Outsource")
+  .split(",")
+  .map((name) => name.trim())
+  .filter(Boolean);
+
+const externalGroupCache = { at: 0, ids: [] };
+
+const getExternalCampaignGroupIds = async () => {
+  if (!externalGroupNames.length) return [];
+  if (externalGroupCache.ids.length && Date.now() - externalGroupCache.at < 5 * 60 * 1000) {
+    return externalGroupCache.ids;
+  }
+  // A plain id in the config needs no lookup.
+  const direct = externalGroupNames.filter((name) => /^\d+$/.test(name)).map(Number);
+  const byName = externalGroupNames.filter((name) => !/^\d+$/.test(name)).map((n) => n.toLowerCase());
+
+  let resolved = [...direct];
+  if (byName.length) {
+    // NOTE: "campaigns", plural. type=campaign returns an empty list.
+    const result = await keitaroAdminFetch("/groups?type=campaigns");
+    if (result.ok && Array.isArray(result.data)) {
+      for (const group of result.data) {
+        if (byName.includes(String(group?.name || "").trim().toLowerCase())) {
+          resolved.push(Number(group.id));
+        }
+      }
+    } else if (externalGroupCache.ids.length) {
+      // Tracker unreachable — keep the last known list rather than silently
+      // letting the excluded traffic back in.
+      return externalGroupCache.ids;
+    }
+  }
+  resolved = [...new Set(resolved.filter((id) => Number.isFinite(id)))];
+  if (resolved.length) {
+    externalGroupCache.at = Date.now();
+    externalGroupCache.ids = resolved;
+  }
+  return resolved;
+};
+
+// NOT_IN_LIST, not NOT_EQUALS — this tracker rejects NOT_EQUALS on this field.
+const buildExternalGroupFilter = (ids) =>
+  ids.length
+    ? { name: "campaign_group_id", operator: "NOT_IN_LIST", expression: ids.map(String) }
+    : null;
+
 const trackerNowString = (timezone) => {
   try {
     return new Date().toLocaleString("sv-SE", { timeZone: timezone });
@@ -10454,12 +10514,14 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     // Resolved before the fetch so it can be pushed into Keitaro. Cached 60s.
     const registeredBuyers = await getRegisteredBuyers();
     const buyerPrefilter = buildBuyerPrefilter(registeredBuyers);
+    const externalGroupIds = await getExternalCampaignGroupIds();
+    const externalGroupFilter = buildExternalGroupFilter(externalGroupIds);
 
     const cacheKey = `${
       intervalKey || (customRange ? `custom:${customRange.from}:${customRange.to}` : "rolling")
     }:${limit}:${statusFilter || "all"}:${campaignFilter || "all"}:${
       buyerPrefilter ? registeredBuyers.length : "unscoped"
-    }`;
+    }:x${externalGroupIds.join(".") || "none"}`;
     let cached = cache.get(cacheKey);
     if (!cached || Date.now() - cached.at > 10 * 1000) {
       const logFilters = [
@@ -10468,6 +10530,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
           ? [{ name: "campaign_id", operator: "EQUALS", expression: Number(campaignFilter) }]
           : []),
         ...(buyerPrefilter ? [buyerPrefilter] : []),
+        ...(externalGroupFilter ? [externalGroupFilter] : []),
       ];
       const result = await keitaroAdminFetch(logPath, {
         method: "POST",
@@ -11251,6 +11314,11 @@ app.get("/api/keitaro/campaign-states", async (req, res) => {
   try {
     if (!campaignStatesCache.data || Date.now() - campaignStatesCache.at > 60 * 1000) {
       const result = await keitaroAdminFetch("/campaigns?limit=1000");
+  // The REST list has no filter parameter, so drop external groups here.
+  const externalIds = new Set((await getExternalCampaignGroupIds()).map(Number));
+  if (result.ok && Array.isArray(result.data) && externalIds.size) {
+    result.data = result.data.filter((row) => !externalIds.has(Number(row?.group_id)));
+  }
       if (!result.ok) {
         return res.status(502).json({ error: result.error || "Keitaro campaigns fetch failed." });
       }
@@ -14071,6 +14139,15 @@ app.all("/api/keitaro/cron", async (req, res) => {
   let payload = applyKeitaroRange(parseJsonEnv(payloadRaw));
   if (!payload) {
     return res.status(400).json({ error: "KEITARO_REPORT_PAYLOAD must be valid JSON." });
+  }
+  // Keep other departments' campaigns out of our own numbers at the source,
+  // so nothing downstream has to remember to filter them.
+  const syncExternalFilter = buildExternalGroupFilter(await getExternalCampaignGroupIds());
+  if (syncExternalFilter) {
+    payload = {
+      ...payload,
+      filters: [...(Array.isArray(payload.filters) ? payload.filters : []), syncExternalFilter],
+    };
   }
   if (isDeviceTarget || isUserTarget) {
     payload = toKeitaroCustomRangePayload(payload);
