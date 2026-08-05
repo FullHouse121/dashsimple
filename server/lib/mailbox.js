@@ -60,6 +60,46 @@ export const extractVerificationCode = (text) => {
   return null;
 };
 
+// ── Forwarded mail ────────────────────────────────────────────────────
+// A Cloudflare Worker hands us the raw RFC-822 message. We are not building a
+// mail client — just enough decoding to find a six-digit code, which lives in
+// the subject far more often than not.
+
+// Quoted-printable is what most transactional senders use, and it happily
+// splits a code across a soft line break ("12=\r\n3456").
+const decodeQuotedPrintable = (text) =>
+  String(text || "")
+    .replace(/=\r?\n/g, "")
+    .replace(/=([0-9A-F]{2})/gi, (_match, hex) => String.fromCharCode(parseInt(hex, 16)));
+
+const stripHtml = (text) =>
+  String(text || "")
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ");
+
+export const extractCodeFromRawEmail = (raw, subject = "") => {
+  // Subject first — it is the least noisy place a code appears.
+  const fromSubject = extractVerificationCode(subject);
+  if (fromSubject) return fromSubject.code;
+
+  const text = String(raw || "");
+  if (!text) return null;
+  // Headers end at the first blank line; everything after is body.
+  const split = text.search(/\r?\n\r?\n/);
+  const body = split === -1 ? text : text.slice(split);
+  const readable = stripHtml(decodeQuotedPrintable(body)).slice(0, 8000);
+  return extractVerificationCode(readable)?.code || null;
+};
+
+// Pull the Subject header out of a raw message, unfolding continuation lines.
+export const readSubjectFromRaw = (raw) => {
+  const match = String(raw || "").match(/^subject:[ \t]*(.*(?:\r?\n[ \t]+.*)*)/im);
+  return match ? match[1].replace(/\r?\n[ \t]+/g, " ").trim() : "";
+};
+
 const SENDER_HINTS = /facebook|meta|instagram|microsoft|outlook|account|security|noreply|no-reply/i;
 
 // Scores every message and returns them newest-first with whatever code each

@@ -13,7 +13,9 @@ import {
   addressesMatch,
   createMailboxClient,
   createPkcePair,
+  extractCodeFromRawEmail,
   isAccessTokenUsable,
+  readSubjectFromRaw,
   readCodesFromMessages,
 } from "./lib/mailbox.js";
 import {
@@ -337,6 +339,21 @@ const initDb = async () => {
     );`,
     `CREATE UNIQUE INDEX IF NOT EXISTS mailbox_connections_email_key
       ON mailbox_connections (LOWER(email));`,
+    // Codes delivered by forwarding. Deliberately short-lived: a verification
+    // code is worthless within the hour, so nothing here outlives its use.
+    `CREATE TABLE IF NOT EXISTS mailbox_codes (
+      id SERIAL PRIMARY KEY,
+      account_id INTEGER,
+      forward_address TEXT NOT NULL,
+      from_address TEXT,
+      subject TEXT,
+      code TEXT,
+      received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL
+    );`,
+    `CREATE INDEX IF NOT EXISTS mailbox_codes_account_idx
+      ON mailbox_codes (account_id, received_at DESC);`,
+    `CREATE INDEX IF NOT EXISTS mailbox_codes_expiry_idx ON mailbox_codes (expires_at);`,
     `CREATE TABLE IF NOT EXISTS system_notifications (
       id SERIAL PRIMARY KEY,
       event_type TEXT NOT NULL,
@@ -551,6 +568,10 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS backup_email TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS backup_email_password_enc TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS credentials_updated_at TIMESTAMP;`,
+    // Where this account's mailbox forwards to, so codes arrive on their own.
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS forward_address TEXT;`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS accounts_registry_forward_address_key
+      ON accounts_registry (LOWER(forward_address)) WHERE forward_address IS NOT NULL;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS event_type TEXT;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS severity TEXT;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS title TEXT;`,
@@ -2794,6 +2815,7 @@ const selectAccountRegistry = async (limit) => {
             a.updated_at,
             a.account_uid,
             a.backup_email,
+            a.forward_address,
             a.credentials_updated_at,
             -- Booleans only: the encrypted values are fetched by
             -- selectAccountCredentials() alone, so ciphertext never rides
@@ -2890,6 +2912,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             a.updated_at,
             a.account_uid,
             a.backup_email,
+            a.forward_address,
             a.credentials_updated_at,
             -- Booleans only: the encrypted values are fetched by
             -- selectAccountCredentials() alone, so ciphertext never rides
@@ -2971,7 +2994,7 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
 // registry selects so no list or detail response can leak it by accident.
 const selectAccountCredentials = async (id) =>
   getRow(
-    `SELECT id, owner_id, account_number, account_uid, backup_email,
+    `SELECT id, owner_id, account_number, account_uid, backup_email, forward_address,
             login_password_enc, totp_secret_enc, backup_email_password_enc
      FROM accounts_registry WHERE id = $1`,
     [id]
@@ -2997,6 +3020,7 @@ const selectAccountRegistryById = async (id) => {
             a.updated_at,
             a.account_uid,
             a.backup_email,
+            a.forward_address,
             a.credentials_updated_at,
             -- Booleans only: the encrypted values are fetched by
             -- selectAccountCredentials() alone, so ciphertext never rides
@@ -5132,6 +5156,7 @@ app.use((req, res, next) => {
   // The mailbox sign-in popup navigates here; a browser navigation cannot
   // carry an Authorization header. Both are guarded by a single-use `state`
   // minted by the authenticated /oauth/prepare call.
+  if (req.path === "/api/mailbox/inbound") return next();
   if (req.path === "/api/mailbox/oauth/start") return next();
   if (req.path === "/api/mailbox/oauth/callback") return next();
 
@@ -7758,6 +7783,103 @@ app.post("/api/accounts/:id/mailbox/connect/poll", async (req, res) => {
   }
 });
 
+// ── Forwarded codes ───────────────────────────────────────────────────
+// The mailbox forwards to an address on our own domain; a Cloudflare Worker
+// posts each message here. No consent, no tokens, and the code is waiting
+// before anyone thinks to ask for it.
+const inboundMailSecret = normalizeSecretValue(process.env.INBOUND_MAIL_SECRET || "");
+const mailForwardDomain = String(process.env.MAIL_FORWARD_DOMAIN || "").trim().toLowerCase();
+const inboundCodeTtlHours = Number.parseInt(process.env.INBOUND_CODE_TTL_HOURS || "24", 10) || 24;
+
+const mintForwardAddress = () => `acc-${crypto.randomBytes(4).toString("hex")}@${mailForwardDomain}`;
+
+// Returns the account's forwarding address, creating one on first use.
+app.post("/api/accounts/:id/forward-address", async (req, res) => {
+  const account = await loadAccountForCredentialAccess(req, res);
+  if (!account) return undefined;
+  if (!mailForwardDomain) {
+    return res
+      .status(503)
+      .json({ error: "Mail forwarding is not configured. Set MAIL_FORWARD_DOMAIN on the server." });
+  }
+  const existing = await getRow(`SELECT forward_address FROM accounts_registry WHERE id = $1`, [
+    account.id,
+  ]);
+  if (existing?.forward_address) {
+    return res.json({ forwardAddress: existing.forward_address });
+  }
+  // Collisions are vanishingly unlikely, but a retry is cheaper than a 500.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const candidate = mintForwardAddress();
+    try {
+      await query(`UPDATE accounts_registry SET forward_address = $2, updated_at = NOW() WHERE id = $1`, [
+        account.id,
+        candidate,
+      ]);
+      return res.json({ forwardAddress: candidate });
+    } catch (error) {
+      if (attempt === 4) return res.status(500).json({ error: "Could not allocate an address." });
+    }
+  }
+  return undefined;
+});
+
+const purgeExpiredMailboxCodes = async () => {
+  try {
+    await query(`DELETE FROM mailbox_codes WHERE expires_at < NOW()`);
+  } catch (error) {
+    /* purge is best-effort — never fail an inbound message over it */
+  }
+};
+
+// Called by the Cloudflare Worker, not by a browser. Authenticated by a shared
+// secret rather than a user token.
+app.post("/api/mailbox/inbound", async (req, res) => {
+  if (!inboundMailSecret) {
+    return res.status(503).json({ error: "Inbound mail is not configured." });
+  }
+  if (!secretEquals(normalizeSecretValue(req.headers["x-inbound-secret"] || ""), inboundMailSecret)) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+
+  const to = String(req.body?.to || "").trim().toLowerCase();
+  if (!to) return res.status(400).json({ error: "Missing recipient." });
+
+  const raw = String(req.body?.raw || "");
+  const subject = String(req.body?.subject || "").trim() || readSubjectFromRaw(raw);
+  const from = String(req.body?.from || "").trim().slice(0, 190);
+  const code = extractCodeFromRawEmail(raw, subject);
+
+  const account = await getRow(
+    `SELECT id FROM accounts_registry WHERE LOWER(forward_address) = $1`,
+    [to]
+  );
+
+  // Store even an unmatched or codeless message: a buyer looking at an account
+  // that "got nothing" needs to see that mail did arrive.
+  await query(
+    `INSERT INTO mailbox_codes
+       (account_id, forward_address, from_address, subject, code, expires_at)
+     VALUES ($1, $2, $3, $4, $5, NOW() + ($6 || ' hours')::interval)`,
+    [account?.id || null, to, from || null, subject.slice(0, 300) || null, code, String(inboundCodeTtlHours)]
+  );
+  await purgeExpiredMailboxCodes();
+
+  // The Worker cannot do anything useful with a failure, so always 200 unless
+  // the request itself was malformed.
+  return res.json({ ok: true, matched: Boolean(account), code: Boolean(code) });
+});
+
+const selectForwardedCodes = async (accountId) =>
+  getRows(
+    `SELECT from_address, subject, code, received_at
+     FROM mailbox_codes
+     WHERE account_id = $1 AND expires_at > NOW()
+     ORDER BY received_at DESC
+     LIMIT 10`,
+    [accountId]
+  );
+
 // ── Sign in from the dashboard (authorization code + PKCE) ────────────
 // Three steps because a popup cannot send our Authorization header:
 //   prepare  — authenticated, mints a single-use state
@@ -7956,6 +8078,28 @@ const ensureMailboxAccessToken = async (email, mailbox) => {
 app.post("/api/accounts/:id/mailbox/messages", async (req, res) => {
   const context = await loadMailboxContext(req, res);
   if (!context) return undefined;
+
+  // Forwarding wins when it is set up: the codes are already here, so there is
+  // nothing to fetch and nothing that can be expired or revoked.
+  if (context.account.forward_address) {
+    const rows = await selectForwardedCodes(context.account.id);
+    const now = Date.now();
+    return res.json({
+      source: "forwarded",
+      email: context.email,
+      forwardAddress: context.account.forward_address,
+      messages: rows.map((row) => ({
+        id: `${row.received_at}`,
+        subject: row.subject || "",
+        from: row.from_address || "",
+        fromName: "",
+        code: row.code || null,
+        receivedDateTime: row.received_at,
+        ageMs: Math.max(0, now - new Date(row.received_at).getTime()),
+      })),
+    });
+  }
+
   try {
     const accessToken = await ensureMailboxAccessToken(context.email, context.mailbox);
     const messages = await mailboxClient.listMessages(accessToken, { top: 15 });

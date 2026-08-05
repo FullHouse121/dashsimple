@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   createPkcePair,
+  extractCodeFromRawEmail,
+  readSubjectFromRaw,
   addressesMatch,
   createMailboxClient,
   extractVerificationCode,
@@ -296,5 +298,62 @@ describe("authorization-code flow", () => {
     await expect(
       failing.exchangeCode({ code: "x", redirectUri: "y", codeVerifier: "z" })
     ).rejects.toThrow(/AADSTS70000/);
+  });
+});
+
+describe("forwarded mail", () => {
+  const message = (headers, body) => `${headers}\r\n\r\n${body}`;
+
+  it("takes the code from the subject when it is there", () => {
+    const raw = message("From: security@facebookmail.com\r\nSubject: 604112 is your Facebook code", "ignore 999999");
+    expect(extractCodeFromRawEmail(raw, "604112 is your Facebook code")).toBe("604112");
+  });
+
+  it("falls back to the body when the subject has none", () => {
+    const raw = message("Subject: Security alert", "Your verification code is 883021. It expires soon.");
+    expect(extractCodeFromRawEmail(raw, "Security alert")).toBe("883021");
+  });
+
+  it("reassembles a code split by a quoted-printable soft break", () => {
+    const raw = message("Subject: Alert", "Your code is 44=\r\n7291 and expires shortly");
+    expect(extractCodeFromRawEmail(raw, "Alert")).toBe("447291");
+  });
+
+  it("decodes quoted-printable escapes", () => {
+    const raw = message("Subject: Alert", "C=C3=B3digo: 550132");
+    expect(extractCodeFromRawEmail(raw, "Alert")).toBe("550132");
+  });
+
+  it("reads through HTML mail", () => {
+    const raw = message(
+      "Subject: Alert",
+      "<html><style>.x{color:#123456}</style><body><p>Your code is <b>729104</b></p></body></html>"
+    );
+    // The stylesheet hex must not be mistaken for the code.
+    expect(extractCodeFromRawEmail(raw, "Alert")).toBe("729104");
+  });
+
+  it("never reads a code out of the headers", () => {
+    // Message-IDs and DKIM headers are full of long digit runs.
+    const raw = message(
+      "Subject: Welcome\r\nMessage-ID: <209471043@mx.example.com>\r\nX-Ref: 5567281",
+      "Nothing useful here."
+    );
+    expect(extractCodeFromRawEmail(raw, "Welcome")).toBeNull();
+  });
+
+  it("returns null rather than guessing", () => {
+    expect(extractCodeFromRawEmail("", "")).toBeNull();
+    expect(extractCodeFromRawEmail(message("Subject: Hi", "No numbers at all"), "Hi")).toBeNull();
+  });
+
+  it("reads and unfolds the subject header", () => {
+    expect(readSubjectFromRaw("From: a@b.c\r\nSubject: 604112 is your code\r\n\r\nbody")).toBe(
+      "604112 is your code"
+    );
+    expect(readSubjectFromRaw("Subject: a very long\r\n  folded subject\r\n\r\nbody")).toBe(
+      "a very long folded subject"
+    );
+    expect(readSubjectFromRaw("From: a@b.c\r\n\r\nbody")).toBe("");
   });
 });

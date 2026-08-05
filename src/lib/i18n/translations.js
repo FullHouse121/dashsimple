@@ -1418,6 +1418,9 @@ export const translations = {
     "Could not check the mailbox.": "Posta kutusu kontrol edilemedi.",
     "Could not read the mailbox.": "Posta kutusu okunamadı.",
     "Inbox is empty.": "Gelen kutusu boş.",
+    "Forwarding to": "Şuraya yönlendiriliyor",
+    "No codes yet. They appear here the moment one arrives.":
+      "Henüz kod yok. Bir kod geldiği anda burada görünür.",
     "(no subject)": "(konu yok)",
     // "just now" is already translated above
     "{n} min ago": "{n} dk önce",

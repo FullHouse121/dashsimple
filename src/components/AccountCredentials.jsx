@@ -321,7 +321,7 @@ const relativeAge = (ageMs, t) => {
   return t("{n} d ago").replace("{n}", String(Math.floor(hours / 24)));
 };
 
-function MailboxPanel({ accountId, email, requestNonce, t }) {
+function MailboxPanel({ accountId, email, forwardAddress, requestNonce, t }) {
   const [state, setState] = React.useState({ loading: true, connected: false, configured: true });
   const [connect, setConnect] = React.useState(null);
   const [messages, setMessages] = React.useState(null);
@@ -458,6 +458,32 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
     }
   };
 
+  const renderMessages = () => (
+    <ul className="mailbox-list">
+      {messages.slice(0, 6).map((message, index) => (
+        <li key={message.id || index} className={message.code ? "has-code" : ""}>
+          <div className="mailbox-msg-main">
+            <span className="mailbox-msg-subject">{message.subject || t("(no subject)")}</span>
+            <span className="mailbox-msg-meta">
+              {message.fromName || message.from} · {relativeAge(message.ageMs, t)}
+            </span>
+          </div>
+          {message.code ? (
+            <button
+              type="button"
+              className="mailbox-code"
+              onClick={() => copyCode(message.code)}
+              title={t("Copy code")}
+            >
+              {message.code}
+              {copied === message.code ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+
   // "Request email code" in the modal footer drives this panel: fetch if the
   // inbox is already connected, otherwise start the one-time sign-in. Held in
   // a ref so the effect depends only on the nonce, never re-firing on
@@ -465,7 +491,8 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
   const requestRef = React.useRef(() => {});
   requestRef.current = () => {
     if (busy) return;
-    if (state.connected) fetchMessages();
+    // Forwarding needs no connection — just read what has arrived.
+    if (forwardAddress || state.connected) fetchMessages();
     else if (!connect) startPopupConnect();
   };
   React.useEffect(() => {
@@ -510,6 +537,36 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
     );
   }
 
+  // Forwarding set up: nothing to connect, the codes arrive on their own.
+  if (forwardAddress) {
+    return (
+      <div className="mailbox-panel">
+        <div className="mailbox-toolbar">
+          <span className="mailbox-connected">
+            <Check size={12} /> {t("Forwarding to")}
+          </span>
+          <button
+            type="button"
+            className="mailbox-forward-address mono"
+            onClick={() => copyCode(forwardAddress)}
+            title={t("Copy")}
+          >
+            {forwardAddress}
+            {copied === forwardAddress ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+        </div>
+        {error ? <p className="credential-error">{error}</p> : null}
+        {messages !== null ? (
+          messages.length === 0 ? (
+            <p className="mailbox-hint">{t("No codes yet. They appear here the moment one arrives.")}</p>
+          ) : (
+            renderMessages()
+          )
+        ) : null}
+      </div>
+    );
+  }
+
   if (!state.connected) {
     return (
       <div className="mailbox-panel">
@@ -549,33 +606,7 @@ function MailboxPanel({ accountId, email, requestNonce, t }) {
       {error ? <p className="credential-error">{error}</p> : null}
 
       {messages !== null ? (
-        messages.length === 0 ? (
-          <p className="mailbox-hint">{t("Inbox is empty.")}</p>
-        ) : (
-          <ul className="mailbox-list">
-            {messages.slice(0, 6).map((message, index) => (
-              <li key={message.id || index} className={message.code ? "has-code" : ""}>
-                <div className="mailbox-msg-main">
-                  <span className="mailbox-msg-subject">{message.subject || t("(no subject)")}</span>
-                  <span className="mailbox-msg-meta">
-                    {message.fromName || message.from} · {relativeAge(message.ageMs, t)}
-                  </span>
-                </div>
-                {message.code ? (
-                  <button
-                    type="button"
-                    className="mailbox-code"
-                    onClick={() => copyCode(message.code)}
-                    title={t("Copy code")}
-                  >
-                    {message.code}
-                    {copied === message.code ? <Check size={12} /> : <Copy size={12} />}
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )
+        messages.length === 0 ? <p className="mailbox-hint">{t("Inbox is empty.")}</p> : renderMessages()
       ) : null}
     </div>
   );
@@ -696,6 +727,7 @@ export function AccountCredentialsModal({ row, onClose, t }) {
               <MailboxPanel
                 accountId={row.id}
                 email={row.backup_email}
+                forwardAddress={row.forward_address}
                 requestNonce={mailNonce}
                 t={t}
               />

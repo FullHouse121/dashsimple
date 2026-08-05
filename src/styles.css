@@ -19342,3 +19342,20 @@ select option,
 .mailbox-alt-connect:hover:not(:disabled) {
   color: rgba(255, 255, 255, 0.7);
 }
+
+.mailbox-forward-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.mailbox-forward-address:hover {
+  border-color: rgba(54, 208, 124, 0.45);
+}
