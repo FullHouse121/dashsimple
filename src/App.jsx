@@ -64,6 +64,7 @@ import {
   Map as MapIcon,
   Zap,
   ShieldCheck,
+  KeyRound,
   Bell,
   User,
   Users,
@@ -194,6 +195,7 @@ const ConversionsDashboard = React.lazy(() => import("./dashboards/ConversionsDa
 const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
+import { AccountCredentialsModal, CREDENTIAL_MASK } from "./components/AccountCredentials.jsx";
 import { liveClickSubIssues } from "./lib/live.js";
 
 
@@ -221,7 +223,11 @@ import {
 import { apiFetch } from "./lib/api.js";
 
 // Permissions, filters, and sort helpers (Phase 1)
-import { normalizeRoleKey, isLeadershipRole } from "./lib/permissions.js";
+import {
+  normalizeRoleKey,
+  isLeadershipRole,
+  canReadAccountCredentials,
+} from "./lib/permissions.js";
 import {
   normalizeFilterValue,
   isAllSelection,
@@ -17572,6 +17578,15 @@ function AccountsDashboard({ authUser }) {
     setTableStatusFilter([]);
     setTableOwnerFilter([]);
   };
+  // Blank credential fields on the create form; on the edit form a stored
+  // secret comes back as the mask, which the server reads as "unchanged".
+  const emptyCredentials = {
+    accountUid: "",
+    password: "",
+    totpSecret: "",
+    backupEmail: "",
+    backupEmailPassword: "",
+  };
   const [form, setForm] = React.useState({
     accountNumber: "",
     nickname: "",
@@ -17581,6 +17596,7 @@ function AccountsDashboard({ authUser }) {
     domainIds: [],
     notes: "",
     ownerId: authUser?.id ? String(authUser.id) : "",
+    ...emptyCredentials,
   });
   const [editModal, setEditModal] = React.useState({
     open: false,
@@ -17595,8 +17611,11 @@ function AccountsDashboard({ authUser }) {
       domainIds: [],
       notes: "",
       ownerId: authUser?.id ? String(authUser.id) : "",
+      ...emptyCredentials,
     },
   });
+  // Which row's credential vault is open.
+  const [credentialsRow, setCredentialsRow] = React.useState(null);
 
   const accountStatusOptions = ["Active", "Pending", "Paused", "Expired", "Blocked"];
 
@@ -17669,6 +17688,13 @@ function AccountsDashboard({ authUser }) {
     [isLeadership, authUser?.id, toId]
   );
 
+  // Tighter than canManageRow: a Team Leader can edit a team member's account
+  // but not open its credentials.
+  const canReadCredentials = React.useCallback(
+    (row) => canReadAccountCredentials(authUser, row),
+    [authUser]
+  );
+
   const updateForm = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
@@ -17725,6 +17751,11 @@ function AccountsDashboard({ authUser }) {
       domainIds: [],
       notes: "",
       ownerId: authUser?.id ? String(authUser.id) : "",
+      accountUid: "",
+      password: "",
+      totpSecret: "",
+      backupEmail: "",
+      backupEmailPassword: "",
     });
     setFormCountryQuery("");
     setFormPixelQuery("");
@@ -18208,6 +18239,11 @@ function AccountsDashboard({ authUser }) {
           domainIds: form.domainIds,
           notes: form.notes,
           ownerId: isLeadership && formOwnerId ? formOwnerId : undefined,
+          accountUid: form.accountUid,
+          backupEmail: form.backupEmail,
+          password: form.password,
+          totpSecret: form.totpSecret,
+          backupEmailPassword: form.backupEmailPassword,
         }),
       });
       if (!response.ok) {
@@ -18253,6 +18289,13 @@ function AccountsDashboard({ authUser }) {
         domainIds: normalizeDomainIds(row?.domain_ids),
         notes: String(row?.notes || ""),
         ownerId: row?.owner_id ? String(row.owner_id) : authUser?.id ? String(authUser.id) : "",
+        accountUid: String(row?.account_uid || ""),
+        backupEmail: String(row?.backup_email || ""),
+        // Stored secrets never come down with the row — show the mask so the
+        // field reads as "set", and send it back untouched unless retyped.
+        password: row?.has_login_password ? CREDENTIAL_MASK : "",
+        totpSecret: row?.has_totp ? CREDENTIAL_MASK : "",
+        backupEmailPassword: row?.has_backup_email_password ? CREDENTIAL_MASK : "",
       },
     });
   };
@@ -18272,6 +18315,11 @@ function AccountsDashboard({ authUser }) {
         domainIds: [],
         notes: "",
         ownerId: authUser?.id ? String(authUser.id) : "",
+        accountUid: "",
+        password: "",
+        totpSecret: "",
+        backupEmail: "",
+        backupEmailPassword: "",
       },
     });
   }, [authUser?.id]);
@@ -18396,6 +18444,11 @@ function AccountsDashboard({ authUser }) {
           domainIds: editModal.form.domainIds,
           notes: editModal.form.notes,
           ownerId: isLeadership && editOwnerId ? editOwnerId : undefined,
+          accountUid: editModal.form.accountUid,
+          backupEmail: editModal.form.backupEmail,
+          password: editModal.form.password,
+          totpSecret: editModal.form.totpSecret,
+          backupEmailPassword: editModal.form.backupEmailPassword,
         }),
       });
       if (!response.ok) {
@@ -18816,6 +18869,66 @@ function AccountsDashboard({ authUser }) {
                     emptyResultsLabel={t("No countries found.")}
                   />
                 </div>
+
+                {canReadCredentials(editModal.row) ? (
+                  <>
+                    <div className="accounts-form-divider field-span-3">
+                      <span>
+                        <KeyRound size={12} aria-hidden="true" /> {t("Account access")}
+                      </span>
+                      <em>{t("Leave the dots to keep the stored value. Clear a field to remove it.")}</em>
+                    </div>
+                    <div className="field">
+                      <label>{t("UID")}</label>
+                      <input
+                        value={editModal.form.accountUid}
+                        onChange={updateEditForm("accountUid")}
+                        maxLength={120}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Password")}</label>
+                      <input
+                        type="password"
+                        value={editModal.form.password}
+                        onChange={updateEditForm("password")}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>
+                        {t("2FA secret")}{" "}
+                        <span className="field-pace-hint">{t("we generate the codes")}</span>
+                      </label>
+                      <input
+                        value={editModal.form.totpSecret}
+                        onChange={updateEditForm("totpSecret")}
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Backup email")}</label>
+                      <input
+                        type="email"
+                        value={editModal.form.backupEmail}
+                        onChange={updateEditForm("backupEmail")}
+                        maxLength={190}
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Backup email password")}</label>
+                      <input
+                        type="password"
+                        value={editModal.form.backupEmailPassword}
+                        onChange={updateEditForm("backupEmailPassword")}
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </>
+                ) : null}
               </div>
               <div className="modal-actions">
                 <button className="ghost" type="button" onClick={closeEditModal}>
@@ -18827,6 +18940,16 @@ function AccountsDashboard({ authUser }) {
               </div>
             </motion.div>
           </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {credentialsRow ? (
+          <AccountCredentialsModal
+            row={accounts.find((row) => row.id === credentialsRow.id) || credentialsRow}
+            onClose={() => setCredentialsRow(null)}
+            t={t}
+          />
         ) : null}
       </AnimatePresence>
 
@@ -18922,6 +19045,67 @@ function AccountsDashboard({ authUser }) {
                 emptyResultsLabel={t("No countries found.")}
               />
             </div>
+
+            <div className="accounts-form-divider field-span-3">
+              <span>
+                <KeyRound size={12} aria-hidden="true" /> {t("Account access")}
+              </span>
+              <em>{t("Encrypted at rest. Only the owner and the Boss can read these back.")}</em>
+            </div>
+            <div className="field">
+              <label>{t("UID")}</label>
+              <input
+                value={form.accountUid}
+                onChange={updateForm("accountUid")}
+                placeholder="61556… / profile id"
+                maxLength={120}
+                autoComplete="off"
+              />
+            </div>
+            <div className="field">
+              <label>{t("Password")}</label>
+              <input
+                type="password"
+                value={form.password}
+                onChange={updateForm("password")}
+                placeholder="••••••••"
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="field">
+              <label>
+                {t("2FA secret")} <span className="field-pace-hint">{t("we generate the codes")}</span>
+              </label>
+              <input
+                value={form.totpSecret}
+                onChange={updateForm("totpSecret")}
+                placeholder={t("the key you would paste into 2fa.live")}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </div>
+            <div className="field">
+              <label>{t("Backup email")}</label>
+              <input
+                type="email"
+                value={form.backupEmail}
+                onChange={updateForm("backupEmail")}
+                placeholder="name@outlook.com"
+                maxLength={190}
+                autoComplete="off"
+              />
+            </div>
+            <div className="field">
+              <label>{t("Backup email password")}</label>
+              <input
+                type="password"
+                value={form.backupEmailPassword}
+                onChange={updateForm("backupEmailPassword")}
+                placeholder="••••••••"
+                autoComplete="new-password"
+              />
+            </div>
+
             <div className="form-actions">
               <button className="ghost" type="button" onClick={resetForm}>
                 {t("Reset")}
@@ -19058,6 +19242,7 @@ function AccountsDashboard({ authUser }) {
                       </button>
                     </th>
                   ))}
+                  <th className="col-access">{t("Access")}</th>
                   <th>{t("Actions")}</th>
                 </tr>
               </thead>
@@ -19134,6 +19319,51 @@ function AccountsDashboard({ authUser }) {
                         ) : null}
                       </td>
                       <td>{ownerLabel && ownerLabel !== "—" ? (<span className="owner-pill"><span className="owner-pill-dot" />{ownerLabel}</span>) : (<span className="offer-muted">—</span>)}</td>
+                      <td className="col-access">
+                        {(() => {
+                          // One button per row rather than a live code in every
+                          // cell: the vault fetches a code only for the account
+                          // actually being opened.
+                          if (!canReadCredentials(row)) {
+                            return <span className="offer-muted" title={t("Owner only")}>—</span>;
+                          }
+                          const stored = [
+                            row.account_uid ? "UID" : null,
+                            row.has_login_password ? t("PW") : null,
+                            row.has_totp ? "2FA" : null,
+                            row.backup_email ? "@" : null,
+                          ].filter(Boolean);
+                          if (!stored.length) {
+                            return (
+                              <button
+                                type="button"
+                                className="icon-btn accounts-access-empty"
+                                onClick={() => openEditModal(row)}
+                                aria-label={t("Add credentials")}
+                                data-tip={t("Add credentials")}
+                                disabled={!rowCanManage}
+                              >
+                                <KeyRound size={14} />
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              type="button"
+                              className="accounts-access-btn"
+                              onClick={() => setCredentialsRow(row)}
+                              data-tip={t("Open credentials")}
+                            >
+                              <KeyRound size={13} />
+                              <span className="accounts-access-tags">
+                                {stored.map((tag) => (
+                                  <em key={tag}>{tag}</em>
+                                ))}
+                              </span>
+                            </button>
+                          );
+                        })()}
+                      </td>
                       <td>
                         <div className="accounts-actions-cell">
                           <div className="accounts-action-group">

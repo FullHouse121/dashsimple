@@ -1354,5 +1354,68 @@ export const translations = {
     "Tracking links": "Takip linkleri",
     Brands: "Markalar",
     "Audit log": "Denetim kaydı",
+
+    // Account credentials ("Access" and "Password" are already translated above)
+    "Account access": "Hesap erişimi",
+    UID: "UID",
+    "2FA secret": "2FA anahtarı",
+    "we generate the codes": "kodları biz üretiyoruz",
+    "the key you would paste into 2fa.live": "2fa.live'a yapıştırdığınız anahtar",
+    "Backup email": "Yedek e-posta",
+    "Backup email password": "Yedek e-posta şifresi",
+    Address: "Adres",
+    "Encrypted at rest. Only the owner and the Boss can read these back.":
+      "Şifrelenerek saklanır. Yalnızca hesap sahibi ve Boss geri okuyabilir.",
+    "Leave the dots to keep the stored value. Clear a field to remove it.":
+      "Kayıtlı değeri korumak için noktaları bırakın. Silmek için alanı boşaltın.",
+    "Open credentials": "Bilgileri aç",
+    "Add credentials": "Bilgi ekle",
+    "Owner only": "Yalnızca hesap sahibi",
+    PW: "ŞFR",
+    "Not set": "Tanımlı değil",
+    Reveal: "Göster",
+    Hide: "Gizle",
+    Copy: "Kopyala",
+    "Copy code": "Kodu kopyala",
+    Copied: "Kopyalandı",
+    Retry: "Tekrar dene",
+    "Could not read that credential.": "Bu bilgi okunamadı.",
+    "No credentials saved for this account yet. Add them from Edit.":
+      "Bu hesap için henüz bilgi kaydedilmemiş. Düzenle'den ekleyebilirsiniz.",
+    "Codes are generated on our server — the 2FA secret never leaves it. Every reveal is logged.":
+      "Kodlar sunucumuzda üretilir — 2FA anahtarı sunucudan hiç çıkmaz. Her görüntüleme kayda geçer.",
+    "Show code": "Kodu göster",
+    "Request 2FA code": "2FA kodu iste",
+    "Request email code": "E-posta kodu iste",
+    "Press Request 2FA code": "2FA kodu iste'ye basın",
+    "No 2FA secret saved for this account.": "Bu hesap için 2FA anahtarı kayıtlı değil.",
+    "No backup email saved for this account.": "Bu hesap için yedek e-posta kayıtlı değil.",
+    // "Refresh" is already translated above
+
+    // Backup mailbox
+    "Connect inbox": "Gelen kutusunu bağla",
+    Connected: "Bağlandı",
+    "Get code": "Kodu getir",
+    "Reading…": "Okunuyor…",
+    "Starting…": "Başlatılıyor…",
+    "Checking mailbox…": "Posta kutusu kontrol ediliyor…",
+    "Connect this inbox once to read its verification codes here.":
+      "Doğrulama kodlarını burada görmek için bu kutuyu bir kez bağlayın.",
+    "This mailbox needs to be reconnected.": "Bu posta kutusunun yeniden bağlanması gerekiyor.",
+    "Mailbox reading is not configured on the server yet.":
+      "Posta kutusu okuma sunucuda henüz yapılandırılmadı.",
+    "1. Open": "1. Şunu açın",
+    "2. Enter this code, then sign in as": "2. Bu kodu girin, ardından şu hesapla giriş yapın",
+    "Waiting for you to finish…": "Tamamlamanız bekleniyor…",
+    "The sign-in did not complete.": "Giriş tamamlanmadı.",
+    "Could not start the sign-in.": "Giriş başlatılamadı.",
+    "Could not check the mailbox.": "Posta kutusu kontrol edilemedi.",
+    "Could not read the mailbox.": "Posta kutusu okunamadı.",
+    "Inbox is empty.": "Gelen kutusu boş.",
+    "(no subject)": "(konu yok)",
+    // "just now" is already translated above
+    "{n} min ago": "{n} dk önce",
+    "{n} h ago": "{n} sa önce",
+    "{n} d ago": "{n} gün önce",
   },
 };

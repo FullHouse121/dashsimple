@@ -9534,6 +9534,496 @@ select option,
   padding-right: 16px;
 }
 
+/* ── Account credentials ──────────────────────────────────────────────
+   The Access column, the credential vault modal, and the live 2FA code. */
+
+.accounts-form-divider {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.accounts-form-divider span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(167, 139, 250, 0.95);
+}
+
+.accounts-form-divider em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+
+.col-access {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.accounts-access-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  background: rgba(139, 92, 246, 0.1);
+  color: rgba(196, 181, 253, 0.95);
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+
+.accounts-access-btn:hover {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.55);
+  transform: translateY(-1px);
+}
+
+.accounts-access-tags {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.accounts-access-tags em {
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.accounts-access-empty {
+  opacity: 0.4;
+}
+
+.accounts-access-empty:hover:not(:disabled) {
+  opacity: 1;
+}
+
+/* The vault */
+.credentials-modal {
+  max-width: 520px;
+  width: 100%;
+}
+
+.credentials-head-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.credentials-head-title h2 {
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.credentials-body {
+  display: grid;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.credential-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  transition: background 0.16s ease;
+}
+
+.credential-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.credential-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+
+.credential-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.credential-value.is-revealed {
+  color: #fff;
+  user-select: all;
+}
+
+.credential-empty {
+  font-style: normal;
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.credential-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.credential-actions .icon-btn.is-done {
+  color: #36d07c;
+  border-color: rgba(54, 208, 124, 0.45);
+}
+
+.credential-error {
+  grid-column: 2 / -1;
+  font-size: 11.5px;
+  color: #ff8a8a;
+}
+
+.credentials-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 14px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.38));
+}
+
+.credentials-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.credentials-footnote {
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted, rgba(255, 255, 255, 0.4));
+}
+
+/* Live 2FA code + countdown ring */
+.totp-code {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.totp-digits {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.totp-digits:hover:not(:disabled) {
+  border-color: rgba(54, 208, 124, 0.5);
+  background: rgba(54, 208, 124, 0.08);
+}
+
+.totp-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+.totp-ring svg {
+  transform: rotate(-90deg);
+}
+
+.totp-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.1);
+  stroke-width: 2.5;
+}
+
+.totp-ring-progress {
+  fill: none;
+  stroke: #36d07c;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
+}
+
+.totp-ring em {
+  position: absolute;
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.totp-code.is-urgent .totp-ring-progress {
+  stroke: #ffb547;
+}
+
+.totp-code.is-urgent .totp-digits {
+  border-color: rgba(255, 181, 71, 0.4);
+}
+
+.totp-copied {
+  position: absolute;
+  left: 0;
+  bottom: -18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: #36d07c;
+}
+
+.totp-error {
+  font-size: 11.5px;
+  color: #ff8a8a;
+}
+
+/* The two request buttons at the foot of the vault */
+.credentials-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 14px 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.credentials-actions .action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.credentials-actions .action-pill:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.mailbox-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 4px 9px;
+}
+
+@media (max-width: 520px) {
+  .credentials-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Backup mailbox */
+.mailbox-panel {
+  display: grid;
+  gap: 10px;
+  margin: 6px 14px 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mailbox-panel.is-muted {
+  color: var(--muted, rgba(255, 255, 255, 0.4));
+  font-size: 12px;
+}
+
+.mailbox-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+
+.mailbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mailbox-connected {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #36d07c;
+}
+
+.mailbox-step {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.mailbox-step a {
+  color: #7dd3fc;
+}
+
+.mailbox-usercode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  justify-self: start;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.1);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #fff;
+  cursor: pointer;
+}
+
+.mailbox-usercode:hover {
+  background: rgba(125, 211, 252, 0.18);
+}
+
+.mailbox-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+
+.mailbox-waiting .spin {
+  animation: mailbox-spin 1.4s linear infinite;
+}
+
+@keyframes mailbox-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mailbox-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mailbox-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mailbox-list li.has-code {
+  background: rgba(54, 208, 124, 0.07);
+  border: 1px solid rgba(54, 208, 124, 0.18);
+}
+
+.mailbox-msg-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mailbox-msg-subject {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.88);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailbox-msg-meta {
+  font-size: 10.5px;
+  color: var(--muted, rgba(255, 255, 255, 0.38));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailbox-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.12);
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #fff;
+  cursor: pointer;
+}
+
+.mailbox-code:hover {
+  background: rgba(54, 208, 124, 0.22);
+}
+
+.totp-digits.is-stale {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.totp-code.is-idle {
+  color: var(--muted, rgba(255, 255, 255, 0.4));
+}
+
+@media (max-width: 640px) {
+  .credential-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .credential-label {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Owner pill — dark rounded chip with a green status dot + name */
 .owner-pill {
   display: inline-flex;

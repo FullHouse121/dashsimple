@@ -7,6 +7,9 @@ import {
   makeBuyerScoping,
 } from "./lib/scoping.js";
 import { createTokenCodec } from "./lib/auth.js";
+import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
+import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
+import { createMailboxClient, isAccessTokenUsable, readCodesFromMessages } from "./lib/mailbox.js";
 import {
   REPORT_SOURCES,
   normalizeReportRequest,
@@ -308,6 +311,26 @@ const initDb = async () => {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    // One row per connected inbox, keyed by address rather than by account:
+    // the same backup mailbox often covers several ad accounts, and it should
+    // only have to be authorised once.
+    `CREATE TABLE IF NOT EXISTS mailbox_connections (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'microsoft',
+      owner_id INTEGER,
+      refresh_token_enc TEXT,
+      access_token_enc TEXT,
+      access_token_expires_at TIMESTAMP,
+      status TEXT NOT NULL DEFAULT 'disconnected',
+      last_error TEXT,
+      last_read_at TIMESTAMP,
+      connected_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS mailbox_connections_email_key
+      ON mailbox_connections (LOWER(email));`,
     `CREATE TABLE IF NOT EXISTS system_notifications (
       id SERIAL PRIMARY KEY,
       event_type TEXT NOT NULL,
@@ -513,6 +536,15 @@ const initDb = async () => {
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS nickname TEXT;`,
     `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;`,
+    // Account credentials. The _enc columns hold AES-256-GCM envelopes
+    // (server/lib/secrets.js), never plaintext; account_uid and backup_email
+    // are identifiers rather than secrets, so they stay readable/searchable.
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS account_uid TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS login_password_enc TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS totp_secret_enc TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS backup_email TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS backup_email_password_enc TEXT;`,
+    `ALTER TABLE accounts_registry ADD COLUMN IF NOT EXISTS credentials_updated_at TIMESTAMP;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS event_type TEXT;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS severity TEXT;`,
     `ALTER TABLE system_notifications ADD COLUMN IF NOT EXISTS title TEXT;`,
@@ -2754,6 +2786,15 @@ const selectAccountRegistry = async (limit) => {
             a.owner_id,
             a.created_at,
             a.updated_at,
+            a.account_uid,
+            a.backup_email,
+            a.credentials_updated_at,
+            -- Booleans only: the encrypted values are fetched by
+            -- selectAccountCredentials() alone, so ciphertext never rides
+            -- along on a list response.
+            (a.login_password_enc IS NOT NULL) AS has_login_password,
+            (a.totp_secret_enc IS NOT NULL) AS has_totp,
+            (a.backup_email_password_enc IS NOT NULL) AS has_backup_email_password,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             m.account_number AS integration_account_number,
@@ -2841,6 +2882,15 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
             a.owner_id,
             a.created_at,
             a.updated_at,
+            a.account_uid,
+            a.backup_email,
+            a.credentials_updated_at,
+            -- Booleans only: the encrypted values are fetched by
+            -- selectAccountCredentials() alone, so ciphertext never rides
+            -- along on a list response.
+            (a.login_password_enc IS NOT NULL) AS has_login_password,
+            (a.totp_secret_enc IS NOT NULL) AS has_totp,
+            (a.backup_email_password_enc IS NOT NULL) AS has_backup_email_password,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             m.account_number AS integration_account_number,
@@ -2911,6 +2961,16 @@ const selectAccountRegistryByOwner = async (ownerId, limit) => {
   return rows.map(mapAccountRegistryRow);
 };
 
+// The single place ciphertext is read out of the table. Kept apart from the
+// registry selects so no list or detail response can leak it by accident.
+const selectAccountCredentials = async (id) =>
+  getRow(
+    `SELECT id, owner_id, account_number, account_uid, backup_email,
+            login_password_enc, totp_secret_enc, backup_email_password_enc
+     FROM accounts_registry WHERE id = $1`,
+    [id]
+  );
+
 const selectAccountRegistryById = async (id) => {
   const row = await getRow(
     `${metaSpendCtesSql}
@@ -2929,6 +2989,15 @@ const selectAccountRegistryById = async (id) => {
             a.owner_id,
             a.created_at,
             a.updated_at,
+            a.account_uid,
+            a.backup_email,
+            a.credentials_updated_at,
+            -- Booleans only: the encrypted values are fetched by
+            -- selectAccountCredentials() alone, so ciphertext never rides
+            -- along on a list response.
+            (a.login_password_enc IS NOT NULL) AS has_login_password,
+            (a.totp_secret_enc IS NOT NULL) AS has_totp,
+            (a.backup_email_password_enc IS NOT NULL) AS has_backup_email_password,
             u.username AS owner_name,
             p.pixel_id AS pixel_value,
             m.account_number AS integration_account_number,
@@ -3031,9 +3100,16 @@ const insertAccountRegistry = async (payload) => {
       notes,
       owner_role,
       owner_id,
+      account_uid,
+      backup_email,
+      login_password_enc,
+      totp_secret_enc,
+      backup_email_password_enc,
+      credentials_updated_at,
       updated_at
     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+             CASE WHEN COALESCE($14, $15, $16) IS NULL THEN NULL ELSE NOW() END, NOW())
      RETURNING id`,
     [
       payload.account_number,
@@ -3047,6 +3123,11 @@ const insertAccountRegistry = async (payload) => {
       payload.notes,
       payload.owner_role,
       payload.owner_id,
+      payload.account_uid ?? null,
+      payload.backup_email ?? null,
+      payload.login_password_enc ?? null,
+      payload.totp_secret_enc ?? null,
+      payload.backup_email_password_enc ?? null,
     ]
   );
   return rows[0];
@@ -4789,6 +4870,27 @@ const normalizeRoleName = (value) =>
 const isLeadership = (user) => {
   const normalized = normalizeRoleName(user?.role);
   return normalized === "boss" || normalized === "teamleader";
+};
+const isBoss = (user) => normalizeRoleName(user?.role) === "boss";
+
+// Account credentials are encrypted with their own key, separate from
+// AUTH_SECRET: rotating login tokens should never cost the team its stored
+// passwords. Unset simply means the credential fields stay unavailable — the
+// rest of the registry works exactly as before.
+const secretBox = createSecretBox(process.env.CREDENTIAL_KEY || "");
+if (!secretBox.enabled) {
+  console.warn(
+    "[boot] ⚠ CREDENTIAL_KEY not set — account passwords and 2FA secrets cannot be stored or read."
+  );
+}
+
+// Who may see an account's password / 2FA code / mailbox password: the buyer
+// who owns the account, and the Boss. Team Leaders can see the account row
+// itself (registry scoping is unchanged) but not what is inside it.
+const canAccessAccountCredentials = (user, accountRow) => {
+  if (isBoss(user)) return true;
+  const ownerId = Number.parseInt(accountRow?.owner_id, 10);
+  return Number.isFinite(ownerId) && ownerId > 0 && ownerId === Number.parseInt(user?.id, 10);
 };
 
 // normalizeBuyerName imported from ./lib/scoping.js
@@ -7386,6 +7488,312 @@ app.delete("/api/domains/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Account credentials ───────────────────────────────────────────────
+// What a buyer needs in front of them to open an ad account: the UID, the
+// password, a live 2FA code, and the backup mailbox. Passwords and the 2FA
+// secret are encrypted at rest and only ever leave the server through the
+// explicit reveal/code endpoints below, which are audit-logged.
+// Field-mapping rules live in server/lib/secrets.js so they can be tested
+// directly — they decide whether a typed value is actually stored.
+const buildAccountCredentialFields = (body = {}) =>
+  buildCredentialFields(body, {
+    encrypt: secretBox.encrypt,
+    validateTotp: assertUsableTotpSecret,
+  });
+
+const applyAccountCredentialFields = async (id, fields) => {
+  const columns = Object.keys(fields);
+  if (!columns.length) return false;
+  // Column names come from the fixed map above, never from the request.
+  const assignments = columns.map((column, index) => `${column} = $${index + 1}`);
+  if (columns.some((column) => column.endsWith("_enc"))) {
+    assignments.push("credentials_updated_at = NOW()");
+  }
+  await query(
+    `UPDATE accounts_registry SET ${assignments.join(", ")} WHERE id = $${columns.length + 1}`,
+    [...columns.map((column) => fields[column]), id]
+  );
+  return true;
+};
+
+const CREDENTIAL_FIELD_COLUMNS = {
+  password: "login_password_enc",
+  totpSecret: "totp_secret_enc",
+  backupEmailPassword: "backup_email_password_enc",
+};
+
+// Shared gate for the two endpoints that hand back real secrets.
+const loadAccountForCredentialAccess = async (req, res) => {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid account id." });
+    return null;
+  }
+  const row = await selectAccountCredentials(id);
+  if (!row) {
+    res.status(404).json({ error: "Account not found." });
+    return null;
+  }
+  if (!canAccessAccountCredentials(req.user, row)) {
+    res.status(403).json({ error: "Only the account owner can view these credentials." });
+    return null;
+  }
+  if (!secretBox.enabled) {
+    res.status(503).json({ error: "Credential storage is not configured on the server." });
+    return null;
+  }
+  return row;
+};
+
+// POST (not GET) on purpose: the audit middleware records mutating verbs, so
+// every reveal lands in the Logs view with who, when and from where.
+app.post("/api/accounts/:id/reveal", async (req, res) => {
+  const row = await loadAccountForCredentialAccess(req, res);
+  if (!row) return undefined;
+  const field = String(req.body?.field || "");
+  const column = CREDENTIAL_FIELD_COLUMNS[field];
+  if (!column) {
+    return res.status(400).json({ error: "Unknown credential field." });
+  }
+  if (!row[column]) {
+    return res.status(404).json({ error: "Nothing stored for that field." });
+  }
+  try {
+    return res.json({ field, value: secretBox.decrypt(row[column]) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+// The live 2FA code. Computed here from the stored secret (RFC 6238), so the
+// secret is never sent to the browser or to any third-party site.
+app.post("/api/accounts/:id/totp", async (req, res) => {
+  const row = await loadAccountForCredentialAccess(req, res);
+  if (!row) return undefined;
+  if (!row.totp_secret_enc) {
+    return res.status(404).json({ error: "No 2FA secret stored for this account." });
+  }
+  try {
+    const result = generateTotp(secretBox.decrypt(row.totp_secret_enc));
+    return res.json({
+      code: result.code,
+      expiresIn: result.expiresIn,
+      period: result.period,
+      validUntil: result.validUntil,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message });
+  }
+});
+
+// ── Backup mailbox (Microsoft Graph) ──────────────────────────────────
+// Connect once per inbox, then read verification codes from the dashboard.
+const mailboxClient = createMailboxClient({
+  clientId: process.env.MS_GRAPH_CLIENT_ID || "",
+  // "consumers" = personal Outlook/Hotmail only, which is what these backup
+  // mailboxes are. Use "common" only if a work/school account ever appears.
+  tenant: process.env.MS_GRAPH_TENANT || "consumers",
+  ...(process.env.MS_GRAPH_SCOPES ? { scopes: process.env.MS_GRAPH_SCOPES } : {}),
+});
+if (!mailboxClient.enabled) {
+  console.warn("[boot] ⚠ MS_GRAPH_CLIENT_ID not set — backup mailboxes cannot be connected.");
+}
+
+// Device-code sign-ins in progress. Short-lived and disposable: if the process
+// restarts mid-connect the user just starts over.
+const pendingMailboxConnects = new Map();
+const PENDING_CONNECT_TTL_MS = 16 * 60_000;
+
+const prunePendingConnects = () => {
+  const now = Date.now();
+  for (const [key, entry] of pendingMailboxConnects) {
+    if (entry.expiresAt <= now) pendingMailboxConnects.delete(key);
+  }
+};
+
+const selectMailboxByEmail = async (email) =>
+  getRow(`SELECT * FROM mailbox_connections WHERE LOWER(email) = LOWER($1)`, [email]);
+
+// Select-then-write rather than ON CONFLICT: the unique index is on an
+// expression (LOWER(email)), whose conflict-target syntax is fiddly, and this
+// path runs once per mailbox connect — a race here is not worth the risk of
+// getting that wrong.
+const upsertMailboxConnection = async (email, fields) => {
+  const columns = Object.keys(fields);
+  const values = columns.map((column) => fields[column]);
+  const existing = await selectMailboxByEmail(email);
+  if (existing) {
+    const assignments = columns.map((column, index) => `${column} = $${index + 2}`);
+    return getRow(
+      `UPDATE mailbox_connections
+       SET ${assignments.join(", ")}, updated_at = NOW()
+       WHERE LOWER(email) = LOWER($1)
+       RETURNING *`,
+      [email, ...values]
+    );
+  }
+  const placeholders = columns.map((_, index) => `$${index + 2}`);
+  return getRow(
+    `INSERT INTO mailbox_connections (email, ${columns.join(", ")}, updated_at)
+     VALUES ($1, ${placeholders.join(", ")}, NOW())
+     RETURNING *`,
+    [email, ...values]
+  );
+};
+
+// Resolves the account, checks the caller owns it, and returns its mailbox row.
+const loadMailboxContext = async (req, res) => {
+  const account = await loadAccountForCredentialAccess(req, res);
+  if (!account) return null;
+  const email = String(account.backup_email || "").trim();
+  if (!email) {
+    res.status(400).json({ error: "This account has no backup email saved yet." });
+    return null;
+  }
+  return { account, email, mailbox: await selectMailboxByEmail(email) };
+};
+
+const mailboxStatePayload = (email, mailbox) => ({
+  email,
+  connected: Boolean(mailbox?.refresh_token_enc) && mailbox?.status === "connected",
+  status: mailbox?.status || "disconnected",
+  lastError: mailbox?.last_error || null,
+  lastReadAt: mailbox?.last_read_at || null,
+  connectedAt: mailbox?.connected_at || null,
+  configured: mailboxClient.enabled,
+});
+
+app.get("/api/accounts/:id/mailbox", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  return res.json(mailboxStatePayload(context.email, context.mailbox));
+});
+
+// Step 1 — hand back the code the mailbox owner types at microsoft.com/devicelogin.
+app.post("/api/accounts/:id/mailbox/connect", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  try {
+    prunePendingConnects();
+    const started = await mailboxClient.startDeviceCode();
+    const handle = crypto.randomBytes(18).toString("base64url");
+    pendingMailboxConnects.set(handle, {
+      deviceCode: started.deviceCode,
+      email: context.email,
+      ownerId: context.account.owner_id,
+      expiresAt: Date.now() + Math.min(started.expiresIn * 1000, PENDING_CONNECT_TTL_MS),
+    });
+    return res.json({
+      handle,
+      userCode: started.userCode,
+      verificationUri: started.verificationUri,
+      expiresIn: started.expiresIn,
+      interval: started.interval,
+      email: context.email,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({ error: error.message });
+  }
+});
+
+// Step 2 — the client polls this until it stops saying "pending".
+app.post("/api/accounts/:id/mailbox/connect/poll", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  const pending = pendingMailboxConnects.get(String(req.body?.handle || ""));
+  if (!pending || pending.expiresAt <= Date.now()) {
+    pendingMailboxConnects.delete(String(req.body?.handle || ""));
+    return res.status(410).json({ state: "expired", error: "That sign-in expired. Start again." });
+  }
+  if (pending.email.toLowerCase() !== context.email.toLowerCase()) {
+    return res.status(400).json({ error: "That sign-in belongs to a different mailbox." });
+  }
+  try {
+    const result = await mailboxClient.pollDeviceCode(pending.deviceCode);
+    if (result.state !== "connected") {
+      if (result.state !== "pending") pendingMailboxConnects.delete(req.body.handle);
+      return res.json({ state: result.state, error: result.message || null });
+    }
+    pendingMailboxConnects.delete(req.body.handle);
+    await upsertMailboxConnection(context.email, {
+      provider: "microsoft",
+      owner_id: pending.ownerId || null,
+      refresh_token_enc: secretBox.encrypt(result.refreshToken),
+      access_token_enc: secretBox.encrypt(result.accessToken),
+      access_token_expires_at: new Date(result.expiresAt),
+      status: "connected",
+      last_error: null,
+      connected_at: new Date(),
+    });
+    return res.json({ state: "connected" });
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({ state: "error", error: error.message });
+  }
+});
+
+app.delete("/api/accounts/:id/mailbox", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  await query(
+    `UPDATE mailbox_connections
+     SET refresh_token_enc = NULL, access_token_enc = NULL, access_token_expires_at = NULL,
+         status = 'disconnected', last_error = NULL, connected_at = NULL, updated_at = NOW()
+     WHERE LOWER(email) = LOWER($1)`,
+    [context.email]
+  );
+  return res.json({ ok: true });
+});
+
+// Returns a usable access token, refreshing (and re-storing the rotated
+// refresh token) when the current one is stale.
+const ensureMailboxAccessToken = async (email, mailbox) => {
+  if (!mailbox?.refresh_token_enc) {
+    const error = new Error("This mailbox is not connected yet.");
+    error.statusCode = 409;
+    error.needsReconnect = true;
+    throw error;
+  }
+  if (mailbox.access_token_enc && isAccessTokenUsable(mailbox.access_token_expires_at)) {
+    return secretBox.decrypt(mailbox.access_token_enc);
+  }
+  const refreshed = await mailboxClient.refreshAccessToken(secretBox.decrypt(mailbox.refresh_token_enc));
+  await upsertMailboxConnection(email, {
+    refresh_token_enc: secretBox.encrypt(refreshed.refreshToken),
+    access_token_enc: secretBox.encrypt(refreshed.accessToken),
+    access_token_expires_at: new Date(refreshed.expiresAt),
+    status: "connected",
+    last_error: null,
+  });
+  return refreshed.accessToken;
+};
+
+// The button a buyer actually presses: newest mail, with codes pulled out.
+app.post("/api/accounts/:id/mailbox/messages", async (req, res) => {
+  const context = await loadMailboxContext(req, res);
+  if (!context) return undefined;
+  try {
+    const accessToken = await ensureMailboxAccessToken(context.email, context.mailbox);
+    const messages = await mailboxClient.listMessages(accessToken, { top: 15 });
+    await query(
+      `UPDATE mailbox_connections SET last_read_at = NOW(), updated_at = NOW()
+       WHERE LOWER(email) = LOWER($1)`,
+      [context.email]
+    );
+    return res.json({ email: context.email, messages: readCodesFromMessages(messages) });
+  } catch (error) {
+    if (error.needsReconnect) {
+      await query(
+        `UPDATE mailbox_connections SET status = 'needs_reconnect', last_error = $2, updated_at = NOW()
+         WHERE LOWER(email) = LOWER($1)`,
+        [context.email, String(error.message || "").slice(0, 300)]
+      );
+    }
+    return res
+      .status(error.statusCode || 502)
+      .json({ error: error.message, needsReconnect: Boolean(error.needsReconnect) });
+  }
+});
+
 app.get("/api/accounts", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
@@ -7534,6 +7942,12 @@ app.post("/api/accounts", async (req, res) => {
       owner_role: ownerRecord.role || req.user?.role || "",
       owner_id: ownerRecord.id,
     };
+
+    if (hasSecretInput(req.body) && !canAccessAccountCredentials(req.user, { owner_id: resolvedOwnerId })) {
+      return res.status(403).json({ error: "Only the account owner can set these credentials." });
+    }
+    Object.assign(payload, buildAccountCredentialFields(req.body));
+
     const info = await insertAccountRegistry(payload);
     await createResourceCreatedNotification({
       req,
@@ -7552,7 +7966,9 @@ app.post("/api/accounts", async (req, res) => {
       severity: "warning",
       entityType: "account",
     });
-    return res.status(500).json({ error: error.message || "Failed to create account." });
+    return res
+      .status(error.statusCode || 500)
+      .json({ error: error.message || "Failed to create account." });
   }
 });
 
@@ -7570,6 +7986,11 @@ app.patch("/api/accounts/:id", async (req, res) => {
   }
 
   const body = req.body ?? {};
+  // Checked before anything is written, so a refused credential change never
+  // leaves the rest of the edit half-applied.
+  if (hasSecretInput(body) && !canAccessAccountCredentials(req.user, current)) {
+    return res.status(403).json({ error: "Only the account owner can change these credentials." });
+  }
   let resolvedOwnerId = current.owner_id;
   if (isLeadership(req.user) && body.ownerId !== undefined && body.ownerId !== null && body.ownerId !== "") {
     const parsedOwnerId = Number.parseInt(body.ownerId, 10);
@@ -7720,7 +8141,19 @@ app.patch("/api/accounts/:id", async (req, res) => {
     ]
   );
 
+  // Credentials are written separately: which columns move depends on what the
+  // form actually touched.
+  let credentialsTouched = false;
+  try {
+    credentialsTouched = await applyAccountCredentialFields(id, buildAccountCredentialFields(body));
+  } catch (error) {
+    return res
+      .status(error.statusCode || 500)
+      .json({ error: error.message || "Failed to save credentials." });
+  }
+
   const changedFields = [];
+  if (credentialsTouched) changedFields.push("credentials");
   if (String(current.account_number || "").trim() !== nextAccountNumber) changedFields.push("account number");
   if (String(current.status || "").trim() !== nextStatus) changedFields.push("status");
   if (serializeNumericIds(current.pixel_ids) !== serializeNumericIds(nextPixelIds)) changedFields.push("pixels");

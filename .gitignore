@@ -15,3 +15,4 @@ pnpm-debug.log*
 scripts/verify-parser.mjs
 scripts/backfill.mjs
 .dev-server.log
+server-dev.log

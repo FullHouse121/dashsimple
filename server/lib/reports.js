@@ -500,6 +500,9 @@ export const DASHBOARD_ENTITIES = {
     table: "accounts_registry",
     label: "Ad accounts",
     ownerColumn: "owner_id",
+    // Credential columns (account_uid, backup_email, *_enc) are deliberately
+    // absent: the catalog is a whitelist, so no report can name them and no
+    // export can carry them. Same treatment as pixels.token_eaag. Do not add.
     columns: [
       col("account_number", "Account number", "Account"),
       col("status", "Status", "Account"),
