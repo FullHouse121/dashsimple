@@ -10355,6 +10355,33 @@ const getRegisteredBuyers = async () => {
     return registeredBuyersCache.list;
   }
 };
+// Narrow the fetch to registered buyers INSIDE Keitaro. Without this the
+// tracker returns the newest `limit` rows across every campaign, and a single
+// high-volume source (Propeller: 588 of the newest 600) burns the whole budget
+// before the buyer filter below ever runs — the team's own clicks never make
+// it into the window. Same reasoning already applied to the status and
+// campaign_id filters a few lines down.
+//
+// Deliberately a permissive PREFIX match, not an exact one: this is a
+// pre-filter to stop the flood, and buyerMatches() below stays authoritative.
+// A superset here is safe; a subset would silently drop real rows.
+const escapeForRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildBuyerPrefilter = (usernames) => {
+  const forms = (usernames || [])
+    .map((name) => String(name || "").trim().toLowerCase())
+    .filter(Boolean)
+    .map(escapeForRegex);
+  if (!forms.length) return null;
+  // (?i) is required — MATCH_REGEXP is case-sensitive on this tracker, and
+  // these forms are lowercased. Without it every buyer matches nothing.
+  return {
+    name: "campaign",
+    operator: "MATCH_REGEXP",
+    expression: `(?i)(^|[^a-z0-9])(${forms.join("|")})`,
+  };
+};
+
 const trackerNowString = (timezone) => {
   try {
     return new Date().toLocaleString("sv-SE", { timeZone: timezone });
@@ -10424,9 +10451,15 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
           : { from: cutoffDay, to: todayStr, timezone };
     }
 
+    // Resolved before the fetch so it can be pushed into Keitaro. Cached 60s.
+    const registeredBuyers = await getRegisteredBuyers();
+    const buyerPrefilter = buildBuyerPrefilter(registeredBuyers);
+
     const cacheKey = `${
       intervalKey || (customRange ? `custom:${customRange.from}:${customRange.to}` : "rolling")
-    }:${limit}:${statusFilter || "all"}:${campaignFilter || "all"}`;
+    }:${limit}:${statusFilter || "all"}:${campaignFilter || "all"}:${
+      buyerPrefilter ? registeredBuyers.length : "unscoped"
+    }`;
     let cached = cache.get(cacheKey);
     if (!cached || Date.now() - cached.at > 10 * 1000) {
       const logFilters = [
@@ -10434,6 +10467,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
         ...(campaignFilter
           ? [{ name: "campaign_id", operator: "EQUALS", expression: Number(campaignFilter) }]
           : []),
+        ...(buyerPrefilter ? [buyerPrefilter] : []),
       ];
       const result = await keitaroAdminFetch(logPath, {
         method: "POST",
@@ -10473,8 +10507,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
       truncated = rawCapped && (!oldest?.datetime || oldest.datetime >= cutoff);
     }
 
-    // Keep only rows attributable to a registered dashboard buyer.
-    const registeredBuyers = await getRegisteredBuyers();
+    // Authoritative pass: the prefilter above is a permissive superset.
     if (registeredBuyers.length) {
       rows = rows.filter(
         (row) => row.buyer && registeredBuyers.some((username) => buyerMatches(row.buyer, username))
