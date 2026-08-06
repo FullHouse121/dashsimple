@@ -469,3 +469,68 @@ describe("only the senders that actually issue codes", () => {
     expect(rows.map((r) => r.id).sort()).toEqual(["11", "77"]);
   });
 });
+
+describe("the real Facebook mail this team receives", () => {
+  // Captured from the actual backup mailbox. The two formats differ in a way
+  // that matters: one carries the code in the subject, the other only in the
+  // body — so anything that reads subjects alone would miss half of them.
+  const SECURITY = {
+    from: { emailAddress: { address: "security@facebookmail.com" } },
+    subject: "88079524 is your security code",
+    // Facebook renders the digits letter-spaced in the body: "8 8 0 7 9 5 2 4"
+    bodyPreview:
+      "Confirm that it's you. Hi Hong Thu, We're sending a security code to confirm that it's really you. Here's the code to enter in Facebook: 8 8 0 7 9 5 2 4 Don't share this code with anyone.",
+    receivedDateTime: "2026-08-06T02:07:00Z",
+  };
+  const VERIFY = {
+    from: { emailAddress: { address: "notification@facebookmail.com" } },
+    subject: "Verify your business email",
+    bodyPreview:
+      "Please use the verification code below to verify that the email address belongs to you. Verification code: 243901",
+    receivedDateTime: "2026-08-03T16:24:00Z",
+  };
+
+  it("reads the security code from the subject", () => {
+    expect(extractVerificationCode(SECURITY.subject)?.code).toBe("88079524");
+  });
+
+  it("reads the business-email code from the body", () => {
+    // The subject has no code at all.
+    expect(extractVerificationCode(VERIFY.subject)).toBeNull();
+    expect(extractVerificationCode(VERIFY.bodyPreview)?.code).toBe("243901");
+  });
+
+  it("is not fooled by the earlier, code-less mention of the word 'code'", () => {
+    // "...verification code below to verify..." comes first and has no digits.
+    expect(extractVerificationCode(VERIFY.bodyPreview)?.code).not.toBe("243901".slice(1));
+    expect(extractVerificationCode("the code below to verify. Verification code: 243901")?.code).toBe("243901");
+  });
+
+  it("ranks both correctly through the full pipeline", () => {
+    const ranked = readCodesFromMessages([VERIFY, SECURITY], { now: Date.parse("2026-08-06T02:10:00Z") });
+    expect(ranked[0].code).toBe("88079524"); // freshest wins
+    expect(ranked.find((r) => r.subject === VERIFY.subject).code).toBe("243901");
+  });
+
+  it("accepts both senders", () => {
+    const list = parseSenderAllowlist();
+    expect(isAllowedSender(SECURITY.from.emailAddress.address, list)).toBe(true);
+    expect(isAllowedSender(VERIFY.from.emailAddress.address, list)).toBe(true);
+  });
+
+  it("survives the letter-spaced digits in the security body", () => {
+    // Nothing should read "8 8 0 7 9 5 2 4" as a code — the subject is the
+    // reliable source for this format, and a wrong code is worse than none.
+    const spaced = extractVerificationCode("Here's the code to enter in Facebook: 8 8 0 7 9 5 2 4");
+    expect(spaced?.code).not.toBe("8");
+  });
+
+  it("handles the forwarded (raw MIME) form of both", () => {
+    expect(
+      extractCodeFromRawEmail(`Subject: ${SECURITY.subject}\r\n\r\n${SECURITY.bodyPreview}`, SECURITY.subject)
+    ).toBe("88079524");
+    expect(
+      extractCodeFromRawEmail(`Subject: ${VERIFY.subject}\r\n\r\n${VERIFY.bodyPreview}`, VERIFY.subject)
+    ).toBe("243901");
+  });
+});
