@@ -100,6 +100,34 @@ export const readSubjectFromRaw = (raw) => {
   return match ? match[1].replace(/\r?\n[ \t]+/g, " ").trim() : "";
 };
 
+// ── Who is allowed to send us a code ──────────────────────────────────
+// Only mail from the addresses that actually issue codes is considered. This
+// is noise control on the mailbox side, and on the forwarding side it is a
+// security control: the forward address is a guessable string, so without
+// this anyone who learned one could post a fake code into the dashboard.
+//
+// Entries are exact addresses, or "@domain" to allow a whole domain.
+export const DEFAULT_CODE_SENDERS = "security@facebookmail.com,notification@facebookmail.com";
+
+export const parseSenderAllowlist = (raw) =>
+  String(raw ?? DEFAULT_CODE_SENDERS)
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+
+export const isAllowedSender = (address, allowlist) => {
+  // An empty list means "no restriction" — an explicit opt-out, not an
+  // accident, since the default above is non-empty.
+  if (!allowlist || !allowlist.length) return true;
+  // Tolerate "Facebook <security@facebookmail.com>" as well as a bare address.
+  const raw = String(address || "").trim().toLowerCase();
+  const match = raw.match(/<([^>]+)>/);
+  const clean = (match ? match[1] : raw).trim();
+  if (!clean) return false;
+  const domain = clean.slice(clean.lastIndexOf("@"));
+  return allowlist.some((entry) => (entry.startsWith("@") ? entry === domain : entry === clean));
+};
+
 const SENDER_HINTS = /facebook|meta|instagram|microsoft|outlook|account|security|noreply|no-reply/i;
 
 // Scores every message and returns them newest-first with whatever code each
@@ -329,7 +357,7 @@ export const createMailboxClient = ({
   // to a throwaway account is filed as spam often enough that "the code never
   // arrived" is usually "the code arrived in Junk" — and forwarding, which
   // only relays the Inbox, can never see it at all.
-  const listMessages = async (accessToken, { top = 15 } = {}) => {
+  const listMessages = async (accessToken, { top = 15, allowSenders = null } = {}) => {
     const [all, junk] = await Promise.all([
       fetchFolder(accessToken, "/me/messages", top),
       // A missing or renamed Junk folder must not fail the whole read.
@@ -340,8 +368,13 @@ export const createMailboxClient = ({
     for (const message of all) byId.set(message.id, { ...message, folder: "inbox" });
     for (const message of junk) byId.set(message.id, { ...message, folder: "junk" });
 
-    return [...byId.values()].sort((a, b) =>
+    const merged = [...byId.values()].sort((a, b) =>
       String(b.receivedDateTime || "").localeCompare(String(a.receivedDateTime || ""))
+    );
+
+    if (!allowSenders || !allowSenders.length) return merged;
+    return merged.filter((message) =>
+      isAllowedSender(message?.from?.emailAddress?.address, allowSenders)
     );
   };
 

@@ -14,6 +14,8 @@ import {
   createMailboxClient,
   createPkcePair,
   extractCodeFromRawEmail,
+  isAllowedSender,
+  parseSenderAllowlist,
   isAccessTokenUsable,
   readSubjectFromRaw,
   readCodesFromMessages,
@@ -7630,6 +7632,9 @@ app.post("/api/accounts/:id/totp", async (req, res) => {
 const inboundMailSecret = normalizeSecretValue(process.env.INBOUND_MAIL_SECRET || "");
 const mailForwardDomain = String(process.env.MAIL_FORWARD_DOMAIN || "").trim().toLowerCase();
 const inboundCodeTtlHours = Number.parseInt(process.env.INBOUND_CODE_TTL_HOURS || "24", 10) || 24;
+// Only these senders can put a code in front of a buyer. Set to an empty
+// string to accept anything (deliberately, not by omission).
+const codeSenderAllowlist = parseSenderAllowlist(process.env.CODE_SENDER_ALLOWLIST);
 
 const mailboxClient = createMailboxClient({
   clientId: process.env.MS_GRAPH_CLIENT_ID || "",
@@ -7866,6 +7871,12 @@ app.post("/api/mailbox/inbound", async (req, res) => {
   const subject = String(req.body?.subject || "").trim() || readSubjectFromRaw(raw);
   const from = String(req.body?.from || "").trim().slice(0, 190);
   const code = extractCodeFromRawEmail(raw, subject);
+
+  // A stranger who guessed a forward address could otherwise post a fake code.
+  // Reported back rather than silently dropped, so the Worker log explains it.
+  if (!isAllowedSender(from, codeSenderAllowlist)) {
+    return res.json({ ok: true, ignored: "sender_not_allowed", from });
+  }
 
   const account = await getRow(
     `SELECT id FROM accounts_registry WHERE LOWER(forward_address) = $1`,
@@ -8123,7 +8134,12 @@ app.post("/api/accounts/:id/mailbox/messages", async (req, res) => {
 
   try {
     const accessToken = await ensureMailboxAccessToken(context.email, context.mailbox);
-    const messages = await mailboxClient.listMessages(accessToken, { top: 15 });
+    const messages = await mailboxClient.listMessages(accessToken, {
+      // Wider fetch than we display: the allowlist discards most of it, and a
+      // busy mailbox would otherwise push the code out of the window.
+      top: 50,
+      allowSenders: codeSenderAllowlist,
+    });
     await query(
       `UPDATE mailbox_connections SET last_read_at = NOW(), updated_at = NOW()
        WHERE LOWER(email) = LOWER($1)`,

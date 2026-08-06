@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   createPkcePair,
+  isAllowedSender,
+  parseSenderAllowlist,
   extractCodeFromRawEmail,
   readSubjectFromRaw,
   addressesMatch,
@@ -406,5 +408,64 @@ describe("reading the whole mailbox, Junk included", () => {
     const rows = await client.listMessages("AT");
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe("m1");
+  });
+});
+
+describe("only the senders that actually issue codes", () => {
+  const list = parseSenderAllowlist();
+
+  it("defaults to exactly the two Facebook addresses", () => {
+    expect(list).toEqual(["security@facebookmail.com", "notification@facebookmail.com"]);
+  });
+
+  it("accepts those two, in any casing or with a display name", () => {
+    expect(isAllowedSender("security@facebookmail.com", list)).toBe(true);
+    expect(isAllowedSender("Notification@FacebookMail.com", list)).toBe(true);
+    expect(isAllowedSender("Facebook <security@facebookmail.com>", list)).toBe(true);
+  });
+
+  it("rejects everything else, including near misses", () => {
+    expect(isAllowedSender("advertise@facebookmail.com", list)).toBe(false);
+    // Lookalike domains are the whole reason this exists.
+    expect(isAllowedSender("security@facebook-mail.com", list)).toBe(false);
+    expect(isAllowedSender("security@facebookmail.com.evil.tld", list)).toBe(false);
+    expect(isAllowedSender("attacker@gmail.com", list)).toBe(false);
+    expect(isAllowedSender("", list)).toBe(false);
+    expect(isAllowedSender(null, list)).toBe(false);
+  });
+
+  it("supports whole-domain entries", () => {
+    const domainList = parseSenderAllowlist("@facebookmail.com, security@microsoft.com");
+    expect(isAllowedSender("anything@facebookmail.com", domainList)).toBe(true);
+    expect(isAllowedSender("security@microsoft.com", domainList)).toBe(true);
+    expect(isAllowedSender("someone@elsewhere.com", domainList)).toBe(false);
+  });
+
+  it("treats an empty list as an explicit opt-out", () => {
+    expect(isAllowedSender("anyone@anywhere.com", parseSenderAllowlist(""))).toBe(true);
+  });
+
+  it("drops disallowed senders from the mailbox read", async () => {
+    const message = (id, address) => ({
+      id,
+      subject: `${id}0000 is your Facebook code`,
+      bodyPreview: "",
+      receivedDateTime: "2026-08-06T10:00:00Z",
+      from: { emailAddress: { address } },
+    });
+    const client = createMailboxClient({
+      clientId: "c",
+      fetchImpl: async (url) => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          value: url.includes("JunkEmail")
+            ? [message("77", "security@facebookmail.com")]
+            : [message("11", "security@facebookmail.com"), message("22", "spam@elsewhere.com")],
+        }),
+      }),
+    });
+    const rows = await client.listMessages("AT", { allowSenders: list });
+    expect(rows.map((r) => r.id).sort()).toEqual(["11", "77"]);
   });
 });
