@@ -19564,3 +19564,16 @@ select option,
   .vault-value { grid-column: 2 / 3; }
   .vault-actions-bar { grid-template-columns: 1fr; }
 }
+
+.mailbox-junk-tag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(247, 198, 37, 0.14);
+  color: var(--yellow);
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}

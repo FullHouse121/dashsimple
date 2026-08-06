@@ -496,6 +496,7 @@ function MailboxPanel({ accountId, email, forwardAddress: seededAddress, request
             <span className="mailbox-msg-subject">{message.subject || t("(no subject)")}</span>
             <span className="mailbox-msg-meta">
               {message.fromName || message.from} · {relativeAge(message.ageMs, t)}
+              {message.folder === "junk" ? <em className="mailbox-junk-tag">{t("Junk")}</em> : null}
             </span>
           </div>
           {message.code ? (

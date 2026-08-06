@@ -132,6 +132,7 @@ export const readCodesFromMessages = (messages, { now = Date.now() } = {}) =>
         from: fromAddress,
         fromName,
         receivedDateTime: message?.receivedDateTime || null,
+        folder: message?.folder || null,
         ageMs,
         code: found?.code || null,
         score,
@@ -305,13 +306,13 @@ export const createMailboxClient = ({
     return String(data.mail || data.userPrincipalName || "").trim();
   };
 
-  const listMessages = async (accessToken, { top = 15 } = {}) => {
+  const fetchFolder = async (accessToken, path, top) => {
     const params = new URLSearchParams({
       $top: String(top),
-      $select: "id,subject,bodyPreview,from,receivedDateTime",
+      $select: "id,subject,bodyPreview,from,receivedDateTime,parentFolderId",
       $orderby: "receivedDateTime desc",
     });
-    const response = await fetchImpl(`${GRAPH_HOST}/me/messages?${params}`, {
+    const response = await fetchImpl(`${GRAPH_HOST}${path}?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const data = await response.json().catch(() => ({}));
@@ -322,6 +323,26 @@ export const createMailboxClient = ({
       throw error;
     }
     return Array.isArray(data.value) ? data.value : [];
+  };
+
+  // Junk is read explicitly, not left to the default scope. Verification mail
+  // to a throwaway account is filed as spam often enough that "the code never
+  // arrived" is usually "the code arrived in Junk" — and forwarding, which
+  // only relays the Inbox, can never see it at all.
+  const listMessages = async (accessToken, { top = 15 } = {}) => {
+    const [all, junk] = await Promise.all([
+      fetchFolder(accessToken, "/me/messages", top),
+      // A missing or renamed Junk folder must not fail the whole read.
+      fetchFolder(accessToken, "/me/mailFolders/JunkEmail/messages", top).catch(() => []),
+    ]);
+
+    const byId = new Map();
+    for (const message of all) byId.set(message.id, { ...message, folder: "inbox" });
+    for (const message of junk) byId.set(message.id, { ...message, folder: "junk" });
+
+    return [...byId.values()].sort((a, b) =>
+      String(b.receivedDateTime || "").localeCompare(String(a.receivedDateTime || ""))
+    );
   };
 
   return {

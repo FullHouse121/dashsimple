@@ -1423,6 +1423,7 @@ export const translations = {
     "Could not check the mailbox.": "Posta kutusu kontrol edilemedi.",
     "Could not read the mailbox.": "Posta kutusu okunamadı.",
     "Inbox is empty.": "Gelen kutusu boş.",
+    Junk: "Önemsiz",
     "Forwarding to": "Şuraya yönlendiriliyor",
     "No codes yet. They appear here the moment one arrives.":
       "Henüz kod yok. Bir kod geldiği anda burada görünür.",

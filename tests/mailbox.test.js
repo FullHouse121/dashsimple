@@ -357,3 +357,54 @@ describe("forwarded mail", () => {
     expect(readSubjectFromRaw("From: a@b.c\r\n\r\nbody")).toBe("");
   });
 });
+
+describe("reading the whole mailbox, Junk included", () => {
+  const makeClient = (byPath) =>
+    createMailboxClient({
+      clientId: "c",
+      fetchImpl: async (url) => {
+        const hit = Object.entries(byPath).find(([path]) => url.includes(path));
+        if (!hit) return { ok: false, status: 404, json: async () => ({ error: { message: "no" } }) };
+        return { ok: true, status: 200, json: async () => ({ value: hit[1] }) };
+      },
+    });
+
+  const msg = (id, subject, when) => ({ id, subject, bodyPreview: "", receivedDateTime: when });
+
+  it("merges Junk in and marks where each message was found", async () => {
+    const client = makeClient({
+      "/me/mailFolders/JunkEmail/messages": [msg("j1", "778899 is your Facebook code", "2026-08-06T10:05:00Z")],
+      "/me/messages": [msg("m1", "Welcome", "2026-08-06T10:00:00Z")],
+    });
+    const rows = await client.listMessages("AT");
+    expect(rows.map((r) => r.id)).toEqual(["j1", "m1"]); // newest first
+    expect(rows.find((r) => r.id === "j1").folder).toBe("junk");
+    expect(rows.find((r) => r.id === "m1").folder).toBe("inbox");
+  });
+
+  it("finds a code that only exists in Junk — the case forwarding can never see", async () => {
+    const client = makeClient({
+      "/me/mailFolders/JunkEmail/messages": [msg("j1", "604112 is your Facebook code", "2026-08-06T10:05:00Z")],
+      "/me/messages": [],
+    });
+    const ranked = readCodesFromMessages(await client.listMessages("AT"));
+    expect(ranked[0].code).toBe("604112");
+    expect(ranked[0].folder).toBe("junk");
+  });
+
+  it("does not double-count a message returned by both queries", async () => {
+    const shared = msg("same", "123456 is your code", "2026-08-06T10:00:00Z");
+    const client = makeClient({
+      "/me/mailFolders/JunkEmail/messages": [shared],
+      "/me/messages": [shared],
+    });
+    expect(await client.listMessages("AT")).toHaveLength(1);
+  });
+
+  it("still returns the mailbox when the Junk folder is missing", async () => {
+    const client = makeClient({ "/me/messages": [msg("m1", "hi", "2026-08-06T10:00:00Z")] });
+    const rows = await client.listMessages("AT");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe("m1");
+  });
+});
