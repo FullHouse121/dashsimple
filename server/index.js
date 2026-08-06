@@ -4917,10 +4917,11 @@ if (!secretBox.enabled) {
 }
 
 // Who may see an account's password / 2FA code / mailbox password: the buyer
-// who owns the account, and the Boss. Team Leaders can see the account row
-// itself (registry scoping is unchanged) but not what is inside it.
+// who owns the account, plus leadership (Boss and Team Leaders), who already
+// see every account row and are the ones unblocking buyers when a login
+// fails. Every reveal is written to the audit log regardless of role.
 const canAccessAccountCredentials = (user, accountRow) => {
-  if (isBoss(user)) return true;
+  if (isLeadership(user)) return true;
   const ownerId = Number.parseInt(accountRow?.owner_id, 10);
   return Number.isFinite(ownerId) && ownerId > 0 && ownerId === Number.parseInt(user?.id, 10);
 };

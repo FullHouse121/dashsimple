@@ -14,6 +14,7 @@ import {
   normalizeTotpSecret,
 } from "../server/lib/totp.js";
 import { DASHBOARD_ENTITIES } from "../server/lib/reports.js";
+import { canReadAccountCredentials } from "../src/lib/permissions.js";
 
 const KEY = "a".repeat(64); // 32 bytes of hex
 const box = createSecretBox(KEY);
@@ -227,5 +228,38 @@ describe("TOTP", () => {
     expect(() => assertUsableTotpSecret("ABCD")).toThrow(/too short/i);
     expect(() => assertUsableTotpSecret("PASSWORD-1!")).toThrow(/base32/i);
     expect(assertUsableTotpSecret(RFC_SECRET).secret).toBe(RFC_SECRET);
+  });
+});
+
+describe("who can open an account's credentials", () => {
+  const account = { owner_id: 42 };
+  const as = (role, id) => ({ role, id });
+
+  it("lets the owner in", () => {
+    expect(canReadAccountCredentials(as("Media Buyer", 42), account)).toBe(true);
+  });
+
+  it("lets leadership in — Boss and Team Leader both", () => {
+    expect(canReadAccountCredentials(as("Boss", 1), account)).toBe(true);
+    expect(canReadAccountCredentials(as("Team Leader", 7), account)).toBe(true);
+  });
+
+  it("keeps a buyer out of someone else's account", () => {
+    expect(canReadAccountCredentials(as("Media Buyer", 43), account)).toBe(false);
+    expect(canReadAccountCredentials(as("Media Buyer Junior", 43), account)).toBe(false);
+    expect(canReadAccountCredentials(as("Media Buyer Senior", 43), account)).toBe(false);
+  });
+
+  it("never treats an ownerless row as everyone's", () => {
+    // Number(null) === 0, which is why the >0 guard exists.
+    for (const owner of [null, undefined, 0, ""]) {
+      expect(canReadAccountCredentials(as("Media Buyer", 0), { owner_id: owner })).toBe(false);
+    }
+  });
+
+  it("does not fall for a role that merely contains a leadership word", () => {
+    expect(canReadAccountCredentials(as("Assistant to the Team Leader", 43), account)).toBe(false);
+    expect(canReadAccountCredentials(as("", 43), account)).toBe(false);
+    expect(canReadAccountCredentials(null, account)).toBe(false);
   });
 });
