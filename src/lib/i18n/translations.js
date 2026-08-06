@@ -1404,6 +1404,9 @@ export const translations = {
     "Reading…": "Okunuyor…",
     "Starting…": "Başlatılıyor…",
     "Checking mailbox…": "Posta kutusu kontrol ediliyor…",
+    "One sign-in, once. After this the codes arrive on a click.":
+      "Bir kez giriş yapın. Sonrasında kodlar tek tıkla gelir.",
+    "Copy the stored password": "Kayıtlı şifreyi kopyala",
     "Connect this inbox once to read its verification codes here.":
       "Doğrulama kodlarını burada görmek için bu kutuyu bir kez bağlayın.",
     "This mailbox needs to be reconnected.": "Bu posta kutusunun yeniden bağlanması gerekiyor.",

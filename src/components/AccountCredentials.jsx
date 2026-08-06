@@ -334,7 +334,7 @@ const relativeAge = (ageMs, t) => {
   return t("{n} d ago").replace("{n}", String(Math.floor(hours / 24)));
 };
 
-function MailboxPanel({ accountId, email, forwardAddress: seededAddress, requestNonce, t }) {
+function MailboxPanel({ accountId, email, forwardAddress: seededAddress, hasPassword, requestNonce, t }) {
   const [state, setState] = React.useState({ loading: true, connected: false, configured: true });
   const [connect, setConnect] = React.useState(null);
   const [messages, setMessages] = React.useState(null);
@@ -488,6 +488,31 @@ function MailboxPanel({ accountId, email, forwardAddress: seededAddress, request
     }
   };
 
+  // Pulls the mailbox password through the same audited reveal endpoint as the
+  // rest of the vault, and puts it on the clipboard without showing it.
+  const [copyingPassword, setCopyingPassword] = React.useState(false);
+  const copyStoredPassword = async () => {
+    setCopyingPassword(true);
+    setError("");
+    try {
+      const response = await apiFetch(`/api/accounts/${accountId}/reveal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field: "backupEmailPassword" }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || t("Could not read that credential."));
+      if (await copyText(data.value)) {
+        setCopied("__password__");
+        setTimeout(() => setCopied(""), 1400);
+      }
+    } catch (passwordError) {
+      setError(passwordError.message);
+    } finally {
+      setCopyingPassword(false);
+    }
+  };
+
   const renderMessages = () => (
     <ul className="mailbox-list">
       {messages.slice(0, 6).map((message, index) => (
@@ -604,8 +629,38 @@ function MailboxPanel({ accountId, email, forwardAddress: seededAddress, request
         <p className="mailbox-hint">
           {state.status === "needs_reconnect"
             ? t("This mailbox needs to be reconnected.")
-            : t("Connect this inbox once to read its verification codes here.")}
+            : t("One sign-in, once. After this the codes arrive on a click.")}
         </p>
+
+        {/* The credentials are already stored here, so the sign-in is a
+            copy-paste from this panel — nobody has to look the password up,
+            or know it, or open Outlook to find it. */}
+        <div className="mailbox-signin-creds">
+          <button
+            type="button"
+            className="mailbox-cred-chip"
+            onClick={() => copyCode(email)}
+            title={t("Copy")}
+          >
+            <AtSign size={11} />
+            <span className="mono">{email}</span>
+            {copied === email ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+          {hasPassword ? (
+            <button
+              type="button"
+              className="mailbox-cred-chip"
+              onClick={copyStoredPassword}
+              disabled={copyingPassword}
+              title={t("Copy the stored password")}
+            >
+              <Lock size={11} />
+              <span>{t("Password")}</span>
+              {copied === "__password__" ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+          ) : null}
+        </div>
+
         <button type="button" className="action-pill" onClick={startPopupConnect} disabled={busy}>
           <Mail size={13} /> {busy ? t("Waiting for sign-in…") : t("Sign in to this inbox")}
         </button>

@@ -19577,3 +19577,39 @@ select option,
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* Sign-in step: the credentials this vault already holds, one tap from the
+   clipboard, so connecting an inbox never means going to look them up. */
+.mailbox-signin-creds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mailbox-cred-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease-smooth), color 0.16s var(--ease-smooth);
+}
+
+.mailbox-cred-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mailbox-cred-chip:hover:not(:disabled) {
+  border-color: var(--green);
+  color: var(--text);
+}
+
+.mailbox-cred-chip:disabled { opacity: 0.5; cursor: default; }
