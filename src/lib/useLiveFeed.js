@@ -49,7 +49,10 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
         setFeedState((prev) => ({ ...prev, loading: false }));
         return;
       }
-      const limit = rolling && Number(windowValue) < 180 ? 600 : 1000;
+      // A short rolling window fits in one page; a calendar or custom range
+      // routinely holds several thousand conversions, and asking for 1,000
+      // quietly returned the newest slice as though it were the whole range.
+      const limit = rolling ? (Number(windowValue) < 180 ? 600 : 1500) : 5000;
       const query = rolling
         ? `minutes=${windowValue}`
         : custom

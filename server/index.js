@@ -10413,7 +10413,11 @@ const buildBuyerPrefilter = (usernames) => {
 // The exclusion is by GROUP, not by campaign name, so the team decides what
 // is external from inside Keitaro without a code change. Names are matched
 // case-insensitively; ids may be given directly.
-const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "Outsource")
+// Defaults to a group that does not exist yet, so nothing is excluded until
+// one is deliberately created for it. "Outsource" was the wrong default: it
+// is a mixed bag holding real campaigns (Leo | Traffic Junky, the Miniapp and
+// Mahsur sets) alongside the external ones, so excluding it hid live traffic.
+const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "External Source")
   .split(",")
   .map((name) => name.trim())
   .filter(Boolean);
@@ -10469,13 +10473,21 @@ const trackerNowString = (timezone) => {
 // One implementation for both polling log feeds (clicks + conversions):
 // rolling/calendar windows with tracker-midnight handling, 10s shared cache
 // with stale-serving, honest truncation, registered-buyer + viewer scoping.
+// A Keitaro log page tops out around 1,000 rows. These bound how far we will
+// page before saying "there is more" rather than pretending we have it all.
+const LIVE_LOG_PAGE_SIZE = 1000;
+const LIVE_LOG_MAX_PAGES = 8;
+const LIVE_LOG_MAX_ROWS = 5000;
+
 const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failMessage, mapRow, statusFilterable = false }) => {
   const cache = new Map(); // cacheKey -> { at, rows, trackerNow }
   app.get(routePath, async (req, res) => {
     const minutesRaw = Number.parseInt(String(req.query.minutes ?? ""), 10);
     const minutes = Number.isFinite(minutesRaw) ? Math.min(Math.max(minutesRaw, 5), 1440) : 30;
     const limitRaw = Number.parseInt(String(req.query.limit ?? ""), 10);
-    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 50), 1000) : 600;
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 50), LIVE_LOG_MAX_ROWS)
+      : 600;
     // Status/campaign filtered in Keitaro, not client-side: the fetch caps at
     // `limit` NEWEST rows, so a client-side filter over a multi-day window
     // would only see matches inside the newest slice.
@@ -10549,24 +10561,61 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
         ...(buyerPrefilter ? [buyerPrefilter] : []),
         ...(externalGroupFilter ? [externalGroupFilter] : []),
       ];
-      const result = await keitaroAdminFetch(logPath, {
-        method: "POST",
-        body: JSON.stringify({
-          range,
-          columns,
-          ...(logFilters.length ? { filters: logFilters } : {}),
-          sort: [{ name: sortField, order: "DESC" }],
-          limit,
-        }),
-      });
-      if (!result.ok) {
-        if (!cached) return res.status(502).json({ error: result.error || failMessage });
-      } else {
-        const raw = Array.isArray(result.data?.rows) ? result.data.rows : [];
+      // Keitaro caps a page at ~1,000 rows, and a week of conversions is
+      // several times that — one page silently returned the newest slice and
+      // called it the range. Page until we have what was asked for.
+      //
+      // Deduplicated on the mapped id as a safety net. (An earlier reading
+      // that pages overlapped was my own error — I keyed on sub_id, which is
+      // the CLICK id and legitimately repeats across a click's registration,
+      // ftd and redeposit. Verified live: 3 pages, 2,794 rows, 0 duplicates.)
+      const seenIds = new Set();
+      const collected = [];
+      let offset = 0;
+      let pages = 0;
+      let moreAvailable = false;
+      let failure = null;
+
+      while (collected.length < limit && pages < LIVE_LOG_MAX_PAGES) {
+        const pageResult = await keitaroAdminFetch(logPath, {
+          method: "POST",
+          body: JSON.stringify({
+            range,
+            columns,
+            ...(logFilters.length ? { filters: logFilters } : {}),
+            sort: [{ name: sortField, order: "DESC" }],
+            limit: LIVE_LOG_PAGE_SIZE,
+            offset,
+          }),
+        });
+        pages += 1;
+        if (!pageResult.ok) {
+          failure = pageResult.error;
+          break;
+        }
+        const raw = Array.isArray(pageResult.data?.rows) ? pageResult.data.rows : [];
+        if (!raw.length) break;
+        for (const row of raw) {
+          const mapped = mapRow(row);
+          if (mapped?.id && seenIds.has(mapped.id)) continue;
+          if (mapped?.id) seenIds.add(mapped.id);
+          collected.push(mapped);
+        }
+        offset += raw.length;
+        // A short page means the range is exhausted, not that we should stop.
+        if (raw.length < LIVE_LOG_PAGE_SIZE) break;
+        if (pages >= LIVE_LOG_MAX_PAGES && collected.length >= limit) moreAvailable = true;
+      }
+
+      if (failure && !collected.length) {
+        if (!cached) return res.status(502).json({ error: failure || failMessage });
+      } else if (!failure || collected.length) {
         cached = {
           at: Date.now(),
           trackerNow: trackerNowString(timezone),
-          rows: raw.map(mapRow),
+          rows: collected.slice(0, limit),
+          // Honest: there was more than we were willing to fetch.
+          more: moreAvailable || collected.length > limit,
         };
         cache.set(cacheKey, cached);
       }
@@ -10574,7 +10623,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
 
     let rows = cached.rows;
     let cutoff = null;
-    const rawCapped = cached.rows.length >= limit;
+    const rawCapped = cached.more || cached.rows.length >= limit;
     let truncated = rawCapped;
     if (!intervalKey && !customRange) {
       // Rolling window in tracker time — datetimes compare as strings.
