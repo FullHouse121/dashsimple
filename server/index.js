@@ -10436,11 +10436,15 @@ const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "Exter
   .map((name) => name.trim())
   .filter(Boolean);
 
-const externalGroupCache = { at: 0, ids: [] };
+// `loaded` matters: "no such group" is a real answer and must be cached like
+// any other. Keying the cache on ids.length meant an empty result never
+// cached, so every request that asked re-hit Keitaro — which is exactly what
+// happened once the default became a group that does not exist.
+const externalGroupCache = { at: 0, ids: [], loaded: false };
 
 const getExternalCampaignGroupIds = async () => {
   if (!externalGroupNames.length) return [];
-  if (externalGroupCache.ids.length && Date.now() - externalGroupCache.at < 5 * 60 * 1000) {
+  if (externalGroupCache.loaded && Date.now() - externalGroupCache.at < 5 * 60 * 1000) {
     return externalGroupCache.ids;
   }
   // A plain id in the config needs no lookup.
@@ -10457,17 +10461,17 @@ const getExternalCampaignGroupIds = async () => {
           resolved.push(Number(group.id));
         }
       }
-    } else if (externalGroupCache.ids.length) {
+    } else if (externalGroupCache.loaded) {
       // Tracker unreachable — keep the last known list rather than silently
-      // letting the excluded traffic back in.
+      // letting the excluded traffic back in. Not re-stamped, so the next
+      // call retries rather than sitting on a stale answer for five minutes.
       return externalGroupCache.ids;
     }
   }
   resolved = [...new Set(resolved.filter((id) => Number.isFinite(id)))];
-  if (resolved.length) {
-    externalGroupCache.at = Date.now();
-    externalGroupCache.ids = resolved;
-  }
+  externalGroupCache.at = Date.now();
+  externalGroupCache.ids = resolved;
+  externalGroupCache.loaded = true;
   return resolved;
 };
 
@@ -10569,8 +10573,13 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
     }:${limit}:${statusFilter || "all"}:${campaignFilter || "all"}:${
       buyerPrefilter ? registeredBuyers.length : "unscoped"
     }:x${externalGroupIds.join(".") || "none"}`;
+    // A rolling "last 30 minutes" changes every few seconds and is one page.
+    // A calendar or custom range spans days, barely moves, and now costs
+    // several sequential Keitaro pages — refetching that every 15s poll put
+    // real load on the tracker and the single web process for no new data.
+    const cacheTtlMs = intervalKey || customRange ? 60 * 1000 : 10 * 1000;
     let cached = cache.get(cacheKey);
-    if (!cached || Date.now() - cached.at > 10 * 1000) {
+    if (!cached || Date.now() - cached.at > cacheTtlMs) {
       const logFilters = [
         ...(statusFilter ? [{ name: "status", operator: "EQUALS", expression: statusFilter }] : []),
         ...(campaignFilter
