@@ -6315,7 +6315,7 @@ function MyFlowsDashboard({ authUser }) {
   // The whole flow, flattened: a link is only useful alongside the domains
   // bound to it and the pixels attached to those, which is precisely what is
   // tedious to assemble by hand from three registries.
-  const exportFlows = React.useCallback(() => {
+  const exportFlows = () => {
     downloadCsv(
       `flows-${new Date().toISOString().slice(0, 10)}.csv`,
       ["Flow", "Buyer", "Brand", "GEO", "Domains", "Pixels", "State", "In Keitaro", "Uniques 7d", "URL"],
@@ -6335,7 +6335,7 @@ function MyFlowsDashboard({ authUser }) {
         ];
       })
     );
-  }, [filteredLinks, flowFacts]);
+  };
 
   // Option lists are built from the flows on screen, each with its own count,
   // so a picker never offers a value that matches nothing.
@@ -15212,22 +15212,25 @@ function DomainsDashboard({ authUser }) {
     );
   }, [filteredDomainRows, domainSort]);
 
-  const exportDomains = React.useCallback(() => {
+  // Rows here are { domain, ownerLabel, countries } — the owner is resolved
+  // for display and never lands on the record itself, so the export has to
+  // read the same shape the table renders.
+  const exportDomains = () => {
     downloadCsv(
       `domains-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Domain", "Status", "Country", "Game", "Platform", "Owner", "Flows", "Created"],
-      sortedDomainRows.map((row) => [
-        row?.domain || "",
-        row?.status || "",
-        row?.country || "",
-        row?.game || "",
-        row?.platform || "",
-        row?.owner_name || "",
-        Array.isArray(row?.tracking_link_ids) ? row.tracking_link_ids.length : "",
-        row?.created_at ? String(row.created_at).slice(0, 10) : "",
+      ["Domain", "Status", "GEO", "Game", "Platform", "Owner", "Flows bound", "Created"],
+      sortedDomainRows.map(({ domain, ownerLabel, countries }) => [
+        domain?.domain || "",
+        domain?.status || "",
+        (countries || []).join(" | "),
+        domain?.game || "",
+        domain?.platform || "",
+        ownerLabel && ownerLabel !== "—" ? ownerLabel : "",
+        Array.isArray(domain?.tracking_link_ids) ? domain.tracking_link_ids.length : 0,
+        domain?.created_at ? String(domain.created_at).slice(0, 10) : "",
       ])
     );
-  }, [sortedDomainRows]);
+  };
 
   const DOM_PAGE_SIZE = 50;
   const domPageCount = Math.max(1, Math.ceil(sortedDomainRows.length / DOM_PAGE_SIZE));
@@ -16902,21 +16905,28 @@ function PixelsDashboard({ authUser }) {
   // Exports what is on screen — every filter and sort the user applied —
   // rather than the whole table, because the filtered view is the question
   // they were asking.
-  const exportPixels = React.useCallback(() => {
+  // Exports what is on screen — every filter and sort the user applied —
+  // rather than the whole table, because the filtered view is the question
+  // they were asking. Owner comes from resolveOwnerLabel: pixels carry an
+  // owner_id, never a name.
+  const exportPixels = () => {
     downloadCsv(
       `pixels-${new Date().toISOString().slice(0, 10)}.csv`,
       ["Pixel ID", "Status", "Domains", "GEO", "Owner", "Comment", "Created"],
-      sortedPixelTableRows.map(({ pixel, flows, geos }) => [
-        pixel?.pixel_id || "",
-        pixel?.status || "",
-        (flows || []).join(" | "),
-        (geos || []).join(" | "),
-        pixel?.owner_name || "",
-        pixel?.comment || "",
-        pixel?.created_at ? String(pixel.created_at).slice(0, 10) : "",
-      ])
+      sortedPixelTableRows.map(({ pixel, flows, geos }) => {
+        const owner = resolveOwnerLabel(pixel);
+        return [
+          pixel?.pixel_id || "",
+          pixel?.status || "",
+          (flows || []).join(" | "),
+          (geos || []).join(" | "),
+          owner && owner !== "—" ? owner : "",
+          pixel?.comment || "",
+          pixel?.created_at ? String(pixel.created_at).slice(0, 10) : "",
+        ];
+      })
     );
-  }, [sortedPixelTableRows]);
+  };
 
   const pixelPageCount = Math.max(1, Math.ceil(sortedPixelTableRows.length / PIXEL_PAGE_SIZE));
   const pixelClampedPage = Math.min(pixelPage, pixelPageCount);
