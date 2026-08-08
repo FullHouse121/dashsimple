@@ -1427,6 +1427,7 @@ export const translations = {
     "Could not read the mailbox.": "Posta kutusu okunamadı.",
     "Inbox is empty.": "Gelen kutusu boş.",
     Junk: "Önemsiz",
+    "Download what is on screen, filters and all": "Ekrandakini indir — filtreler dahil",
     "Forwarding to": "Şuraya yönlendiriliyor",
     "No codes yet. They appear here the moment one arrives.":
       "Henüz kod yok. Bir kod geldiği anda burada görünür.",

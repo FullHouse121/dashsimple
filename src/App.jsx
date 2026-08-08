@@ -217,6 +217,7 @@ import {
   tooltipItemStyle,
   tooltipLabelStyle,
   csvCell,
+  downloadCsv,
 } from "./lib/format.js";
 
 // Resilient API client with retry, timeout, fallback (Phase 1 extraction)
@@ -6311,6 +6312,31 @@ function MyFlowsDashboard({ authUser }) {
     return map;
   }, [links, domainsByLink, pixelsByDomain, flowStatsByName]);
 
+  // The whole flow, flattened: a link is only useful alongside the domains
+  // bound to it and the pixels attached to those, which is precisely what is
+  // tedious to assemble by hand from three registries.
+  const exportFlows = React.useCallback(() => {
+    downloadCsv(
+      `flows-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Flow", "Buyer", "Brand", "GEO", "Domains", "Pixels", "State", "In Keitaro", "Uniques 7d", "URL"],
+      filteredLinks.map((link) => {
+        const facts = flowFacts.get(link.id) || {};
+        return [
+          link?.name || "",
+          facts.buyer || "",
+          facts.brand || "",
+          (facts.countries || []).join(" | "),
+          (facts.hosts || []).join(" | "),
+          (facts.pixelIds || []).join(" | "),
+          facts.paused ? "Paused" : "Active",
+          facts.inKeitaro ? "Yes" : "No",
+          facts.weekUniques ?? 0,
+          link?.url || "",
+        ];
+      })
+    );
+  }, [filteredLinks, flowFacts]);
+
   // Option lists are built from the flows on screen, each with its own count,
   // so a picker never offers a value that matches nothing.
   const optionsFrom = React.useCallback((pick, decorate) => {
@@ -7307,6 +7333,15 @@ function MyFlowsDashboard({ authUser }) {
                 ? `${links.length} ${t("links")}`
                 : `${filteredLinks.length} / ${links.length} ${t("links")}`}
             </span>
+            <button
+              type="button"
+              className="ghost registry-export-btn"
+              onClick={exportFlows}
+              disabled={!filteredLinks.length}
+              title={t("Download what is on screen, filters and all")}
+            >
+              <Download size={13} /> {t("Export")}
+            </button>
           </div>
         </div>
 
@@ -15177,6 +15212,23 @@ function DomainsDashboard({ authUser }) {
     );
   }, [filteredDomainRows, domainSort]);
 
+  const exportDomains = React.useCallback(() => {
+    downloadCsv(
+      `domains-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Domain", "Status", "Country", "Game", "Platform", "Owner", "Flows", "Created"],
+      sortedDomainRows.map((row) => [
+        row?.domain || "",
+        row?.status || "",
+        row?.country || "",
+        row?.game || "",
+        row?.platform || "",
+        row?.owner_name || "",
+        Array.isArray(row?.tracking_link_ids) ? row.tracking_link_ids.length : "",
+        row?.created_at ? String(row.created_at).slice(0, 10) : "",
+      ])
+    );
+  }, [sortedDomainRows]);
+
   const DOM_PAGE_SIZE = 50;
   const domPageCount = Math.max(1, Math.ceil(sortedDomainRows.length / DOM_PAGE_SIZE));
   const domClampedPage = Math.min(domPage, domPageCount);
@@ -15226,6 +15278,15 @@ function DomainsDashboard({ authUser }) {
               {visibleDomains.length} {t("domains")}
               {filteredDomainRows.length !== visibleDomains.length ? ` · ${filteredDomainRows.length} ${t("shown")}` : ""}
             </span>
+            <button
+              type="button"
+              className="ghost registry-export-btn"
+              onClick={exportDomains}
+              disabled={!sortedDomainRows.length}
+              title={t("Download what is on screen, filters and all")}
+            >
+              <Download size={13} /> {t("Export")}
+            </button>
             <button
               type="button"
               className={`offers-mode-toggle${showForm ? " is-active" : ""}`}
@@ -16838,6 +16899,25 @@ function PixelsDashboard({ authUser }) {
   }, [filteredPixelTableRows, pixelSort]);
 
   const PIXEL_PAGE_SIZE = 50;
+  // Exports what is on screen — every filter and sort the user applied —
+  // rather than the whole table, because the filtered view is the question
+  // they were asking.
+  const exportPixels = React.useCallback(() => {
+    downloadCsv(
+      `pixels-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Pixel ID", "Status", "Domains", "GEO", "Owner", "Comment", "Created"],
+      sortedPixelTableRows.map(({ pixel, flows, geos }) => [
+        pixel?.pixel_id || "",
+        pixel?.status || "",
+        (flows || []).join(" | "),
+        (geos || []).join(" | "),
+        pixel?.owner_name || "",
+        pixel?.comment || "",
+        pixel?.created_at ? String(pixel.created_at).slice(0, 10) : "",
+      ])
+    );
+  }, [sortedPixelTableRows]);
+
   const pixelPageCount = Math.max(1, Math.ceil(sortedPixelTableRows.length / PIXEL_PAGE_SIZE));
   const pixelClampedPage = Math.min(pixelPage, pixelPageCount);
   const pagedPixelTableRows = React.useMemo(
@@ -17060,6 +17140,15 @@ function PixelsDashboard({ authUser }) {
             <span className="roles-count">
               {visiblePixels.length} {t("pixels")}
             </span>
+            <button
+              type="button"
+              className="ghost registry-export-btn"
+              onClick={exportPixels}
+              disabled={!sortedPixelTableRows.length}
+              title={t("Download what is on screen, filters and all")}
+            >
+              <Download size={13} /> {t("Export")}
+            </button>
             <button
               type="button"
               className={`offers-mode-toggle${showForm ? " is-active" : ""}`}

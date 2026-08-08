@@ -1435,14 +1435,16 @@ export default function ReportsDashboard({ authUser }) {
                 <span className="roles-count">
                   {t("{n} rows", { n: (result.total || 0).toLocaleString() })}
                 </span>
+                {/* Was an unlabelled icon. Export is the point of running a
+                    report, and a feature you have to hover to discover reads
+                    as a feature that is not there. */}
                 <button
                   type="button"
-                  className="icon-btn"
+                  className="ghost registry-export-btn"
                   title={t("Export…")}
-                  aria-label={t("Export…")}
                   onClick={() => setExportOpen(true)}
                 >
-                  <Download size={14} />
+                  <Download size={14} /> {t("Export")}
                 </button>
               </div>
             ) : null}

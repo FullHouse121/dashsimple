@@ -79,6 +79,28 @@ export const tooltipStyle = {
 // postbacks — attacker-controllable. Prefix with ' to keep them inert.
 export const csvCell = (value) => {
   let s = String(value ?? "").replace(/"/g, '""');
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // A negative number is not a formula. Guarding on the leading character
+  // alone turned every negative ROI, profit and delta into Excel *text*,
+  // which is worse than the risk it was defending against.
+  const isPlainNumber = /^-?\d+(?:\.\d+)?$/.test(s);
+  if (!isPlainNumber && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return `"${s}"`;
+};
+
+// One CSV download for every registry, so a new export never reinvents the
+// escaping or forgets the BOM (without it Excel mangles accented domains).
+export const downloadCsv = (filename, headers, rows) => {
+  const lines = [
+    headers.map(csvCell).join(","),
+    ...rows.map((row) => row.map(csvCell).join(",")),
+  ];
+  const blob = new Blob([`\ufeff${lines.join("\n")}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };

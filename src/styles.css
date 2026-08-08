@@ -19620,3 +19620,13 @@ select option,
   border-style: dashed;
   opacity: 0.75;
 }
+
+.registry-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.registry-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
