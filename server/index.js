@@ -10475,6 +10475,10 @@ const trackerNowString = (timezone) => {
 // with stale-serving, honest truncation, registered-buyer + viewer scoping.
 // A Keitaro log page tops out around 1,000 rows. These bound how far we will
 // page before saying "there is more" rather than pretending we have it all.
+// Past this many at once, resolutions are announced as one line rather than
+// filling the bell with individual "Fixed" notices.
+const ALERT_RESOLVE_NOTICE_LIMIT = 5;
+
 const LIVE_LOG_PAGE_SIZE = 1000;
 const LIVE_LOG_MAX_PAGES = 8;
 const LIVE_LOG_MAX_ROWS = 5000;
@@ -13921,15 +13925,50 @@ const runAlertEvaluation = async ({ notify = true, dryRun = false } = {}) => {
       }
     }
     // Anything still open that no rule reported has fixed itself.
-    const openRows = await query(`SELECT id, alert_key FROM alerts WHERE status <> 'resolved'`).then(
-      (r) => r.rows || []
-    );
-    const stale = openRows.filter((row) => !seenKeys.has(row.alert_key)).map((row) => row.id);
+    const openRows = await query(
+      `SELECT id, alert_key, rule, title, severity FROM alerts WHERE status <> 'resolved'`
+    ).then((r) => r.rows || []);
+    const staleRows = openRows.filter((row) => !seenKeys.has(row.alert_key));
+    const stale = staleRows.map((row) => row.id);
     if (stale.length) {
       await query(
         `UPDATE alerts SET status = 'resolved', resolved_at = NOW() WHERE id = ANY($1::int[])`,
         [stale]
       );
+      // Fixing something deserves saying so. Without this, "fixed" and
+      // "ignored" looked identical from the outside: the card simply stopped
+      // being there, and nobody knew whether their work had landed.
+      if (notify) {
+        if (staleRows.length <= ALERT_RESOLVE_NOTICE_LIMIT) {
+          for (const row of staleRows) {
+            await createSystemNotification({
+              event_type: `alert_resolved_${row.rule || "custom"}`,
+              // No "success" level exists; a resolution is informational.
+              severity: "info",
+              title: "Fixed",
+              message: `${row.title} is clear.`,
+              entity_type: "alert",
+              entity_id: row.id,
+              actor_name: "Health monitor",
+              dedupeWindowSeconds: 6 * 60 * 60,
+            });
+          }
+        } else {
+          // A sweep that clears twenty things should be one line, not twenty.
+          await createSystemNotification({
+            event_type: "alert_resolved_batch",
+            severity: "info",
+            title: "Fixed",
+            message: `${staleRows.length} issues cleared: ${staleRows
+              .slice(0, 3)
+              .map((row) => row.title)
+              .join(", ")}, and ${staleRows.length - 3} more.`,
+            entity_type: "alert",
+            actor_name: "Health monitor",
+            dedupeWindowSeconds: 60 * 60,
+          });
+        }
+      }
     }
     const result = {
       ranAt: new Date().toISOString(),
