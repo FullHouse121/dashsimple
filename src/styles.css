@@ -19613,3 +19613,10 @@ select option,
 }
 
 .mailbox-cred-chip:disabled { opacity: 0.5; cursor: default; }
+
+/* A selection whose option no longer exists — shown so it can be removed,
+   dimmed so it is not mistaken for a live choice. */
+.country-select-selected-chip.is-orphan {
+  border-style: dashed;
+  opacity: 0.75;
+}

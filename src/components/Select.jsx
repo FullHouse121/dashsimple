@@ -71,8 +71,21 @@ export function CountryDropdownPicker({
     return list;
   }, [normalizedOptions, allOption]);
   const selectedOption = optionList.find((item) => item.value === normalizedValue) || null;
+  // Derived from the VALUES, not the options. A selected value whose option
+  // has since disappeared — a domain deleted from the registry, a country
+  // dropped from a list — still has to be visible and removable, or it is
+  // stuck in the form for good: invisible on screen, yet submitted on every
+  // save. That is exactly how a deleted domain stayed bound to a pixel
+  // through three attempts to remove it.
   const selectedOptions = multiple
-    ? optionList.filter((item) => normalizedValues.includes(item.value))
+    ? normalizedValues.map(
+        (value) =>
+          optionList.find((item) => item.value === value) || {
+            value,
+            label: String(value),
+            orphan: true,
+          }
+      )
     : [];
   const displayLabel = selectedOption?.label || normalizedValue || placeholder;
   const hasSelection = multiple ? selectedOptions.length > 0 : Boolean(selectedOption || normalizedValue);
@@ -221,7 +234,11 @@ export function CountryDropdownPicker({
             </div>
             <div className="country-select-selected-chips">
               {selectedOptions.map((item) => (
-                <span key={`sel-chip-${item.value}`} className="country-select-selected-chip">
+                <span
+                  key={`sel-chip-${item.value}`}
+                  className={`country-select-selected-chip${item.orphan ? " is-orphan" : ""}`}
+                  title={item.orphan ? "No longer in the registry — remove it to clean this up" : undefined}
+                >
                   {item.dot ? (
                     <span className="cs-dot" style={{ background: item.dot }} />
                   ) : (
