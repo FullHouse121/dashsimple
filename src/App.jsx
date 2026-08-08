@@ -5547,6 +5547,7 @@ function HealthDashboard({ authUser }) {
   const [setupState, setSetupState] = React.useState({ loading: true, error: null, data: null });
   const [busyAlert, setBusyAlert] = React.useState(null);
   const [kindFilter, setKindFilter] = React.useState(null);
+  const refetchTimerRef = React.useRef(null);
 
   const fetchAlerts = React.useCallback(async (status) => {
     try {
@@ -5555,10 +5556,26 @@ function HealthDashboard({ authUser }) {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || "Failed to load alerts.");
       setAlertState({ loading: false, error: null, data });
+      // The server started a re-evaluation because this list was stale. Come
+      // back for the result rather than leaving fixed work on screen.
+      if (data?.evaluating) {
+        if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+        refetchTimerRef.current = setTimeout(() => fetchAlertsRef.current?.(status), 6000);
+      }
     } catch (error) {
       setAlertState({ loading: false, error: error.message || "Failed to load alerts.", data: null });
     }
   }, []);
+  // Held in refs so the callback above stays stable and the timer survives
+  // a re-render without re-firing.
+  const fetchAlertsRef = React.useRef(null);
+  fetchAlertsRef.current = fetchAlerts;
+  React.useEffect(
+    () => () => {
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    },
+    []
+  );
   const fetchCost = React.useCallback(async () => {
     try {
       setCostState({ loading: true, error: null, data: null });

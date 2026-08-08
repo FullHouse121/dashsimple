@@ -13946,8 +13946,31 @@ const runAlertEvaluation = async ({ notify = true, dryRun = false } = {}) => {
   }
 };
 
+// Nothing external schedules the evaluation, so a problem someone fixed this
+// morning stayed on the board until a human pressed "Check now" — and a board
+// that shows fixed work is one people stop believing. Opening the page is a
+// good enough trigger: if the last run is stale, start one.
+//
+// Deliberately not awaited. Evaluation talks to Keitaro and takes seconds; the
+// page should render immediately with what we have and pick up the result on
+// the follow-up fetch the client makes when it sees `evaluating`.
+const ALERT_AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+const alertsAreStale = () => {
+  if (alertRunState.running) return false;
+  if (!alertRunState.lastRunAt) return true; // never run since boot
+  return Date.now() - Date.parse(alertRunState.lastRunAt) > ALERT_AUTO_REFRESH_MS;
+};
+
 app.get("/api/alerts", async (req, res) => {
   const status = String(req.query.status || "open").toLowerCase();
+  let evaluating = false;
+  if (alertsAreStale()) {
+    evaluating = true;
+    runAlertEvaluation({ notify: true }).catch((error) =>
+      console.warn("[alerts] background evaluation failed:", error?.message || error)
+    );
+  }
   const clauses = [];
   const params = [];
   if (status === "open") clauses.push("status <> 'resolved'");
@@ -14003,6 +14026,8 @@ app.get("/api/alerts", async (req, res) => {
     counts: counts.reduce((acc, row) => ({ ...acc, [row.severity]: row.n }), {}),
     lastRunAt: alertRunState.lastRunAt,
     running: alertRunState.running,
+    // Tells the client this list is about to change under it.
+    evaluating: evaluating || alertRunState.running,
   });
 });
 
