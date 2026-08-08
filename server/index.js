@@ -2184,7 +2184,11 @@ const insertSystemNotification = async (payload) => {
   return rows[0];
 };
 
-const selectRecentDuplicateSystemNotification = async (payload, dedupeWindowSeconds) => {
+// `ignoreMessage` exists because a failing job rarely repeats itself word for
+// word: the same outage arrives as nine different messages carrying different
+// hosts, row counts and timings. Matching on exact text meant every one of
+// them read as a brand-new problem.
+const selectRecentDuplicateSystemNotification = async (payload, dedupeWindowSeconds, ignoreMessage = false) => {
   if (!Number.isFinite(dedupeWindowSeconds) || dedupeWindowSeconds <= 0) return null;
   return getRow(
     `SELECT id
@@ -2192,7 +2196,7 @@ const selectRecentDuplicateSystemNotification = async (payload, dedupeWindowSeco
      WHERE event_type = $1
        AND severity = $2
        AND title = $3
-       AND message = $4
+       AND ($8::bool OR message = $4)
        AND COALESCE(entity_type, '') = COALESCE($5, '')
        AND COALESCE(entity_id, 0) = COALESCE($6, 0)
        AND created_at >= NOW() - ($7::int * INTERVAL '1 second')
@@ -2206,6 +2210,7 @@ const selectRecentDuplicateSystemNotification = async (payload, dedupeWindowSeco
       payload.entity_type ? String(payload.entity_type).trim() : null,
       Number.isFinite(Number(payload.entity_id)) ? Number(payload.entity_id) : null,
       Math.min(Math.max(Number.parseInt(dedupeWindowSeconds, 10) || 0, 0), 86400),
+      Boolean(ignoreMessage),
     ]
   );
 };
@@ -2218,7 +2223,11 @@ const createSystemNotification = async (payload) => {
         : payload?.dedupeWindowSeconds;
     const dedupeWindowSeconds = Number.parseInt(dedupeWindowRaw ?? "0", 10);
     if (Number.isFinite(dedupeWindowSeconds) && dedupeWindowSeconds > 0) {
-      const duplicate = await selectRecentDuplicateSystemNotification(payload, dedupeWindowSeconds);
+      const duplicate = await selectRecentDuplicateSystemNotification(
+        payload,
+        dedupeWindowSeconds,
+        payload?.dedupeIgnoresMessage
+      );
       if (duplicate?.id) {
         return { id: duplicate.id, deduped: true };
       }
@@ -2316,9 +2325,14 @@ const createUnexpectedNotification = async ({
   severity = "warning",
   entityType = null,
   entityId = null,
-  dedupeWindowSeconds = 120,
+  // Was 120s. A cron retrying every few minutes cleared that window every
+  // time, so one outage on 7 Aug produced nine notifications in forty
+  // minutes. An hour matches how long a real outage lasts.
+  dedupeWindowSeconds = 60 * 60,
 }) =>
   createSystemNotification({
+    // Same source failing repeatedly is one problem, whatever the wording.
+    dedupeIgnoresMessage: true,
     event_type: "unexpected_event",
     severity,
     title: `Unexpected issue: ${String(source || "Unknown source")}`,
