@@ -93,9 +93,56 @@ const pool = new Pool({
   ssl: databaseUrl.includes("localhost")
     ? false
     : { rejectUnauthorized: false },
+  // A client that cannot be reached should be dropped rather than counted
+  // against the pool forever.
+  connectionTimeoutMillis: 15000,
+  idleTimeoutMillis: 30000,
+});
+
+// No query on this dashboard has a legitimate reason to run for half a minute.
+// Without a ceiling, one accidental heavy query — a report over a year, a
+// regex the report builder hands straight to Postgres — holds a connection
+// until it finishes and the whole team queues behind it.
+//
+// Applied per connection rather than through the Pool's statement_timeout
+// option: that option had no effect against this database (verified — a
+// 10-second sleep ran to completion), most likely because the connection goes
+// through a pooler that drops startup parameters.
+const DB_STATEMENT_TIMEOUT_MS = Number.parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || "30000", 10);
+pool.on("connect", (client) => {
+  client
+    .query(`SET statement_timeout = ${Number(DB_STATEMENT_TIMEOUT_MS) || 30000}`)
+    .catch((error) => console.warn("[db] could not set statement_timeout:", error?.message || error));
 });
 
 const query = (text, params) => pool.query(text, params);
+
+// For queries a user composed rather than ones we wrote. The report builder
+// accepts arbitrary MATCH_REGEXP patterns, and a catastrophic one would pin a
+// database CPU until the statement timeout fires — so theirs fires sooner.
+const REPORT_TIMEOUT_MS = Number.parseInt(process.env.DB_REPORT_TIMEOUT_MS || "20000", 10);
+const queryWithTimeout = async (text, params, timeoutMs = REPORT_TIMEOUT_MS) => {
+  const client = await pool.connect();
+  const ms = Number.parseInt(timeoutMs, 10) || 20000;
+  try {
+    // SET LOCAL only survives inside a transaction — outside one it is
+    // silently discarded, which would leave this looking protective while
+    // doing nothing. The transaction also guarantees the setting reverts, so
+    // the pooled client never carries it to the next caller.
+    await client.query("BEGIN");
+    // SET rejects bind parameters, so this is interpolated — safe only because
+    // `ms` has been forced through parseInt above and can only be a number.
+    await client.query(`SET LOCAL statement_timeout = ${ms}`);
+    const result = await client.query(text, params);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+};
 const getRow = async (text, params) => {
   const { rows } = await query(text, params);
   return rows[0] || null;
@@ -11008,9 +11055,11 @@ const runDashboardReport = async (request, user) => {
   }
   const { sql, params, countSql, countParams } = buildDashboardQuery(request, { viewerId, buyerForms });
   try {
+    // The user chose these columns, filters and operators — including regex
+    // patterns that go to Postgres verbatim — so they get the tighter ceiling.
     const [rowsResult, countResult] = await Promise.all([
-      query(sql, params),
-      query(countSql, countParams),
+      queryWithTimeout(sql, params),
+      queryWithTimeout(countSql, countParams),
     ]);
     return {
       ok: true,
