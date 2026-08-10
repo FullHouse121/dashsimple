@@ -10445,7 +10445,12 @@ const LIVE_CLICKS_COLUMNS = [
 const LIVE_CLICKS_INTERVALS = {
   today: "today",
   yesterday: "yesterday",
-  this_week: "first_day_of_this_week",
+  // "first_day_of_this_week" is not a keyword this tracker knows. It does not
+  // error — it silently resolves to a 41-day range identical to
+  // first_day_of_last_month, so the "This week" option was showing six weeks.
+  // Verified against the tracker: this_week returns the current week,
+  // first_day_of_this_month returns the current month.
+  this_week: "this_week",
   this_month: "first_day_of_this_month",
   previous_month: null, // computed from/to below
 };
