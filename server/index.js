@@ -4943,6 +4943,13 @@ const canAccessAccountCredentials = (user, accountRow) => {
 // normalizeBuyerName imported from ./lib/scoping.js
 // buyerMatches imported from ./lib/scoping.js (anchored-prefix matching)
 
+// Brand is upper-cased on the way in. Keitaro's MATCH_REGEXP is
+// case-sensitive on this tracker, so "Jasino" and "JASINO" are two different
+// brands to every report that filters on the name — and the registry already
+// carries both spellings across 15 links. One format, decided here, rather
+// than at each of the places that later has to match it.
+const normalizeBrandSegment = (value) => String(value || "").trim().toUpperCase();
+
 const normalizeAdsetMacro = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return "{{adset.id}}";
@@ -9511,9 +9518,33 @@ const TRACKING_TOOL_EXTERNAL_ID = {
 const externalIdMacroForTool = (tool) =>
   TRACKING_TOOL_EXTERNAL_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_EXTERNAL_ID_MACRO;
 
+// The adset macro is per-tool, exactly like external_id — the dashboard used
+// to hardcode ZMAPPS's {{adset.id}} for everything, so every PWA-family link
+// it created carried a macro that tool never expands. Nothing errors: the
+// click just arrives with a literal placeholder where the adset id should be,
+// and adset-level reporting is quietly empty.
+//
+// Derived from the campaigns already working on this tracker, then confirmed:
+// ZMAPPS is the only one using the double-brace form.
+const TRACKING_TOOL_ADSET_ID = {
+  ZMAPPS: "{{adset.id}}",
+  PWA: "{adset_id}",
+  "PWA.GROUP": "{adset_id}",
+  "PWA PARTNERS": "{adset_id}",
+  "LINKI.GROUP": "{adset_id}",
+  LINKI: "{adset_id}",
+  SKAK: "{sn_sub6}",
+};
+// Single braces for an unrecognised tool: every tool here except ZMAPPS uses
+// that form, so it is the better guess when we have nothing to go on.
+const DEFAULT_ADSET_ID_MACRO = "{adset_id}";
+
+const adsetMacroForTool = (tool) =>
+  TRACKING_TOOL_ADSET_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_ADSET_ID_MACRO;
+
 // Standard link parameter map — mirrors the existing campaigns on this
-// tracker (sub1..sub11, adset_id={{adset.id}}, fbclid={{fbclid}}) so new
-// campaigns produce identical links. external_id varies by tool.
+// tracker (sub1..sub11, fbclid={{fbclid}}) so new campaigns produce identical
+// links. external_id and the adset macro both vary by tool.
 const keitaroStandardParameters = (tool) => ({
   external_id: { placeholder: externalIdMacroForTool(tool) },
   sub_id_1: { name: "sub1", placeholder: "{sub1}" },
@@ -9521,7 +9552,7 @@ const keitaroStandardParameters = (tool) => ({
   sub_id_3: { name: "sub3", placeholder: "{sub3}" },
   sub_id_4: { name: "sub4", placeholder: "{sub4}" },
   sub_id_5: { name: "sub5", placeholder: "{sub5}" },
-  sub_id_6: { name: "adset_id", placeholder: "{{adset.id}}" },
+  sub_id_6: { name: "adset_id", placeholder: adsetMacroForTool(tool) },
   sub_id_7: { name: "sub7", placeholder: "{sub7}" },
   sub_id_8: { name: "sub8", placeholder: "{sub8}" },
   sub_id_9: { name: "sub9", placeholder: "{sub9}" },
@@ -11484,7 +11515,7 @@ app.post("/api/tracking-links", async (req, res) => {
     ? String(buyer || "").trim() || String(req.user.username || "").trim()
     : String(req.user.username || "").trim();
   const seg = (v) => String(v || "").trim() || "-";
-  const name = [resolvedBuyer, seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
+  const name = [resolvedBuyer, seg(tool), seg(game), seg(geo), seg(normalizeBrandSegment(brand))].join(" | ");
 
   if (!String(tool || "").trim()) {
     return res.status(400).json({ error: "Tool is required." });
@@ -11618,7 +11649,7 @@ app.patch("/api/tracking-links/:id", async (req, res) => {
     const geo = body.geo !== undefined ? body.geo : row.geo;
     const brand = body.brand !== undefined ? body.brand : row.brand;
     const tool = body.tool !== undefined ? body.tool : row.tool;
-    const name = [seg(buyer), seg(tool), seg(game), seg(geo), seg(brand)].join(" | ");
+    const name = [seg(buyer), seg(tool), seg(game), seg(geo), seg(normalizeBrandSegment(brand))].join(" | ");
     if (row.keitaro_id && name !== row.name) {
       const upd = await keitaroAdminFetch(`/campaigns/${row.keitaro_id}`, {
         method: "PUT",
