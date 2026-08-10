@@ -70,6 +70,12 @@ export const useLiveFeed = ({ endpoint, failLabel, defaultWindow = "today", poll
         window: data?.window,
         timezone: data?.timezone,
         truncated: Boolean(data?.truncated),
+        // How many the tracker holds for this window versus how many arrived,
+        // and the span those actually cover.
+        periodTotal: Number.isFinite(Number(data?.periodTotal)) ? Number(data.periodTotal) : null,
+        returned: Number(data?.returned) || 0,
+        coveredFrom: data?.coveredFrom || null,
+        coveredTo: data?.coveredTo || null,
       });
       setLastFetchedAt(Date.now());
       setFeedState({ loading: false, error: null });

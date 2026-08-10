@@ -10680,6 +10680,10 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
       let pages = 0;
       let moreAvailable = false;
       let failure = null;
+      // What Keitaro says exists in this window, regardless of how much of it
+      // we fetch. Without this the client cannot tell "1,000 clicks happened"
+      // from "1,000 is all we were willing to read".
+      let periodTotal = null;
 
       while (collected.length < limit && pages < LIVE_LOG_MAX_PAGES) {
         const pageResult = await keitaroAdminFetch(logPath, {
@@ -10697,6 +10701,9 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
         if (!pageResult.ok) {
           failure = pageResult.error;
           break;
+        }
+        if (periodTotal === null && Number.isFinite(Number(pageResult.data?.total))) {
+          periodTotal = Number(pageResult.data.total);
         }
         const raw = Array.isArray(pageResult.data?.rows) ? pageResult.data.rows : [];
         if (!raw.length) break;
@@ -10721,6 +10728,7 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
           rows: collected.slice(0, limit),
           // Honest: there was more than we were willing to fetch.
           more: moreAvailable || collected.length > limit,
+          periodTotal,
         };
         cache.set(cacheKey, cached);
       }
@@ -10754,6 +10762,13 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
         viewerOwnsRow({ campaign: row.campaign, buyer: row.buyer }, viewerBuyer)
       );
     }
+    // The span the returned rows actually cover. A week-long window that comes
+    // back holding only today is the single most misleading thing this feed
+    // can do, and it does it silently — so say it out loud.
+    const stamps = rows.map((row) => row.datetime).filter(Boolean).sort();
+    const coveredFrom = stamps[0] || null;
+    const coveredTo = stamps[stamps.length - 1] || null;
+
     return res.json({
       rows,
       window: intervalKey
@@ -10764,6 +10779,11 @@ const registerLiveLogEndpoint = ({ routePath, logPath, columns, sortField, failM
       trackerNow: cached.trackerNow,
       timezone,
       truncated,
+      // How many exist in the window, versus how many are on screen.
+      periodTotal: cached.periodTotal ?? null,
+      returned: rows.length,
+      coveredFrom,
+      coveredTo,
     });
   });
 };

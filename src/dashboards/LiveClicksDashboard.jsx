@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, Filter } from "lucide-react";
+import { Activity, AlertTriangle, Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, Filter } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { apiFetch } from "../lib/api.js";
 import { isLeadershipRole } from "../lib/permissions.js";
@@ -137,6 +137,19 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   // not — so the cap marker must not disappear when a filter trims the rows.
   const isCapped = !usingAggregate && Boolean(meta?.truncated);
   const plus = isCapped ? "+" : "";
+
+  // A "+" is not a warning. Sorting newest-first and capping means a week-long
+  // window comes back holding only its last few hours — silently, looking
+  // exactly like a week with very little traffic. Say what is actually here.
+  const shortfall = React.useMemo(() => {
+    const total = Number(meta?.periodTotal);
+    const shown = Number(meta?.returned);
+    if (!Number.isFinite(total) || !Number.isFinite(shown) || total <= shown) return null;
+    const from = String(meta?.coveredFrom || "").slice(0, 10);
+    const to = String(meta?.coveredTo || "").slice(0, 10);
+    const days = from && to ? (from === to ? from : `${from} → ${to}`) : null;
+    return { total, shown, days };
+  }, [meta?.periodTotal, meta?.returned, meta?.coveredFrom, meta?.coveredTo]);
   const perMinute = clickCount / Math.max(1, windowElapsedMinutes);
 
   // Clicks-over-time buckets for the chart: adaptive step, zero-filled from
@@ -445,6 +458,14 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
               <span className="roles-count">
                 {filteredRows.length.toLocaleString()}{plus} clicks · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
               </span>
+              {shortfall ? (
+                <span className="feed-shortfall" title="This feed lists individual clicks newest-first, so a wide window returns only its most recent slice.">
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  Showing the newest {shortfall.shown.toLocaleString()} of{" "}
+                  {shortfall.total.toLocaleString()}
+                  {shortfall.days ? ` — ${shortfall.days} only` : ""}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="icon-btn"

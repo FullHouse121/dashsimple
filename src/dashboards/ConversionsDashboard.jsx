@@ -1,6 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, CreditCard } from "lucide-react";
+import { AlertTriangle, Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, CreditCard } from "lucide-react";
 import { ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { apiFetch } from "../lib/api.js";
 import { isLeadershipRole } from "../lib/permissions.js";
@@ -184,6 +184,18 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   // not — so the cap marker must not disappear when a filter trims the rows.
   const isCapped = !usingAggregate && Boolean(meta?.truncated);
   const plus = isCapped ? "+" : "";
+
+  // The window asked for versus the window actually returned. Without this a
+  // month-long selection holding one day looks like a quiet month.
+  const shortfall = React.useMemo(() => {
+    const total = Number(meta?.periodTotal);
+    const shown = Number(meta?.returned);
+    if (!Number.isFinite(total) || !Number.isFinite(shown) || total <= shown) return null;
+    const from = String(meta?.coveredFrom || "").slice(0, 10);
+    const to = String(meta?.coveredTo || "").slice(0, 10);
+    const days = from && to ? (from === to ? from : `${from} → ${to}`) : null;
+    return { total, shown, days };
+  }, [meta?.periodTotal, meta?.returned, meta?.coveredFrom, meta?.coveredTo]);
   // Revenue under a status filter: the aggregate splits FTD and redeposit
   // revenue; registrations carry the remainder (≈0 on this tracker). Older API
   // payloads lack the split — fall back to the loaded rows' sum then.
@@ -487,6 +499,14 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
               <span className="roles-count">
                 {filteredRows.length.toLocaleString()}{plus} conversions · updated {lastFetchedAt ? `${Math.max(0, Math.floor((Date.now() - lastFetchedAt) / 1000))}s ago` : "—"}
               </span>
+              {shortfall ? (
+                <span className="feed-shortfall" title="This feed lists individual conversions newest-first, so a wide window returns only its most recent slice.">
+                  <AlertTriangle size={12} aria-hidden="true" />
+                  Showing the newest {shortfall.shown.toLocaleString()} of{" "}
+                  {shortfall.total.toLocaleString()}
+                  {shortfall.days ? ` — ${shortfall.days} only` : ""}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="icon-btn"

@@ -19630,3 +19630,20 @@ select option,
 }
 
 .registry-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Says how much of the selected period is actually on screen. A wide window
+   on a newest-first feed returns only its last slice, and silence about that
+   reads as "the period was quiet". */
+.feed-shortfall {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 198, 37, 0.34);
+  background: rgba(247, 198, 37, 0.1);
+  color: var(--yellow);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
