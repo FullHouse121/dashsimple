@@ -403,6 +403,34 @@ const initDb = async () => {
     `CREATE INDEX IF NOT EXISTS mailbox_codes_account_idx
       ON mailbox_codes (account_id, received_at DESC);`,
     `CREATE INDEX IF NOT EXISTS mailbox_codes_expiry_idx ON mailbox_codes (expires_at);`,
+    // Pre-aggregated user_behavior at the exact grain /api/user-behavior groups
+    // by, so re-aggregating it over any window returns what the raw table
+    // would. 342k rows and 117 MB against 11.1M rows and 5.6 GB, because the
+    // columns it drops — placement, region, city — are read by nothing.
+    //
+    // Nothing queries this yet; it is declared here so the schema is
+    // reproducible rather than existing only because a script was run once.
+    // Money is double precision on purpose: the raw columns are `real`, and
+    // summing those twice compounds a rounding error the live query already
+    // carries (up to 7.51 on a single month, measured).
+    `CREATE TABLE IF NOT EXISTS user_behavior_daily (
+      date TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      buyer TEXT,
+      campaign TEXT,
+      country TEXT,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      registers INTEGER NOT NULL DEFAULT 0,
+      ftds INTEGER NOT NULL DEFAULT 0,
+      redeposits INTEGER NOT NULL DEFAULT 0,
+      revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+      ftd_revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+      redeposit_revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+      rolled_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS user_behavior_daily_key
+      ON user_behavior_daily (date, external_id, COALESCE(buyer,''), COALESCE(campaign,''), COALESCE(country,''));`,
+    `CREATE INDEX IF NOT EXISTS user_behavior_daily_date ON user_behavior_daily (date);`,
     `CREATE TABLE IF NOT EXISTS system_notifications (
       id SERIAL PRIMARY KEY,
       event_type TEXT NOT NULL,
