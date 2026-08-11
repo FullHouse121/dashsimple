@@ -13091,11 +13091,14 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         </motion.div>
       </section>
 
-      {/* Reads from behaviorRows, which is already in memory at the
-          (date, campaign, country) grain — no extra request per player. */}
+      {/* Fetches the raw per-day rows for one player; behaviorRows is only the
+          fallback, since the list endpoint returns MAX(date) rather than a
+          series and carries no city/device. */}
       <UserDetail
         externalId={openUserId}
         rows={behaviorRows}
+        range={effectiveDateRange}
+        fetcher={apiFetch}
         onClose={() => setOpenUserId(null)}
         t={t}
       />

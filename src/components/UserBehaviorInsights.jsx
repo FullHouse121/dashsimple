@@ -5,6 +5,8 @@ import {
   Bar,
   AreaChart,
   Area,
+  ComposedChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -289,22 +291,28 @@ export const Concentration = ({ users, t = (x) => x }) => {
 };
 
 // ── per-user drill-down ───────────────────────────────────────────────────
-// Built entirely from rows already in memory: /api/user-behavior returns the
-// (date, external_id, buyer, campaign, country) grain, so a player's campaigns,
-// geos and daily timeline need no extra request.
+// Fed by /api/user-behavior/:externalId, NOT by the list rows already in
+// memory: that endpoint groups by (external_id, buyer, country, campaign) and
+// returns MAX(date), so a timeline built from it would plot last-seen dates
+// rather than activity, and region/city/device never reach the client at all.
 export const buildUserDetail = (rows, externalId) => {
-  const mine = rows.filter(
-    (row) => String(row.external_id || row.externalId || "").trim() === externalId
-  );
+  const mine = rows.filter((row) => {
+    const id = String(row.external_id ?? row.externalId ?? "").trim();
+    // The detail endpoint returns rows for one player and omits the id column;
+    // the in-memory fallback carries it. Accept both.
+    return id === "" || id === externalId;
+  });
   const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
   const revenueOf = (row) => {
     const direct = num(row.revenue);
     return direct > 0 ? direct : num(row.ftd_revenue ?? row.ftdRevenue) + num(row.redeposit_revenue ?? row.redepositRevenue);
   };
 
-  const totals = { clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 };
+  const totals = { clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0, ftdRevenue: 0, redepositRevenue: 0 };
   const byCampaign = new Map();
   const byCountry = new Map();
+  const byCity = new Map();
+  const byDevice = new Map();
   const byDay = new Map();
 
   mine.forEach((row) => {
@@ -314,11 +322,14 @@ export const buildUserDetail = (rows, externalId) => {
     totals.ftds += num(row.ftds);
     totals.redeposits += num(row.redeposits);
     totals.revenue += revenue;
+    totals.ftdRevenue += num(row.ftd_revenue ?? row.ftdRevenue);
+    totals.redepositRevenue += num(row.redeposit_revenue ?? row.redepositRevenue);
 
-    const bump = (map, key, extra = {}) => {
+    const bump = (map, key) => {
       if (!key) return;
-      const cur = map.get(key) || { key, clicks: 0, ftds: 0, redeposits: 0, revenue: 0, ...extra };
+      const cur = map.get(key) || { key, clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0 };
       cur.clicks += num(row.clicks);
+      cur.registers += num(row.registers);
       cur.ftds += num(row.ftds);
       cur.redeposits += num(row.redeposits);
       cur.revenue += revenue;
@@ -326,26 +337,164 @@ export const buildUserDetail = (rows, externalId) => {
     };
     bump(byCampaign, String(row.campaign || "").trim());
     bump(byCountry, String(row.country || "").trim());
+    bump(byCity, String(row.city || "").trim());
     bump(byDay, String(row.date || "").slice(0, 10));
+
+    // "Unknown" is Keitaro's placeholder, not a device. Counting it would
+    // invent a device breakdown out of missing data.
+    const device = String(row.device || "").trim();
+    if (device && device.toLowerCase() !== "unknown") {
+      const os = String(row.os || "").trim();
+      bump(byDevice, os ? `${device} · ${os}` : device);
+    }
   });
 
   const desc = (map) => [...map.values()].sort((a, b) => b.revenue - a.revenue || b.clicks - a.clicks);
+  const days = [...byDay.values()].sort((a, b) => String(a.key).localeCompare(String(b.key)));
+  const deposits = totals.ftds + totals.redeposits;
+
   return {
     externalId,
     rowCount: mine.length,
     buyer: mine.find((row) => row.buyer)?.buyer || "",
     totals,
+    deposits,
+    // Derived measures the table cannot show, and the reason to open a player
+    // at all: is this someone worth acquiring more of?
+    revenuePerClick: totals.clicks > 0 ? totals.revenue / totals.clicks : 0,
+    avgDeposit: deposits > 0 ? totals.revenue / deposits : 0,
+    firstSeen: days[0]?.key || "",
+    lastSeen: days[days.length - 1]?.key || "",
+    activeDays: days.filter((day) => day.clicks > 0 || day.revenue > 0).length,
+    tier:
+      deposits >= 2 ? "repeat" : deposits === 1 ? "ftd" : totals.registers > 0 ? "registered" : "clicked",
     campaigns: desc(byCampaign),
     countries: desc(byCountry),
-    days: [...byDay.values()].sort((a, b) => String(a.key).localeCompare(String(b.key))),
+    cities: desc(byCity),
+    devices: desc(byDevice),
+    days,
   };
 };
 
-export const UserDetail = ({ externalId, rows, onClose, t = (x) => x }) => {
-  const detail = React.useMemo(
-    () => (externalId ? buildUserDetail(rows, externalId) : null),
-    [externalId, rows]
+const TIER_BADGE = {
+  repeat: { label: "Repeat depositor", color: "var(--green)" },
+  ftd: { label: "First deposit", color: "var(--teal)" },
+  registered: { label: "Registered", color: "var(--yellow)" },
+  clicked: { label: "Clicked only", color: "var(--faint)" },
+};
+
+// Funnel as explicit stages with drop-off between them: the interesting number
+// is not how many clicked, it is where this player stopped.
+const FunnelBars = ({ detail, t }) => {
+  const stages = [
+    { key: "clicks", label: t("Clicks"), value: detail.totals.clicks, color: "var(--blue)" },
+    { key: "registers", label: t("Registers"), value: detail.totals.registers, color: "var(--yellow)" },
+    { key: "ftds", label: t("First deposits"), value: detail.totals.ftds, color: "var(--teal)" },
+    { key: "redeposits", label: t("Redeposits"), value: detail.totals.redeposits, color: "var(--green)" },
+  ];
+  const top = Math.max(...stages.map((stage) => stage.value), 1);
+  return (
+    <ul className="ub-funnel">
+      {stages.map((stage, index) => {
+        const prev = index > 0 ? stages[index - 1].value : null;
+        const rate = prev && prev > 0 ? (stage.value / prev) * 100 : null;
+        return (
+          <li key={stage.key}>
+            <span className="ub-funnel-label">{stage.label}</span>
+            <span className="ub-funnel-track">
+              <span
+                className="ub-funnel-fill"
+                style={{
+                  width: `${stage.value > 0 ? Math.max((stage.value / top) * 100, 1.5) : 0}%`,
+                  background: stage.color,
+                }}
+              />
+            </span>
+            <span className="ub-funnel-value">{stage.value.toLocaleString()}</span>
+            <span className="ub-funnel-rate">
+              {rate === null ? "" : `${rate >= 10 ? rate.toFixed(0) : rate.toFixed(1)}%`}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
+};
+
+const Breakdown = ({ items, t, money = true, limit = 6 }) => {
+  const top = items.reduce((acc, item) => Math.max(acc, money ? item.revenue : item.clicks), 0);
+  return (
+    <ul className="ub-breakdown">
+      {items.slice(0, limit).map((item) => {
+        const value = money ? item.revenue : item.clicks;
+        return (
+          <li key={item.key}>
+            <span className="ub-breakdown-key" title={item.key}>
+              {item.key}
+            </span>
+            <span
+              className="ub-breakdown-share"
+              style={{ "--share": `${top > 0 ? Math.max((value / top) * 100, 2) : 0}%` }}
+            />
+            <span className="ub-breakdown-num">{item.clicks.toLocaleString()}</span>
+            <span className="ub-breakdown-rev">
+              {item.revenue > 0 ? formatCurrency(item.revenue) : "—"}
+            </span>
+          </li>
+        );
+      })}
+      {items.length > limit ? (
+        <li className="ub-breakdown-more">
+          {`+${(items.length - limit).toLocaleString()} ${t("more")}`}
+        </li>
+      ) : null}
+    </ul>
+  );
+};
+
+export const UserDetail = ({ externalId, rows, onClose, t = (x) => x, range, fetcher }) => {
+  const [detailRows, setDetailRows] = React.useState(null);
+  const [state, setState] = React.useState({ loading: false, error: null, truncated: false });
+
+  React.useEffect(() => {
+    if (!externalId || !fetcher) {
+      setDetailRows(null);
+      return undefined;
+    }
+    let cancelled = false;
+    setState({ loading: true, error: null, truncated: false });
+    const params = new URLSearchParams();
+    if (range?.from) params.set("from", range.from);
+    if (range?.to) params.set("to", range.to);
+    fetcher(`/api/user-behavior/${encodeURIComponent(externalId)}?${params.toString()}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Failed to load player detail.");
+        return response.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setDetailRows(Array.isArray(data?.rows) ? data.rows : []);
+        setState({ loading: false, error: null, truncated: Boolean(data?.truncated) });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        // Fall back to the list rows rather than showing nothing — they are
+        // coarser (no per-day series, no city) but still describe the player.
+        setDetailRows(null);
+        setState({ loading: false, error: error.message || "Failed to load player detail.", truncated: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [externalId, fetcher, range?.from, range?.to]);
+
+  const detail = React.useMemo(() => {
+    if (!externalId) return null;
+    const source = detailRows ?? rows;
+    return buildUserDetail(source, externalId);
+  }, [externalId, detailRows, rows]);
+
+  const usingFallback = detailRows === null && !state.loading;
 
   React.useEffect(() => {
     if (!externalId) return undefined;
@@ -377,26 +526,52 @@ export const UserDetail = ({ externalId, rows, onClose, t = (x) => x }) => {
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           >
             <header className="ub-drawer-head">
-              <div>
+              <div className="ub-drawer-headings">
                 <p className="ub-drawer-eyebrow">{t("Player")}</p>
                 <h3 className="ub-drawer-id">{detail.externalId}</h3>
-                <p className="ub-drawer-sub">
-                  {detail.buyer ? `${detail.buyer} · ` : ""}
-                  {detail.rowCount.toLocaleString()} {t("tracked rows")}
-                </p>
+                <div className="ub-drawer-tags">
+                  <span className="ub-badge" style={{ "--badge": TIER_BADGE[detail.tier].color }}>
+                    {t(TIER_BADGE[detail.tier].label)}
+                  </span>
+                  {detail.buyer ? <span className="ub-badge is-plain">{detail.buyer}</span> : null}
+                </div>
+                {detail.firstSeen ? (
+                  <p className="ub-drawer-sub">
+                    {detail.firstSeen === detail.lastSeen
+                      ? `${t("Seen")} ${detail.firstSeen}`
+                      : `${detail.firstSeen} → ${detail.lastSeen}`}
+                    {` · ${detail.activeDays.toLocaleString()} ${t("active days")}`}
+                  </p>
+                ) : null}
               </div>
               <button type="button" className="ub-drawer-close" onClick={onClose} aria-label={t("Close")}>
                 ×
               </button>
             </header>
 
+            {state.loading ? <p className="ub-drawer-note">{t("Loading player detail…")}</p> : null}
+            {usingFallback && state.error ? (
+              <p className="ub-drawer-note is-warn">
+                {t("Showing summary only — the per-day detail could not be loaded.")}
+              </p>
+            ) : null}
+            {state.truncated ? (
+              <p className="ub-drawer-note is-warn">{t("Showing the most recent rows only.")}</p>
+            ) : null}
+
             <div className="ub-drawer-totals">
               {[
                 { label: t("Revenue"), value: formatCurrency(detail.totals.revenue), accent: true },
+                { label: t("Deposits"), value: detail.deposits.toLocaleString() },
+                {
+                  label: t("Avg deposit"),
+                  value: detail.avgDeposit > 0 ? formatCurrency(detail.avgDeposit) : "—",
+                },
                 { label: t("Clicks"), value: detail.totals.clicks.toLocaleString() },
-                { label: t("Registers"), value: detail.totals.registers.toLocaleString() },
-                { label: t("FTDs"), value: detail.totals.ftds.toLocaleString() },
-                { label: t("Redeposits"), value: detail.totals.redeposits.toLocaleString() },
+                {
+                  label: t("Rev / click"),
+                  value: detail.revenuePerClick > 0 ? formatCurrency(detail.revenuePerClick) : "—",
+                },
               ].map((item) => (
                 <div key={item.label} className={`ub-drawer-total${item.accent ? " is-accent" : ""}`}>
                   <span>{item.label}</span>
@@ -405,62 +580,89 @@ export const UserDetail = ({ externalId, rows, onClose, t = (x) => x }) => {
               ))}
             </div>
 
+            <section className="ub-drawer-block">
+              <h4>{t("Journey")}</h4>
+              <FunnelBars detail={detail} t={t} />
+            </section>
+
+            {detail.totals.revenue > 0 ? (
+              <section className="ub-drawer-block">
+                <h4>{t("Revenue split")}</h4>
+                <div className="ub-split">
+                  {[
+                    { label: t("First deposit"), value: detail.totals.ftdRevenue, color: "var(--teal)" },
+                    { label: t("Redeposits"), value: detail.totals.redepositRevenue, color: "var(--green)" },
+                  ].map((part) => {
+                    const base = detail.totals.ftdRevenue + detail.totals.redepositRevenue;
+                    const pct = base > 0 ? (part.value / base) * 100 : 0;
+                    return (
+                      <div className="ub-split-row" key={part.label}>
+                        <span className="ub-split-label">{part.label}</span>
+                        <span className="ub-split-track">
+                          <span style={{ width: `${pct}%`, background: part.color }} />
+                        </span>
+                        <span className="ub-split-value">{formatCurrency(part.value)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
             {detail.days.length > 1 ? (
               <section className="ub-drawer-block">
-                <h4>{t("Activity")}</h4>
+                <h4>{t("Activity by day")}</h4>
+                {/* Clicks as bars, revenue as a line on its own axis: revenue is
+                    orders of magnitude smaller and would be a flat zero if both
+                    shared one scale. */}
                 <div className="chart chart-surface">
-                  <ResponsiveContainer width="100%" height={116}>
-                    <AreaChart data={detail.days} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                      <XAxis dataKey="key" tickLine={false} axisLine={false} tick={axisTick} minTickGap={24} />
+                  <ResponsiveContainer width="100%" height={148}>
+                    <ComposedChart data={detail.days} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                      <XAxis
+                        dataKey="key"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={axisTick}
+                        minTickGap={28}
+                        tickFormatter={(value) => String(value).slice(5)}
+                      />
+                      <YAxis yAxisId="left" tickLine={false} axisLine={false} tick={axisTick} width={34} />
+                      <YAxis yAxisId="right" orientation="right" hide />
                       <Tooltip
                         contentStyle={tooltipSurface}
-                        formatter={(value, name) => [
-                          name === "revenue" ? formatCurrency(value) : Number(value).toLocaleString(),
-                          name === "revenue" ? t("Revenue") : t("Clicks"),
-                        ]}
+                        formatter={(value, name) =>
+                          name === "revenue"
+                            ? [formatCurrency(value), t("Revenue")]
+                            : [Number(value).toLocaleString(), t("Clicks")]
+                        }
                       />
-                      <Area
-                        type="monotone"
-                        dataKey="clicks"
-                        stroke="var(--blue)"
-                        strokeWidth={1.5}
-                        fill="rgba(100,184,255,0.12)"
-                        isAnimationActive={false}
-                      />
-                      <Area
+                      <Bar yAxisId="left" dataKey="clicks" fill="rgba(100,184,255,0.5)" radius={[3, 3, 0, 0]} />
+                      <Line
+                        yAxisId="right"
                         type="monotone"
                         dataKey="revenue"
                         stroke="var(--green)"
                         strokeWidth={2}
-                        fill="rgba(54,208,124,0.16)"
+                        dot={{ r: 2.5, fill: "var(--green)", strokeWidth: 0 }}
                         isAnimationActive={false}
                       />
-                    </AreaChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </section>
             ) : null}
 
             {[
-              { title: t("Campaigns"), items: detail.campaigns },
-              { title: t("Countries"), items: detail.countries },
+              { title: t("Campaigns"), items: detail.campaigns, money: true },
+              { title: t("Countries"), items: detail.countries, money: true },
+              { title: t("Cities"), items: detail.cities, money: false },
+              { title: t("Devices"), items: detail.devices, money: false },
             ].map((block) =>
               block.items.length ? (
                 <section className="ub-drawer-block" key={block.title}>
                   <h4>{block.title}</h4>
-                  <ul className="ub-breakdown">
-                    {block.items.slice(0, 8).map((item) => (
-                      <li key={item.key}>
-                        <span className="ub-breakdown-key" title={item.key}>
-                          {item.key}
-                        </span>
-                        <span className="ub-breakdown-num">{item.clicks.toLocaleString()}</span>
-                        <span className="ub-breakdown-rev">
-                          {item.revenue > 0 ? formatCurrency(item.revenue) : "—"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <Breakdown items={block.items} t={t} money={block.money} />
                 </section>
               ) : null
             )}

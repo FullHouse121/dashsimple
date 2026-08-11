@@ -19923,3 +19923,113 @@ select option,
 /* Card meta grows a second line when it carries a copyable ID */
 .ub-card-meta { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .ub-rank-col { width: 44px; }
+
+/* ── User Behavior drawer: profile, funnel, splits ─────────────────────── */
+.ub-drawer-headings { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.ub-drawer-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid color-mix(in srgb, var(--badge, var(--stroke)) 40%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--badge, var(--stroke)) 14%, transparent);
+  color: var(--badge, var(--muted-strong));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.ub-badge.is-plain {
+  border-color: var(--stroke);
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-weight: 500;
+}
+.ub-drawer-note {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+.ub-drawer-note.is-warn { border-color: rgba(247, 198, 37, 0.32); color: var(--yellow); }
+
+/* Funnel */
+.ub-funnel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.ub-funnel li {
+  display: grid;
+  grid-template-columns: 92px 1fr auto 44px;
+  align-items: center;
+  gap: 10px;
+}
+.ub-funnel-label { color: var(--muted); font-size: 12px; }
+.ub-funnel-track {
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.045);
+  overflow: hidden;
+}
+.ub-funnel-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  opacity: 0.85;
+  transition: width 0.4s var(--ease-smooth);
+}
+.ub-funnel-value {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ub-funnel-rate {
+  text-align: right;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Revenue split */
+.ub-split { display: flex; flex-direction: column; gap: 8px; }
+.ub-split-row { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 10px; }
+.ub-split-label { color: var(--muted); font-size: 12px; }
+.ub-split-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+.ub-split-track span { display: block; height: 100%; border-radius: 999px; transition: width 0.4s var(--ease-smooth); }
+.ub-split-value {
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Breakdown rows gain a share bar */
+.ub-breakdown li { grid-template-columns: 1fr 46px auto auto; }
+.ub-breakdown-share {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--green) 0,
+    var(--green) var(--share, 0%),
+    rgba(255, 255, 255, 0.07) var(--share, 0%)
+  );
+}
+.ub-breakdown-more {
+  display: block;
+  padding: 7px 12px;
+  color: var(--faint);
+  font-size: 11.5px;
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ub-funnel-fill, .ub-split-track span { transition: none; }
+}

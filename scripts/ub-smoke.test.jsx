@@ -14,9 +14,12 @@ const users = [
   { externalId: "plainclicker", clicks: 7, registers: 0, ftds: 0, redeposits: 0, revenue: 0, ftdRevenue: 0 },
 ];
 const rows = [
-  { date: "2026-08-06", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", clicks: 15, registers: 0, ftds: 1, redeposits: 0, revenue: 15.75 },
-  { date: "2026-08-07", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", clicks: 9, registers: 0, ftds: 0, redeposits: 0, revenue: 0 },
+  { date: "2026-08-06", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", city: "Torno Largo", device: "Unknown", os: "", clicks: 15, registers: 0, ftds: 1, redeposits: 0, revenue: 15.75, ftd_revenue: 15.75, redeposit_revenue: 0 },
+  { date: "2026-08-07", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", city: "Humaita", device: "mobile", os: "Android", clicks: 9, registers: 0, ftds: 0, redeposits: 0, revenue: 0, ftd_revenue: 0, redeposit_revenue: 0 },
 ];
+// What /api/user-behavior/:externalId returns: no external_id column, since
+// every row already belongs to the requested player.
+const detailRows = rows.map(({ external_id, ...rest }) => rest);
 
 let failed = 0;
 const check = (name, fn) => {
@@ -48,6 +51,26 @@ check("user detail sums only that player", () => {
   eq(Number(d.totals.revenue.toFixed(2)), 15.75, "revenue");
   eq(d.campaigns.length, 1, "campaigns"); eq(d.days.length, 2, "days");
 });
+check("detail rows without an external_id column are accepted", () => {
+  const d = buildUserDetail(detailRows, "1bJCoJghbfsaRJlU");
+  eq(d.totals.clicks, 24, "clicks");
+  eq(d.days.length, 2, "days");
+});
+check("derived per-player measures", () => {
+  const d = buildUserDetail(detailRows, "1bJCoJghbfsaRJlU");
+  eq(d.deposits, 1, "deposits");
+  eq(Number(d.avgDeposit.toFixed(2)), 15.75, "avgDeposit");
+  eq(d.firstSeen, "2026-08-06", "firstSeen");
+  eq(d.lastSeen, "2026-08-07", "lastSeen");
+  eq(d.activeDays, 2, "activeDays");
+  eq(d.tier, "ftd", "tier");
+  eq(d.cities.length, 2, "cities");
+});
+check("Keitaro's \"Unknown\" device is not counted as a device", () => {
+  const d = buildUserDetail(detailRows, "1bJCoJghbfsaRJlU");
+  eq(d.devices.length, 1, "devices");
+  eq(d.devices[0].key, "mobile \u00b7 Android", "device label");
+});
 check("shortId keeps head and tail distinguishable", () => {
   eq(shortId("019f8aba-8a3d-7e10-8516-b60418995a53"), "019f8ab…5a53", "shortId");
   eq(shortId("short"), "short", "passthrough");
@@ -63,7 +86,8 @@ for (const [name, el] of [
   ["Concentration (no revenue)", <Concentration users={[users[3]]} />],
   ["CopyId", <CopyId value="1bJCoJghbfsaRJlU" />],
   ["CopyId (empty)", <CopyId value="" />],
-  ["UserDetail", <UserDetail externalId="1bJCoJghbfsaRJlU" rows={rows} onClose={() => {}} />],
+  ["UserDetail (fallback rows)", <UserDetail externalId="1bJCoJghbfsaRJlU" rows={rows} onClose={() => {}} />],
+  ["UserDetail (no revenue)", <UserDetail externalId="plainclicker" rows={[{ date: "2026-08-06", external_id: "plainclicker", clicks: 7, registers: 0, ftds: 0, redeposits: 0, revenue: 0 }]} onClose={() => {}} />],
   ["UserDetail (closed)", <UserDetail externalId={null} rows={rows} onClose={() => {}} />],
 ]) check(name, () => renderToString(el));
 

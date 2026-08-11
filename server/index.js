@@ -6822,6 +6822,70 @@ app.get("/api/user-behavior", async (req, res) => {
   res.json(rows);
 });
 
+// One player, full detail. The list endpoint above groups by
+// (external_id, buyer, country, campaign) and returns MAX(date), so it cannot
+// answer "what did this player do, day by day" — and it drops region, city,
+// device and os entirely. This reads the raw rows for a single external_id,
+// which idx_user_behavior_extid (external_id, date DESC, id DESC) serves as one
+// index seek rather than a scan.
+app.get("/api/user-behavior/:externalId", async (req, res) => {
+  const externalId = String(req.params.externalId || "").trim();
+  // External IDs are Keitaro-generated: hashes or UUIDs. Anything else is not a
+  // real player, and rejecting early keeps a wildcard out of the index seek.
+  if (!externalId || externalId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(externalId)) {
+    return res.status(400).json({ error: "Invalid external ID." });
+  }
+
+  const dayParam = (v) => {
+    const m = String(v || "").match(/^\d{4}-\d{2}-\d{2}$/);
+    return m ? m[0] : null;
+  };
+  const today = isoDay(new Date());
+  let to = dayParam(req.query.to) || today;
+  let from = dayParam(req.query.from) || isoDay(new Date(Date.now() - 29 * 86400000));
+  if (from > to) [from, to] = [to, from];
+
+  const MAX_ROWS = Number.parseInt(process.env.USER_BEHAVIOR_DETAIL_ROWS ?? "3000", 10) || 3000;
+
+  try {
+    let rows = await getRows(
+      `SELECT date, buyer, campaign, country, region, city,
+              device, os, os_version, device_model,
+              COALESCE(clicks, 0)::int AS clicks,
+              COALESCE(registers, 0)::int AS registers,
+              COALESCE(ftds, 0)::int AS ftds,
+              COALESCE(redeposits, 0)::int AS redeposits,
+              COALESCE(revenue, 0)::float8 AS revenue,
+              COALESCE(ftd_revenue, 0)::float8 AS ftd_revenue,
+              COALESCE(redeposit_revenue, 0)::float8 AS redeposit_revenue
+         FROM user_behavior
+        WHERE external_id = $1 AND date >= $2 AND date <= $3
+        ORDER BY date ASC
+        LIMIT $4`,
+      [externalId, from, to, MAX_ROWS]
+    );
+
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+    if (viewerBuyer) {
+      rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
+      // A buyer asking about someone else's player gets nothing, not a partial.
+      if (!rows.length) return res.json({ externalId, from, to, rows: [], truncated: false });
+    }
+
+    res.json({
+      externalId,
+      from,
+      to,
+      rows,
+      // Say so rather than quietly showing a clipped picture.
+      truncated: rows.length >= MAX_ROWS,
+    });
+  } catch (error) {
+    console.error("user-behavior detail failed:", error.message);
+    res.status(500).json({ error: "Failed to load player detail." });
+  }
+});
+
 app.get("/api/device-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
