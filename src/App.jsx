@@ -195,6 +195,7 @@ const ConversionsDashboard = React.lazy(() => import("./dashboards/ConversionsDa
 const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
+import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import {
   CopyId,
   ValueTiers,
@@ -12473,7 +12474,6 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const [behaviorState, setBehaviorState] = React.useState({ loading: true, error: null });
   const [search, setSearch] = React.useState("");
   const [behaviorFilter, setBehaviorFilter] = React.useState("Top User By Total Revenue");
-  const [ubPage, setUbPage] = React.useState(1);
 
   const fetchBehavior = React.useCallback(async () => {
     try {
@@ -12532,13 +12532,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const globalUserMinFtds = Number(filters?.userMinFtds || 0);
   const globalUserMinRedeposits = Number(filters?.userMinRedeposits || 0);
   const globalUserRevenueOnly = Boolean(filters?.userRevenueOnly);
-  const globalBrandFilter = String(filters?.statsBrand || "").trim();
-  const globalGameFilter = String(filters?.statsGame || "").trim();
-  const globalToolFilter = String(filters?.statsTool || "").trim();
-  const globalPlacementFilter = String(filters?.statsPlacement || "").trim();
-  const globalMinClicks = Number(filters?.statsMinClicks || 0);
-  const globalMinFtds = Number(filters?.statsMinFtds || 0);
-  const globalProfitableOnly = Boolean(filters?.statsProfitableOnly);
+  // statsBrand/statsGame/statsTool and the stats thresholds are Statistics-only
+  // controls (rendered behind isStats); this view has its own brand filter.
 
   const normalizedSearch = search.trim().toLowerCase();
   const sum = (value) => Number(value || 0);
@@ -12599,6 +12594,35 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         : behaviorRows.filter((row) => campaignBrand(row.campaign) === brandFilter),
     [behaviorRows, brandFilter]
   );
+
+  // Spend lives in media_stats, not user_behavior, and the comparison window
+  // needs a second aggregation — both are cheaper to do in SQL than to ship two
+  // periods of rows to the browser.
+  const [economics, setEconomics] = React.useState(null);
+  const [economicsLoading, setEconomicsLoading] = React.useState(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (effectiveDateRange.from) params.set("from", effectiveDateRange.from);
+    if (effectiveDateRange.to) params.set("to", effectiveDateRange.to);
+    if (brandFilter && brandFilter !== "All") params.set("brand", brandFilter);
+    setEconomicsLoading(true);
+    apiFetch(`/api/user-behavior/economics?${params.toString()}`)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("economics"))))
+      .then((data) => {
+        if (!cancelled) setEconomics(data);
+      })
+      .catch(() => {
+        // Leave the row on its client-side maths rather than blanking it.
+        if (!cancelled) setEconomics(null);
+      })
+      .finally(() => {
+        if (!cancelled) setEconomicsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveDateRange.from, effectiveDateRange.to, brandFilter]);
 
   const userData = React.useMemo(() => {
     const map = new Map();
@@ -12760,33 +12784,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       )
     );
   }, [tieredUsers, userTableSort]);
-  const UB_PAGE_SIZE = 50;
-  const ubPageCount = Math.max(1, Math.ceil(sortedUserTableRows.length / UB_PAGE_SIZE));
-  const ubClampedPage = Math.min(ubPage, ubPageCount);
+  // Pagination comes from components/Pager.jsx — this view had its own copy of
+  // the same clamp/window/page-list logic, which is exactly what that module
+  // was extracted to stop.
+  const UB_PAGE_SIZE = PAGE_SIZE;
+  const ubPagination = usePagination(sortedUserTableRows.length, UB_PAGE_SIZE);
+  const ubClampedPage = ubPagination.page;
+  const ubPageCount = ubPagination.pageCount;
   const pagedUserTableRows = React.useMemo(
-    () => sortedUserTableRows.slice((ubClampedPage - 1) * UB_PAGE_SIZE, ubClampedPage * UB_PAGE_SIZE),
-    [sortedUserTableRows, ubClampedPage]
+    () => sortedUserTableRows.slice(ubPagination.from, ubPagination.to),
+    [sortedUserTableRows, ubPagination.from, ubPagination.to]
   );
-  const ubPageList = React.useMemo(() => {
-    const total = ubPageCount;
-    const cur = ubClampedPage;
-    const out = [];
-    if (total <= 7) {
-      for (let i = 1; i <= total; i += 1) out.push(i);
-    } else {
-      out.push(1);
-      const start = Math.max(2, cur - 1);
-      const end = Math.min(total - 1, cur + 1);
-      if (start > 2) out.push("ellipsis");
-      for (let i = start; i <= end; i += 1) out.push(i);
-      if (end < total - 1) out.push("ellipsis");
-      out.push(total);
-    }
-    return out;
-  }, [ubPageCount, ubClampedPage]);
-  React.useEffect(() => {
-    setUbPage(1);
-  }, [sortedUserTableRows]);
 
   const behaviorFilterOptions = [
     "Tracked Users",
@@ -12919,8 +12927,15 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           />
           <PlayerEconomics
             users={tieredUsers}
+            economics={economics}
+            loading={economicsLoading}
             t={t}
             periodLabel={period === "All" ? "" : period}
+            priorLabel={
+              economics?.prior?.from
+                ? `${economics.prior.from} → ${economics.prior.to}`
+                : ""
+            }
           />
         </motion.section>
       ) : null}
@@ -13007,6 +13022,16 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             <div>
               <h3 className="panel-title">{t("User Behavior")}</h3>
               <p className="panel-subtitle">{t("External ID performance and campaign attribution.")}</p>
+            </div>
+            <div className="panel-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={exportUsers}
+                disabled={!sortedUserTableRows.length}
+              >
+                {t("Export CSV")}
+              </button>
             </div>
           </div>
 
@@ -13101,51 +13126,16 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 </tbody>
               </table>
             </div>
-            {sortedUserTableRows.length > UB_PAGE_SIZE ? (
-              <div className="offer-pagebar">
-                <span className="offer-results-count">
-                  {t("Showing")} {(ubClampedPage - 1) * UB_PAGE_SIZE + 1}–
-                  {Math.min(ubClampedPage * UB_PAGE_SIZE, sortedUserTableRows.length)} {t("of")}{" "}
-                  {sortedUserTableRows.length}
-                </span>
-                <div className="offer-pagination">
-                  <button
-                    type="button"
-                    className="offer-pagination-arrow"
-                    disabled={ubClampedPage <= 1}
-                    onClick={() => setUbPage((p) => Math.max(1, p - 1))}
-                    aria-label={t("Previous page")}
-                  >
-                    ‹
-                  </button>
-                  {ubPageList.map((p, i) =>
-                    p === "ellipsis" ? (
-                      <span key={`ub-ellipsis-${i}`} className="offer-pagination-ellipsis">
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        key={p}
-                        className={`offer-pagination-page ${p === ubClampedPage ? "is-active" : ""}`}
-                        onClick={() => setUbPage(p)}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-                  <button
-                    type="button"
-                    className="offer-pagination-arrow"
-                    disabled={ubClampedPage >= ubPageCount}
-                    onClick={() => setUbPage((p) => Math.min(ubPageCount, p + 1))}
-                    aria-label={t("Next page")}
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-            ) : null}
+            <Pager
+              page={ubPagination.page}
+              pageCount={ubPagination.pageCount}
+              pageList={ubPagination.pageList}
+              setPage={ubPagination.setPage}
+              from={ubPagination.from}
+              shown={pagedUserTableRows.length}
+              total={sortedUserTableRows.length}
+              noun={t("players")}
+            />
             </>
           )}
         </motion.div>

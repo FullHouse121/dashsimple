@@ -20174,3 +20174,26 @@ select option,
   outline: 2px solid var(--green);
   outline-offset: -2px;
 }
+
+/* Economics deltas and unavailable metrics */
+.ub-econ.is-loading { opacity: 0.55; transition: opacity 0.2s var(--ease-smooth); }
+.ub-econ-cell.is-muted { border-left-color: var(--stroke-strong); }
+.ub-econ-cell.is-muted .ub-econ-value { color: var(--faint); }
+.ub-delta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ub-delta em { font-style: normal; font-weight: 500; color: var(--faint); font-size: 10.5px; }
+.ub-delta.is-up { color: var(--green); }
+.ub-delta.is-down { color: var(--red); }
+.ub-delta.is-flat { color: var(--faint); font-weight: 500; }
+.ub-econ-foot {
+  margin: 10px 0 0;
+  color: var(--faint);
+  font-size: 11.5px;
+  line-height: 1.5;
+}

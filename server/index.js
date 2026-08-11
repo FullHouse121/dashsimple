@@ -1226,7 +1226,10 @@ const insertMediaStat = async (payload) => {
 // This clause is a deliberate SUPERSET of viewerOwnsRow (which still runs
 // afterwards as the precise gate) — it only has to stop the LIMIT from
 // discarding the viewer's rows.
-const buyerScopeClause = (viewerBuyer, paramOffset = 0) => {
+// campaignColumn is configurable because the column is `campaign_name` on
+// media_stats but `campaign` on user_behavior — naming the wrong one is not a
+// wrong answer, it is a 42703 that takes the whole query down.
+const buyerScopeClause = (viewerBuyer, paramOffset = 0, campaignColumn = "campaign_name") => {
   const forms = buyerShortForms(viewerBuyer);
   if (!forms.length) return { sql: "", params: [] };
   const params = [];
@@ -1242,7 +1245,9 @@ const buyerScopeClause = (viewerBuyer, paramOffset = 0) => {
     params.push(normalized);
     parts.push(`$${paramOffset + params.length} LIKE REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g') || '%'`);
     params.push(`%${normalized}%`);
-    parts.push(`REGEXP_REPLACE(LOWER(COALESCE(campaign_name, '')), '[^a-z0-9]+', '', 'g') LIKE $${paramOffset + params.length}`);
+    parts.push(
+      `REGEXP_REPLACE(LOWER(COALESCE(${campaignColumn}, '')), '[^a-z0-9]+', '', 'g') LIKE $${paramOffset + params.length}`
+    );
   });
   if (!parts.length) return { sql: "", params: [] };
   return { sql: `(${parts.join(" OR ")})`, params };
@@ -6820,6 +6825,122 @@ app.get("/api/user-behavior", async (req, res) => {
     rows = rows.filter((row) => viewerOwnsRow(row, viewerBuyer));
   }
   res.json(rows);
+});
+
+// Section economics: what a player is worth, what they cost, and whether both
+// moved. user_behavior carries no spend at all, so revenue-side measures come
+// from there and cost from media_stats over the same window. Aggregated in SQL
+// for both windows rather than shipping two periods of rows to the browser.
+app.get("/api/user-behavior/economics", async (req, res) => {
+  const dayParam = (v) => {
+    const m = String(v || "").match(/^\d{4}-\d{2}-\d{2}$/);
+    return m ? m[0] : null;
+  };
+  const today = isoDay(new Date());
+  let to = dayParam(req.query.to) || today;
+  let from = dayParam(req.query.from) || isoDay(new Date(Date.now() - 29 * 86400000));
+  if (from > to) [from, to] = [to, from];
+
+  // The comparison window is the same number of days immediately before, so a
+  // 7-day period compares against the 7 before it and not a calendar month.
+  const dayMs = 86400000;
+  const spanDays = Math.max(
+    1,
+    Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / dayMs) + 1
+  );
+  const priorTo = isoDay(new Date(new Date(`${from}T00:00:00Z`).getTime() - dayMs));
+  const priorFrom = isoDay(new Date(new Date(`${priorTo}T00:00:00Z`).getTime() - (spanDays - 1) * dayMs));
+
+  const brand = String(req.query.brand || "").trim().toUpperCase();
+  const brandIsAll = !brand || brand === "ALL";
+
+  try {
+    const viewerBuyer = await resolveViewerBuyer(req.user);
+
+    const revenueSide = async (windowFrom, windowTo) => {
+      const params = [windowFrom, windowTo];
+      let where = `date >= $1 AND date <= $2`;
+      if (!brandIsAll) {
+        params.push(brand);
+        where += ` AND UPPER(TRIM(split_part(campaign, '|', 5))) = $${params.length}`;
+      }
+      const scope = buyerScopeClause(viewerBuyer, params.length, "campaign");
+      if (scope.sql) {
+        where += ` AND ${scope.sql}`;
+        params.push(...scope.params);
+      }
+      const row = await getRow(
+        `WITH per_user AS (
+           SELECT external_id,
+                  SUM(COALESCE(clicks,0))::bigint AS clicks,
+                  SUM(COALESCE(registers,0))::bigint AS registers,
+                  SUM(COALESCE(ftds,0))::bigint + SUM(COALESCE(redeposits,0))::bigint AS deposits,
+                  SUM(COALESCE(revenue,0)::float8) AS revenue
+             FROM user_behavior
+            WHERE ${where}
+            GROUP BY external_id)
+         SELECT COUNT(*)::int AS players,
+                COUNT(*) FILTER (WHERE deposits > 0)::int AS depositors,
+                COUNT(*) FILTER (WHERE deposits >= 2)::int AS repeat_depositors,
+                COALESCE(SUM(clicks),0)::bigint AS clicks,
+                COALESCE(SUM(registers),0)::bigint AS registers,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM per_user`,
+        params
+      );
+      return {
+        players: Number(row?.players || 0),
+        depositors: Number(row?.depositors || 0),
+        repeatDepositors: Number(row?.repeat_depositors || 0),
+        clicks: Number(row?.clicks || 0),
+        registers: Number(row?.registers || 0),
+        revenue: Number(row?.revenue || 0),
+      };
+    };
+
+    const costSide = async (windowFrom, windowTo) => {
+      const params = [windowFrom, windowTo];
+      let where = `date >= $1 AND date <= $2`;
+      if (!brandIsAll) {
+        params.push(brand);
+        where += ` AND UPPER(TRIM(COALESCE(brand, ''))) = $${params.length}`;
+      }
+      const scope = buyerScopeClause(viewerBuyer, params.length, "campaign_name");
+      if (scope.sql) {
+        where += ` AND ${scope.sql}`;
+        params.push(...scope.params);
+      }
+      const row = await getRow(
+        `SELECT COALESCE(SUM(COALESCE(spend,0)::float8),0) AS spend,
+                COUNT(*) FILTER (WHERE COALESCE(spend,0) > 0)::int AS rows_with_spend
+           FROM media_stats WHERE ${where}`,
+        params
+      );
+      return {
+        spend: Number(row?.spend || 0),
+        rowsWithSpend: Number(row?.rows_with_spend || 0),
+      };
+    };
+
+    const [current, prior, currentCost, priorCost] = await Promise.all([
+      revenueSide(from, to),
+      revenueSide(priorFrom, priorTo),
+      costSide(from, to),
+      costSide(priorFrom, priorTo),
+    ]);
+
+    res.json({
+      from,
+      to,
+      prior: { from: priorFrom, to: priorTo },
+      brand: brandIsAll ? "All" : brand,
+      current: { ...current, ...currentCost },
+      previous: { ...prior, ...priorCost },
+    });
+  } catch (error) {
+    console.error("user-behavior economics failed:", error.message);
+    res.status(500).json({ error: "Failed to load economics." });
+  }
 });
 
 // One player, full detail. The list endpoint above groups by

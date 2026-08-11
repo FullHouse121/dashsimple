@@ -4,7 +4,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import {
   buildTiers, buildConcentration, buildUserDetail, shortId,
-  campaignBrand, buildBrandOptions, buildEconomics,
+  campaignBrand, buildBrandOptions, buildEconomics, shapeEconomics,
   ValueTiers, TopPlayers, Concentration, UserDetail, CopyId, PlayerEconomics,
 } from "../src/components/UserBehaviorInsights.jsx";
 
@@ -107,6 +107,28 @@ check("economics are divide-by-zero safe", () => {
   eq(e.arpu, 0, "arpu"); eq(e.ltv, 0, "ltv");
   eq(e.clickToDeposit, 0, "clickToDeposit"); eq(e.repeatRate, 0, "repeatRate");
 });
+check("both economics paths return the same keys", () => {
+  const a = Object.keys(buildEconomics(users)).sort();
+  const b = Object.keys(shapeEconomics({ revenue: 1, spend: 1, players: 1, depositors: 1, clicks: 1 })).sort();
+  for (const key of b) if (!a.includes(key)) throw new Error(`client path is missing "${key}"`);
+});
+
+check("ROAS is null when no spend was recorded", () => {
+  const e = shapeEconomics({ revenue: 113.88, spend: 0, players: 14695, depositors: 25, clicks: 30000, repeatDepositors: 4 });
+  eq(e.roas, null, "roas");
+  eq(e.profit, null, "profit");
+  eq(Number(e.ltv.toFixed(2)), 4.56, "ltv still computed");
+});
+check("ROAS and profit where spend exists", () => {
+  const e = shapeEconomics({ revenue: 673.25, spend: 114.03, players: 3822, depositors: 122, clicks: 100, repeatDepositors: 40 });
+  eq(e.roas.toFixed(2), "5.90", "roas");
+  eq(Number(e.profit.toFixed(2)), 559.22, "profit");
+  eq(e.repeatRate.toFixed(1), "32.8", "repeatRate");
+});
+check("shapeEconomics is divide-by-zero safe", () => {
+  const e = shapeEconomics({});
+  eq(e.arpu, 0, "arpu"); eq(e.ltv, 0, "ltv"); eq(e.roas, null, "roas");
+});
 
 console.log("render:");
 for (const [name, el] of [
@@ -117,6 +139,16 @@ for (const [name, el] of [
   ["Concentration", <Concentration users={users} />],
   ["Concentration (no revenue)", <Concentration users={[users[3]]} />],
   ["PlayerEconomics", <PlayerEconomics users={users} periodLabel="This Month" />],
+  ["PlayerEconomics (API + deltas)", <PlayerEconomics users={users} priorLabel="2026-07-21 → 2026-07-31" economics={{
+    prior: { from: "2026-07-21", to: "2026-07-31" },
+    current:  { players: 18667, depositors: 149, repeatDepositors: 50, clicks: 40000, revenue: 827.05, spend: 114.03 },
+    previous: { players: 10243, depositors: 181, repeatDepositors: 60, clicks: 30000, revenue: 2014.18, spend: 0 },
+  }} />],
+  ["PlayerEconomics (no spend either side)", <PlayerEconomics users={users} priorLabel="prev" economics={{
+    prior: { from: "2026-07-21", to: "2026-07-31" },
+    current:  { players: 10, depositors: 2, repeatDepositors: 1, clicks: 100, revenue: 50, spend: 0 },
+    previous: { players: 0, depositors: 0, repeatDepositors: 0, clicks: 0, revenue: 0, spend: 0 },
+  }} />],
   ["PlayerEconomics (empty)", <PlayerEconomics users={[]} />],
   ["CopyId", <CopyId value="1bJCoJghbfsaRJlU" />],
   ["CopyId (empty)", <CopyId value="" />],

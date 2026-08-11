@@ -108,6 +108,13 @@ export const buildEconomics = (users) => {
   return {
     ...totals,
     players,
+    // user_behavior carries no cost, so the client path can never know spend.
+    // Returning the same keys as shapeEconomics (rather than omitting them)
+    // keeps the two shapes interchangeable — an absent key reads as undefined
+    // and slips past a `=== null` guard.
+    spend: 0,
+    roas: null,
+    profit: null,
     arpu: players > 0 ? totals.revenue / players : 0,
     ltv: totals.depositors > 0 ? totals.revenue / totals.depositors : 0,
     clickToDeposit: totals.clicks > 0 ? (totals.depositors / totals.clicks) * 100 : 0,
@@ -116,51 +123,165 @@ export const buildEconomics = (users) => {
   };
 };
 
-export const PlayerEconomics = ({ users, t = (x) => x, periodLabel }) => {
-  const economics = React.useMemo(() => buildEconomics(users), [users]);
-  if (!users.length) return null;
+// Derives the same shape from an API economics payload as buildEconomics does
+// from client rows, so both paths render through one component.
+export const shapeEconomics = (side) => {
+  if (!side) return null;
+  const revenue = Number(side.revenue || 0);
+  const spend = Number(side.spend || 0);
+  const players = Number(side.players || 0);
+  const depositors = Number(side.depositors || 0);
+  const clicks = Number(side.clicks || 0);
+  const repeat = Number(side.repeatDepositors ?? side.repeat ?? 0);
+  return {
+    revenue,
+    spend,
+    players,
+    depositors,
+    clicks,
+    repeat,
+    arpu: players > 0 ? revenue / players : 0,
+    ltv: depositors > 0 ? revenue / depositors : 0,
+    clickToDeposit: clicks > 0 ? (depositors / clicks) * 100 : 0,
+    repeatRate: depositors > 0 ? (repeat / depositors) * 100 : 0,
+    // Only meaningful where cost was actually recorded. Dividing by zero spend
+    // renders as infinite profit, which is worse than showing nothing.
+    roas: spend > 0 ? revenue / spend : null,
+    profit: spend > 0 ? revenue - spend : null,
+  };
+};
+
+const Delta = ({ current, previous, invert = false, t }) => {
+  if (previous === null || previous === undefined || !Number.isFinite(previous) || previous === 0) {
+    return <span className="ub-delta is-flat">{t("no prior data")}</span>;
+  }
+  const change = ((current - previous) / Math.abs(previous)) * 100;
+  if (!Number.isFinite(change)) return null;
+  const flat = Math.abs(change) < 0.05;
+  const magnitude = Math.abs(change) >= 10 ? Math.abs(change).toFixed(0) : Math.abs(change).toFixed(1);
+  // invert: for cost, spending less is the good direction.
+  const good = invert ? change < 0 : change > 0;
+  return (
+    <span className={`ub-delta${flat ? " is-flat" : good ? " is-up" : " is-down"}`}>
+      {flat ? "0%" : `${change > 0 ? "▲" : "▼"} ${magnitude}%`}
+      <em>{t("vs prior")}</em>
+    </span>
+  );
+};
+
+export const PlayerEconomics = ({
+  users,
+  economics,
+  loading = false,
+  t = (x) => x,
+  periodLabel,
+  priorLabel,
+}) => {
+  // API payload when it arrives, client-side maths otherwise, so the row still
+  // says something useful if /economics fails.
+  const fallback = React.useMemo(() => buildEconomics(users || []), [users]);
+  const current = economics?.current ? shapeEconomics(economics.current) : fallback;
+  const previous = economics?.previous ? shapeEconomics(economics.previous) : null;
+  if (!users?.length && !economics) return null;
+
+  const pct = (value) =>
+    value > 0 && value < 1 ? `${value.toFixed(2)}%` : `${value.toFixed(value >= 10 ? 0 : 1)}%`;
 
   const metrics = [
     {
       label: t("ARPU"),
-      value: formatCurrency(economics.arpu),
-      hint: `${t("Revenue ÷ all")} ${economics.players.toLocaleString()} ${t("players")}`,
+      value: formatCurrency(current.arpu),
+      hint: `${t("Revenue ÷ all")} ${current.players.toLocaleString()} ${t("players")}`,
       accent: "var(--blue)",
+      delta: previous ? { current: current.arpu, previous: previous.arpu } : null,
     },
     {
       label: t("LTV"),
-      value: formatCurrency(economics.ltv),
-      // Not lifetime: the API caps the window at 45 days. Saying "LTV" without
-      // that caveat would overstate what this number covers.
-      hint: `${t("Revenue ÷")} ${economics.depositors.toLocaleString()} ${t("depositors")}${
+      value: formatCurrency(current.ltv),
+      // Not lifetime: the window is capped at 45 days. Saying "LTV" without the
+      // period would overstate what this number covers.
+      hint: `${t("Revenue ÷")} ${current.depositors.toLocaleString()} ${t("depositors")}${
         periodLabel ? ` · ${periodLabel}` : ""
       }`,
       accent: "var(--green)",
+      delta: previous ? { current: current.ltv, previous: previous.ltv } : null,
+    },
+    {
+      label: t("Spend"),
+      value: current.spend > 0 ? formatCurrency(current.spend) : "—",
+      hint:
+        current.spend > 0
+          ? t("Cost recorded in this window")
+          : t("No spend recorded for this selection"),
+      accent: "var(--orange)",
+      delta:
+        previous && current.spend > 0
+          ? { current: current.spend, previous: previous.spend, invert: true }
+          : null,
+      muted: current.spend <= 0,
+    },
+    {
+      label: t("ROAS"),
+      value: current.roas === null ? "—" : `${current.roas.toFixed(2)}x`,
+      hint:
+        current.roas === null
+          ? t("Needs spend data to calculate")
+          : `${formatCurrency(current.revenue)} ${t("back on")} ${formatCurrency(current.spend)}`,
+      accent: current.roas === null ? "var(--faint)" : current.roas >= 1 ? "var(--green)" : "var(--red)",
+      delta:
+        previous && current.roas !== null && previous.roas !== null
+          ? { current: current.roas, previous: previous.roas }
+          : null,
+      muted: current.roas === null,
     },
     {
       label: t("Click → deposit"),
-      value: `${economics.clickToDeposit < 1 && economics.clickToDeposit > 0 ? economics.clickToDeposit.toFixed(2) : economics.clickToDeposit.toFixed(1)}%`,
-      hint: `${economics.depositors.toLocaleString()} ${t("of")} ${economics.clicks.toLocaleString()} ${t("clicks")}`,
-      accent: "var(--teal)",
+      value: pct(current.clickToDeposit),
+      hint: `${current.depositors.toLocaleString()} ${t("of")} ${current.clicks.toLocaleString()} ${t("clicks")}`,
+      accent: "var(--purple)",
+      delta: previous ? { current: current.clickToDeposit, previous: previous.clickToDeposit } : null,
     },
     {
       label: t("Repeat rate"),
-      value: `${economics.repeatRate.toFixed(0)}%`,
-      hint: `${economics.repeat.toLocaleString()} ${t("of")} ${economics.depositors.toLocaleString()} ${t("deposit again")}`,
-      accent: "var(--purple)",
+      value: `${current.repeatRate.toFixed(0)}%`,
+      hint: `${current.repeat.toLocaleString()} ${t("of")} ${current.depositors.toLocaleString()} ${t("deposit again")}`,
+      accent: "var(--pink)",
+      delta: previous ? { current: current.repeatRate, previous: previous.repeatRate } : null,
     },
   ];
 
   return (
-    <div className="ub-econ">
-      {metrics.map((metric) => (
-        <div className="ub-econ-cell" key={metric.label} style={{ "--accent": metric.accent }}>
-          <span className="ub-econ-label">{metric.label}</span>
-          <strong className="ub-econ-value">{metric.value}</strong>
-          <span className="ub-econ-hint">{metric.hint}</span>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className={`ub-econ${loading ? " is-loading" : ""}`}>
+        {metrics.map((metric) => (
+          <div
+            className={`ub-econ-cell${metric.muted ? " is-muted" : ""}`}
+            key={metric.label}
+            style={{ "--accent": metric.accent }}
+          >
+            <span className="ub-econ-label">{metric.label}</span>
+            <strong className="ub-econ-value">{metric.value}</strong>
+            {metric.delta ? (
+              <Delta
+                current={metric.delta.current}
+                previous={metric.delta.previous}
+                invert={metric.delta.invert}
+                t={t}
+              />
+            ) : null}
+            <span className="ub-econ-hint">{metric.hint}</span>
+          </div>
+        ))}
+      </div>
+      {priorLabel ? (
+        <p className="ub-econ-foot">
+          {`${t("Economics cover the selected brand and period, compared with")} ${priorLabel}.`}
+          {current.roas === null
+            ? ` ${t("Spend is only recorded on some campaigns, so ROAS is unavailable here.")}`
+            : ""}
+        </p>
+      ) : null}
+    </>
   );
 };
 
