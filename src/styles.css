@@ -20230,3 +20230,77 @@ select option,
   min-width: 0;
   flex: 1 1 190px;
 }
+
+/* ── Placement: quality strip, matrix legend, tooltip ──────────────────── */
+.pl-quality {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pl-quality-item {
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+  padding: 11px 14px;
+  border: 1px solid var(--stroke);
+  border-left: 3px solid var(--yellow);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.pl-quality-value {
+  color: var(--yellow);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.pl-quality-label { color: var(--muted-strong); font-size: 12px; line-height: 1.45; }
+.pl-quality-label em { font-style: normal; color: var(--faint); }
+
+.pl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  padding-left: 4px;
+}
+.pl-legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+.pl-legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+.pl-legend-note { color: var(--faint); font-size: 11px; }
+
+.pl-tip {
+  min-width: 196px;
+  padding: 11px 13px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-md);
+  background: #16181c;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+.pl-tip-name { margin: 0 0 8px; color: var(--text); font-size: 12.5px; font-weight: 650; }
+.pl-tip-grid { display: grid; grid-template-columns: 1fr auto; gap: 3px 14px; margin: 0; }
+.pl-tip-grid dt { color: var(--muted); font-size: 11.5px; }
+.pl-tip-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Metric switch for the funnel comparison */
+.pl-switch { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--stroke); border-radius: 999px; background: var(--panel-soft); }
+.pl-switch button {
+  padding: 5px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: background 0.18s var(--ease-smooth), color 0.18s var(--ease-smooth);
+}
+.pl-switch button:hover { color: var(--text); }
+.pl-switch button.is-active { background: var(--green-soft); color: var(--green); }

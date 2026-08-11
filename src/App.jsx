@@ -197,6 +197,15 @@ import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import {
+  PlacementMatrix,
+  PlacementFunnel,
+  PlacementRevenue,
+  PlacementQuality,
+  summarisePlacements,
+  bestBy,
+  UNATTRIBUTED_PLACEMENT,
+} from "./components/PlacementInsights.jsx";
+import {
   CopyId,
   ValueTiers,
   PlayerEconomics,
@@ -10486,8 +10495,11 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   const placementData = React.useMemo(() => {
     const map = new Map();
     placementRows.forEach((row) => {
-      const placement = normalizePlacementLabel(row.placement);
-      if (!placement) return;
+      // Rows with no placement were dropped here, which hid 22% of clicks and
+      // real revenue from every number on the page. They are kept and labelled,
+      // then separated out by summarisePlacements so they never rank as a
+      // placement but are always visible as a tracking gap.
+      const placement = normalizePlacementLabel(row.placement) || UNATTRIBUTED_PLACEMENT;
       if (!map.has(placement)) {
         map.set(placement, {
           placement,
@@ -10585,17 +10597,21 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     { clicks: 0, registers: 0, ftds: 0, revenue: 0 }
   );
 
-  const topByClicks = activePlacementData[0] || null;
-  const topByRevenue = [...activePlacementData].sort((a, b) => b.revenue - a.revenue)[0] || null;
-  const topByCr = [...activePlacementData].sort((a, b) => b.regToFtd - a.regToFtd)[0] || null;
-  const topChartRows = activePlacementData.slice(0, 10);
-  const topRevenueRows = [...activePlacementData].sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-
-  const clicksMax = Math.max(
-    10,
-    ...topChartRows.map((row) => Math.max(row.clicks || 0, row.registers || 0))
+  // Splits real placements from unattributed traffic and broken values, so the
+  // charts rank only things that are actually placements.
+  const placementSummary = React.useMemo(
+    () => summarisePlacements(activePlacementData),
+    [activePlacementData]
   );
-  const revenueMax = Math.max(10, ...topRevenueRows.map((row) => row.revenue || 0));
+  const rankable = placementSummary.ok;
+
+  const totalSpend = rankable.reduce((acc, row) => acc + (row.spend || 0), 0);
+  const sectionRoas = totalSpend > 0 ? totals.revenue / totalSpend : null;
+  // bestBy applies a minimum-volume floor: a 100%-converting placement built on
+  // 2 clicks is noise, and it used to win this card outright.
+  const topByRevenue = bestBy(rankable, "revenue", { minClicks: 0 });
+  const bestEpc = bestBy(rankable, "epc");
+  const [funnelMetric, setFunnelMetric] = React.useState("clickToReg");
 
   const fmtPercent = (value) => `${Number(value || 0).toFixed(2)}%`;
 
@@ -10603,25 +10619,39 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     <>
       <section className="cards">
         {[
+          // Lead with the measure, not the placement name: a name as the
+          // headline value says nothing at a glance and forces the eye down to
+          // the meta line to learn how big it actually is.
           {
             label: "Tracked Placements",
-            value: placementData.length.toLocaleString(),
-            meta: period === "All" ? "All time" : period,
+            value: rankable.length.toLocaleString(),
+            meta: placementSummary.unattributedClicks
+              ? `${placementSummary.unattributedShare.toFixed(0)}% of clicks unattributed`
+              : period === "All"
+                ? "All time"
+                : period,
           },
           {
-            label: "Top Placement by Clicks",
-            value: topByClicks?.placement || "—",
-            meta: topByClicks ? `${topByClicks.clicks.toLocaleString()} clicks` : "No data",
+            label: "Clicks",
+            value: totals.clicks.toLocaleString(),
+            meta: `${totals.registers.toLocaleString()} registers · ${totals.ftds.toLocaleString()} FTDs`,
           },
           {
-            label: "Top Placement by Revenue",
-            value: topByRevenue?.placement || "—",
-            meta: topByRevenue ? formatCurrency(topByRevenue.revenue) : "No data",
+            label: "Revenue",
+            value: formatCurrency(totals.revenue),
+            meta:
+              sectionRoas !== null
+                ? `${formatCurrency(totalSpend)} spend · ${sectionRoas.toFixed(2)}x ROAS`
+                : "No spend recorded",
           },
           {
-            label: "Best Reg2FTD Placement",
-            value: topByCr?.placement || "—",
-            meta: topByCr ? fmtPercent(topByCr.regToFtd) : "No data",
+            label: "Best Revenue Per Click",
+            value: bestEpc ? formatCurrency(bestEpc.epc) : "—",
+            // Named in the meta with its sample size, because a rate is only
+            // as trustworthy as the traffic behind it.
+            meta: bestEpc
+              ? `${bestEpc.placement} · ${bestEpc.clicks.toLocaleString()} clicks`
+              : "No data",
           },
         ].map((stat, idx) => (
           <motion.div
@@ -10647,8 +10677,10 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Placement Volume")}</h3>
-              <p className="panel-subtitle">{t("Clicks and registers grouped by sub_id_1 placement.")}</p>
+              <h3 className="panel-title">{t("Volume vs Efficiency")}</h3>
+              <p className="panel-subtitle">
+                {t("Where size and earnings disagree. Right of centre is big, above the line earns more per click than average.")}
+              </p>
             </div>
             <div className="panel-actions">
               <Select
@@ -10673,48 +10705,11 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
             <div className="empty-state">{t("Loading placement stats…")}</div>
           ) : placementState.error ? (
             <div className="empty-state error">{placementState.error}</div>
-          ) : topChartRows.length === 0 ? (
-            <div className="empty-state">
-              {t("No placement data yet. Sync Keitaro with sub_id_1 in dimensions and placementField mapping.")}
-            </div>
           ) : (
-            <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={topChartRows} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                  <defs>
-                    <linearGradient id="placementClicks" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.25} />
-                    </linearGradient>
-                    <linearGradient id="placementRegs" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="placement" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    domain={[0, Math.ceil(clicksMax * 1.15)]}
-                    tickFormatter={(value) => Number(value || 0).toLocaleString()}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value, name) => [Number(value || 0).toLocaleString(), name]}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
-                  <Bar dataKey="clicks" name={t("Clicks")} fill="url(#placementClicks)" radius={[8, 8, 0, 0]} />
-                  <Bar
-                    dataKey="registers"
-                    name={t("Registers")}
-                    fill="url(#placementRegs)"
-                    radius={[8, 8, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <>
+              <PlacementQuality summary={placementSummary} t={t} />
+              <PlacementMatrix rows={rankable} t={t} onSelect={(name) => name && setPlacementFilter(name)} />
+            </>
           )}
         </motion.div>
 
@@ -10730,47 +10725,10 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
               <p className="panel-subtitle">{t("Revenue contribution by top placements.")}</p>
             </div>
           </div>
-          {topRevenueRows.length === 0 ? (
-            <div className="empty-state">{t("No revenue data available.")}</div>
+          {rankable.every((r) => !(r.revenue > 0)) ? (
+            <div className="empty-state">{t("No revenue in this period.")}</div>
           ) : (
-            <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart
-                  data={topRevenueRows}
-                  layout="vertical"
-                  margin={{ top: 8, right: 24, left: 110, bottom: 8 }}
-                >
-                  <defs>
-                    <linearGradient id="placementRevenue" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    domain={[0, Math.ceil(revenueMax * 1.15)]}
-                    tickFormatter={(value) => formatCurrency(value)}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="placement"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    width={130}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value) => [formatCurrency(value), t("Revenue")]}
-                  />
-                  <Bar dataKey="revenue" fill="url(#placementRevenue)" radius={[0, 8, 8, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <PlacementRevenue rows={rankable} t={t} />
           )}
         </motion.div>
 
@@ -10782,43 +10740,32 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Placement Conversion Rates")}</h3>
-              <p className="panel-subtitle">{t("Click2Reg, Reg2FTD, and FTD2Redeposit rates.")}</p>
+              <h3 className="panel-title">{t("Conversion by Placement")}</h3>
+              <p className="panel-subtitle">
+                {t("Ranked, one stage at a time. Placements under 10 clicks are excluded — their rates are noise.")}
+              </p>
+            </div>
+            <div className="panel-actions">
+              <div className="pl-switch" role="group" aria-label={t("Funnel stage")}>
+                {[
+                  { key: "clickToReg", label: t("Click → Reg") },
+                  { key: "regToFtd", label: t("Reg → FTD") },
+                  { key: "ftdToRedeposit", label: t("FTD → Redep") },
+                ].map((stage) => (
+                  <button
+                    type="button"
+                    key={stage.key}
+                    className={funnelMetric === stage.key ? "is-active" : ""}
+                    onClick={() => setFunnelMetric(stage.key)}
+                    aria-pressed={funnelMetric === stage.key}
+                  >
+                    {stage.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          {topChartRows.length === 0 ? (
-            <div className="empty-state">{t("No conversion rate data available.")}</div>
-          ) : (
-            <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={320}>
-                <LineChart data={topChartRows} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="placement" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    domain={[0, 100]}
-                    tickFormatter={(value) => `${value}%`}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value, name) => [fmtPercent(value), name]}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
-                  <Line type="monotone" dataKey="clickToReg" name="Click2Reg" stroke="var(--blue)" strokeWidth={2} />
-                  <Line type="monotone" dataKey="regToFtd" name="Reg2FTD" stroke="var(--green)" strokeWidth={2} />
-                  <Line
-                    type="monotone"
-                    dataKey="ftdToRedeposit"
-                    name="FTD2Redeposit"
-                    stroke="var(--orange)"
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          <PlacementFunnel rows={rankable} t={t} metric={funnelMetric} />
         </motion.div>
       </section>
 
