@@ -12796,6 +12796,56 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     [sortedUserTableRows, ubPagination.from, ubPagination.to]
   );
 
+  // Exports what is on screen — every filter applied, sorted as displayed, and
+  // all pages rather than the current one. Brand is resolved out of the
+  // campaign string so the file pivots without further parsing.
+  const exportUsers = () => {
+    downloadCsv(
+      `user-behavior-${brandFilter === "All" ? "all-brands" : brandFilter.toLowerCase()}-${
+        effectiveDateRange.from || "start"
+      }_${effectiveDateRange.to || "today"}.csv`,
+      [
+        "External ID",
+        "Buyer",
+        "Brand",
+        "Top campaign",
+        "Tier",
+        "Clicks",
+        "Registers",
+        "FTDs",
+        "Redeposits",
+        "Revenue",
+        "FTD revenue",
+        "Redeposit revenue",
+        "Revenue per click",
+      ],
+      sortedUserTableRows.map((row) => {
+        const deposits = (row.ftds || 0) + (row.redeposits || 0);
+        return [
+          row.externalId,
+          row.buyer || "",
+          campaignBrand(row.campaign) || "",
+          row.campaign || "",
+          deposits >= 2
+            ? "Repeat depositor"
+            : deposits === 1
+              ? "First deposit"
+              : (row.registers || 0) > 0
+                ? "Registered"
+                : "Clicked only",
+          row.clicks || 0,
+          row.registers || 0,
+          row.ftds || 0,
+          row.redeposits || 0,
+          Number(row.revenue || 0).toFixed(2),
+          Number(row.ftdRevenue || 0).toFixed(2),
+          Number(row.redepositRevenue || 0).toFixed(2),
+          row.clicks > 0 ? (Number(row.revenue || 0) / row.clicks).toFixed(4) : "",
+        ];
+      })
+    );
+  };
+
   const behaviorFilterOptions = [
     "Tracked Users",
     "Top User By Total Revenue",
