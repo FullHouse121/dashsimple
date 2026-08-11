@@ -5271,12 +5271,37 @@ app.use((req, res, next) => {
 
 // Unauthenticated health probe for Render's deploy health gate: a new
 // instance only replaces the live one once this returns 200.
+// Boot identity, fixed at startup. "Is my deploy actually live?" was
+// unanswerable from outside: every /api path returns 401 before routing, so a
+// missing route and a wrong secret look identical, and this endpoint returned
+// a bare {ok:true} that was the same on every build ever shipped. It cost an
+// afternoon of guessing once already.
+const BUILD_INFO = {
+  // Render sets these; locally they are simply absent.
+  commit: (process.env.RENDER_GIT_COMMIT || "").slice(0, 7) || "dev",
+  branch: process.env.RENDER_GIT_BRANCH || "local",
+  startedAt: new Date().toISOString(),
+};
+
 app.get("/api/health", async (req, res) => {
   try {
     await query("SELECT 1");
-    return res.json({ ok: true });
+    return res.json({
+      ok: true,
+      ...BUILD_INFO,
+      // The settings that decide what the dashboard shows, reported as
+      // booleans — never the values themselves.
+      config: {
+        // The names as configured — seeing ["External Source"] here when you
+        // meant ["Outsource"] is the whole point of reporting it.
+        externalGroups: externalGroupNames,
+        credentialKey: secretBox.enabled,
+        inboundMail: Boolean(inboundMailSecret),
+        graphMailbox: mailboxClient.enabled,
+      },
+    });
   } catch {
-    return res.status(503).json({ ok: false });
+    return res.status(503).json({ ok: false, ...BUILD_INFO });
   }
 });
 
