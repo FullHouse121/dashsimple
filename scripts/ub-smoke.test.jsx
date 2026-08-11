@@ -1,0 +1,71 @@
+// Render smoke test: catches ReferenceErrors and bad prop access that a
+// successful build cannot see (the build type-checks nothing at runtime).
+import React from "react";
+import { renderToString } from "react-dom/server";
+import {
+  buildTiers, buildConcentration, buildUserDetail, shortId,
+  ValueTiers, TopPlayers, Concentration, UserDetail, CopyId,
+} from "../src/components/UserBehaviorInsights.jsx";
+
+const users = [
+  { externalId: "1bJCoJghbfsaRJlU", clicks: 15, registers: 0, ftds: 1, redeposits: 0, revenue: 15.75, ftdRevenue: 15.75 },
+  { externalId: "HIJC4Ighz1saOKlU", clicks: 900, registers: 4, ftds: 2, redeposits: 3, revenue: 820.5, ftdRevenue: 300 },
+  { externalId: "019f8aba-8a3d-7e10-8516-b60418995a53", clicks: 40, registers: 1, ftds: 0, redeposits: 0, revenue: 0, ftdRevenue: 0 },
+  { externalId: "plainclicker", clicks: 7, registers: 0, ftds: 0, redeposits: 0, revenue: 0, ftdRevenue: 0 },
+];
+const rows = [
+  { date: "2026-08-06", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", clicks: 15, registers: 0, ftds: 1, redeposits: 0, revenue: 15.75 },
+  { date: "2026-08-07", external_id: "1bJCoJghbfsaRJlU", buyer: "Leticia", campaign: "Leticia | PWA.GROUP | Ice Fishing | BR | JASINO", country: "BR", clicks: 9, registers: 0, ftds: 0, redeposits: 0, revenue: 0 },
+];
+
+let failed = 0;
+const check = (name, fn) => {
+  try { fn(); console.log(`  PASS  ${name}`); }
+  catch (e) { failed++; console.log(`  FAIL  ${name}\n        ${e.message}`); }
+};
+const eq = (a, b, what) => { if (a !== b) throw new Error(`${what}: got ${a}, expected ${b}`); };
+
+console.log("logic:");
+check("tiers classify by deposit depth", () => {
+  const t = Object.fromEntries(buildTiers(users).map((x) => [x.key, x.count]));
+  eq(t.repeat, 1, "repeat");     // 2 ftds + 3 redeposits
+  eq(t.ftd, 1, "ftd");           // exactly 1
+  eq(t.registered, 1, "registered");
+  eq(t.clicked, 1, "clicked");
+});
+check("concentration is empty-safe (the top1 bug)", () => {
+  const c = buildConcentration([{ externalId: "x", revenue: 0, ftds: 0, redeposits: 0 }]);
+  eq(c.points.length, 0, "points"); eq(c.p10, 0, "p10"); eq(c.top1, 0, "top1");
+});
+check("concentration reaches 100%", () => {
+  const c = buildConcentration(users);
+  eq(Math.round(c.points[c.points.length - 1].cumulative), 100, "final cumulative");
+  eq(c.earners, 2, "earners");
+});
+check("user detail sums only that player", () => {
+  const d = buildUserDetail(rows, "1bJCoJghbfsaRJlU");
+  eq(d.totals.clicks, 24, "clicks"); eq(d.totals.ftds, 1, "ftds");
+  eq(Number(d.totals.revenue.toFixed(2)), 15.75, "revenue");
+  eq(d.campaigns.length, 1, "campaigns"); eq(d.days.length, 2, "days");
+});
+check("shortId keeps head and tail distinguishable", () => {
+  eq(shortId("019f8aba-8a3d-7e10-8516-b60418995a53"), "019f8ab…5a53", "shortId");
+  eq(shortId("short"), "short", "passthrough");
+});
+
+console.log("render:");
+for (const [name, el] of [
+  ["ValueTiers", <ValueTiers users={users} />],
+  ["ValueTiers (empty)", <ValueTiers users={[]} />],
+  ["TopPlayers", <TopPlayers users={users} />],
+  ["TopPlayers (empty)", <TopPlayers users={[]} />],
+  ["Concentration", <Concentration users={users} />],
+  ["Concentration (no revenue)", <Concentration users={[users[3]]} />],
+  ["CopyId", <CopyId value="1bJCoJghbfsaRJlU" />],
+  ["CopyId (empty)", <CopyId value="" />],
+  ["UserDetail", <UserDetail externalId="1bJCoJghbfsaRJlU" rows={rows} onClose={() => {}} />],
+  ["UserDetail (closed)", <UserDetail externalId={null} rows={rows} onClose={() => {}} />],
+]) check(name, () => renderToString(el));
+
+console.log(failed ? `\n${failed} FAILED` : "\nall passed");
+process.exit(failed ? 1 : 0);

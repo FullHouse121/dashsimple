@@ -19672,3 +19672,254 @@ select option,
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* ── User Behavior: tiers, drill-down, copyable IDs ──────────────────────
+   Namespaced .ub-* so none of this can collide with the shared .card/.panel
+   rules — the section previously leaned on those and inherited spacing it
+   did not want. */
+
+.ub-id {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease-smooth), background 0.18s var(--ease-smooth);
+}
+.ub-id:hover { border-color: var(--stroke-strong); background: #24262c; }
+.ub-id.is-copied { border-color: var(--green); }
+.ub-id-empty { cursor: default; color: var(--faint); }
+.ub-id-hint {
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 0.18s var(--ease-smooth);
+}
+.ub-id:hover .ub-id-hint, .ub-id.is-copied .ub-id-hint { opacity: 1; }
+.ub-id.is-copied .ub-id-hint { color: var(--green); }
+
+/* Value tiers */
+.ub-tiers { display: flex; flex-direction: column; gap: 14px; }
+.ub-tiers-bar {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ub-tiers-seg { display: block; border-radius: 999px; min-width: 3px; }
+.ub-tiers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.ub-tier {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease-smooth), transform 0.18s var(--ease-smooth);
+}
+.ub-tier:hover { border-color: var(--stroke-strong); transform: translateY(-1px); }
+.ub-tier.is-active { border-color: var(--green); background: var(--green-soft); }
+.ub-tier-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 5px; flex: none; }
+.ub-tier-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ub-tier-label { color: var(--muted-strong); font-size: 12px; }
+.ub-tier-count {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.ub-tier-count em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--faint); }
+.ub-tier-meta {
+  color: var(--faint);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Concentration callout */
+.ub-conc-callout {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--stroke);
+  border-left: 3px solid var(--teal);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.ub-conc-callout strong {
+  color: var(--teal);
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ub-conc-callout span { color: var(--muted-strong); font-size: 12.5px; line-height: 1.45; }
+.ub-conc-callout em { font-style: normal; color: var(--faint); }
+
+/* Drill-down drawer */
+.ub-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 7, 9, 0.62);
+  backdrop-filter: blur(2px);
+  z-index: 60;
+}
+.ub-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(468px, 100vw);
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border-left: 1px solid var(--stroke);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.42);
+}
+.ub-drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ub-drawer-eyebrow {
+  margin: 0 0 4px;
+  color: var(--faint);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ub-drawer-id {
+  margin: 0;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 17px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.ub-drawer-sub { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+.ub-drawer-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease-smooth), color 0.18s var(--ease-smooth);
+}
+.ub-drawer-close:hover { border-color: var(--stroke-strong); color: var(--text); }
+.ub-drawer-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 8px;
+}
+.ub-drawer-total {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.ub-drawer-total span { color: var(--faint); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.ub-drawer-total strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.ub-drawer-total.is-accent { border-color: rgba(54, 208, 124, 0.35); background: var(--green-soft); }
+.ub-drawer-total.is-accent strong { color: var(--green); }
+.ub-drawer-block { display: flex; flex-direction: column; gap: 9px; }
+.ub-drawer-block h4 {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ub-breakdown { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.ub-breakdown li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+.ub-breakdown-key {
+  color: var(--text);
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ub-breakdown-num { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ub-breakdown-rev {
+  min-width: 66px;
+  text-align: right;
+  color: var(--green);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Table affordances */
+.ub-row-click { cursor: pointer; }
+.ub-row-click:hover { background: rgba(255, 255, 255, 0.028); }
+.ub-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ub-rank.is-top { background: var(--green-soft); color: var(--green); }
+.ub-revcell { display: flex; flex-direction: column; gap: 5px; min-width: 92px; }
+.ub-revbar { height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.ub-revbar span { display: block; height: 100%; border-radius: 999px; background: var(--green); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ub-tier, .ub-id { transition: none; }
+  .ub-tier:hover { transform: none; }
+}
+
+/* Card meta grows a second line when it carries a copyable ID */
+.ub-card-meta { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.ub-rank-col { width: 44px; }

@@ -195,6 +195,13 @@ const ConversionsDashboard = React.lazy(() => import("./dashboards/ConversionsDa
 const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
+import {
+  CopyId,
+  ValueTiers,
+  TopPlayers,
+  Concentration,
+  UserDetail,
+} from "./components/UserBehaviorInsights.jsx";
 import { AccountCredentialsModal, CREDENTIAL_MASK } from "./components/AccountCredentials.jsx";
 import { liveClickSubIssues } from "./lib/live.js";
 
@@ -12703,8 +12710,28 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   };
   const userSortType = (key) =>
     key === "externalId" || key === "campaign" ? "text" : "number";
+  // Tier filter narrows every panel below it, so the charts and the table always
+  // describe the same set of players as the strip you just clicked. Declared
+  // above the table memos on purpose — they consume it.
+  const [activeTier, setActiveTier] = React.useState(null);
+  const [openUserId, setOpenUserId] = React.useState(null);
+  const tieredUsers = React.useMemo(() => {
+    if (!activeTier) return filteredUsers;
+    return filteredUsers.filter((row) => {
+      const deposits = (row.ftds || 0) + (row.redeposits || 0);
+      if (activeTier === "repeat") return deposits >= 2;
+      if (activeTier === "ftd") return deposits === 1;
+      if (activeTier === "registered") return deposits === 0 && (row.registers || 0) > 0;
+      return deposits === 0 && (row.registers || 0) === 0;
+    });
+  }, [filteredUsers, activeTier]);
+  const maxUserRevenue = React.useMemo(
+    () => tieredUsers.reduce((acc, row) => Math.max(acc, row.revenue || 0), 0),
+    [tieredUsers]
+  );
+
   const sortedUserTableRows = React.useMemo(() => {
-    const rows = [...filteredUsers];
+    const rows = [...tieredUsers];
     return rows.sort((a, b) =>
       compareSortValues(
         getUserSortValue(a, userTableSort.key),
@@ -12713,7 +12740,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         userSortType(userTableSort.key)
       )
     );
-  }, [filteredUsers, userTableSort]);
+  }, [tieredUsers, userTableSort]);
   const UB_PAGE_SIZE = 50;
   const ubPageCount = Math.max(1, Math.ceil(sortedUserTableRows.length / UB_PAGE_SIZE));
   const ubClampedPage = Math.min(ubPage, ubPageCount);
@@ -12786,20 +12813,27 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             value: totalUsers.toLocaleString(),
             meta: period === "All" ? "All time" : period,
           },
+          // The three "top user" cards used to headline the external ID — a
+          // 16-character hash rendered at display size, which is unreadable and
+          // says nothing at a glance. Lead with the amount; the ID moves to a
+          // copyable chip, which is what anyone actually wants to do with it.
           {
             label: "Top User By Total Revenue",
-            value: topByRevenue?.externalId || "—",
-            meta: topByRevenue ? `${formatCurrency(topByRevenue.revenue)} · FTD + Redeposit` : "No data",
+            value: topByRevenue ? formatCurrency(topByRevenue.revenue) : "—",
+            meta: topByRevenue ? "FTD + Redeposit" : "No data",
+            user: topByRevenue,
           },
           {
             label: "Top User by Revenue FTD",
-            value: topByFtdRevenue?.externalId || "—",
-            meta: topByFtdRevenue ? formatCurrency(topByFtdRevenue.ftdRevenue) : "No data",
+            value: topByFtdRevenue ? formatCurrency(topByFtdRevenue.ftdRevenue) : "—",
+            meta: topByFtdRevenue ? "First deposits only" : "No data",
+            user: topByFtdRevenue,
           },
           {
             label: "Top User By Redeposit (number)",
-            value: topByRedeposit?.externalId || "—",
-            meta: topByRedeposit ? `${topByRedeposit.redeposits.toLocaleString()} Redeposits` : "No data",
+            value: topByRedeposit ? topByRedeposit.redeposits.toLocaleString() : "—",
+            meta: topByRedeposit ? "Redeposits" : "No data",
+            user: topByRedeposit,
           },
         ].map((stat, idx) => (
           <motion.div
@@ -12811,10 +12845,41 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           >
             <div className="card-head">{t(stat.label)}</div>
             <div className="card-value">{stat.value}</div>
-            <div className="card-meta">{t(stat.meta)}</div>
+            {stat.user ? (
+              <div className="card-meta ub-card-meta">
+                <CopyId value={stat.user.externalId} />
+                <span>{t(stat.meta)}</span>
+              </div>
+            ) : (
+              <div className="card-meta">{t(stat.meta)}</div>
+            )}
           </motion.div>
         ))}
       </section>
+
+      {!behaviorState.loading && !behaviorState.error && filteredUsers.length > 0 ? (
+        <motion.section
+          className="panel"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.12 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Player Mix")}</h3>
+              <p className="panel-subtitle">
+                {t("Where each player stopped. Select a tier to filter everything below.")}
+              </p>
+            </div>
+          </div>
+          <ValueTiers
+            users={filteredUsers}
+            t={t}
+            activeTier={activeTier}
+            onSelectTier={setActiveTier}
+          />
+        </motion.section>
+      ) : null}
 
       <section className="panels device-charts">
         <motion.div
@@ -12825,8 +12890,8 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("User Revenue")}</h3>
-              <p className="panel-subtitle">{t("Top players ranked by revenue.")}</p>
+              <h3 className="panel-title">{t("Top Players")}</h3>
+              <p className="panel-subtitle">{t("Highest revenue first. Select one to open its detail.")}</p>
             </div>
             <div className="panel-actions">
               <input
@@ -12858,34 +12923,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           ) : topUsers.length === 0 ? (
             <div className="empty-state">{t("No user behavior data available.")}</div>
           ) : (
-            <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={topUsers} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                  <defs>
-                    <linearGradient id="userRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
-                      <stop offset="95%" stopColor="var(--green)" stopOpacity={0.2} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={axisTickStyle}
-                    tickFormatter={(value) => formatCurrency(value)}
-                  />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value) => [formatCurrency(value), t("Revenue")]}
-                    labelFormatter={(label, payload) =>
-                      payload?.[0]?.payload?.externalId || label
-                    }
-                  />
-                  <Bar dataKey="revenue" fill="url(#userRevenue)" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <TopPlayers users={tieredUsers} t={t} onSelect={(row) => setOpenUserId(row?.externalId || null)} />
           )}
         </motion.div>
 
@@ -12897,32 +12935,14 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Conversions by User")}</h3>
-              <p className="panel-subtitle">{t("FTDs and redeposits by external ID.")}</p>
+              <h3 className="panel-title">{t("Revenue Concentration")}</h3>
+              <p className="panel-subtitle">{t("How much of the revenue rests on how few players.")}</p>
             </div>
           </div>
           {topUsers.length === 0 ? (
             <div className="empty-state">{t("No conversion data available.")}</div>
           ) : (
-            <div className="chart chart-surface">
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={topUsers} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                  <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
-                  <Tooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(value, name) => [Number(value || 0).toLocaleString(), name]}
-                    labelFormatter={(label, payload) =>
-                      payload?.[0]?.payload?.externalId || label
-                    }
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ paddingTop: 8, color: "#9aa0aa", fontSize: 12 }} />
-                  <Bar dataKey="ftds" name={t("FTDs")} fill="var(--green)" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="redeposits" name={t("Redeposits")} fill="var(--orange)" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <Concentration users={tieredUsers} t={t} />
           )}
         </motion.div>
       </section>
@@ -12953,6 +12973,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
               <table className="entries-table">
                 <thead>
                   <tr>
+                    <th className="ub-rank-col" aria-label={t("Rank")} />
                     {[
                       { key: "externalId", label: t("External ID") },
                       { key: "campaign", label: t("Campaign") },
@@ -12981,17 +13002,42 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedUserTableRows.map((row) => (
-                    <tr key={row.externalId}>
-                      <td>{row.externalId}</td>
-                      <td>{row.campaign || "—"}</td>
-                      <td>{row.clicks.toLocaleString()}</td>
-                      <td>{row.registers.toLocaleString()}</td>
-                      <td>{row.ftds.toLocaleString()}</td>
-                      <td>{row.redeposits.toLocaleString()}</td>
-                      <td>{formatCurrency(row.revenue)}</td>
-                    </tr>
-                  ))}
+                  {pagedUserTableRows.map((row, idx) => {
+                    const rank = (ubClampedPage - 1) * UB_PAGE_SIZE + idx + 1;
+                    const share = maxUserRevenue > 0 ? (row.revenue || 0) / maxUserRevenue : 0;
+                    return (
+                      <tr
+                        key={row.externalId}
+                        className="ub-row-click"
+                        onClick={() => setOpenUserId(row.externalId)}
+                        title={t("Open player detail")}
+                      >
+                        <td>
+                          <span className={`ub-rank${rank <= 3 ? " is-top" : ""}`}>{rank}</span>
+                        </td>
+                        <td>
+                          <CopyId value={row.externalId} />
+                        </td>
+                        <td>{row.campaign || "—"}</td>
+                        <td>{row.clicks.toLocaleString()}</td>
+                        <td>{row.registers.toLocaleString()}</td>
+                        <td>{row.ftds.toLocaleString()}</td>
+                        <td>{row.redeposits.toLocaleString()}</td>
+                        <td>
+                          {/* The bar is relative to the top earner in view, so
+                              scale reads at a glance without another column. */}
+                          <span className="ub-revcell">
+                            <span>{formatCurrency(row.revenue)}</span>
+                            {share > 0 ? (
+                              <span className="ub-revbar">
+                                <span style={{ width: `${Math.max(share * 100, 2)}%` }} />
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -13044,6 +13090,15 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           )}
         </motion.div>
       </section>
+
+      {/* Reads from behaviorRows, which is already in memory at the
+          (date, campaign, country) grain — no extra request per player. */}
+      <UserDetail
+        externalId={openUserId}
+        rows={behaviorRows}
+        onClose={() => setOpenUserId(null)}
+        t={t}
+      />
     </>
   );
 }
