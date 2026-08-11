@@ -12903,7 +12903,9 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             <div className="card-value">{stat.value}</div>
             {stat.user ? (
               <div className="card-meta ub-card-meta">
-                <CopyId value={stat.user.externalId} />
+                {/* full: cards have the width, and a truncated hash is the one
+                    thing here nobody can act on. */}
+                <CopyId value={stat.user.externalId} full />
                 <span>{t(stat.meta)}</span>
               </div>
             ) : (

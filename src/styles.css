@@ -19680,7 +19680,7 @@ select option,
 
 .ub-id {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 3px 8px;
   border: 1px solid var(--stroke);
@@ -19696,15 +19696,18 @@ select option,
 .ub-id:hover { border-color: var(--stroke-strong); background: #24262c; }
 .ub-id.is-copied { border-color: var(--green); }
 .ub-id-empty { cursor: default; color: var(--faint); }
-.ub-id-hint {
-  font-family: inherit;
-  font-size: 10px;
+/* Sized in the flow, so the chip is exactly as wide as its contents — the
+   previous hover-only text label reserved width while invisible, leaving a gap
+   that looked like a cut-off input. */
+.ub-id-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
   color: var(--faint);
-  opacity: 0;
-  transition: opacity 0.18s var(--ease-smooth);
+  transition: color 0.18s var(--ease-smooth);
 }
-.ub-id:hover .ub-id-hint, .ub-id.is-copied .ub-id-hint { opacity: 1; }
-.ub-id.is-copied .ub-id-hint { color: var(--green); }
+.ub-id:hover .ub-id-icon { color: var(--muted-strong); }
+.ub-id.is-copied .ub-id-icon { color: var(--green); }
 
 /* Value tiers */
 .ub-tiers { display: flex; flex-direction: column; gap: 14px; }

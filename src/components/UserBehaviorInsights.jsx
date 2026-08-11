@@ -35,14 +35,19 @@ export const shortId = (id) => {
   return s.length > 14 ? `${s.slice(0, 7)}…${s.slice(-4)}` : s;
 };
 
-export const CopyId = ({ value, onCopy }) => {
+// full: show the whole ID rather than the head…tail form. Keitaro's hashes are
+// 16 characters and fit comfortably where there is room; UUIDs are 36 and never
+// do, so this still shortens those.
+export const CopyId = ({ value, onCopy, full = false }) => {
   const [copied, setCopied] = React.useState(false);
   if (!value) return <span className="ub-id ub-id-empty">—</span>;
+  const label = full && String(value).length <= 20 ? String(value) : shortId(value);
   return (
     <button
       type="button"
       className={`ub-id${copied ? " is-copied" : ""}`}
-      title={value}
+      title={`${value} — click to copy`}
+      aria-label={`Copy ${value}`}
       onClick={(event) => {
         event.stopPropagation();
         navigator.clipboard?.writeText(value).then(
@@ -55,8 +60,27 @@ export const CopyId = ({ value, onCopy }) => {
         );
       }}
     >
-      <span className="ub-id-text">{shortId(value)}</span>
-      <span className="ub-id-hint">{copied ? "copied" : "copy"}</span>
+      <span className="ub-id-text">{label}</span>
+      {/* An icon rather than the word "copy": the text version was only visible
+          on hover but still reserved its width, which left a dead gap that read
+          as a cut-off input. */}
+      <svg className="ub-id-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {copied ? (
+          <path
+            d="M3.5 8.5l3 3 6-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <>
+            <rect x="5.75" y="5.75" width="7.5" height="7.5" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M10.25 3.75H4.4c-.36 0-.65.29-.65.65v5.85" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
     </button>
   );
 };
