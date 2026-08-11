@@ -11,6 +11,7 @@ import {
   PlacementFunnel,
   PlacementRevenue,
   PlacementQuality,
+  MatrixTooltipForTest,
 } from "../src/components/PlacementInsights.jsx";
 
 // Shaped like the live-stats rows after aggregation, using real values.
@@ -94,6 +95,35 @@ check("empty input is safe", () => {
   eq(bestBy([], "revenue"), null, "null");
   const s = summarisePlacements([]);
   eq(s.ok.length, 0, "ok"); eq(s.unattributedShare, 0, "share");
+});
+
+console.log("tooltip crash regression:");
+check("matrix tooltip survives rows without roas/spend", () => {
+  // The exact shape placementData produces: no `roas` key at all. The old
+  // guard was `row.roas !== null`, and undefined !== null, so it called
+  // .toFixed() on undefined — which threw during render and blanked the page.
+  const bare = { placement: "Facebook Mobile Feed", clicks: 7024, registers: 740, ftds: 46, revenue: 196.4, epc: 0.028 };
+  const html = renderToString(<PlacementMatrix rows={[bare, { ...bare, placement: "B", clicks: 900 }]} />);
+  if (!html) throw new Error("no output");
+  // Render the tooltip directly, the way recharts does on hover.
+  const Tip = MatrixTooltipForTest;
+  renderToString(<Tip active payload={[{ payload: bare }]} t={(x) => x} />);
+});
+check("matrix tooltip survives a totally empty row", () => {
+  renderToString(<MatrixTooltipForTest active payload={[{ payload: {} }]} t={(x) => x} />);
+  renderToString(<MatrixTooltipForTest active payload={[]} t={(x) => x} />);
+  renderToString(<MatrixTooltipForTest active={false} payload={null} t={(x) => x} />);
+});
+check("shows ROAS only when spend exists", () => {
+  // renderToString puts <!-- --> between adjacent text nodes, so strip comments
+  // before matching rather than asserting against the raw markup.
+  const text = (el) => renderToString(el).replace(/<!--[^>]*-->/g, "");
+  const withSpend = text(<MatrixTooltipForTest active t={(x) => x}
+    payload={[{ payload: { placement: "A", clicks: 10, revenue: 100, spend: 20 } }]} />);
+  if (!withSpend.includes("5.00x")) throw new Error("expected ROAS 5.00x");
+  const without = text(<MatrixTooltipForTest active t={(x) => x}
+    payload={[{ payload: { placement: "A", clicks: 10, revenue: 100 } }]} />);
+  if (without.includes("ROAS")) throw new Error("ROAS must be absent without spend");
 });
 
 console.log("render:");

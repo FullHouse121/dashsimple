@@ -20471,3 +20471,29 @@ select option,
   .dv-versions li { grid-template-columns: 1fr auto auto; }
   .dv-version-track { display: none; }
 }
+
+/* Contained render failure — replaces the black page a thrown component used
+   to leave behind. */
+.error-boundary {
+  margin: 24px 0;
+  padding: 26px 28px;
+  border: 1px solid rgba(255, 125, 136, 0.28);
+  border-radius: var(--radius);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.error-boundary h3 { margin: 0; color: var(--text); font-size: 17px; font-weight: 650; }
+.error-boundary p { margin: 0; color: var(--muted); font-size: 13px; max-width: 62ch; line-height: 1.55; }
+.error-boundary pre {
+  margin: 0;
+  padding: 10px 12px;
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+  color: var(--red);
+  font-size: 12px;
+}

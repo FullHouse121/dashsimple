@@ -117,20 +117,27 @@ export const PlacementQuality = ({ summary, t = (x) => x }) => {
 // The buying question is not "which placement is biggest" or "which converts
 // best" but where those two disagree: high volume and low EPC is where money
 // leaks, low volume and high EPC is where it should go next.
-const MatrixTooltip = ({ active, payload, t }) => {
+export const MatrixTooltip = ({ active, payload, t }) => {
   if (!active || !payload?.length) return null;
-  const row = payload[0].payload;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  // Read every field defensively. A tooltip throws during render, and React
+  // unmounts the whole tree when it does — one missing number blanked the
+  // entire page. `roas` in particular is not on these rows at all, and
+  // `undefined !== null` is true, so the old guard let it through.
+  const n = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  const roas = n(row.spend) > 0 ? n(row.revenue) / n(row.spend) : null;
   return (
     <div className="pl-tip">
-      <p className="pl-tip-name">{row.placement}</p>
+      <p className="pl-tip-name">{String(row.placement ?? "—")}</p>
       <dl className="pl-tip-grid">
-        <dt>{t("Clicks")}</dt><dd>{row.clicks.toLocaleString()}</dd>
-        <dt>{t("Revenue")}</dt><dd>{formatCurrency(row.revenue)}</dd>
-        <dt>{t("EPC")}</dt><dd>{formatCurrency(row.epc)}</dd>
-        <dt>{t("Registers")}</dt><dd>{row.registers.toLocaleString()}</dd>
-        <dt>{t("FTDs")}</dt><dd>{row.ftds.toLocaleString()}</dd>
-        {row.spend > 0 ? (<><dt>{t("Spend")}</dt><dd>{formatCurrency(row.spend)}</dd></>) : null}
-        {row.roas !== null ? (<><dt>{t("ROAS")}</dt><dd>{row.roas.toFixed(2)}x</dd></>) : null}
+        <dt>{t("Clicks")}</dt><dd>{n(row.clicks).toLocaleString()}</dd>
+        <dt>{t("Revenue")}</dt><dd>{formatCurrency(n(row.revenue))}</dd>
+        <dt>{t("EPC")}</dt><dd>{formatCurrency(n(row.epc))}</dd>
+        <dt>{t("Registers")}</dt><dd>{n(row.registers).toLocaleString()}</dd>
+        <dt>{t("FTDs")}</dt><dd>{n(row.ftds).toLocaleString()}</dd>
+        {n(row.spend) > 0 ? (<><dt>{t("Spend")}</dt><dd>{formatCurrency(n(row.spend))}</dd></>) : null}
+        {roas !== null ? (<><dt>{t("ROAS")}</dt><dd>{roas.toFixed(2)}x</dd></>) : null}
       </dl>
     </div>
   );
@@ -324,3 +331,6 @@ export const PlacementRevenue = ({ rows, t = (x) => x }) => {
     </div>
   );
 };
+
+// Exported under a second name so the crash regression can render it directly.
+export const MatrixTooltipForTest = MatrixTooltip;

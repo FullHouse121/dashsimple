@@ -196,6 +196,7 @@ const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
+import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -26015,6 +26016,9 @@ export default function App() {
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
+        {/* One throwing component used to unmount the whole app and leave a
+            black page. Scoped per view, and reset on navigation. */}
+        <ErrorBoundary label={activeView} resetKey={activeView}>
         {isUtm ? (
           <UtmBuilder />
         ) : isTracking ? (
@@ -26123,6 +26127,7 @@ export default function App() {
             viewerBuyer={effectiveViewerBuyer}
           />
         )}
+        </ErrorBoundary>
           </motion.div>
         </AnimatePresence>
       </main>
