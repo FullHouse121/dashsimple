@@ -550,6 +550,44 @@ const initDb = async () => {
       ON campaigns (keitaro_id);`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_behavior_key
       ON user_behavior (date, external_id, buyer, campaign, country, placement);`,
+    // idx_user_behavior_key above is kept only so instances still running the
+    // previous build don't hit 42P10 mid-deploy; nothing infers against it any
+    // more. It was broken two ways: `placement` is NULL on ~96% of rows and
+    // NULLs are distinct in a unique index, so ON CONFLICT never fired and every
+    // sync run re-inserted the same rows (up to 78x on a single day); and it
+    // omitted region and city, which the sync does request from Keitaro and does
+    // store, so simply making placement non-null would have started overwriting
+    // rows that differ only by city — trading inflation for silent data loss.
+    // v2 is the sync's true insert grain, COALESCEd so no key part can be NULL.
+    // Dedupe first so the CREATE succeeds on a dirty table, keeping the newest
+    // row per key. Deliberately bounded to the recent window rather than the
+    // whole table: statement_timeout is 30s and a migration failure aborts boot,
+    // so an unbounded sort over millions of rows would brick the deploy. Only
+    // dates inside the sync's rolling window can re-accumulate duplicates
+    // anyway. The historical backlog is cleared once by
+    // scripts/dedupe-user-behavior.mjs --all, which must finish BEFORE this
+    // deploys — CREATE UNIQUE INDEX needs the whole table clean, not just this
+    // window.
+    `DELETE FROM user_behavior
+      WHERE date >= (CURRENT_DATE - INTERVAL '45 days')::date::text
+        AND ctid IN (
+          SELECT ctid FROM (
+            SELECT ctid, ROW_NUMBER() OVER (
+                     PARTITION BY date, external_id,
+                                  COALESCE(buyer,''), COALESCE(campaign,''),
+                                  COALESCE(country,''), COALESCE(region,''),
+                                  COALESCE(city,''), COALESCE(placement,'')
+                     ORDER BY id DESC
+                   ) AS rn
+              FROM user_behavior
+             WHERE date >= (CURRENT_DATE - INTERVAL '45 days')::date::text
+          ) ranked WHERE rn > 1
+        );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_behavior_key_v2
+      ON user_behavior (date, external_id,
+                        COALESCE(buyer,''), COALESCE(campaign,''),
+                        COALESCE(country,''), COALESCE(region,''),
+                        COALESCE(city,''), COALESCE(placement,''));`,
     // Supports the install→device attribution lookup (WHERE external_id = ?
     // ORDER BY date DESC, id DESC LIMIT 1) with a single index seek.
     `CREATE INDEX IF NOT EXISTS idx_user_behavior_extid
@@ -592,6 +630,29 @@ const initDb = async () => {
         AND a.country = b.country;`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key
       ON device_stats (date, device, os, os_version, device_model, buyer, country);`,
+    // The dedupe above compares with `=`, which is never true for NULL, so rows
+    // with a NULL os/os_version/device_model slipped past it — and for the same
+    // reason slipped past the unique index too. Small blast radius here (11 rows
+    // vs millions in user_behavior) but it is the identical defect, so close it
+    // the same way: NULL-proof dedupe, then a COALESCEd v2 key.
+    `DELETE FROM device_stats
+      WHERE ctid IN (
+        SELECT ctid FROM (
+          SELECT ctid, ROW_NUMBER() OVER (
+                   PARTITION BY date, device,
+                                COALESCE(os,''), COALESCE(os_version,''),
+                                COALESCE(device_model,''), COALESCE(buyer,''),
+                                COALESCE(country,'')
+                   ORDER BY id DESC
+                 ) AS rn
+            FROM device_stats
+        ) ranked WHERE rn > 1
+      );`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_device_stats_key_v2
+      ON device_stats (date, device,
+                       COALESCE(os,''), COALESCE(os_version,''),
+                       COALESCE(device_model,''), COALESCE(buyer,''),
+                       COALESCE(country,''));`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS game TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS platform TEXT;`,
     `ALTER TABLE domains ADD COLUMN IF NOT EXISTS owner_role TEXT;`,
@@ -1338,10 +1399,11 @@ const insertUserBehavior = async (payload) => {
       redeposit_revenue
     )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-     ON CONFLICT (date, external_id, buyer, campaign, country, placement)
+     ON CONFLICT (date, external_id,
+                  COALESCE(buyer,''), COALESCE(campaign,''),
+                  COALESCE(country,''), COALESCE(region,''),
+                  COALESCE(city,''), COALESCE(placement,''))
      DO UPDATE SET
-       region = EXCLUDED.region,
-       city = EXCLUDED.city,
        device = EXCLUDED.device,
        os = EXCLUDED.os,
        os_version = EXCLUDED.os_version,
@@ -3497,7 +3559,9 @@ const insertDeviceStat = async (payload) => {
       redeposits
     )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     ON CONFLICT (date, device, os, os_version, device_model, buyer, country)
+     ON CONFLICT (date, device,
+                  COALESCE(os,''), COALESCE(os_version,''),
+                  COALESCE(device_model,''), COALESCE(buyer,''), COALESCE(country,''))
      DO UPDATE SET
        os_icon = COALESCE(EXCLUDED.os_icon, device_stats.os_icon),
        spend = EXCLUDED.spend,
