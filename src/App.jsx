@@ -249,6 +249,8 @@ import {
   matchesBuyerFilter,
   matchesCountryFilter,
   matchesCampaignListFilter,
+  matchesUserBehaviorRow,
+  matchesUserAggregate,
 } from "./lib/filters.js";
 import { toggleSortConfig, compareSortValues, getSortIndicator } from "./lib/sort.js";
 
@@ -12525,7 +12527,6 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   const globalBuyerFilter = filters?.buyer || "All";
   const globalCountryFilter = filters?.country || "All";
   const globalFlowFilter = Array.isArray(filters?.statsCampaign) ? filters.statsCampaign : EMPTY_FLOW_FILTER;
-  const globalUserDomainFilter = filters?.userDomain || "All";
   const globalUserCampaignFilter = filters?.userCampaign || "All";
   const globalUserExternalIdFilter = filters?.userExternalId || "";
   const globalUserMinRevenue = Number(filters?.userMinRevenue || 0);
@@ -12540,31 +12541,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
 
   const behaviorRows = React.useMemo(
     () =>
-      behaviorEntries.filter((row) => {
-        if (!isDateInRange(row.date || row.day || row.created_at, effectiveDateRange)) {
-          return false;
-        }
-        if (!matchesBuyerFilter(row.buyer, globalBuyerFilter, effectiveBuyer, isLeadership)) {
-          return false;
-        }
-        if (!matchesCountryFilter(row.country, globalCountryFilter)) return false;
-        if (!matchesCampaignListFilter(row.campaign, globalFlowFilter)) return false;
-        const rowDomain = normalizeFilterValue(row.domain || row.source || row.site || row.flow || row.flows);
-        if (
-          !isAllSelection(globalUserDomainFilter) &&
-          !rowDomain.includes(normalizeFilterValue(globalUserDomainFilter))
-        ) {
-          return false;
-        }
-        const rowCampaign = normalizeFilterValue(row.campaign || row.buyer);
-        if (
-          !isAllSelection(globalUserCampaignFilter) &&
-          !rowCampaign.includes(normalizeFilterValue(globalUserCampaignFilter))
-        ) {
-          return false;
-        }
-        return true;
-      }),
+      behaviorEntries.filter((row) =>
+        matchesUserBehaviorRow(row, {
+          dateRange: effectiveDateRange,
+          buyer: globalBuyerFilter,
+          country: globalCountryFilter,
+          flows: globalFlowFilter,
+          campaign: globalUserCampaignFilter,
+          viewerBuyer: effectiveBuyer,
+          isLeadership,
+        })
+      ),
     [
       behaviorEntries,
       effectiveDateRange.from,
@@ -12572,7 +12559,6 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
       globalBuyerFilter,
       globalCountryFilter,
       globalFlowFilter,
-      globalUserDomainFilter,
       globalUserCampaignFilter,
       effectiveBuyer,
       isLeadership,
@@ -12690,34 +12676,16 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
   }, [brandedRows]);
 
   const filteredUsers = React.useMemo(() => {
-    const normalizedExternalFilter = normalizeFilterValue(globalUserExternalIdFilter);
-    return userData.filter((row) => {
-      if (normalizedSearch) {
-        const idMatch = row.externalId.toLowerCase().includes(normalizedSearch);
-        const campaignMatch = String(row.campaign || "").toLowerCase().includes(normalizedSearch);
-        if (!idMatch && !campaignMatch) return false;
-      }
-      if (normalizedExternalFilter && !row.externalId.toLowerCase().includes(normalizedExternalFilter)) {
-        return false;
-      }
-      if (Number.isFinite(globalUserMinRevenue) && globalUserMinRevenue > 0 && row.revenue < globalUserMinRevenue) {
-        return false;
-      }
-      if (Number.isFinite(globalUserMinFtds) && globalUserMinFtds > 0 && row.ftds < globalUserMinFtds) {
-        return false;
-      }
-      if (
-        Number.isFinite(globalUserMinRedeposits) &&
-        globalUserMinRedeposits > 0 &&
-        row.redeposits < globalUserMinRedeposits
-      ) {
-        return false;
-      }
-      if (globalUserRevenueOnly && row.revenue <= 0) {
-        return false;
-      }
-      return true;
-    });
+    return userData.filter((row) =>
+      matchesUserAggregate(row, {
+        search: normalizedSearch,
+        externalId: globalUserExternalIdFilter,
+        minRevenue: globalUserMinRevenue,
+        minFtds: globalUserMinFtds,
+        minRedeposits: globalUserMinRedeposits,
+        revenueOnly: globalUserRevenueOnly,
+      })
+    );
   }, [
     userData,
     normalizedSearch,
@@ -26693,15 +26661,12 @@ export default function App() {
                     ) : null}
                     {isUserBehavior ? (
                       <>
-                        <div className="field">
-                          <label>{t("Domain / Source")}</label>
-                          <input
-                            type="text"
-                            placeholder={t("All")}
-                            value={filters.userDomain}
-                            onChange={updateFilter("userDomain")}
-                          />
-                        </div>
+                        {/* No "Domain / Source" here: /api/user-behavior returns
+                            external_id, buyer, country, campaign, date and the
+                            measures — there is no domain to match, so the filter
+                            matched nothing and emptied the whole section the
+                            moment it was typed into. Restoring it means adding
+                            domain to the user_behavior sync first. */}
                         <div className="field">
                           <label>{t("Campaign")}</label>
                           <input

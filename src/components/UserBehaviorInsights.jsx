@@ -177,12 +177,27 @@ export const PlayerEconomics = ({
   periodLabel,
   priorLabel,
 }) => {
-  // API payload when it arrives, client-side maths otherwise, so the row still
-  // says something useful if /economics fails.
-  const fallback = React.useMemo(() => buildEconomics(users || []), [users]);
-  const current = economics?.current ? shapeEconomics(economics.current) : fallback;
-  const previous = economics?.previous ? shapeEconomics(economics.previous) : null;
+  // Revenue-side measures come from the rows actually on screen, so every
+  // global filter (min revenue, external ID, country…) moves them. Spend cannot
+  // follow: it is recorded per campaign-day in media_stats, not per player, so
+  // there is no honest way to apportion it to a filtered subset — it stays the
+  // brand+period figure the API returned, and the footnote says so.
+  const live = React.useMemo(() => buildEconomics(users || []), [users]);
+  const apiCurrent = economics?.current ? shapeEconomics(economics.current) : null;
+  const apiPrevious = economics?.previous ? shapeEconomics(economics.previous) : null;
   if (!users?.length && !economics) return null;
+
+  // A delta only means something when the visible population is the one the
+  // API measured; any extra client-side narrowing makes the two incomparable,
+  // so the comparison is dropped rather than shown against a different base.
+  const narrowed = Boolean(apiCurrent) && live.players !== apiCurrent.players;
+  const previous = narrowed ? null : apiPrevious;
+  const current = {
+    ...live,
+    spend: apiCurrent ? apiCurrent.spend : live.spend,
+    roas: apiCurrent ? apiCurrent.roas : null,
+    sectionRevenue: apiCurrent ? apiCurrent.revenue : live.revenue,
+  };
 
   const pct = (value) =>
     value > 0 && value < 1 ? `${value.toFixed(2)}%` : `${value.toFixed(value >= 10 ? 0 : 1)}%`;
@@ -226,7 +241,7 @@ export const PlayerEconomics = ({
       hint:
         current.roas === null
           ? t("Needs spend data to calculate")
-          : `${formatCurrency(current.revenue)} ${t("back on")} ${formatCurrency(current.spend)}`,
+          : `${formatCurrency(current.sectionRevenue)} ${t("back on")} ${formatCurrency(current.spend)}`,
       accent: current.roas === null ? "var(--faint)" : current.roas >= 1 ? "var(--green)" : "var(--red)",
       delta:
         previous && current.roas !== null && previous.roas !== null
@@ -273,9 +288,13 @@ export const PlayerEconomics = ({
           </div>
         ))}
       </div>
-      {priorLabel ? (
+      {priorLabel || narrowed ? (
         <p className="ub-econ-foot">
-          {`${t("Economics cover the selected brand and period, compared with")} ${priorLabel}.`}
+          {narrowed
+            ? `${t("ARPU, LTV and the rates describe the")} ${live.players.toLocaleString()} ${t(
+                "players matching your filters. Spend and ROAS cover the whole brand and period, because cost is recorded per campaign rather than per player — so they cannot be narrowed, and the comparison is hidden while filters are active."
+              )}`
+            : `${t("Economics cover the selected brand and period, compared with")} ${priorLabel}.`}
           {current.roas === null
             ? ` ${t("Spend is only recorded on some campaigns, so ROAS is unavailable here.")}`
             : ""}
