@@ -20033,3 +20033,140 @@ select option,
 @media (prefers-reduced-motion: reduce) {
   .ub-funnel-fill, .ub-split-track span { transition: none; }
 }
+
+/* ── User Behavior: economics, dual share bars, richer charts ──────────── */
+.ub-econ {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--stroke);
+}
+.ub-econ-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 13px 15px;
+  border: 1px solid var(--stroke);
+  border-left: 3px solid var(--accent, var(--green));
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.ub-econ-label {
+  color: var(--muted-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ub-econ-value {
+  color: var(--text);
+  font-size: 25px;
+  font-weight: 680;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.ub-econ-hint { color: var(--faint); font-size: 11.5px; }
+
+/* Dual share bars */
+.ub-tiers-bars { display: flex; flex-direction: column; gap: 9px; }
+.ub-tiers-row { display: grid; grid-template-columns: 122px 1fr; align-items: center; gap: 12px; }
+.ub-tiers-caption { color: var(--muted); font-size: 11.5px; }
+.ub-tiers-bar {
+  display: flex;
+  gap: 2px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.ub-tiers-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3px;
+  border-radius: 3px;
+  overflow: hidden;
+  transition: opacity 0.18s var(--ease-smooth);
+}
+.ub-tiers-seg em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: rgba(10, 12, 14, 0.72);
+  letter-spacing: 0.01em;
+}
+.ub-tiers-seg.is-empty { flex: 1; background: rgba(255, 255, 255, 0.05); }
+
+/* Concentration checkpoints */
+.ub-conc-checks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.ub-conc-check {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+.ub-conc-check-head { color: var(--faint); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; }
+.ub-conc-check strong {
+  color: var(--teal);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.ub-conc-check-foot { color: var(--faint); font-size: 11px; }
+
+/* Chart legend */
+.ub-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; padding-left: 4px; }
+.ub-legend-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+.ub-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* Rich tooltip for Top Players */
+.ub-tip {
+  min-width: 208px;
+  padding: 11px 13px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-md);
+  background: #16181c;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+.ub-tip-id {
+  margin: 0 0 3px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.ub-tip-sub {
+  margin: 0 0 8px;
+  color: var(--faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ub-tip-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 12px;
+  margin: 0 0 8px;
+}
+.ub-tip-grid dt { color: var(--muted); font-size: 11.5px; }
+.ub-tip-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ub-tip-hint { margin: 0; color: var(--faint); font-size: 10.5px; }
+
+@media (max-width: 720px) {
+  .ub-tiers-row { grid-template-columns: 1fr; gap: 5px; }
+  .ub-conc-checks { grid-template-columns: 1fr; }
+}

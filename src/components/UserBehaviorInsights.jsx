@@ -7,6 +7,7 @@ import {
   Area,
   ComposedChart,
   Line,
+  LabelList,
   XAxis,
   YAxis,
   Tooltip,
@@ -60,6 +61,109 @@ export const CopyId = ({ value, onCopy }) => {
   );
 };
 
+// ── brand ─────────────────────────────────────────────────────────────────
+// Campaigns follow "Buyer | Tool | Game | Geo | Brand" — all 190 in the live
+// table have exactly five segments, so the last one is the brand. Upper-cased
+// because Keitaro still holds both "JASINO" and "Jasino" (and ZLOTMX/ZlotMX);
+// grouping on the raw string would split one brand into two.
+export const campaignBrand = (campaign) => {
+  const parts = String(campaign || "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length >= 5 ? parts[parts.length - 1].toUpperCase() : "";
+};
+
+export const buildBrandOptions = (rows) => {
+  const counts = new Map();
+  rows.forEach((row) => {
+    const brand = campaignBrand(row.campaign);
+    if (brand) counts.set(brand, (counts.get(brand) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([brand]) => ({ value: brand, label: brand }));
+};
+
+// ── economics ─────────────────────────────────────────────────────────────
+// ARPU spreads revenue over everyone acquired; LTV over the ones who actually
+// paid. Buyers need both: ARPU tells you what a click is worth, LTV tells you
+// what a depositor is worth, and the gap between them is the conversion problem.
+export const buildEconomics = (users) => {
+  const totals = users.reduce(
+    (acc, user) => {
+      acc.revenue += user.revenue || 0;
+      acc.clicks += user.clicks || 0;
+      acc.registers += user.registers || 0;
+      acc.ftds += user.ftds || 0;
+      acc.redeposits += user.redeposits || 0;
+      const deposits = (user.ftds || 0) + (user.redeposits || 0);
+      if (deposits > 0) acc.depositors += 1;
+      if (deposits >= 2) acc.repeat += 1;
+      return acc;
+    },
+    { revenue: 0, clicks: 0, registers: 0, ftds: 0, redeposits: 0, depositors: 0, repeat: 0 }
+  );
+  const players = users.length;
+  return {
+    ...totals,
+    players,
+    arpu: players > 0 ? totals.revenue / players : 0,
+    ltv: totals.depositors > 0 ? totals.revenue / totals.depositors : 0,
+    clickToDeposit: totals.clicks > 0 ? (totals.depositors / totals.clicks) * 100 : 0,
+    registerToDeposit: totals.registers > 0 ? (totals.depositors / totals.registers) * 100 : 0,
+    repeatRate: totals.depositors > 0 ? (totals.repeat / totals.depositors) * 100 : 0,
+  };
+};
+
+export const PlayerEconomics = ({ users, t = (x) => x, periodLabel }) => {
+  const economics = React.useMemo(() => buildEconomics(users), [users]);
+  if (!users.length) return null;
+
+  const metrics = [
+    {
+      label: t("ARPU"),
+      value: formatCurrency(economics.arpu),
+      hint: `${t("Revenue ÷ all")} ${economics.players.toLocaleString()} ${t("players")}`,
+      accent: "var(--blue)",
+    },
+    {
+      label: t("LTV"),
+      value: formatCurrency(economics.ltv),
+      // Not lifetime: the API caps the window at 45 days. Saying "LTV" without
+      // that caveat would overstate what this number covers.
+      hint: `${t("Revenue ÷")} ${economics.depositors.toLocaleString()} ${t("depositors")}${
+        periodLabel ? ` · ${periodLabel}` : ""
+      }`,
+      accent: "var(--green)",
+    },
+    {
+      label: t("Click → deposit"),
+      value: `${economics.clickToDeposit < 1 && economics.clickToDeposit > 0 ? economics.clickToDeposit.toFixed(2) : economics.clickToDeposit.toFixed(1)}%`,
+      hint: `${economics.depositors.toLocaleString()} ${t("of")} ${economics.clicks.toLocaleString()} ${t("clicks")}`,
+      accent: "var(--teal)",
+    },
+    {
+      label: t("Repeat rate"),
+      value: `${economics.repeatRate.toFixed(0)}%`,
+      hint: `${economics.repeat.toLocaleString()} ${t("of")} ${economics.depositors.toLocaleString()} ${t("deposit again")}`,
+      accent: "var(--purple)",
+    },
+  ];
+
+  return (
+    <div className="ub-econ">
+      {metrics.map((metric) => (
+        <div className="ub-econ-cell" key={metric.label} style={{ "--accent": metric.accent }}>
+          <span className="ub-econ-label">{metric.label}</span>
+          <strong className="ub-econ-value">{metric.value}</strong>
+          <span className="ub-econ-hint">{metric.hint}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // ── value tiers ───────────────────────────────────────────────────────────
 // Where a player stopped tells you more than any average does: a funnel that
 // ends at "clicked" is a targeting problem, one that ends at "registered" is
@@ -93,19 +197,49 @@ export const ValueTiers = ({ users, t = (x) => x, activeTier, onSelectTier }) =>
   const totalRevenue = tiers.reduce((acc, tier) => acc + tier.revenue, 0);
   if (!users.length) return null;
 
+  // Two bars, not one. A single count bar is dominated by "clicked only" —
+  // the 0.5% of players who produce 85% of revenue become an invisible sliver,
+  // which is the opposite of the point. Stacking share-of-players against
+  // share-of-revenue makes that asymmetry the thing you see first.
+  const bars = [
+    { key: "players", label: t("Share of players"), valueOf: (tier) => tier.count },
+    { key: "revenue", label: t("Share of revenue"), valueOf: (tier) => tier.revenue },
+  ];
+
   return (
     <div className="ub-tiers">
-      <div className="ub-tiers-bar" role="img" aria-label={t("Player mix by depth")}>
-        {tiers.map((tier) =>
-          tier.count ? (
-            <span
-              key={tier.key}
-              className="ub-tiers-seg"
-              style={{ flexGrow: tier.count, background: tier.color }}
-              title={`${t(tier.label)} — ${tier.count.toLocaleString()}`}
-            />
-          ) : null
-        )}
+      <div className="ub-tiers-bars">
+        {bars.map((bar) => {
+          const total = tiers.reduce((acc, tier) => acc + bar.valueOf(tier), 0);
+          return (
+            <div className="ub-tiers-row" key={bar.key}>
+              <span className="ub-tiers-caption">{bar.label}</span>
+              <div className="ub-tiers-bar" role="img" aria-label={bar.label}>
+                {total > 0 ? (
+                  tiers.map((tier) => {
+                    const value = bar.valueOf(tier);
+                    if (value <= 0) return null;
+                    const pct = (value / total) * 100;
+                    return (
+                      <span
+                        key={tier.key}
+                        className="ub-tiers-seg"
+                        style={{ width: `${pct}%`, background: tier.color }}
+                        title={`${t(tier.label)} — ${pct < 1 ? pct.toFixed(2) : pct.toFixed(0)}%`}
+                      >
+                        {pct >= 8 ? (
+                          <em>{pct < 1 ? pct.toFixed(1) : pct.toFixed(0)}%</em>
+                        ) : null}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <span className="ub-tiers-seg is-empty" />
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="ub-tiers-grid">
         {tiers.map((tier) => {
@@ -145,53 +279,113 @@ export const ValueTiers = ({ users, t = (x) => x, activeTier, onSelectTier }) =>
 // Horizontal, because the category label is a 16-character hash: on a vertical
 // axis it gets truncated into something you cannot tell apart from the next
 // player, which is exactly the readability problem this chart had.
+const TopPlayerTooltip = ({ active, payload, t }) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  const deposits = (row.ftds || 0) + (row.redeposits || 0);
+  return (
+    <div className="ub-tip">
+      <p className="ub-tip-id">{row.externalId}</p>
+      {row.campaign ? <p className="ub-tip-sub">{row.campaign}</p> : null}
+      <dl className="ub-tip-grid">
+        <dt>{t("Revenue")}</dt>
+        <dd>{formatCurrency(row.revenue || 0)}</dd>
+        <dt>{t("Deposits")}</dt>
+        <dd>{deposits.toLocaleString()}</dd>
+        <dt>{t("Clicks")}</dt>
+        <dd>{(row.clicks || 0).toLocaleString()}</dd>
+        <dt>{t("Rev / click")}</dt>
+        <dd>{row.clicks > 0 ? formatCurrency((row.revenue || 0) / row.clicks) : "—"}</dd>
+      </dl>
+      <p className="ub-tip-hint">{t("Select to open full detail")}</p>
+    </div>
+  );
+};
+
 export const TopPlayers = ({ users, t = (x) => x, onSelect, metric = "revenue" }) => {
   const data = React.useMemo(
     () =>
       [...users]
         .sort((a, b) => (b[metric] || 0) - (a[metric] || 0))
         .slice(0, 8)
-        .map((user, index) => ({ ...user, rank: index + 1, label: shortId(user.externalId) })),
+        .map((user, index) => {
+          const deposits = (user.ftds || 0) + (user.redeposits || 0);
+          return {
+            ...user,
+            rank: index + 1,
+            label: shortId(user.externalId),
+            tier: deposits >= 2 ? "repeat" : deposits === 1 ? "ftd" : "none",
+          };
+        }),
     [users, metric]
   );
   if (!data.length) return <div className="empty-state">{t("No user behavior data available.")}</div>;
 
   const isMoney = metric === "revenue" || metric === "ftdRevenue";
+  const fmt = (value) => (isMoney ? formatCurrency(value) : Number(value).toLocaleString());
+  // Colour carries the tier, so the chart says who these players are and not
+  // only how much they are worth.
+  const fillFor = (row) =>
+    row.tier === "repeat" ? "var(--green)" : row.tier === "ftd" ? "var(--teal)" : "rgba(139,143,152,0.5)";
+
   return (
-    <div className="chart chart-surface">
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 4, bottom: 4 }}>
-          <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-          <XAxis
-            type="number"
-            tickLine={false}
-            axisLine={false}
-            tick={axisTick}
-            tickFormatter={(value) => (isMoney ? formatCurrencyCompact(value) : Number(value).toLocaleString())}
-          />
-          <YAxis
-            type="category"
-            dataKey="label"
-            width={104}
-            tickLine={false}
-            axisLine={false}
-            tick={{ ...axisTick, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-          />
-          <Tooltip
-            cursor={{ fill: "rgba(255,255,255,0.04)" }}
-            contentStyle={tooltipSurface}
-            formatter={(value) => [isMoney ? formatCurrency(value) : Number(value).toLocaleString(), t("Value")]}
-            labelFormatter={(_label, payload) => payload?.[0]?.payload?.externalId || ""}
-          />
-          <Bar dataKey={metric} radius={[0, 8, 8, 0]} barSize={22} cursor="pointer"
-               onClick={(entry) => onSelect?.(entry?.payload || entry)}>
-            {data.map((row) => (
-              <Cell key={row.externalId} fill={row.rank === 1 ? "var(--green)" : "rgba(54, 208, 124, 0.42)"} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <>
+      <div className="chart chart-surface">
+        <ResponsiveContainer width="100%" height={300}>
+          <BarChart data={data} layout="vertical" margin={{ top: 4, right: 72, left: 4, bottom: 4 }}>
+            <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
+            <XAxis
+              type="number"
+              tickLine={false}
+              axisLine={false}
+              tick={axisTick}
+              tickFormatter={(value) => (isMoney ? formatCurrencyCompact(value) : Number(value).toLocaleString())}
+            />
+            <YAxis
+              type="category"
+              dataKey="label"
+              width={104}
+              tickLine={false}
+              axisLine={false}
+              tick={{ ...axisTick, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+            />
+            <Tooltip cursor={{ fill: "rgba(255,255,255,0.04)" }} content={<TopPlayerTooltip t={t} />} />
+            <Bar
+              dataKey={metric}
+              radius={[0, 7, 7, 0]}
+              barSize={22}
+              cursor="pointer"
+              onClick={(entry) => onSelect?.(entry?.payload || entry)}
+            >
+              {data.map((row) => (
+                <Cell key={row.externalId} fill={fillFor(row)} />
+              ))}
+              {/* The value belongs on the bar: reading it off the axis is a
+                  second step nobody takes. */}
+              <LabelList
+                dataKey={metric}
+                position="right"
+                offset={10}
+                formatter={fmt}
+                style={{ fill: "#c9cdd5", fontSize: 11, fontVariantNumeric: "tabular-nums" }}
+              />
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="ub-legend">
+        {[
+          { label: t("Repeat depositor"), color: "var(--green)" },
+          { label: t("First deposit"), color: "var(--teal)" },
+          { label: t("No deposit"), color: "rgba(139,143,152,0.5)" },
+        ].map((item) => (
+          <span className="ub-legend-item" key={item.label}>
+            <span className="ub-legend-dot" style={{ background: item.color }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </>
   );
 };
 
@@ -202,7 +396,8 @@ export const TopPlayers = ({ users, t = (x) => x, onSelect, metric = "revenue" }
 export const buildConcentration = (users) => {
   const earners = users.filter((user) => (user.revenue || 0) > 0).sort((a, b) => b.revenue - a.revenue);
   const total = earners.reduce((acc, user) => acc + user.revenue, 0);
-  if (!earners.length || total <= 0) return { points: [], total: 0, earners: 0, p10: 0, top1: 0 };
+  if (!earners.length || total <= 0)
+    return { points: [], total: 0, earners: 0, p10: 0, top1: 0, at: () => 0 };
   const points = [{ share: 0, cumulative: 0, players: 0 }];
   let running = 0;
   earners.forEach((user, index) => {
@@ -217,12 +412,20 @@ export const buildConcentration = (users) => {
     const cut = Math.max(1, Math.ceil((pct / 100) * earners.length));
     return (earners.slice(0, cut).reduce((acc, user) => acc + user.revenue, 0) / total) * 100;
   };
-  return { points, total, earners: earners.length, p10: at(10), top1: at(1) };
+  return { points, total, earners: earners.length, p10: at(10), top1: at(1), at };
 };
 
 export const Concentration = ({ users, t = (x) => x }) => {
-  const { points, earners, p10 } = React.useMemo(() => buildConcentration(users), [users]);
+  const { points, earners, p10, top1, at } = React.useMemo(() => buildConcentration(users), [users]);
   if (!points.length) return <div className="empty-state">{t("No revenue in this period.")}</div>;
+
+  // Three checkpoints rather than one: a single "top 10%" number hides whether
+  // the risk is one whale or a broad base of good players.
+  const checkpoints = [
+    { pct: 1, share: top1 },
+    { pct: 10, share: p10 },
+    { pct: 25, share: at ? at(25) : 0 },
+  ];
 
   return (
     <>
@@ -232,6 +435,19 @@ export const Concentration = ({ users, t = (x) => x }) => {
           {t("of revenue comes from the top 10% of paying players")}
           <em>{` (${Math.max(1, Math.ceil(earners * 0.1)).toLocaleString()} ${t("of")} ${earners.toLocaleString()})`}</em>
         </span>
+      </div>
+      <div className="ub-conc-checks">
+        {checkpoints.map((check) => (
+          <div className="ub-conc-check" key={check.pct}>
+            <span className="ub-conc-check-head">
+              {t("Top")} {check.pct}%
+            </span>
+            <strong>{check.share.toFixed(0)}%</strong>
+            <span className="ub-conc-check-foot">
+              {Math.max(1, Math.ceil((earners * check.pct) / 100)).toLocaleString()} {t("players")}
+            </span>
+          </div>
+        ))}
       </div>
       <div className="chart chart-surface">
         <ResponsiveContainer width="100%" height={232}>

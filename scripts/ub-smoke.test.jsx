@@ -4,7 +4,8 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import {
   buildTiers, buildConcentration, buildUserDetail, shortId,
-  ValueTiers, TopPlayers, Concentration, UserDetail, CopyId,
+  campaignBrand, buildBrandOptions, buildEconomics,
+  ValueTiers, TopPlayers, Concentration, UserDetail, CopyId, PlayerEconomics,
 } from "../src/components/UserBehaviorInsights.jsx";
 
 const users = [
@@ -76,6 +77,37 @@ check("shortId keeps head and tail distinguishable", () => {
   eq(shortId("short"), "short", "passthrough");
 });
 
+check("brand comes from the last segment, case-folded", () => {
+  eq(campaignBrand("Leticia | PWA.GROUP | Ice Fishing | BR | JASINO"), "JASINO", "upper");
+  eq(campaignBrand("Leticia | PWA.GROUP | Ice Fishing | BR | Jasino"), "JASINO", "mixed case folds");
+  eq(campaignBrand("Leo | Traffic Junky"), "", "too few segments");
+  eq(campaignBrand(""), "", "empty");
+});
+check("brand options dedupe across casing", () => {
+  const opts = buildBrandOptions([
+    { campaign: "A | B | C | BR | JASINO" },
+    { campaign: "A | B | C | BR | Jasino" },
+    { campaign: "A | B | C | MX | ZLOTMX" },
+    { campaign: "Leo | Traffic Junky" },
+  ]);
+  eq(opts.length, 2, "distinct brands");
+  eq(opts[0].value, "JASINO", "most common first");
+});
+check("ARPU spreads over everyone, LTV over depositors", () => {
+  const e = buildEconomics(users);
+  eq(e.players, 4, "players");
+  eq(e.depositors, 2, "depositors");
+  eq(Number(e.arpu.toFixed(2)), Number(((15.75 + 820.5) / 4).toFixed(2)), "arpu");
+  eq(Number(e.ltv.toFixed(2)), Number(((15.75 + 820.5) / 2).toFixed(2)), "ltv");
+  eq(e.repeat, 1, "repeat");
+  eq(e.repeatRate, 50, "repeatRate");
+});
+check("economics are divide-by-zero safe", () => {
+  const e = buildEconomics([]);
+  eq(e.arpu, 0, "arpu"); eq(e.ltv, 0, "ltv");
+  eq(e.clickToDeposit, 0, "clickToDeposit"); eq(e.repeatRate, 0, "repeatRate");
+});
+
 console.log("render:");
 for (const [name, el] of [
   ["ValueTiers", <ValueTiers users={users} />],
@@ -84,6 +116,8 @@ for (const [name, el] of [
   ["TopPlayers (empty)", <TopPlayers users={[]} />],
   ["Concentration", <Concentration users={users} />],
   ["Concentration (no revenue)", <Concentration users={[users[3]]} />],
+  ["PlayerEconomics", <PlayerEconomics users={users} periodLabel="This Month" />],
+  ["PlayerEconomics (empty)", <PlayerEconomics users={[]} />],
   ["CopyId", <CopyId value="1bJCoJghbfsaRJlU" />],
   ["CopyId (empty)", <CopyId value="" />],
   ["UserDetail (fallback rows)", <UserDetail externalId="1bJCoJghbfsaRJlU" rows={rows} onClose={() => {}} />],

@@ -198,9 +198,12 @@ import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Sele
 import {
   CopyId,
   ValueTiers,
+  PlayerEconomics,
   TopPlayers,
   Concentration,
   UserDetail,
+  buildBrandOptions,
+  campaignBrand,
 } from "./components/UserBehaviorInsights.jsx";
 import { AccountCredentialsModal, CREDENTIAL_MASK } from "./components/AccountCredentials.jsx";
 import { liveClickSubIssues } from "./lib/live.js";
@@ -12581,9 +12584,25 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     ]
   );
 
+  // Brand lives in the last segment of "Buyer | Tool | Game | Geo | Brand", so
+  // it is filtered on the raw rows before per-player aggregation — otherwise a
+  // player active on two brands would carry both brands' revenue into either.
+  const [brandFilter, setBrandFilter] = React.useState("All");
+  const brandOptions = React.useMemo(
+    () => [{ value: "All", label: t("All brands") }, ...buildBrandOptions(behaviorRows)],
+    [behaviorRows, t]
+  );
+  const brandedRows = React.useMemo(
+    () =>
+      brandFilter === "All"
+        ? behaviorRows
+        : behaviorRows.filter((row) => campaignBrand(row.campaign) === brandFilter),
+    [behaviorRows, brandFilter]
+  );
+
   const userData = React.useMemo(() => {
     const map = new Map();
-    behaviorRows.forEach((row) => {
+    brandedRows.forEach((row) => {
       const externalId = String(row.external_id || row.externalId || "").trim();
       if (!externalId) return;
       if (!map.has(externalId)) {
@@ -12644,7 +12663,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
-  }, [behaviorRows]);
+  }, [brandedRows]);
 
   const filteredUsers = React.useMemo(() => {
     const normalizedExternalFilter = normalizeFilterValue(globalUserExternalIdFilter);
@@ -12866,10 +12885,19 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Player Mix")}</h3>
+              <h3 className="panel-title">{t("Player Mix & Economics")}</h3>
               <p className="panel-subtitle">
-                {t("Where each player stopped. Select a tier to filter everything below.")}
+                {t("What a player is worth and how far they got. Brand narrows the whole section; a tier narrows everything below.")}
               </p>
+            </div>
+            <div className="panel-actions">
+              <Select
+                value={brandFilter}
+                onChange={setBrandFilter}
+                options={brandOptions}
+                placeholder={t("All brands")}
+                searchPlaceholder={t("Find brand")}
+              />
             </div>
           </div>
           <ValueTiers
@@ -12877,6 +12905,11 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             t={t}
             activeTier={activeTier}
             onSelectTier={setActiveTier}
+          />
+          <PlayerEconomics
+            users={tieredUsers}
+            t={t}
+            periodLabel={period === "All" ? "" : period}
           />
         </motion.section>
       ) : null}
