@@ -8,6 +8,7 @@ import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
 import { Select, DeusDatePicker } from "../components/Select.jsx";
+import { Pager, usePagination } from "../components/Pager.jsx";
 import { useLiveFeed, parseTrackerMs, useWindowSeries } from "../lib/useLiveFeed.js";
 import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
@@ -228,7 +229,11 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
   const loadedCount = filteredRows.length;
   const pctLoaded = (num) => (loadedCount > 0 ? `${((num / loadedCount) * 100).toFixed(1)}%` : "—");
 
-  const visibleRows = filteredRows.slice(0, LIVE_CLICKS_RENDER_CAP);
+  // Paginated rather than truncated: the old cap rendered the newest 500
+  // and hid the rest, so anything older was unreachable without narrowing
+  // the window or opening the CSV.
+  const pager = usePagination(filteredRows.length);
+  const visibleRows = filteredRows.slice(pager.from, pager.to);
 
   // Deep lookup: the live feed only holds the newest ~1,000 clicks, so a click
   // from days ago (that later converted) isn't in the window. When an in-window
@@ -838,11 +843,18 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                   </tbody>
                 </table>
               </div>
-              {!deepActive && filteredRows.length > LIVE_CLICKS_RENDER_CAP ? (
-                <p className="field-hint" style={{ marginTop: 8 }}>
-                  Showing the {LIVE_CLICKS_RENDER_CAP} most recent of {filteredRows.length.toLocaleString()}{plus} clicks — narrow the window or search, or export the CSV for everything loaded.
-                </p>
-              ) : null}
+              {deepActive ? null : (
+                <Pager
+                  page={pager.page}
+                  pageCount={pager.pageCount}
+                  pageList={pager.pageList}
+                  setPage={pager.setPage}
+                  from={pager.from}
+                  shown={visibleRows.length}
+                  total={filteredRows.length}
+                  noun="clicks"
+                />
+              )}
             </>
           )}
         </motion.div>
