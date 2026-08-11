@@ -207,6 +207,14 @@ import {
   UNATTRIBUTED_PLACEMENT,
 } from "./components/PlacementInsights.jsx";
 import {
+  DeviceMix,
+  WasteCallout,
+  OsComparison,
+  OsVersions,
+  OS_METRICS,
+  findWaste,
+} from "./components/DeviceInsights.jsx";
+import {
   CopyId,
   ValueTiers,
   PlayerEconomics,
@@ -13191,7 +13199,16 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
   const fetchDeviceStats = React.useCallback(async () => {
     try {
       setDeviceState({ loading: true, error: null });
-      const response = await apiFetch("/api/device-stats?limit=500");
+      // Ask for the selected window, not "the newest 500 rows": device_stats
+      // is per day x device x os x version x model, so a month easily exceeds
+      // any small cap and the page silently under-reported every total.
+      const periodRange = getPeriodDateRange(period, customRange);
+      const globalRange = normalizeDateRange(filters?.dateFrom, filters?.dateTo);
+      const range = globalRange.from || globalRange.to ? globalRange : periodRange;
+      const params = new URLSearchParams({ limit: "50000" });
+      if (range.from) params.set("from", range.from);
+      if (range.to) params.set("to", range.to);
+      const response = await apiFetch(`/api/device-stats?${params.toString()}`);
       if (!response.ok) {
         throw new Error("Failed to load device stats.");
       }
@@ -13201,7 +13218,9 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
     } catch (error) {
       setDeviceState({ loading: false, error: error.message || "Failed to load device stats." });
     }
-  }, []);
+    // The request now carries the window, so it has to re-run when the window
+    // moves — with an empty dep list it fetched once and never again.
+  }, [period, customRange.from, customRange.to, filters?.dateFrom, filters?.dateTo]);
 
   React.useEffect(() => {
     fetchDeviceStats();
@@ -13287,13 +13306,14 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
     const osName = row.os || row.device || "Unknown";
     const key = osName.toLowerCase();
     if (!osMap.has(key)) {
-      osMap.set(key, { key, name: osName, revenue: 0, clicks: 0, installs: 0, ftds: 0 });
+      osMap.set(key, { key, name: osName, revenue: 0, clicks: 0, installs: 0, ftds: 0, registers: 0 });
     }
     const current = osMap.get(key);
     current.revenue += row.revenue || 0;
     current.clicks += row.clicks || 0;
     current.installs += row.installs || 0;
     current.ftds += row.ftds || 0;
+    current.registers += row.registers || 0;
   });
   const osData = Array.from(osMap.values()).sort((a, b) => b.revenue - a.revenue);
   const topOs = osData[0] || null;
@@ -13334,12 +13354,17 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
     cr: row.clicks ? (row.ftds / row.clicks) * 100 : 0,
   }));
 
+  // `name`, plus the derived measures OsComparison ranks and labels by.
   const osChartData = osData.map((row) => ({
     key: row.key,
+    name: row.name,
     os: row.name,
     revenue: row.revenue,
     clicks: row.clicks,
+    registers: row.registers || 0,
+    ftds: row.ftds || 0,
     installs: row.installs,
+    epc: row.clicks ? row.revenue / row.clicks : 0,
     cr: row.clicks ? (row.ftds / row.clicks) * 100 : 0,
   }));
 
@@ -13354,33 +13379,97 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
   const TopOsIcon = getOsIconComponent(topOs?.name);
   const topOsAccent = getOsAccent(topOs?.name);
 
+  // Platform families (Mobile / Desktop / Tablet …) rather than OS names: the
+  // first question is which kind of device, the second is which OS.
+  const platformData = React.useMemo(() => {
+    const map = new Map();
+    deviceData.forEach((row) => {
+      const name = row.device || "Unknown";
+      if (!map.has(name)) {
+        map.set(name, { name, clicks: 0, registers: 0, ftds: 0, revenue: 0, spend: 0 });
+      }
+      const cur = map.get(name);
+      cur.clicks += row.clicks || 0;
+      cur.registers += row.registers || 0;
+      cur.ftds += row.ftds || 0;
+      cur.revenue += row.revenue || 0;
+      cur.spend += row.spend || 0;
+    });
+    return [...map.values()].sort((a, b) => b.clicks - a.clicks);
+  }, [deviceData]);
+
+  const deviceTotals = React.useMemo(
+    () =>
+      deviceData.reduce(
+        (acc, row) => ({
+          clicks: acc.clicks + (row.clicks || 0),
+          registers: acc.registers + (row.registers || 0),
+          ftds: acc.ftds + (row.ftds || 0),
+          revenue: acc.revenue + (row.revenue || 0),
+          spend: acc.spend + (row.spend || 0),
+        }),
+        { clicks: 0, registers: 0, ftds: 0, revenue: 0, spend: 0 }
+      ),
+    [deviceData]
+  );
+
+  const mobileClicks = platformData
+    .filter((row) => /mobile|phone/i.test(row.name))
+    .reduce((acc, row) => acc + row.clicks, 0);
+  const mobileShare = deviceTotals.clicks > 0 ? (mobileClicks / deviceTotals.clicks) * 100 : 0;
+  const nonMobileClicks = deviceTotals.clicks - mobileClicks;
+
+  // Waste is measured across platforms and OSes both, since either can be the
+  // level at which a segment is worth excluding.
+  const wasteRows = React.useMemo(() => findWaste([...platformData, ...osData]), [platformData, osData]);
+  const wastedClicks = wasteRows.reduce((acc, row) => acc + (row.clicks || 0), 0);
+  const wasteLeaders = wasteRows.slice(0, 2).map((row) => row.name).join(", ");
+  const [osMetric, setOsMetric] = React.useState("clicks");
+  // 2,282 rows across 378 device models rendered in one table before this,
+  // which buried the charts and made the page feel broken.
+  const devicePagination = usePagination(deviceChartData.length, PAGE_SIZE);
+  const pagedDeviceRows = React.useMemo(
+    () => deviceChartData.slice(devicePagination.from, devicePagination.to),
+    [deviceChartData, devicePagination.from, devicePagination.to]
+  );
+  const maxDeviceClicks = Math.max(0, ...deviceChartData.map((row) => row.clicks || 0));
+
   return (
     <>
       <section className="cards">
         {[
+          // Measures first. The old set headlined "Android" and "Android 10"
+          // twice over and a hard-coded 0 for installs, which said nothing
+          // about how the account is doing.
           {
-            label: "Top OS",
-            value: topOs?.name || "—",
+            label: "Clicks",
+            value: deviceTotals.clicks.toLocaleString(),
             iconNode: <TopOsIcon size={18} style={{ color: topOsAccent }} />,
-            meta: topOs ? `${t("Revenue")}: ${formatCurrency(topOs.revenue)}` : t("No data"),
+            meta: `${deviceTotals.registers.toLocaleString()} ${t("registers")} · ${deviceTotals.ftds.toLocaleString()} ${t("FTDs")}`,
           },
           {
-            label: "Top OS Version",
-            value: topOsVersion?.label || "—",
+            label: "Revenue",
+            value: formatCurrency(deviceTotals.revenue),
             icon: Wallet,
-            meta: topOsVersion ? `${t("Revenue")}: ${formatCurrency(topOsVersion.revenue)}` : t("No data"),
+            meta:
+              deviceTotals.spend > 0
+                ? `${formatCurrency(deviceTotals.spend)} ${t("spend")} · ${(deviceTotals.revenue / deviceTotals.spend).toFixed(2)}x ROAS`
+                : t("No spend recorded"),
           },
           {
-            label: "Top OS Installs",
-            value: topOsVersion ? Number(topOsVersion.installs || 0).toLocaleString() : "0",
-            icon: Download,
-            meta: topOsVersion ? topOsVersion.label : t("No data"),
-          },
-          {
-            label: "Top OS CR",
-            value: `${topOsVersionCr.toFixed(2)}%`,
+            label: "Mobile Share",
+            value: `${mobileShare.toFixed(0)}%`,
             icon: Target,
-            meta: topOsVersion ? `${t("FTD / Clicks")} · ${topOsVersion.label}` : t("No data"),
+            meta: `${t("of clicks")} · ${nonMobileClicks.toLocaleString()} ${t("elsewhere")}`,
+          },
+          {
+            label: "Wasted Clicks",
+            // The number worth acting on: volume that returned nothing.
+            value: wastedClicks.toLocaleString(),
+            icon: Download,
+            meta: wastedClicks
+              ? `${t("no revenue")} · ${wasteLeaders}`
+              : t("every segment earned"),
           },
         ].map((stat, idx) => {
           const Icon = stat.icon;
@@ -13403,173 +13492,88 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
         })}
       </section>
 
-      <section className="panels device-charts">
+      <section className="panels device-charts device-panels">
         <motion.div
-          className="panel"
+          className="panel span-2"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Revenue by OS")}</h3>
-              <p className="panel-subtitle">{t("Track revenue contribution by OS.")}</p>
+              <h3 className="panel-title">{t("Platform Mix")}</h3>
+              <p className="panel-subtitle">
+                {t("Share of clicks against share of revenue. A platform that takes traffic and returns none is an exclusion waiting to be made.")}
+              </p>
             </div>
-            <PeriodSelect
-              value={period}
-              onChange={setPeriod}
-              customRange={customRange}
-              onCustomChange={onCustomChange}
-            />
+            <div className="panel-actions">
+              <PeriodSelect
+                value={period}
+                onChange={setPeriod}
+                customRange={customRange}
+                onCustomChange={onCustomChange}
+              />
+            </div>
           </div>
-          <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="deviceRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--green)" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="var(--green)" stopOpacity={0.25} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  width={60}
-                  tick={axisTickStyle}
-                  domain={valueDomain(osChartData, "revenue")}
-                  tickFormatter={(value) => formatCurrency(value)}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value) => [formatCurrency(value), t("Revenue")]}
-                />
-                <Bar dataKey="revenue" fill="url(#deviceRevenue)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {deviceState.loading ? (
+            <div className="empty-state">{t("Loading device stats…")}</div>
+          ) : deviceState.error ? (
+            <div className="empty-state error">{deviceState.error}</div>
+          ) : platformData.length === 0 ? (
+            <div className="empty-state">{t("No device data available.")}</div>
+          ) : (
+            <>
+              <DeviceMix rows={platformData} t={t} />
+              <WasteCallout rows={wasteRows} totalClicks={deviceTotals.clicks} t={t} />
+            </>
+          )}
         </motion.div>
 
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.05 }}
+          transition={{ duration: 0.6, delay: 0.08 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Click by OS")}</h3>
-              <p className="panel-subtitle">{t("Clicks volume grouped by OS.")}</p>
+              <h3 className="panel-title">{t("Operating Systems")}</h3>
+              <p className="panel-subtitle">{t("Ranked. Orange means clicks without revenue.")}</p>
+            </div>
+            <div className="panel-actions">
+              <div className="pl-switch" role="group" aria-label={t("Measure")}>
+                {OS_METRICS.map((m) => (
+                  <button
+                    type="button"
+                    key={m.key}
+                    className={osMetric === m.key ? "is-active" : ""}
+                    onClick={() => setOsMetric(m.key)}
+                    aria-pressed={osMetric === m.key}
+                  >
+                    {t(m.label)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={osChartData}
-                margin={{ top: 8, right: 24, left: 80, bottom: 8 }}
-                layout="vertical"
-                barCategoryGap={12}
-              >
-                <defs>
-                  <linearGradient id="deviceClicks" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="var(--blue)" stopOpacity={0.25} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
-                <XAxis
-                  type="number"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={axisTickStyle}
-                  tickFormatter={(value) => Number(value || 0).toLocaleString()}
-                  domain={valueDomain(osChartData, "clicks")}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="os"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={axisTickStyle}
-                  width={90}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value) => [value?.toLocaleString?.() ?? value, t("Clicks")]}
-                />
-                <Bar dataKey="clicks" fill="url(#deviceClicks)" radius={[0, 8, 8, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <OsComparison rows={osChartData} metric={osMetric} t={t} />
         </motion.div>
 
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: 0.6, delay: 0.16 }}
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Install By OS")}</h3>
-              <p className="panel-subtitle">{t("Install postbacks grouped by OS.")}</p>
+              <h3 className="panel-title">{t("OS Versions")}</h3>
+              <p className="panel-subtitle">
+                {t("Where the traffic actually sits — decides whether a version cutoff is safe.")}
+              </p>
             </div>
           </div>
-          <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="deviceInstalls" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--purple)" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="var(--purple)" stopOpacity={0.25} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value) => [value?.toLocaleString?.() ?? value, t("Install")]}
-                />
-                <Bar dataKey="installs" fill="url(#deviceInstalls)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="panel"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.15 }}
-        >
-          <div className="panel-head">
-            <div>
-              <h3 className="panel-title">{t("CR by OS")}</h3>
-              <p className="panel-subtitle">{t("FTD conversion rate by OS.")}</p>
-            </div>
-          </div>
-          <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={osChartData} margin={{ top: 12, right: 24, left: 4, bottom: 4 }}>
-                <defs>
-                  <linearGradient id="deviceCr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--orange)" stopOpacity={0.9} />
-                    <stop offset="95%" stopColor="var(--orange)" stopOpacity={0.25} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                <XAxis dataKey="os" tickLine={false} axisLine={false} tick={axisTickStyle} />
-                <YAxis tickLine={false} axisLine={false} tick={axisTickStyle} domain={[0, 100]} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(value) => [`${Number(value || 0).toFixed(2)}%`, t("Conversion Rate")]}
-                />
-                <Bar dataKey="cr" fill="url(#deviceCr)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <OsVersions rows={osVersionData} t={t} />
         </motion.div>
       </section>
 
@@ -13594,8 +13598,9 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
           ) : deviceChartData.length === 0 ? (
             <div className="empty-state">{t("No device data available yet.")}</div>
           ) : (
+            <>
             <div className="table-wrap">
-              <table className="entries-table">
+              <table className="entries-table pl-table">
                 <thead>
                   <tr>
                     <th>{t("Device")}</th>
@@ -13611,26 +13616,59 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
                   </tr>
                 </thead>
                 <tbody>
-                  {deviceChartData.map((row) => {
+                  {pagedDeviceRows.map((row, idx) => {
                     const stats = deviceMap.get(row.key);
+                    const rank = devicePagination.from + idx + 1;
                     return (
                       <tr key={row.key}>
-                        <td>{row.device}</td>
+                        <td>
+                          <span className="pl-name">
+                            <span className={`pl-rank${rank <= 3 ? " is-top" : ""}`}>{rank}</span>
+                            <span className="pl-name-text" title={row.device}>{row.device}</span>
+                          </span>
+                        </td>
                         <td>{row.os || "—"}</td>
                         <td>{row.osVersion || "—"}</td>
                         <td>{row.deviceModel || "—"}</td>
-                        <td>{row.clicks.toLocaleString()}</td>
-                        <td>{row.installs.toLocaleString()}</td>
-                        <td>{stats?.registers.toLocaleString() || "0"}</td>
-                        <td>{stats?.ftds.toLocaleString() || "0"}</td>
-                        <td>{formatCurrency(row.revenue)}</td>
-                        <td>{`${row.cr.toFixed(2)}%`}</td>
+                        <td className="num">
+                          <span className="pl-cell">
+                            <span>{row.clicks.toLocaleString()}</span>
+                            {maxDeviceClicks > 0 ? (
+                              <span className="pl-bar is-clicks">
+                                <span style={{ width: `${Math.max((row.clicks / maxDeviceClicks) * 100, 1)}%` }} />
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="num">{row.installs.toLocaleString()}</td>
+                        <td className="num">{stats?.registers.toLocaleString() || "0"}</td>
+                        <td className="num">{stats?.ftds.toLocaleString() || "0"}</td>
+                        <td className="num">{formatCurrency(row.revenue)}</td>
+                        <td className="num">
+                          {/* A CR on a handful of clicks is noise; show the
+                              denominator instead of colouring it as a winner. */}
+                          <span className={`pl-rate ${row.clicks < 30 ? "is-thin" : row.cr >= 1 ? "is-strong" : "is-weak"}`}>
+                            {`${row.cr.toFixed(2)}%`}
+                            {row.clicks < 30 ? <em className="pl-flag is-muted"> n={row.clicks}</em> : null}
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            <Pager
+              page={devicePagination.page}
+              pageCount={devicePagination.pageCount}
+              pageList={devicePagination.pageList}
+              setPage={devicePagination.setPage}
+              from={devicePagination.from}
+              shown={pagedDeviceRows.length}
+              total={deviceChartData.length}
+              noun={t("devices")}
+            />
+            </>
           )}
         </motion.div>
       </section>

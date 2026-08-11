@@ -3594,14 +3594,30 @@ const insertDeviceStat = async (payload) => {
   );
 };
 
-const selectDeviceStats = async (limit) =>
-  getRows(
+// Takes the window in SQL rather than returning "the newest N rows and let the
+// client filter": device_stats holds ~2,300 rows for an 11-day window, so a
+// 500-row cap silently served about a fifth of the period and every total on
+// the Devices page was short.
+const selectDeviceStats = async (limit, { from = null, to = null } = {}) => {
+  const params = [];
+  let where = "";
+  if (from) {
+    params.push(from);
+    where += `${where ? " AND" : " WHERE"} date >= $${params.length}`;
+  }
+  if (to) {
+    params.push(to);
+    where += `${where ? " AND" : " WHERE"} date <= $${params.length}`;
+  }
+  params.push(limit);
+  return getRows(
     `SELECT id, date, device, os, os_version, os_icon, device_model, buyer, country, spend, revenue, clicks, registers, ftds, redeposits
-     FROM device_stats
+     FROM device_stats${where}
      ORDER BY date DESC, id DESC
-     LIMIT $1`,
-    [limit]
+     LIMIT $${params.length}`,
+    params
   );
+};
 
 const deleteDeviceStat = async (
   date,
@@ -7009,9 +7025,12 @@ app.get("/api/user-behavior/:externalId", async (req, res) => {
 
 app.get("/api/device-stats", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+  const maxLimitRaw = Number.parseInt(process.env.DEVICE_STATS_LIMIT_MAX ?? "50000", 10);
+  const maxLimit = Number.isFinite(maxLimitRaw) ? Math.max(maxLimitRaw, 1) : 50000;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), maxLimit) : 200;
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null);
   const viewerBuyer = await resolveViewerBuyer(req.user);
-  let rows = await selectDeviceStats(limit);
+  let rows = await selectDeviceStats(limit, { from: day(req.query.from), to: day(req.query.to) });
   // Install attribution touches the large user_behavior table — if it ever
   // slows down or times out, still return device stats without it rather than
   // failing the whole tab.

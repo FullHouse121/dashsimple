@@ -20364,3 +20364,110 @@ select option,
 .pl-rate.is-strong { color: var(--green); }
 .pl-rate.is-weak { color: var(--muted); }
 .pl-rate.is-thin { color: var(--faint); }
+
+/* ── Devices: mix, waste, versions ─────────────────────────────────────── */
+.dv-mix { display: flex; flex-direction: column; gap: 9px; }
+.dv-mix-row { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 12px; }
+.dv-mix-caption { color: var(--muted); font-size: 11.5px; }
+.dv-mix-bar { display: flex; gap: 2px; height: 20px; border-radius: var(--radius-sm); overflow: hidden; }
+.dv-mix-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.dv-mix-seg em { font-style: normal; font-size: 10.5px; font-weight: 700; color: rgba(10, 12, 14, 0.72); }
+.dv-mix-seg.is-empty { flex: 1; background: rgba(255, 255, 255, 0.05); }
+.dv-mix-key { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 4px; }
+.dv-mix-key-item { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+.dv-mix-key-item em { font-style: normal; color: var(--faint); font-variant-numeric: tabular-nums; }
+.dv-mix-dot { width: 9px; height: 9px; border-radius: 50%; }
+
+/* Waste */
+.dv-waste {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px solid var(--stroke);
+  border-left: 3px solid var(--orange);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+.dv-waste-head { display: flex; align-items: baseline; gap: 11px; }
+.dv-waste-value {
+  color: var(--orange);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dv-waste-label { color: var(--muted-strong); font-size: 12.5px; line-height: 1.45; }
+.dv-waste-label em { font-style: normal; color: var(--faint); }
+.dv-waste-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.dv-waste-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.dv-waste-name { color: var(--text); font-size: 12.5px; }
+.dv-waste-clicks { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dv-waste-conv { color: var(--faint); font-size: 11.5px; text-align: right; min-width: 132px; }
+
+/* Version concentration */
+.dv-versions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.dv-versions li {
+  display: grid;
+  grid-template-columns: 128px 1fr 40px 64px 62px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+.dv-versions li.is-tail { background: transparent; color: var(--faint); }
+.dv-version-label { color: var(--text); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-versions li.is-tail .dv-version-label { color: var(--faint); }
+.dv-version-track { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.dv-version-track span { display: block; height: 100%; border-radius: 999px; background: var(--teal); }
+.dv-version-pct,
+.dv-version-clicks,
+.dv-version-ftds { font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.dv-version-pct { color: var(--text); font-weight: 600; }
+.dv-version-clicks { color: var(--muted); }
+.dv-version-ftds { color: var(--green); }
+
+.dv-tip {
+  min-width: 186px;
+  padding: 11px 13px;
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--radius-md);
+  background: #16181c;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+.dv-tip-name { margin: 0 0 8px; color: var(--text); font-size: 12.5px; font-weight: 650; }
+.dv-tip-grid { display: grid; grid-template-columns: 1fr auto; gap: 3px 14px; margin: 0; }
+.dv-tip-grid dt { color: var(--muted); font-size: 11.5px; }
+.dv-tip-grid dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.device-panels .panel { min-height: 0; }
+.device-panels .panel > .chart { flex: 1 1 auto; min-height: 280px; display: flex; flex-direction: column; }
+.device-panels .panel > .chart > div { flex: 1 1 auto; }
+
+@media (max-width: 860px) {
+  .dv-mix-row { grid-template-columns: 1fr; gap: 5px; }
+  .dv-versions li { grid-template-columns: 1fr auto auto; }
+  .dv-version-track { display: none; }
+}
