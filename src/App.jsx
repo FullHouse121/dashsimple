@@ -12936,6 +12936,10 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 options={brandOptions}
                 placeholder={t("All brands")}
                 searchPlaceholder={t("Find brand")}
+                // .country-select-menu is left:0;right:0, so the menu inherits
+                // the trigger's width — and this trigger is compact enough to
+                // clip "BETORSPINBR" to "BETOR".
+                className="ub-brand-select"
               />
             </div>
           </div>
@@ -12960,7 +12964,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         </motion.section>
       ) : null}
 
-      <section className="panels device-charts">
+      <section className="panels device-charts ub-panels">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
@@ -12978,7 +12982,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("Search external ID or campaign")}
+                placeholder={t("Search ID or campaign")}
               />
               <Select
                 value={behaviorFilter}
@@ -13044,12 +13048,16 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
               <p className="panel-subtitle">{t("External ID performance and campaign attribution.")}</p>
             </div>
             <div className="panel-actions">
+              {/* Same treatment as the Accounts Registry export, rather than
+                  the class name I made up, which matched no rule and rendered
+                  as an unstyled browser button. */}
               <button
                 type="button"
-                className="ghost-button"
+                className="ghost registry-export-btn"
                 onClick={exportUsers}
                 disabled={!sortedUserTableRows.length}
               >
+                <Download size={14} />
                 {t("Export CSV")}
               </button>
             </div>

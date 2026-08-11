@@ -20200,3 +20200,33 @@ select option,
   font-size: 11.5px;
   line-height: 1.5;
 }
+
+/* Brand filter sits in panel-actions, where the trigger is compact. The shared
+   menu is left:0;right:0 so it would inherit that width and clip the longer
+   brand names ("BETORSPINBR" -> "BETOR"). */
+.ub-brand-select { position: relative; }
+.ub-brand-select .country-select-menu {
+  min-width: 232px;
+  right: auto;
+}
+.ub-brand-select .country-select-name {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Top Players sits in a two-column grid, so its head holds a title plus three
+   controls in roughly 600px. Without wrapping the search input is squeezed
+   below its min-width and clips its own placeholder. */
+.ub-panels .panel-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ub-panels .panel-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ub-panels .panel-actions .inline-input {
+  min-width: 0;
+  flex: 1 1 190px;
+}
