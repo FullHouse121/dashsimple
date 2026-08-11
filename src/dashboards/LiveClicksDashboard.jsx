@@ -7,7 +7,7 @@ import { isLeadershipRole } from "../lib/permissions.js";
 import { isAllSelection } from "../lib/filters.js";
 import { formatCurrency, axisTickStyle, tooltipStyle, csvCell } from "../lib/format.js";
 import { CountryFlag, OsGlyph, osHasGlyph } from "../components/flags.jsx";
-import { Select } from "../components/Select.jsx";
+import { Select, DeusDatePicker } from "../components/Select.jsx";
 import { useLiveFeed, parseTrackerMs, useWindowSeries } from "../lib/useLiveFeed.js";
 import { CopyToast, useCopyToast } from "../components/CopyToast.jsx";
 import {
@@ -519,17 +519,20 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
               <div className="field live-custom-range">
                 <label>From — To</label>
                 <div className="live-custom-range-inputs">
-                  <input
-                    type="date"
+                  {/* The house picker, not the browser's. A native date input
+                      renders the OS calendar, which ignores every token in
+                      this design and looks like a different application. */}
+                  <DeusDatePicker
                     value={customRange.from}
-                    max={customRange.to || undefined}
-                    onChange={(e) => setCustomRange((prev) => ({ ...prev, from: e.target.value }))}
+                    max={customRange.to || ""}
+                    onChange={(v) => setCustomRange((prev) => ({ ...prev, from: v }))}
+                    placeholder="From"
                   />
-                  <input
-                    type="date"
+                  <DeusDatePicker
                     value={customRange.to}
-                    min={customRange.from || undefined}
-                    onChange={(e) => setCustomRange((prev) => ({ ...prev, to: e.target.value }))}
+                    min={customRange.from || ""}
+                    onChange={(v) => setCustomRange((prev) => ({ ...prev, to: v }))}
+                    placeholder="To"
                   />
                 </div>
               </div>

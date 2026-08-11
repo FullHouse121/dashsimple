@@ -321,7 +321,9 @@ export function CountryDropdownPicker({
   );
 }
 
-export function DeusDatePicker({ value, onChange, placeholder = "Pick a date" }) {
+// `min`/`max` exist so a from/to pair cannot be put the wrong way round —
+// the native input got that for free and the house picker has to earn it.
+export function DeusDatePicker({ value, onChange, placeholder = "Pick a date", min = "", max = "" }) {
   const fmt = (d) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -414,15 +416,19 @@ export function DeusDatePicker({ value, onChange, placeholder = "Pick a date" })
             const dStr = fmt(d);
             const isToday = dStr === fmt(today);
             const isSelected = selected && dStr === fmt(selected);
+            // String compare is safe and cheap on YYYY-MM-DD.
+            const isBlocked = (min && dStr < min) || (max && dStr > max);
             const classes = ["deus-date-day"];
             if (!inMonth) classes.push("is-out");
             if (isToday) classes.push("is-today");
             if (isSelected) classes.push("is-selected");
+            if (isBlocked) classes.push("is-blocked");
             return (
               <button
                 key={i}
                 type="button"
                 className={classes.join(" ")}
+                disabled={isBlocked}
                 onClick={() => selectDate(d)}
               >
                 {d.getDate()}

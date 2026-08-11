@@ -4229,29 +4229,54 @@ select option,
 }
 
 /* Custom date range in live-feed toolbars (Live Clicks / Conversions) */
+/* Two pickers sharing one toolbar cell. Both must be allowed to shrink or
+   the pair pushes the whole toolbar wider than its column — the same trap the
+   native inputs had, and it needs min-width:0 on the flex parent as well as
+   the children, since a flex item's default min-width is auto. */
 .live-custom-range-inputs {
   display: flex;
   gap: 6px;
+  min-width: 0;
 }
 
-.live-custom-range .live-custom-range-inputs input[type="date"] {
+.live-custom-range .live-custom-range-inputs > * {
   flex: 1 1 0;
   min-width: 0;
-  width: auto;
-  font-size: 12.5px;
-  padding: 10px 8px;
-  color-scheme: dark;
 }
 
-.live-custom-range .live-custom-range-inputs input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.62) sepia(1) saturate(4) hue-rotate(95deg);
-  opacity: 0.7;
-  cursor: pointer;
-  transition: opacity 0.16s ease;
+/* The trigger has to look like a field, because it sits between two of them. */
+.live-custom-range .deus-date-trigger {
+  width: 100%;
+  min-width: 0;
 }
 
-.live-custom-range .live-custom-range-inputs input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
+.live-custom-range .deus-date-trigger-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Anchor the popup to its own trigger rather than the toolbar cell, so the
+   From and To calendars do not land on top of each other. */
+.live-custom-range .deus-date-picker {
+  position: relative;
+}
+
+.live-custom-range .deus-date-menu {
+  left: 0;
+  right: auto;
+}
+
+/* Dates outside the paired field's range: visible, so the month still reads
+   normally, but not selectable. */
+.deus-date-day.is-blocked {
+  opacity: 0.25;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.deus-date-day.is-blocked:hover {
+  background: transparent;
 }
 
 /* Date preset chips */
