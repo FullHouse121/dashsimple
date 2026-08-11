@@ -10267,10 +10267,27 @@ app.get("/api/keitaro/buyer-campaigns", async (req, res) => {
 // No local sync: always fresh, aggregated server-side, returned in the same
 // media_stats-like row shape the Performance tabs already consume. Metrics
 // match the sync mapping 1:1 (regs, custom_conversion_8=FTD, _7=redeposit).
-const keitaroReportBuild = async ({ from, to, timezone = "UTC", grouping, metrics, limit = 200000, filters = [] }) => {
+// Every report built here excludes the external groups by default. Doing it
+// per caller meant it was applied to the log feeds, campaign lists and the
+// sync but missed live-stats — which is what feeds the Home KPI cards,
+// Statistics, Campaigns, GEO and Placements, i.e. the largest surface of all.
+// The clicks card still read 162,508 with 88% of it another department's.
+//
+// Defaulting to "our data" means a caller has to ask for the rest on purpose,
+// rather than remember not to. (The reference resolves at call time; the
+// resolver is defined further down the file.)
+const keitaroReportBuild = async ({
+  from, to, timezone = "UTC", grouping, metrics, limit = 200000, filters = [],
+  includeExternal = false,
+}) => {
+  let effectiveFilters = filters;
+  if (!includeExternal) {
+    const externalFilter = buildExternalGroupFilter(await getExternalCampaignGroupIds());
+    if (externalFilter) effectiveFilters = [...filters, externalFilter];
+  }
   const res = await keitaroAdminFetch("/report/build", {
     method: "POST",
-    body: JSON.stringify({ range: { from, to, timezone }, grouping, metrics, filters, limit }),
+    body: JSON.stringify({ range: { from, to, timezone }, grouping, metrics, filters: effectiveFilters, limit }),
   });
   if (!res.ok) return { ok: false, error: res.error, rows: [] };
   const d = res.data || {};
