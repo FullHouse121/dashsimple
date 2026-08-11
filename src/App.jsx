@@ -12823,6 +12823,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
     label: row.externalId.length > 12 ? `${row.externalId.slice(0, 12)}…` : row.externalId,
   }));
 
+  // The dropdown beside the search box ranks the chart. It has to map to the
+  // measure TopPlayers sorts and labels by, or it renders a control that looks
+  // live and does nothing.
+  const TOP_PLAYERS_METRIC = {
+    "Top User By Total Revenue": "revenue",
+    "Top User by Revenue FTD": "ftdRevenue",
+    "Top User By Redeposit (number)": "redeposits",
+    "Tracked Users": "clicks",
+  };
+  const topPlayersMetric = TOP_PLAYERS_METRIC[behaviorFilter] || "revenue";
+
   return (
     <>
       <section className="cards">
@@ -12956,7 +12967,12 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           ) : topUsers.length === 0 ? (
             <div className="empty-state">{t("No user behavior data available.")}</div>
           ) : (
-            <TopPlayers users={tieredUsers} t={t} onSelect={(row) => setOpenUserId(row?.externalId || null)} />
+            <TopPlayers
+              users={tieredUsers}
+              t={t}
+              metric={topPlayersMetric}
+              onSelect={(row) => setOpenUserId(row?.externalId || null)}
+            />
           )}
         </motion.div>
 
@@ -13043,6 +13059,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                         key={row.externalId}
                         className="ub-row-click"
                         onClick={() => setOpenUserId(row.externalId)}
+                        // A clickable <tr> is unreachable by keyboard on its
+                        // own; without these the drawer is mouse-only.
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`${t("Open player detail")} ${row.externalId}`}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setOpenUserId(row.externalId);
+                          }
+                        }}
                         title={t("Open player detail")}
                       >
                         <td>
