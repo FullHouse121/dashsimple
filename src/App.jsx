@@ -203,6 +203,7 @@ import {
   PlacementQuality,
   summarisePlacements,
   bestBy,
+  classifyPlacement,
   UNATTRIBUTED_PLACEMENT,
 } from "./components/PlacementInsights.jsx";
 import {
@@ -10426,37 +10427,15 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
       ) {
         return false;
       }
-      const domainLabel = String(row.domain || row.source || row.site || row.flow || row.flows || "");
-      if (
-        !isAllSelection(globalPlacementDomainFilter) &&
-        !normalizeFilterValue(domainLabel).includes(normalizeFilterValue(globalPlacementDomainFilter))
-      ) {
-        return false;
-      }
-      if (
-        Number.isFinite(placementMinClicksFilter) &&
-        placementMinClicksFilter > 0 &&
-        sum(row.clicks) < placementMinClicksFilter
-      ) {
-        return false;
-      }
-      if (
-        Number.isFinite(placementMinRegistersFilter) &&
-        placementMinRegistersFilter > 0 &&
-        sum(row.registers) < placementMinRegistersFilter
-      ) {
-        return false;
-      }
-      if (
-        Number.isFinite(placementMinFtdsFilter) &&
-        placementMinFtdsFilter > 0 &&
-        sum(row.ftds) < placementMinFtdsFilter
-      ) {
-        return false;
-      }
-      if (placementRevenueOnlyFilter && sum(row.revenue) <= 0) {
-        return false;
-      }
+      // No domain filter here: live-stats groups by day/campaign/country/sub_id_1
+      // and carries no domain, source or site field, so any value entered would
+      // match nothing and blank the section. The control is not rendered.
+      //
+      // The min-clicks/registers/FTDs thresholds are deliberately NOT applied
+      // here. These rows are day x campaign x country x placement, so a
+      // placement with 500 clicks spread over twenty 25-click rows would be
+      // removed entirely by "Min Clicks 100". They are applied after
+      // aggregation instead, where they mean what the label says.
       return true;
     });
   }, [
@@ -10467,10 +10446,6 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
     globalCountryFilter,
     globalFlowFilter,
     globalPlacementFilter,
-    globalPlacementDomainFilter,
-    placementMinClicksFilter,
-    placementMinRegistersFilter,
-    placementMinFtdsFilter,
     placementRevenueOnlyFilter,
     effectiveBuyer,
     isLeadership,
@@ -10538,9 +10513,27 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   }, [placementRows, normalizePlacementLabel]);
 
   const activePlacementData = React.useMemo(() => {
-    if (placementFilter === "All placements") return placementData;
-    return placementData.filter((row) => row.placement === placementFilter);
-  }, [placementData, placementFilter]);
+    const scoped =
+      placementFilter === "All placements"
+        ? placementData
+        : placementData.filter((row) => row.placement === placementFilter);
+    // Thresholds belong here, on the aggregated placement, so "Min Clicks 100"
+    // means a placement with 100 clicks rather than a single day-row with 100.
+    return scoped.filter((row) => {
+      if (placementMinClicksFilter > 0 && row.clicks < placementMinClicksFilter) return false;
+      if (placementMinRegistersFilter > 0 && row.registers < placementMinRegistersFilter) return false;
+      if (placementMinFtdsFilter > 0 && row.ftds < placementMinFtdsFilter) return false;
+      if (placementRevenueOnlyFilter && row.revenue <= 0) return false;
+      return true;
+    });
+  }, [
+    placementData,
+    placementFilter,
+    placementMinClicksFilter,
+    placementMinRegistersFilter,
+    placementMinFtdsFilter,
+    placementRevenueOnlyFilter,
+  ]);
   const [placementTableSort, setPlacementTableSort] = React.useState({
     key: "clicks",
     dir: "desc",
@@ -10612,6 +10605,8 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
   const topByRevenue = bestBy(rankable, "revenue", { minClicks: 0 });
   const bestEpc = bestBy(rankable, "epc");
   const [funnelMetric, setFunnelMetric] = React.useState("clickToReg");
+  const maxRowClicks = Math.max(0, ...activePlacementData.map((row) => row.clicks || 0));
+  const maxRowRevenue = Math.max(0, ...activePlacementData.map((row) => row.revenue || 0));
 
   const fmtPercent = (value) => `${Number(value || 0).toFixed(2)}%`;
 
@@ -10668,7 +10663,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         ))}
       </section>
 
-      <section className="panels device-charts">
+      <section className="panels device-charts placement-panels">
         <motion.div
           className="panel"
           initial={{ opacity: 0, y: 20 }}
@@ -10799,7 +10794,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
             </div>
           ) : (
             <div className="table-wrap">
-              <table className="entries-table">
+              <table className="entries-table pl-table">
                 <thead>
                   <tr>
                     {[
@@ -10833,20 +10828,63 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedPlacementRows.map((row) => (
-                    <tr key={row.placement}>
-                      <td>{row.placement}</td>
-                      <td>{row.clicks.toLocaleString()}</td>
-                      <td>{row.registers.toLocaleString()}</td>
-                      <td>{row.ftds.toLocaleString()}</td>
-                      <td>{row.redeposits.toLocaleString()}</td>
-                      <td>{formatCurrency(row.revenue)}</td>
-                      <td>{fmtPercent(row.clickToReg)}</td>
-                      <td>{fmtPercent(row.regToFtd)}</td>
-                      <td>{fmtPercent(row.ftdToRedeposit)}</td>
-                      <td>{formatCurrency(row.epc)}</td>
-                    </tr>
-                  ))}
+                  {sortedPlacementRows.map((row, idx) => {
+                    const kind = classifyPlacement(row.placement, row.clicks);
+                    // A rate needs a denominator worth trusting before it earns
+                    // colour; otherwise 100% from two events outshouts a real
+                    // 12% built on thousands.
+                    const rate = (value, base) => {
+                      const thin = base < 30;
+                      return (
+                        <span className={`pl-rate ${thin ? "is-thin" : value >= 10 ? "is-strong" : "is-weak"}`}>
+                          {fmtPercent(value)}
+                          {thin && base > 0 ? <em className="pl-flag is-muted"> n={base}</em> : null}
+                        </span>
+                      );
+                    };
+                    return (
+                      <tr key={row.placement}>
+                        <td>
+                          <span className="pl-name">
+                            <span className={`pl-rank${idx < 3 ? " is-top" : ""}`}>{idx + 1}</span>
+                            <span className="pl-name-text" title={row.placement}>{row.placement}</span>
+                            {kind === "unattributed" ? (
+                              <span className="pl-flag">{t("tracking gap")}</span>
+                            ) : kind !== "ok" ? (
+                              <span className="pl-flag">{kind === "macro" ? t("unreplaced macro") : t("not a placement")}</span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="num">
+                          <span className="pl-cell">
+                            <span>{row.clicks.toLocaleString()}</span>
+                            {maxRowClicks > 0 ? (
+                              <span className="pl-bar is-clicks">
+                                <span style={{ width: `${Math.max((row.clicks / maxRowClicks) * 100, 1)}%` }} />
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="num">{row.registers.toLocaleString()}</td>
+                        <td className="num">{row.ftds.toLocaleString()}</td>
+                        <td className="num">{row.redeposits.toLocaleString()}</td>
+                        <td className="num">
+                          <span className="pl-cell">
+                            <span>{formatCurrency(row.revenue)}</span>
+                            {maxRowRevenue > 0 && row.revenue > 0 ? (
+                              <span className="pl-bar">
+                                <span style={{ width: `${Math.max((row.revenue / maxRowRevenue) * 100, 1)}%` }} />
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="num">{rate(row.clickToReg, row.clicks)}</td>
+                        <td className="num">{rate(row.regToFtd, row.registers)}</td>
+                        <td className="num">{rate(row.ftdToRedeposit, row.ftds)}</td>
+                        <td className="num">{formatCurrency(row.epc)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -26565,15 +26603,10 @@ export default function App() {
                             onChange={updateFilter("placementName")}
                           />
                         </div>
-                        <div className="field">
-                          <label>{t("Domain / Source")}</label>
-                          <input
-                            type="text"
-                            placeholder={t("All")}
-                            value={filters.placementDomain}
-                            onChange={updateFilter("placementDomain")}
-                          />
-                        </div>
+                        {/* No "Domain / Source": live-stats groups placements by
+                            day/campaign/country/sub_id_1 and returns no domain
+                            field, so the filter matched nothing and blanked the
+                            section. */}
                         <div className="field">
                           <label>{t("Min Clicks")}</label>
                           <input

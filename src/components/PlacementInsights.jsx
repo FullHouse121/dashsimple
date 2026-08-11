@@ -154,7 +154,7 @@ export const PlacementMatrix = ({ rows, t = (x) => x, onSelect }) => {
   return (
     <>
       <div className="chart chart-surface">
-        <ResponsiveContainer width="100%" height={330}>
+        <ResponsiveContainer width="100%" height="100%" minHeight={300}>
           <ScatterChart margin={{ top: 16, right: 24, left: 8, bottom: 28 }}>
             <CartesianGrid stroke="rgba(255,255,255,0.06)" />
             <XAxis
@@ -245,7 +245,7 @@ export const PlacementFunnel = ({ rows, t = (x) => x, metric = "clickToReg" }) =
 
   return (
     <div className="chart chart-surface">
-      <ResponsiveContainer width="100%" height={310}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={300}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 64, left: 4, bottom: 4 }}>
           <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
           <XAxis
@@ -297,7 +297,7 @@ export const PlacementRevenue = ({ rows, t = (x) => x }) => {
 
   return (
     <div className="chart chart-surface">
-      <ResponsiveContainer width="100%" height={310}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={300}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 76, left: 4, bottom: 4 }}>
           <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
           <XAxis type="number" tickLine={false} axisLine={false} tick={axisTick} tickFormatter={formatCurrencyCompact} />

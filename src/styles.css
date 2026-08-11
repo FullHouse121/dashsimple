@@ -20304,3 +20304,63 @@ select option,
 }
 .pl-switch button:hover { color: var(--text); }
 .pl-switch button.is-active { background: var(--green-soft); color: var(--green); }
+
+/* ── Placement: panel rhythm and table ─────────────────────────────────── */
+/* The two top panels are grid siblings, so they stretch to the taller one and
+   the shorter was left with ~120px of dead space under its legend — which
+   reads as a half-rendered page. Letting the chart grow instead keeps both
+   panels honest. */
+.placement-panels .panel { min-height: 0; }
+.placement-panels .panel > .chart {
+  flex: 1 1 auto;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+}
+.placement-panels .panel > .chart > div { flex: 1 1 auto; }
+
+/* Table: align the numbers, rank the rows, and make the leaders legible at a
+   glance instead of reading eight identical columns of digits. */
+.pl-table td.num,
+.pl-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pl-name { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.pl-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--faint);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.pl-rank.is-top { background: var(--green-soft); color: var(--green); }
+.pl-flag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 198, 37, 0.3);
+  background: rgba(247, 198, 37, 0.1);
+  color: var(--yellow);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pl-flag.is-muted {
+  border-color: var(--stroke);
+  background: var(--panel-soft);
+  color: var(--faint);
+}
+.pl-cell { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; min-width: 74px; }
+.pl-bar { width: 100%; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.pl-bar span { display: block; height: 100%; border-radius: 999px; background: var(--green); }
+.pl-bar.is-clicks span { background: var(--blue); }
+/* Rates: colour only when they clear a floor, so a 100% built on 2 events does
+   not read as the best row on the page. */
+.pl-rate.is-strong { color: var(--green); }
+.pl-rate.is-weak { color: var(--muted); }
+.pl-rate.is-thin { color: var(--faint); }
