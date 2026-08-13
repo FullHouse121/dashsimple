@@ -20497,3 +20497,283 @@ select option,
   color: var(--red);
   font-size: 12px;
 }
+
+/* ── Import campaigns from Keitaro (My Flows) ─────────────────────────── */
+/* The dialog is a review surface, not a confirm box: it lists every campaign
+   under the buyer it would be filed against, because that attribution is the
+   thing worth checking before writing. It therefore runs wider and taller than
+   a standard .modal and scrolls its own body. */
+.import-modal {
+  width: min(760px, 94vw);
+  gap: 14px;
+}
+
+.import-head-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.import-head-title h2 {
+  margin: 2px 0 0;
+  font-size: 17px;
+}
+.import-head-title .panel-subtitle {
+  margin: 4px 0 0;
+  max-width: 52ch;
+}
+
+.import-brands {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.import-brands-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+.import-brand-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Same chip vocabulary as .topbar-filter-chip — on/off rather than removable. */
+.import-brand-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong, #a9adb7);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+}
+.import-brand-chip:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+}
+.import-brand-chip.is-on {
+  border-color: rgba(54, 208, 124, 0.45);
+  background: rgba(54, 208, 124, 0.08);
+  color: var(--green);
+}
+.import-brand-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.import-brand-count {
+  opacity: 0.6;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted-strong, #a9adb7);
+  padding: 10px 0;
+}
+.import-loading .spin,
+.action-pill .spin {
+  animation: import-spin 1.4s linear infinite;
+}
+@keyframes import-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The scroll lives here, not on the overlay: the buyer list is the long part
+   and the head/footer should stay put while it moves. */
+.import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(46vh, 460px);
+  overflow-y: auto;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+.import-buyer {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  /* .import-body is a flex column with a max-height, so these sections would
+     otherwise shrink to fit and clip their own rows mid-line (overflow is
+     hidden for the rounded corners). Keep each at its natural height and let
+     the body scroll instead — the list is the thing being reviewed. */
+  flex-shrink: 0;
+}
+.import-buyer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.import-buyer-name {
+  font-weight: 650;
+  font-size: 13px;
+}
+
+.import-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  min-width: 0;
+}
+.import-check input {
+  accent-color: var(--green);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.import-campaign-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.import-campaign-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 12px;
+  min-width: 0;
+}
+.import-campaign-list li.is-out {
+  opacity: 0.4;
+}
+.import-campaign-name {
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.import-campaign-meta {
+  font-size: 11.5px;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.import-paused {
+  color: var(--amber, #e5a53d);
+  font-style: normal;
+}
+
+/* A configuration warning, not a validation error — amber, and it never
+   blocks the action, because the operator can still read the list below it. */
+.import-notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #f0d9a8;
+  background: rgba(229, 165, 61, 0.09);
+  border: 1px solid rgba(229, 165, 61, 0.28);
+}
+.import-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.import-attention {
+  font-size: 12.5px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+}
+.import-attention summary {
+  cursor: pointer;
+  color: var(--muted-strong, #a9adb7);
+}
+.import-attention ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.import-attention li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.import-attention em {
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+  font-style: normal;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+.import-result {
+  border: 1px solid rgba(54, 208, 124, 0.3);
+  background: rgba(54, 208, 124, 0.07);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.import-result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--green);
+  font-size: 14px;
+}
+.import-result-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 4px 16px;
+}
+.import-result-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.08);
+  padding: 3px 0;
+}
+.import-warn {
+  color: var(--amber, #e5a53d);
+  font-size: 12.5px;
+  margin: 6px 0 0;
+}
+
+.import-modal .modal-actions {
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.import-actions-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .import-campaign-meta {
+    display: none;
+  }
+}

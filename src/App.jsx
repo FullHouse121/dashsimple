@@ -53,6 +53,7 @@ import {
   MousePointerClick,
   Plus,
   Download,
+  DownloadCloud,
   UserPlus,
   CreditCard,
   Plug,
@@ -197,6 +198,7 @@ import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
+import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -6065,6 +6067,11 @@ function HealthDashboard({ authUser }) {
   );
 }
 
+// Brands offered by default in the Keitaro import dialog. Module-level so the
+// array reference is stable — the dialog re-previews when this changes, and an
+// inline literal would make that "every render".
+const IMPORT_DEFAULT_BRANDS = ["JASINO", "ZLOTMX"];
+
 // ── My Flows ──────────────────────────────────────────────────────────
 // Buyer-centric tree: Tracking Link → bound PWA domains → pixels on each
 // domain. Buyers bind domains to a link and pixels already carry domains.
@@ -6080,6 +6087,7 @@ function MyFlowsDashboard({ authUser }) {
   const [flowViz, setFlowViz] = React.useState({ open: false, link: null });
   const [copied, setCopied] = React.useState(null);
   const [sortBy, setSortBy] = React.useState("recent");
+  const [importOpen, setImportOpen] = React.useState(false);
   // Leadership sees every buyer's flows, so they get a buyer filter; a buyer's
   // own list is already scoped server-side and needs none.
   const canFilterByBuyer = isLeadershipRole(authUser?.role);
@@ -7365,6 +7373,18 @@ function MyFlowsDashboard({ authUser }) {
                 ? `${links.length} ${t("links")}`
                 : `${filteredLinks.length} / ${links.length} ${t("links")}`}
             </span>
+            {/* Adopting a campaign assigns its owner, so this is leadership-only
+                (the endpoint enforces it too). */}
+            {canFilterByBuyer ? (
+              <button
+                type="button"
+                className="ghost registry-export-btn"
+                onClick={() => setImportOpen(true)}
+                title={t("Add flows for campaigns that already exist in Keitaro")}
+              >
+                <DownloadCloud size={13} /> {t("Import from Keitaro")}
+              </button>
+            ) : null}
             <button
               type="button"
               className="ghost registry-export-btn"
@@ -7787,6 +7807,13 @@ function MyFlowsDashboard({ authUser }) {
           </div>
         )}
       </motion.div>
+
+      <ImportCampaignsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={fetchAll}
+        defaultBrands={IMPORT_DEFAULT_BRANDS}
+      />
     </section>
   );
 }

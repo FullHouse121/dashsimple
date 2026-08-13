@@ -1436,5 +1436,37 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+
+    // ── Import campaigns from Keitaro (My Flows) ──
+    "Import from Keitaro": "Keitaro'dan İçe Aktar",
+    "Add flows for campaigns that already exist in Keitaro":
+      "Keitaro'da zaten var olan kampanyalar için akış ekle",
+    "Import campaigns": "Kampanyaları içe aktar",
+    "Campaigns that exist in Keitaro but have no flow here. Each one is filed under the buyer named in the campaign.":
+      "Keitaro'da bulunan ancak burada akışı olmayan kampanyalar. Her biri kampanya adındaki alıcıya kaydedilir.",
+    "Reading Keitaro…": "Keitaro okunuyor…",
+    "Could not read Keitaro.": "Keitaro okunamadı.",
+    "campaigns imported": "kampanya içe aktarıldı",
+    "could not be written — see the server log.":
+      "yazılamadı — sunucu günlüğüne bakın.",
+    "They now appear in each buyer's My Flows. Bind a domain to make a flow routable.":
+      "Artık her alıcının Akışlarım bölümünde görünüyorlar. Akışın trafik alabilmesi için bir alan adı bağlayın.",
+    "Outsourced campaigns are NOT being excluded.":
+      "Dış kaynaklı kampanyalar HARİÇ TUTULMUYOR.",
+    "EXTERNAL_CAMPAIGN_GROUPS does not resolve to a group on this tracker, so retired campaigns are eligible for import. Check the list below before importing.":
+      "EXTERNAL_CAMPAIGN_GROUPS bu tracker'da bir gruba karşılık gelmiyor, bu yüzden emekli kampanyalar da içe aktarılabilir. İçe aktarmadan önce aşağıdaki listeyi kontrol edin.",
+    "Nothing to import — every Keitaro campaign for these brands already has a flow.":
+      "İçe aktarılacak bir şey yok — bu markalardaki her Keitaro kampanyasının zaten bir akışı var.",
+    "campaigns cannot be imported": "kampanya içe aktarılamıyor",
+    "Already in the dashboard": "Zaten panoda",
+    "Another brand": "Başka bir marka",
+    "Outsourced group": "Dış kaynak grubu",
+    "Name doesn't follow Buyer | Tool | Game | Geo | Brand":
+      "Ad, Alıcı | Araç | Oyun | Bölge | Marka biçimine uymuyor",
+    "No dashboard account for that buyer": "Bu alıcı için pano hesabı yok",
+    "No alias or domain, so there is no link to hand over":
+      "Takma ad veya alan adı yok, dolayısıyla verilecek bir bağlantı yok",
+    "Importing…": "İçe aktarılıyor…",
+    Import: "İçe aktar",
   },
 };

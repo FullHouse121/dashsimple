@@ -7,6 +7,7 @@ import {
   makeBuyerScoping,
 } from "./lib/scoping.js";
 import { createTokenCodec } from "./lib/auth.js";
+import { planCampaignImport } from "./lib/campaign-import.js";
 import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
 import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
 import {
@@ -12274,6 +12275,185 @@ app.delete("/api/tracking-links/:id", async (req, res) => {
   await syncDomainLegacyLinkColumn(boundDomainIds);
   await query(`DELETE FROM tracking_links WHERE id = $1`, [id]);
   res.json({ ok: true, keitaroDeleted });
+});
+
+// ── Importing campaigns that were built directly in Keitaro ────────────
+// My Flows only ever showed what the dashboard itself created, because a
+// buyer's list is scoped to `owner_id = me` and only a dashboard push writes
+// that row. Campaigns older than the dashboard — or built in Keitaro's own UI
+// — were therefore invisible to the person running them, even though their
+// numbers already appeared in Campaigns and Statistics (those read Keitaro
+// live and scope by campaign NAME). These two endpoints close that gap and
+// stay useful afterwards: the tracker is the source of truth, so the same
+// preview/import pair adopts whatever gets built outside the dashboard next.
+//
+// Leadership-only. Importing decides who owns a flow, and a buyer must not be
+// able to hand themselves someone else's campaign.
+
+const importContext = async () => {
+  const [campaignsRes, domainsRes, users, existing] = await Promise.all([
+    keitaroAdminFetch("/campaigns?limit=1000"),
+    keitaroAdminFetch("/domains"),
+    getRows(`SELECT id, username, role FROM users`),
+    getRows(`SELECT keitaro_id FROM tracking_links WHERE keitaro_id IS NOT NULL`),
+  ]);
+  if (!campaignsRes.ok) {
+    return { ok: false, error: campaignsRes.error || "Could not load Keitaro campaigns." };
+  }
+  const domainHost = new Map(
+    (Array.isArray(domainsRes.data) ? domainsRes.data : []).map((d) => [
+      Number(d.id),
+      String(d.name || d.domain || "").trim(),
+    ])
+  );
+  return {
+    ok: true,
+    campaigns: Array.isArray(campaignsRes.data) ? campaignsRes.data : [],
+    domainHost,
+    users,
+    aliases: buyerAliasMap,
+    existingKeitaroIds: new Set(existing.map((r) => String(r.keitaro_id))),
+    excludeGroupIds: await getExternalCampaignGroupIds(),
+  };
+};
+
+// Brands come from the caller as a comma list; empty means every brand.
+const parseBrandList = (value) =>
+  String(value || "")
+    .split(",")
+    .map((b) => b.trim())
+    .filter(Boolean);
+
+// Preview: what would be adopted, grouped by buyer, plus why everything else
+// was left out. Nothing is written.
+app.get("/api/keitaro/importable-campaigns", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const ctx = await importContext();
+  if (!ctx.ok) return res.status(502).json({ error: ctx.error });
+
+  const brands = parseBrandList(req.query.brands);
+  const { importable, skipped } = planCampaignImport({ ...ctx, brands });
+
+  // Every brand present on the tracker, so the UI can offer real choices
+  // instead of a hardcoded list.
+  const brandCounts = {};
+  for (const c of ctx.campaigns) {
+    if (ctx.excludeGroupIds.map(Number).includes(Number(c.group_id))) continue;
+    const brand = parseCampaignName(c.name).brand;
+    if (!brand) continue;
+    brandCounts[brand] = (brandCounts[brand] || 0) + 1;
+  }
+
+  const byBuyer = {};
+  for (const row of importable) {
+    const key = row.buyer || "—";
+    if (!byBuyer[key]) byBuyer[key] = { buyer: key, ownerId: row.owner_id, campaigns: [] };
+    byBuyer[key].campaigns.push({
+      keitaroId: row.keitaro_id,
+      name: row.name,
+      tool: row.tool,
+      game: row.game,
+      geo: row.geo,
+      brand: row.brand,
+      domain: row.domain,
+      state: row.state,
+      url: row.url,
+    });
+  }
+
+  const skipCounts = {};
+  for (const s of skipped) skipCounts[s.reason] = (skipCounts[s.reason] || 0) + 1;
+
+  res.json({
+    total: importable.length,
+    brands: brandCounts,
+    buyers: Object.values(byBuyer).sort((a, b) => b.campaigns.length - a.campaigns.length),
+    skipped: skipCounts,
+    // Whether the external-group exclusion is actually live. EXTERNAL_CAMPAIGN_GROUPS
+    // defaults to a group name that does not exist on this tracker, and when it
+    // resolves to nothing the retired "Outsource" campaigns become eligible —
+    // one of them parses to a current buyer and would land in their My Flows.
+    // The operator must be able to see that before pressing Import.
+    externalGroups: {
+      configured: externalGroupNames,
+      resolvedIds: ctx.excludeGroupIds,
+      active: ctx.excludeGroupIds.length > 0,
+    },
+    // Only the cases an operator can act on; "other brand" and "already
+    // imported" are the expected bulk and would bury the rest.
+    needsAttention: skipped
+      .filter((s) => s.reason === "no_matching_user" || s.reason === "unparseable_name" || s.reason === "no_link_url")
+      .map((s) => ({ id: s.id, name: s.name, reason: s.reason })),
+  });
+});
+
+// Import. Writes one tracking_links row per adopted campaign.
+// Body: { brands?: string[], keitaroIds?: string[] } — keitaroIds narrows the
+// run to an explicit selection; omitted means everything the preview offered
+// for those brands.
+app.post("/api/keitaro/import-campaigns", async (req, res) => {
+  if (!isLeadership(req.user)) {
+    return res.status(403).json({ error: "Forbidden." });
+  }
+  const ctx = await importContext();
+  if (!ctx.ok) return res.status(502).json({ error: ctx.error });
+
+  const body = req.body ?? {};
+  const brands = Array.isArray(body.brands) ? body.brands : parseBrandList(body.brands);
+  const selection = Array.isArray(body.keitaroIds)
+    ? new Set(body.keitaroIds.map((v) => String(v).trim()).filter(Boolean))
+    : null;
+
+  let { importable } = planCampaignImport({ ...ctx, brands });
+  if (selection) importable = importable.filter((row) => selection.has(row.keitaro_id));
+
+  if (!importable.length) {
+    return res.json({ imported: 0, rows: [], message: "Nothing new to import." });
+  }
+
+  const inserted = [];
+  const failed = [];
+  for (const row of importable) {
+    try {
+      // ON CONFLICT is not available here: tracking_links has no unique index
+      // on keitaro_id (dashboard-created rows may legitimately carry none
+      // while a push is pending). The WHERE NOT EXISTS makes a concurrent
+      // second run a no-op rather than a duplicate flow.
+      const { rows } = await query(
+        `INSERT INTO tracking_links
+           (name, buyer, tool, game, geo, brand, domain, alias, params, url, filters,
+            keitaro_id, keitaro_status, keitaro_error, owner_id,
+            offer_id, traffic_source_id, kdomain_id, keitaro_group_id, state)
+         SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+         WHERE NOT EXISTS (
+           SELECT 1 FROM tracking_links WHERE keitaro_id = $12
+         )
+         RETURNING id, name, buyer, owner_id`,
+        [
+          row.name, row.buyer, row.tool, row.game, row.geo, row.brand, row.domain,
+          row.alias, row.params, row.url, row.filters, row.keitaro_id,
+          row.keitaro_status, row.keitaro_error, row.owner_id, row.offer_id,
+          row.traffic_source_id, row.kdomain_id, row.keitaro_group_id, row.state,
+        ]
+      );
+      if (rows[0]) inserted.push({ ...rows[0], keitaroId: row.keitaro_id });
+    } catch (error) {
+      failed.push({ keitaroId: row.keitaro_id, name: row.name, error: error?.message || "insert failed" });
+    }
+  }
+
+  const perBuyer = {};
+  for (const r of inserted) perBuyer[r.buyer] = (perBuyer[r.buyer] || 0) + 1;
+
+  res.json({
+    imported: inserted.length,
+    skippedAsExisting: importable.length - inserted.length - failed.length,
+    failed,
+    perBuyer,
+    rows: inserted,
+  });
 });
 
 app.get("/api/campaigns", async (req, res) => {
