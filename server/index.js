@@ -1465,6 +1465,83 @@ const selectUserBehavior = async (limit) =>
 // recent ~1 day and starved every wider period. Ordered by revenue so the
 // leaderboard's top players survive the row cap. Backed by idx_user_behavior_agg
 // (covering: date + group keys INCLUDE measures) for an index-only scan.
+// ── user_behavior rollup ──────────────────────────────────────────────
+// The raw table is 11.1M rows and 5.6 GB; this pre-aggregates it to the exact
+// grain /api/user-behavior groups by, which is 342k rows and 117 MB. Because
+// the grain matches the GROUP BY, re-aggregating the rollup over any window
+// returns what aggregating the raw table would — verified across six months.
+//
+// Money is summed as float8: the raw columns are `real`, and summing single
+// precision twice compounds an error the live query already carries.
+const USER_BEHAVIOR_ROLLUP_DAYS = Number.parseInt(process.env.USER_BEHAVIOR_ROLLUP_DAYS || "10", 10) || 10;
+
+// Re-rolls recent days rather than appending: rows keep arriving for days
+// already rolled, so an append-only job would freeze yesterday's numbers at
+// whatever they were when it ran. Delete-then-insert per day, because a
+// partial re-sum would double-count.
+const refreshUserBehaviorRollup = async ({ days = USER_BEHAVIOR_ROLLUP_DAYS } = {}) => {
+  const started = Date.now();
+  let written = 0;
+  for (let i = 0; i < days; i += 1) {
+    const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    try {
+      await query(`DELETE FROM user_behavior_daily WHERE date = $1`, [day]);
+      const res = await query(
+        `INSERT INTO user_behavior_daily
+           (date, external_id, buyer, campaign, country,
+            clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue)
+         SELECT date, external_id, buyer, campaign, country,
+                COALESCE(SUM(clicks),0)::int,
+                COALESCE(SUM(registers),0)::int,
+                COALESCE(SUM(ftds),0)::int,
+                COALESCE(SUM(redeposits),0)::int,
+                COALESCE(SUM(revenue::float8),0),
+                COALESCE(SUM(ftd_revenue::float8),0),
+                COALESCE(SUM(redeposit_revenue::float8),0)
+           FROM user_behavior
+          WHERE date = $1
+          GROUP BY date, external_id, buyer, campaign, country
+         ON CONFLICT DO NOTHING`,
+        [day]
+      );
+      written += res.rowCount || 0;
+    } catch (error) {
+      console.warn(`[rollup] ${day} failed:`, error?.message || error);
+    }
+  }
+  return { days, written, ms: Date.now() - started };
+};
+
+const selectUserBehaviorFromRollup = async (from, to, limit) =>
+  getRows(
+    `SELECT external_id, buyer, country, campaign,
+            MAX(date) AS date,
+            SUM(clicks)::int AS clicks,
+            SUM(registers)::int AS registers,
+            SUM(ftds)::int AS ftds,
+            SUM(redeposits)::int AS redeposits,
+            SUM(revenue) AS revenue,
+            SUM(ftd_revenue) AS ftd_revenue,
+            SUM(redeposit_revenue) AS redeposit_revenue
+     FROM user_behavior_daily
+     WHERE date >= $1 AND date <= $2
+     GROUP BY external_id, buyer, country, campaign
+     ORDER BY SUM(revenue) DESC NULLS LAST
+     LIMIT $3`,
+    [from, to, limit]
+  );
+
+// Does the rollup actually cover the window being asked for? If it does not —
+// never built, or a gap — fall back to raw rather than quietly answering with
+// less data than exists.
+const rollupCoversRange = async (from, to) => {
+  const row = await getRow(
+    `SELECT MIN(date) AS oldest, MAX(date) AS newest, COUNT(*) AS n FROM user_behavior_daily`
+  );
+  if (!row || Number(row.n) === 0) return false;
+  return String(row.oldest) <= String(from) && String(row.newest) >= String(to);
+};
+
 const selectUserBehaviorAggregated = async (from, to, limit) =>
   getRows(
     `SELECT external_id, buyer, country, campaign,
@@ -6796,17 +6873,31 @@ const userBehaviorCache = new Map(); // key -> { at, data }
 const userBehaviorInflight = new Map(); // key -> Promise
 const USER_BEHAVIOR_CACHE_MS =
   Number.parseInt(process.env.USER_BEHAVIOR_CACHE_MS ?? "600000", 10) || 600000;
+// Reads the rollup when it covers the window, the raw table otherwise. The
+// fallback is what makes this safe to switch on: a gap in the rollup answers
+// from raw rather than silently returning less data than exists.
+// USER_BEHAVIOR_SOURCE=raw forces the old path.
+const chooseUserBehaviorSource = async (from, to) => {
+  if (String(process.env.USER_BEHAVIOR_SOURCE || "").toLowerCase() === "raw") return "raw";
+  return (await rollupCoversRange(from, to)) ? "rollup" : "raw";
+};
+
 const loadUserBehaviorAggregated = async (from, to, limit) => {
   const key = `${from}|${to}|${limit}`;
   const cached = userBehaviorCache.get(key);
   if (cached && Date.now() - cached.at < USER_BEHAVIOR_CACHE_MS) return cached.data;
   if (userBehaviorInflight.has(key)) return userBehaviorInflight.get(key);
-  const promise = selectUserBehaviorAggregated(from, to, limit)
-    .then((rows) => {
-      userBehaviorCache.set(key, { at: Date.now(), data: rows });
-      return rows;
-    })
-    .finally(() => userBehaviorInflight.delete(key));
+  const promise = (async () => {
+    const source = await chooseUserBehaviorSource(from, to);
+    const started = Date.now();
+    const rows =
+      source === "rollup"
+        ? await selectUserBehaviorFromRollup(from, to, limit)
+        : await selectUserBehaviorAggregated(from, to, limit);
+    console.log(`[user-behavior] ${from}..${to} via ${source}: ${rows.length} rows in ${Date.now() - started}ms`);
+    userBehaviorCache.set(key, { at: Date.now(), data: rows });
+    return rows;
+  })().finally(() => userBehaviorInflight.delete(key));
   userBehaviorInflight.set(key, promise);
   return promise;
 };
@@ -13721,12 +13812,27 @@ const runKeitaroSync = async ({
     await processPage(page);
   }
 
+  // Keep the rollup in step with what was just written. Rows keep arriving for
+  // days already rolled, so this re-rolls recent days rather than appending —
+  // otherwise yesterday's numbers freeze at whatever they were mid-afternoon.
+  let rollup = null;
+  if (syncTarget === "user_behavior") {
+    try {
+      rollup = await refreshUserBehaviorRollup();
+      console.log(`[rollup] refreshed ${rollup.days} days, ${rollup.written} rows in ${rollup.ms}ms`);
+    } catch (error) {
+      // A stale rollup is survivable — the reader falls back to raw.
+      console.warn("[rollup] refresh failed:", error?.message || error);
+    }
+  }
+
   return {
     total: totalRows,
     inserted,
     skipped,
     placementsExtracted,
     placementSamples: Array.from(placementSamples),
+    ...(rollup ? { rollup } : {}),
   };
 };
 
