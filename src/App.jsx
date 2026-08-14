@@ -21324,9 +21324,16 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
                           <span className="mc-status-dot" />{isError ? t("Error") : t("Active")}
                         </span>
                       </div>
+                      {/* Three outcomes, not two. A working connection that has
+                          not delivered spend yet is not an error — Keitaro only
+                          pulls from start_date forward and never backfills. */}
                       <div className="mc-cell mc-details" role="cell" title={row.last_raw_error || row.last_error || ""}>
-                        {row.last_error || row.last_raw_error ? (
+                        {isError ? (
                           <span className="mc-error-text"><AlertTriangle size={12} /> {friendlyKeitaroError(row.last_error || row.last_raw_error)}</span>
+                        ) : row.health === "awaiting" ? (
+                          <span className="mc-ok-text">
+                            <Clock size={12} /> {t("Connected — no cost tracked yet")}
+                          </span>
                         ) : (
                           <span className="mc-ok-text"><CheckCircle size={12} /> {t("Receiving cost")}</span>
                         )}

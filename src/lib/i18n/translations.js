@@ -1436,6 +1436,7 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+    "Connected — no cost tracked yet": "Bağlı — henüz maliyet izlenmiyor",
     "Connected in Keitaro — no cost tracked yet":
       "Keitaro'da bağlı — henüz maliyet izlenmiyor",
     "Connected, but no cost tracked in the last": "Bağlı, ancak son şu sürede maliyet izlenmedi:",

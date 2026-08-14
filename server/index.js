@@ -9866,35 +9866,73 @@ app.delete("/api/meta-tokens/:id", async (req, res) => {
 // Read Keitaro's "Facebook costs" list straight from the tracker and scope it
 // to the viewer by the buyer encoded in the integration name ("Buyer | …").
 // Each buyer sees only their own accounts + errors; leadership sees all.
-const shapeFacebookCost = (it) => {
+// Status comes from Keitaro's own `status`, never from `last_error`. Keitaro
+// does not clear last_error after a later success, so deriving failure from it
+// reported every rebuilt-and-working integration as broken — the dashboard
+// contradicted the tracker it was quoting. Same defect as buildCostHealth had.
+const shapeFacebookCost = (it, recentCostByCampaignId = new Map(), recentCostTotal = 0) => {
   const name = String(it?.name || it?.integration || "").trim();
   const parsed = parseCampaignName(name);
   const lastError = it?.last_error || null;
   const lastRawError = it?.last_raw_error || null;
+  const failing = String(it?.status || "").toLowerCase() === "error";
+
+  // Spend this integration actually delivered in the liveness window, credited
+  // through the campaigns it feeds. Without a campaign list, fall back to the
+  // pipeline total so "nothing anywhere" still reads differently from
+  // "everything except this one".
+  const campaignIds = Array.isArray(it?.campaign_ids) ? it.campaign_ids.map(Number) : [];
+  const receivedRecent = campaignIds.length
+    ? campaignIds.reduce((sum, id) => sum + (recentCostByCampaignId.get(id) || 0), 0)
+    : recentCostTotal;
+
   return {
     id: it?.id ?? null,
     name,
     buyer: parsed.buyer || parsed.rawBuyer || "",
     account_id: String(it?.ad_account_id || "").trim(),
-    status: lastError || lastRawError ? "Error" : "Working",
+    status: failing ? "Error" : "Working",
+    // error | awaiting | receiving — "awaiting" is a working connection that
+    // has not delivered spend yet, usually because Keitaro only pulls from
+    // start_date forward and never backfills.
+    health: failing ? "error" : receivedRecent > 0 ? "receiving" : "awaiting",
+    received_recent: Number(receivedRecent.toFixed(2)),
+    campaign_count: campaignIds.length,
+    start_date: it?.start_date || null,
+    // Kept for display, but labelled as the LAST error rather than a current
+    // one — on a healthy integration it is the clue to why nothing arrives.
     last_error: lastError,
-    last_raw_error: lastRawError,
+    last_raw_error: failing ? lastRawError : null,
   };
 };
 
 app.get("/api/keitaro/facebook-costs", async (req, res) => {
-  const result = await keitaroAdminFetch("/integrations/facebook");
+  const [result, recentByCampaign] = await Promise.all([
+    keitaroAdminFetch("/integrations/facebook"),
+    keitaroReportBuild({
+      from: isoDay(new Date(Date.now() - RECEIVED_SPEND_WINDOW_DAYS * 86400000)),
+      to: isoDay(new Date()),
+      grouping: ["campaign_id"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+  ]);
   if (!result.ok) {
     return res.status(502).json({ error: result.error || "Could not load Facebook costs from Keitaro." });
   }
+  const recentCostByCampaignId = new Map(
+    (recentByCampaign.ok ? recentByCampaign.rows : []).map((r) => [Number(r.campaign_id), Number(r.cost) || 0])
+  );
+  const recentCostTotal = [...recentCostByCampaignId.values()].reduce((a, b) => a + b, 0);
+
   const raw = Array.isArray(result.data)
     ? result.data
     : result.data?.data || result.data?.integrations || result.data?.rows || [];
   const viewerBuyer = await resolveViewerBuyer(req.user);
   const items = raw
-    .map(shapeFacebookCost)
+    .map((it) => shapeFacebookCost(it, recentCostByCampaignId, recentCostTotal))
     .filter((it) => (viewerBuyer ? keitaroNameMatchesBuyer(it.name, viewerBuyer) : true));
-  return res.json({ integrations: items });
+  return res.json({ integrations: items, windowDays: RECEIVED_SPEND_WINDOW_DAYS });
 });
 
 app.delete("/api/keitaro/facebook-costs/:id", async (req, res) => {
