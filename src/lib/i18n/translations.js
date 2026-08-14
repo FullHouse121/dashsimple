@@ -1436,6 +1436,9 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+    "this account": "bu hesap",
+    "buyer total — account not linked to Keitaro":
+      "alıcı toplamı — hesap Keitaro'ya bağlı değil",
     "Connected — no cost tracked yet": "Bağlı — henüz maliyet izlenmiyor",
     "Connected in Keitaro — no cost tracked yet":
       "Keitaro'da bağlı — henüz maliyet izlenmiyor",

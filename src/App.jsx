@@ -20915,6 +20915,8 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
                       };
                       const okCount = checks.filter((c) => c.ok).length;
                       const receivedSpend = Number(selectedBinding?.received_spend || 0);
+                      const spendScope = selectedBinding?.spend_scope || "buyer";
+                      const spendCampaigns = Number(selectedBinding?.spend_campaigns || 0);
                       const pct = checks.length ? Math.round((okCount / checks.length) * 100) : 0;
                       const modeColor = flowMode === "online" ? "#36d07c" : flowMode === "delayed" ? "#f7c625" : "#ff7d88";
                       const modeLabel = flowMode === "online" ? "Online" : flowMode === "delayed" ? "Delayed" : "Offline";
@@ -20959,6 +20961,17 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
                             <div className="bf-amount">
                               {formatCurrency(receivedSpend)}
                               <span className="bf-amount-unit">USD</span>
+                            </div>
+                            {/* Say which question the number answers. Attributed
+                                through this integration's own campaigns where it
+                                is linked to Keitaro; otherwise it is the buyer's
+                                total across every account they run, which is a
+                                different figure and must not be read as this
+                                account's spend. */}
+                            <div className="bf-amount-scope">
+                              {spendScope === "account"
+                                ? `${t("this account")}${spendCampaigns ? ` · ${spendCampaigns} ${spendCampaigns === 1 ? t("campaign") : t("campaigns")}` : ""}`
+                                : t("buyer total — account not linked to Keitaro")}
                             </div>
                             <div className="bf-meta-row">
                               <span>Buyer: <strong>{selectedBinding?.buyer_name || "—"}</strong></span>

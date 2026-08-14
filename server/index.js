@@ -9342,20 +9342,35 @@ app.get("/api/meta-tokens", async (req, res) => {
     ? await selectMetaTokenIntegrations(limit)
     : await selectMetaTokenIntegrationsByOwner(req.user.id, limit);
 
-  // "Cost Received" reflects the real Keitaro cost integration: overlay the
-  // live cost per buyer (from report/build) — the YTD total plus the recent
-  // window that drives the liveness check. Falls back to the SQL-derived
-  // values if Keitaro is unavailable.
+  // "Cost Received" reflects the real Keitaro cost integration. Prefer cost
+  // credited to THIS integration's own campaigns; a card describing one ad
+  // account showing its buyer's lifetime total across every account is simply
+  // the wrong number — Sara's three accounts all read $6,750.79.
+  //
+  // Rows never linked to Keitaro have no campaigns to attribute through, so
+  // they keep the buyer figure and say so via spend_scope, rather than
+  // silently reporting $0 for an account that is genuinely spending.
   try {
-    const { total, recent, recentOk } = await getKeitaroCostByBuyer();
-    if (total && total.size) {
-      rows.forEach((row) => {
-        const key = normalizeBuyerName(resolveBuyerAlias(row.buyer_name));
-        if (!key) return;
-        row.received_spend = total.get(key) || 0;
-        if (recentOk) row.recent_received_spend = recent.get(key) || 0;
-      });
-    }
+    const [{ total, recent, recentOk }, byIntegration] = await Promise.all([
+      getKeitaroCostByBuyer(),
+      getKeitaroCostByIntegration().catch(() => null),
+    ]);
+    rows.forEach((row) => {
+      const linkId = row.keitaro_integration_id ? String(row.keitaro_integration_id) : null;
+      const attributed = linkId && byIntegration ? byIntegration.get(linkId) : null;
+      if (attributed) {
+        row.received_spend = attributed.total;
+        row.recent_received_spend = attributed.recent;
+        row.spend_scope = "account";
+        row.spend_campaigns = attributed.campaigns;
+        return;
+      }
+      const key = normalizeBuyerName(resolveBuyerAlias(row.buyer_name));
+      if (!key || !total || !total.size) return;
+      row.received_spend = total.get(key) || 0;
+      if (recentOk) row.recent_received_spend = recent.get(key) || 0;
+      row.spend_scope = "buyer";
+    });
   } catch (error) {
     /* keep the SQL-derived received_spend on failure */
   }
@@ -10722,6 +10737,61 @@ const isoDay = (dt) => dt.toISOString().slice(0, 10);
 // "Receive Cost" check). Cached 5 min. `recentOk` is false when only the
 // recent report failed, so callers can keep their SQL-derived fallback.
 const keitaroCostCache = { at: 0, total: null, recent: null, recentOk: false };
+// Cost credited to a single Keitaro cost-integration, rather than to its buyer.
+// getKeitaroCostByBuyer below answers "what has this buyer spent" — correct for
+// a buyer summary, wrong for a card describing ONE ad account, because a buyer
+// with three accounts saw the same lifetime total on all three.
+//
+// Each Keitaro integration lists the campaigns it feeds, so cost can be summed
+// over exactly those. Returns integrationId -> { total, recent }; callers fall
+// back to the buyer figure for rows that were never linked.
+const keitaroCostByIntegrationCache = { at: 0, map: null };
+const getKeitaroCostByIntegration = async () => {
+  if (keitaroCostByIntegrationCache.map && Date.now() - keitaroCostByIntegrationCache.at < 5 * 60 * 1000) {
+    return keitaroCostByIntegrationCache.map;
+  }
+  const today = new Date();
+  const [integrationsRes, totalReport, recentReport] = await Promise.all([
+    keitaroAdminFetch("/integrations/facebook"),
+    keitaroReportBuild({
+      from: `${today.getUTCFullYear()}-01-01`,
+      to: isoDay(today),
+      grouping: ["campaign_id"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+    keitaroReportBuild({
+      from: isoDay(new Date(today.getTime() - RECEIVED_SPEND_WINDOW_DAYS * 86400000)),
+      to: isoDay(today),
+      grouping: ["campaign_id"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+  ]);
+  if (!integrationsRes.ok || !totalReport.ok) return keitaroCostByIntegrationCache.map;
+
+  const byCampaign = (report) =>
+    new Map(
+      (report.ok ? report.rows : []).map((r) => [Number(r.campaign_id), Number(r.cost) || 0])
+    );
+  const totals = byCampaign(totalReport);
+  const recents = byCampaign(recentReport);
+
+  const map = new Map();
+  const list = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
+  for (const it of list) {
+    const ids = Array.isArray(it?.campaign_ids) ? it.campaign_ids.map(Number) : [];
+    map.set(String(it.id), {
+      total: ids.reduce((s, id) => s + (totals.get(id) || 0), 0),
+      recent: ids.reduce((s, id) => s + (recents.get(id) || 0), 0),
+      campaigns: ids.length,
+    });
+  }
+  keitaroCostByIntegrationCache.map = map;
+  keitaroCostByIntegrationCache.at = Date.now();
+  return map;
+};
+
 const getKeitaroCostByBuyer = async () => {
   if (keitaroCostCache.total && Date.now() - keitaroCostCache.at < 5 * 60 * 1000) {
     return keitaroCostCache;

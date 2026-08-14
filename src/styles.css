@@ -20786,3 +20786,14 @@ select option,
   border-color: rgba(54, 208, 124, 0.32);
   background: rgba(54, 208, 124, 0.10);
 }
+
+/* The integration card's headline figure needs to say what it measures:
+   this ad account's own spend, or the buyer's total across all of theirs.
+   Without it, an unlinked account shows its buyer's lifetime total and
+   reads as though that account earned it. */
+.bf-amount-scope {
+  margin-top: -2px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--muted, rgba(255, 255, 255, 0.45));
+}
