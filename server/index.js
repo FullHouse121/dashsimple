@@ -549,11 +549,27 @@ const initDb = async () => {
     );`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_campaigns_keitaro_id
       ON campaigns (keitaro_id);`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_behavior_key
-      ON user_behavior (date, external_id, buyer, campaign, country, placement);`,
-    // idx_user_behavior_key above is kept only so instances still running the
-    // previous build don't hit 42P10 mid-deploy; nothing infers against it any
-    // more. It was broken two ways: `placement` is NULL on ~96% of rows and
+    // idx_user_behavior_key is DELIBERATELY NOT CREATED HERE, and must not be
+    // reintroduced. It was kept through the v2 migration so an instance still
+    // running the previous build would not hit 42P10 mid-deploy, on the
+    // reasoning that "nothing infers against it any more". That reasoning was
+    // wrong in a way that cost three days of data: a unique index does not have
+    // to be named by ON CONFLICT to still ENFORCE itself on every insert.
+    //
+    // Once the v2-aware build shipped, the two indexes disagreed. v2 includes
+    // region and city, so two rows for the same player-day in different cities
+    // are distinct under it and the upsert correctly inserts both — and the old
+    // key, which cannot see those columns, then rejected the second as a
+    // duplicate and aborted the whole sync. 396 such groups existed in six
+    // weeks of real traffic (e.g. one Carvalho/Mexico player-day across both
+    // Mexicali and Tlalnepantla).
+    //
+    // Dropped from the live database on 2026-08-14 with DROP INDEX
+    // CONCURRENTLY — deliberately by hand, never from initDb, because a drop at
+    // boot races every other instance's upserts (42P10) on the shared DB.
+    // v2 below is the only uniqueness guard user_behavior needs.
+    //
+    // The old key was broken two ways: `placement` is NULL on ~96% of rows and
     // NULLs are distinct in a unique index, so ON CONFLICT never fired and every
     // sync run re-inserted the same rows (up to 78x on a single day); and it
     // omitted region and city, which the sync does request from Keitaro and does
