@@ -5885,7 +5885,13 @@ function HealthDashboard({ authUser }) {
           ) : costState.data ? (
             (() => {
               const data = costState.data;
-              const dead = data.integrations.filter((integration) => integration.token_error);
+              // Three states, because Keitaro's own status answers a narrower
+              // question than "is money arriving". An integration it calls
+              // successful can still be delivering nothing — usually because it
+              // was wired today and Keitaro only pulls from start_date onward.
+              const dead = data.integrations.filter((integration) => integration.health === "error");
+              const awaiting = data.integrations.filter((integration) => integration.health === "awaiting");
+              const receiving = data.integrations.filter((integration) => integration.health === "receiving");
               const stalled = data.keitaro.trafficWithoutCost || (data.keitaro.costPrev7 > 0 && data.keitaro.costLast7 === 0);
               // Four links in a chain, each either passing or the point of
               // failure — the whole tab exists to say which one broke.
@@ -5894,7 +5900,11 @@ function HealthDashboard({ authUser }) {
                   key: "token",
                   label: t("Meta tokens"),
                   ok: dead.length === 0,
-                  value: dead.length ? `${dead.length}/${data.integrations.length} ${t("dead")}` : `${data.integrations.length} ${t("alive")}`,
+                  value: dead.length
+                    ? `${dead.length}/${data.integrations.length} ${t("dead")}`
+                    : awaiting.length
+                      ? `${receiving.length}/${data.integrations.length} ${t("delivering")}`
+                      : `${data.integrations.length} ${t("alive")}`,
                 },
                 {
                   key: "link",
@@ -5924,7 +5934,9 @@ function HealthDashboard({ authUser }) {
                         ? t("Spend is not reaching the tracker.")
                         : dead.length
                           ? t("Cost is arriving, but some tokens are dead.")
-                          : t("Cost is arriving normally.")}
+                          : awaiting.length
+                            ? `${awaiting.length} ${t("connected to Keitaro, awaiting cost from Meta.")}`
+                            : t("Cost is arriving normally.")}
                     </strong>
                     <span className="hx-verdict-rest">
                       {data.keitaro.clicksLast7.toLocaleString()} {t("clicks")} · {formatCurrency(data.keitaro.costLast7)} {t("cost")} · {t("previous week")} {formatCurrency(data.keitaro.costPrev7)}
@@ -5946,6 +5958,47 @@ function HealthDashboard({ authUser }) {
                       </React.Fragment>
                     ))}
                   </div>
+
+                  {/* Connected but not yet delivering. Deliberately rendered as
+                      a watch item, not a fix: nothing is broken here, and
+                      Keitaro never backfills before its start_date. */}
+                  {awaiting.length ? (
+                    <>
+                      <div className="hx-section-title">{t("Connected to Keitaro — awaiting cost from Meta")}</div>
+                      <div className="hx-list">
+                        {awaiting.map((integration) => (
+                          <article className="hx-item kind-check rank-soon" key={integration.keitaro_integration_id}>
+                            <div className="hx-gutter">
+                              <span className="hx-gutter-icon"><Clock size={14} strokeWidth={2.4} /></span>
+                              <span className="hx-gutter-label">{t("Watch")}</span>
+                            </div>
+                            <div className="hx-body">
+                              <header className="hx-head">
+                                <h4>{integration.name}</h4>
+                                <span className="hx-flag is-quiet">{t("Success in Keitaro")}</span>
+                              </header>
+                              <p className="hx-cost">
+                                {t("No spend received in the last")} {data.summary.windowDays} {t("days")}
+                                {integration.campaign_count ? ` · ${integration.campaign_count} ${t("campaigns linked")}` : ""}
+                              </p>
+                              {integration.last_error_hint ? (
+                                <p className="hx-detail">{t("Last reported")}: {integration.last_error_hint}</p>
+                              ) : null}
+                              <div className="hx-entities">
+                                {integration.ad_account_id ? <span className="hx-entity">act_{integration.ad_account_id}</span> : null}
+                                {integration.start_date ? (
+                                  <span className="hx-entity is-quiet">{t("pulls from")} {integration.start_date}</span>
+                                ) : null}
+                                {integration.sync_interval_minutes ? (
+                                  <span className="hx-entity is-quiet">{t("every")} {integration.sync_interval_minutes} {t("min")}</span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
 
                   {dead.length ? (
                     <>

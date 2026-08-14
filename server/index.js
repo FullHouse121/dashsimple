@@ -14104,7 +14104,7 @@ const buildCostHealth = async () => {
   const today = new Date();
   const dayMs = 86400000;
   const windowFrom = isoDay(new Date(today.getTime() - 6 * dayMs));
-  const [integrationsRes, costReport, prevCostReport] = await Promise.all([
+  const [integrationsRes, costReport, prevCostReport, recentByCampaign] = await Promise.all([
     keitaroAdminFetch("/integrations/facebook"),
     keitaroReportBuild({
       from: windowFrom,
@@ -14117,6 +14117,16 @@ const buildCostHealth = async () => {
       from: isoDay(new Date(today.getTime() - 13 * dayMs)),
       to: isoDay(new Date(today.getTime() - 7 * dayMs)),
       grouping: ["campaign"],
+      metrics: ["cost"],
+      limit: 5000,
+    }),
+    // Per-campaign cost inside the liveness window, so each integration can be
+    // judged on the spend IT delivered rather than on the pipeline as a whole.
+    // A freshly wired account is not broken just because its neighbours are.
+    keitaroReportBuild({
+      from: isoDay(new Date(today.getTime() - RECEIVED_SPEND_WINDOW_DAYS * dayMs)),
+      to: isoDay(today),
+      grouping: ["campaign_id"],
       metrics: ["cost"],
       limit: 5000,
     }),
@@ -14140,12 +14150,45 @@ const buildCostHealth = async () => {
     String(value || "")
       .replace(/access_token=[^&\s`'"]+/gi, "access_token=***")
       .replace(/EAA[A-Za-z0-9]{20,}/g, "EAA***");
+  // Cost delivered per Keitaro campaign inside the liveness window, so an
+  // integration can be credited with what it actually pushed.
+  const recentCostByCampaignId = new Map(
+    (recentByCampaign.ok ? recentByCampaign.rows : []).map((r) => [
+      Number(r.campaign_id),
+      Number(r.cost) || 0,
+    ])
+  );
+  const recentCostTotal = [...recentCostByCampaignId.values()].reduce((a, b) => a + b, 0);
+
   const accounts = integrations.map((row) => {
-    // The tracker exposes the failure as status:"error" plus a message key
-    // (e.g. third_party_integration.errors.token) — this is the exact
-    // signal that went unnoticed for three weeks.
-    const failing = String(row.status || "").toLowerCase() === "error" || !!row.last_error;
+    // Keitaro reports two different things and they disagree constantly:
+    //
+    //   status     — did the LAST poll to Facebook succeed (live)
+    //   last_error — the most recent error string, which is NOT cleared on a
+    //                subsequent success (sticky)
+    //
+    // Treating a sticky last_error as failure marked a freshly rebuilt,
+    // authenticating integration as dead. Only `status` decides health;
+    // last_error is kept as a hint about what went wrong last.
+    const failing = String(row.status || "").toLowerCase() === "error";
     const lastUpdate = Number(row.last_update) ? new Date(Number(row.last_update) * 1000).toISOString() : null;
+
+    // Which campaigns this integration feeds, and how much cost they received.
+    // With no campaign list we cannot attribute, so fall back to the pipeline
+    // total: that still separates "nothing is arriving anywhere" from
+    // "everything is arriving except this one".
+    const campaignIds = Array.isArray(row.campaign_ids) ? row.campaign_ids.map(Number) : [];
+    const attributable = campaignIds.length > 0;
+    const receivedRecent = attributable
+      ? campaignIds.reduce((sum, id) => sum + (recentCostByCampaignId.get(id) || 0), 0)
+      : recentCostTotal;
+
+    // Three states, not two. "Awaiting" is the honest description of an
+    // integration Keitaro is happy with that has not delivered spend yet —
+    // typically one wired today, since Keitaro only pulls from start_date
+    // forward and never backfills.
+    const health = failing ? "error" : receivedRecent > 0 ? "receiving" : "awaiting";
+
     return {
       keitaro_integration_id: row.id ?? null,
       name: row.name || row.title || `#${row.id}`,
@@ -14153,7 +14196,18 @@ const buildCostHealth = async () => {
       state: row.state || null,
       status: row.status || null,
       last_update: lastUpdate,
+      health,
+      // Spend this account delivered in the liveness window.
+      received_recent: Number(receivedRecent.toFixed(2)),
+      received_attributed: attributable,
+      campaign_count: campaignIds.length,
+      // Only Keitaro's own start_date can explain "connected but nothing yet".
+      start_date: row.start_date || null,
+      sync_interval_minutes: Number(row.interval) || null,
       token_error: failing ? String(row.last_error || row.status || "error") : null,
+      // Shown even on a healthy account, labelled as the LAST error rather
+      // than a current one, because it is the clue to why nothing arrives.
+      last_error_hint: row.last_error ? String(row.last_error) : null,
       error_detail: failing ? redactSecrets(row.last_raw_error).slice(0, 300) : null,
     };
   });
@@ -14172,7 +14226,9 @@ const buildCostHealth = async () => {
        FROM media_stats`
   ).then((r) => r.rows?.[0] || {});
 
-  const brokenTokens = accounts.filter((a) => a.token_error).length;
+  const brokenTokens = accounts.filter((a) => a.health === "error").length;
+  const awaitingCost = accounts.filter((a) => a.health === "awaiting").length;
+  const receivingCost = accounts.filter((a) => a.health === "receiving").length;
   const unlinked = wired.filter((w) => w.is_wired && !w.keitaro_integration_id).length;
   return {
     checkedAt: new Date().toISOString(),
@@ -14205,8 +14261,11 @@ const buildCostHealth = async () => {
     summary: {
       accounts: accounts.length,
       brokenTokens,
+      awaitingCost,
+      receivingCost,
       unlinked,
       wiredCount: wired.filter((w) => w.is_wired).length,
+      windowDays: RECEIVED_SPEND_WINDOW_DAYS,
     },
   };
 };
