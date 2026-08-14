@@ -5959,27 +5959,30 @@ function HealthDashboard({ authUser }) {
                     ))}
                   </div>
 
-                  {/* Connected but not yet delivering. Deliberately rendered as
-                      a watch item, not a fix: nothing is broken here, and
-                      Keitaro never backfills before its start_date. */}
+                  {/* Keitaro calls these successful, so the dashboard says so
+                      too — and then states the one thing Keitaro's tick does not
+                      cover: no spend has actually arrived. Rendered green, as a
+                      connected account with a note, not as a problem. */}
                   {awaiting.length ? (
                     <>
-                      <div className="hx-section-title">{t("Connected to Keitaro — awaiting cost from Meta")}</div>
+                      <div className="hx-section-title">{t("Connected in Keitaro — no cost tracked yet")}</div>
                       <div className="hx-list">
                         {awaiting.map((integration) => (
-                          <article className="hx-item kind-check rank-soon" key={integration.keitaro_integration_id}>
+                          <article className="hx-item kind-add" key={integration.keitaro_integration_id}>
                             <div className="hx-gutter">
-                              <span className="hx-gutter-icon"><Clock size={14} strokeWidth={2.4} /></span>
-                              <span className="hx-gutter-label">{t("Watch")}</span>
+                              <span className="hx-gutter-icon"><CheckCircle size={14} strokeWidth={2.4} /></span>
+                              <span className="hx-gutter-label">{t("Connected")}</span>
                             </div>
                             <div className="hx-body">
                               <header className="hx-head">
                                 <h4>{integration.name}</h4>
-                                <span className="hx-flag is-quiet">{t("Success in Keitaro")}</span>
+                                <span className="hx-flag is-ok">{t("Success")}</span>
                               </header>
                               <p className="hx-cost">
-                                {t("No spend received in the last")} {data.summary.windowDays} {t("days")}
-                                {integration.campaign_count ? ` · ${integration.campaign_count} ${t("campaigns linked")}` : ""}
+                                {t("Connected, but no cost tracked in the last")} {data.summary.windowDays} {t("days")}
+                                {integration.campaign_count
+                                  ? ` · ${integration.campaign_count} ${integration.campaign_count === 1 ? t("campaign linked") : t("campaigns linked")}`
+                                  : ""}
                               </p>
                               {integration.last_error_hint ? (
                                 <p className="hx-detail">{t("Last reported")}: {integration.last_error_hint}</p>

@@ -20777,3 +20777,12 @@ select option,
     display: none;
   }
 }
+
+/* .hx-flag is red by default because every flag used to mean "blocking".
+   An integration Keitaro reports as healthy needs the same badge in the
+   affirmative, or the dashboard contradicts the tracker it is quoting. */
+.hx-flag.is-ok {
+  color: #7fe3ac;
+  border-color: rgba(54, 208, 124, 0.32);
+  background: rgba(54, 208, 124, 0.10);
+}

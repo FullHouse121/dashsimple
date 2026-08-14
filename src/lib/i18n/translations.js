@@ -1436,6 +1436,11 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+    "Connected in Keitaro — no cost tracked yet":
+      "Keitaro'da bağlı — henüz maliyet izlenmiyor",
+    "Connected, but no cost tracked in the last": "Bağlı, ancak son şu sürede maliyet izlenmedi:",
+    "campaign linked": "kampanya bağlı",
+    "campaigns linked": "kampanya bağlı",
 
     // ── Import campaigns from Keitaro (My Flows) ──
     "Import from Keitaro": "Keitaro'dan İçe Aktar",
