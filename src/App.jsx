@@ -26,80 +26,14 @@ import {
 } from "recharts";
 import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 import {
-  Home,
-  Wallet,
-  BarChart3,
-  Megaphone,
-  Trophy,
-  Filter,
-  Activity,
-  Award,
-  Medal,
-  Crown,
-  Gem,
-  Flame,
-  Rocket,
-  Sparkles,
-  Search,
-  SlidersHorizontal,
-  Menu,
-  X,
-  Clock,
-  CheckCircle,
-  Link2,
-  Copy,
-  Wrench,
-  RotateCcw,
-  MousePointerClick,
-  Plus,
-  Download,
-  DownloadCloud,
-  UserPlus,
-  CreditCard,
-  Plug,
-  Target,
-  BookOpen,
-  Smartphone,
-  Trash2,
-  Globe,
-  Map as MapIcon,
-  Zap,
-  ShieldCheck,
-  KeyRound,
-  Bell,
-  User,
-  Users,
-  Lock,
-  Pencil,
-  MessageSquare,
-  Eye,
-  EyeOff,
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Check,
-  ArrowRight,
-  ArrowDownUp,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Percent,
-  Tag,
-  Image as ImageIcon,
-  Briefcase,
-  AlertTriangle,
-  Settings,
-  ExternalLink,
-  Minus,
-  Maximize2,
-  ScrollText,
-  RefreshCw,
-  Unlink,
-  Star,
-  Play,
-  Pause,
-  FileSpreadsheet,
+  Wallet, BarChart3, Megaphone, Trophy, Filter, Activity, Award, Medal, Crown, Gem, Flame,
+  Rocket, Sparkles, Search, SlidersHorizontal, Menu, X, Clock, CheckCircle, Link2, Copy,
+  Wrench, RotateCcw, MousePointerClick, Plus, Download, UserPlus, CreditCard, Plug, Target,
+  BookOpen, Trash2, Globe, Map as MapIcon, Zap, ShieldCheck, KeyRound, Bell, User, Users,
+  Lock, Pencil, MessageSquare, Eye, EyeOff, Calendar as CalendarIcon, ChevronLeft,
+  ChevronRight, ChevronDown, Check, ArrowRight, ArrowDownUp, TrendingUp, TrendingDown,
+  DollarSign, Tag, Image as ImageIcon, AlertTriangle, Settings, ExternalLink, Minus,
+  Maximize2, ScrollText, RefreshCw, Unlink, Star, Play, Pause,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 import keitaroLogo from "./assets/brands/keitaro.svg";
@@ -200,6 +134,13 @@ import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
+import {
+  DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
+  CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
+  LinkIcon, UtmIcon, DomainIcon, PixelIcon, AccountIcon, HealthIcon,
+  RolesIcon, LogIcon, ProfileIcon, CostIcon, ApiIcon, ImportIcon,
+  AwardIcon, TriggerIcon,
+} from "./components/icons.jsx";
 import { REGIONS, regionForCountry, resolveCpa } from "./lib/regions.js";
 import {
   PlacementMatrix,
@@ -352,30 +293,34 @@ const FlowsIcon = ({ size = 18, strokeWidth = 2, ...props }) => (
   </svg>
 );
 
+// Every entry now has its own glyph. The stock set had ShieldCheck on both
+// Roles and Health, CreditCard on Conversions, Meta Token and Profile, and
+// MousePointerClick on both Tracking Links and Placement — so the icon told
+// you nothing about where you were.
 const navItems = [
-  { key: "home", label: "Dashboard", icon: Home },
-  { key: "geos", label: "GEOS", icon: MapIcon },
-  { key: "streams", label: "Goals", icon: Target },
-  { key: "utm", label: "UTM Builder", icon: Link2 },
-  { key: "tracking", label: "Tracking Links", icon: MousePointerClick },
+  { key: "home", label: "Dashboard", icon: DashIcon },
+  { key: "geos", label: "GEOS", icon: GeoIcon },
+  { key: "streams", label: "Goals", icon: GoalIcon },
+  { key: "utm", label: "UTM Builder", icon: UtmIcon },
+  { key: "tracking", label: "Tracking Links", icon: LinkIcon },
   { key: "flows", label: "My Flows", icon: FlowsIcon },
-  { key: "statistics", label: "Statistics", icon: BarChart3 },
-  { key: "live_clicks", label: "Live Clicks", icon: Activity },
-  { key: "conversions", label: "Conversions", icon: CreditCard },
-  { key: "campaigns", label: "Campaigns", icon: Megaphone },
-  { key: "placements", label: "Placement", icon: MousePointerClick },
-  { key: "user_behavior", label: "User Behavior", icon: Users },
-  { key: "devices", label: "Devices", icon: Smartphone },
-  { key: "reports", label: "Reports", icon: FileSpreadsheet },
-  { key: "domains", label: "Domains", icon: Globe },
-  { key: "pixels", label: "Pixels", icon: Zap },
-  { key: "accounts", label: "Accounts", icon: UserPlus },
-  { key: "roles", label: "Roles", icon: ShieldCheck },
-  { key: "health", label: "Health", icon: ShieldCheck },
-  { key: "logs", label: "Logs", icon: ScrollText },
-  { key: "profile", label: "Profile", icon: User },
-  { key: "meta_token", label: "Meta Token $", icon: CreditCard },
-  { key: "api", label: "API", icon: Plug },
+  { key: "statistics", label: "Statistics", icon: StatsIcon },
+  { key: "live_clicks", label: "Live Clicks", icon: ClicksIcon },
+  { key: "conversions", label: "Conversions", icon: ConversionIcon },
+  { key: "campaigns", label: "Campaigns", icon: CampaignIcon },
+  { key: "placements", label: "Placement", icon: PlacementIcon },
+  { key: "user_behavior", label: "User Behavior", icon: BehaviorIcon },
+  { key: "devices", label: "Devices", icon: DeviceIcon },
+  { key: "reports", label: "Reports", icon: ReportIcon },
+  { key: "domains", label: "Domains", icon: DomainIcon },
+  { key: "pixels", label: "Pixels", icon: PixelIcon },
+  { key: "accounts", label: "Accounts", icon: AccountIcon },
+  { key: "roles", label: "Roles", icon: RolesIcon },
+  { key: "health", label: "Health", icon: HealthIcon },
+  { key: "logs", label: "Logs", icon: LogIcon },
+  { key: "profile", label: "Profile", icon: ProfileIcon },
+  { key: "meta_token", label: "Meta Token $", icon: CostIcon },
+  { key: "api", label: "API", icon: ApiIcon },
 ];
 
 const navSections = [
@@ -2083,7 +2028,7 @@ function HomeDashboard({
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#58b1ff" }}>
-                <Activity size={15} strokeWidth={2.2} />
+                <ClicksIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Last Clicks")}</h3>
@@ -4905,7 +4850,7 @@ function TrackingLinksDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><Link2 size={20} /></span>
+            <span className="panel-icon-badge"><LinkIcon size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Tracking Links")}</h3>
               <p className="panel-subtitle">
@@ -5805,7 +5750,7 @@ function HealthDashboard({ authUser }) {
       <motion.div className="panel registry-dashboard-panel health-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><ShieldCheck size={20} /></span>
+            <span className="panel-icon-badge"><HealthIcon size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Health")}</h3>
               <p className="panel-subtitle">{t("Everything that needs doing, in the order it costs you money.")}</p>
@@ -7483,7 +7428,7 @@ function MyFlowsDashboard({ authUser }) {
                 onClick={() => setImportOpen(true)}
                 title={t("Add flows for campaigns that already exist in Keitaro")}
               >
-                <DownloadCloud size={13} /> {t("Import from Keitaro")}
+                <ImportIcon size={13} /> {t("Import from Keitaro")}
               </button>
             ) : null}
             <button
@@ -8326,7 +8271,7 @@ function UtmBuilder() {
         >
           <div className="panel-head">
             <div className="panel-head-title">
-              <span className="panel-icon-badge"><Link2 size={20} /></span>
+              <span className="panel-icon-badge"><UtmIcon size={20} /></span>
               <div>
                 <h3 className="panel-title">UTM Builder</h3>
                 <p className="panel-subtitle">
@@ -9903,7 +9848,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#36d07c" }}>
-                <Filter size={15} strokeWidth={2.2} />
+                <StatsIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
                 <h3 className="panel-title">Conversion Funnel</h3>
@@ -9944,7 +9889,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#f7c625" }}>
-                <Trophy size={15} strokeWidth={2.2} />
+                <AwardIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
                 <h3 className="panel-title">Buyer Leaderboard</h3>
@@ -15883,7 +15828,7 @@ function DomainsDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><Globe size={20} /></span>
+            <span className="panel-icon-badge"><DomainIcon size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Domains Registry")}</h3>
               <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
@@ -19690,7 +19635,7 @@ function AccountsDashboard({ authUser }) {
       >
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><Users size={20} /></span>
+            <span className="panel-icon-badge"><AccountIcon size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Accounts Registry")}</h3>
               <p className="panel-subtitle">
@@ -21322,7 +21267,7 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
                           <div className="bf-node bf-source" style={{ left: 24, top: 192, width: 260, "--bf-accent": "#36d07c" }}>
                             <span className="bf-port bf-port-out" style={{ top: 90 }} aria-hidden="true" />
                             <div className="bf-node-head">
-                              <span className="bf-icon-tile"><DollarSign size={18} strokeWidth={2} /></span>
+                              <span className="bf-icon-tile"><CostIcon size={18} strokeWidth={2} /></span>
                               <span className="bf-head-text">
                                 <span className="bf-kicker">Integration</span>
                                 <span className="bf-subkicker" style={{ color: modeColor }}>{modeLabel}</span>
@@ -21395,7 +21340,7 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
                           >
                             <span className="bf-port bf-port-in" style={{ top: 60 }} aria-hidden="true" />
                             <div className="bf-node-head">
-                              <span className="bf-icon-tile"><Zap size={18} strokeWidth={2} /></span>
+                              <span className="bf-icon-tile"><TriggerIcon size={18} strokeWidth={2} /></span>
                               <span className="bf-head-text">
                                 <span className="bf-kicker">Run</span>
                                 <span className="bf-subkicker" style={{ color: "#36d07c" }}>Trigger</span>
@@ -23554,7 +23499,7 @@ function ProfileDashboard({ authUser }) {
       <section className="panel profile-achievements">
         <div className="panel-head">
           <div className="panel-head-title">
-            <span className="panel-icon-badge"><Trophy size={20} /></span>
+            <span className="panel-icon-badge"><AwardIcon size={20} /></span>
             <div>
               <h3 className="panel-title">{t("Achievements")}</h3>
               <p className="panel-subtitle">{t("Badges unlock on your all-time results across every link.")}</p>

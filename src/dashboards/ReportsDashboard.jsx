@@ -1,10 +1,13 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Play, Download, Search, X, Plus, Save, Trash2, Share2, Lock, Filter,
-  ChevronLeft, ChevronRight, FileSpreadsheet, FileJson, FileText, FileDown, AlertTriangle,
-  BarChart3, MousePointerClick, CreditCard, Database, Columns3, Rows3, Sigma, Bookmark, RefreshCw,
+  Play, Download, Search, X, Plus, Save, Trash2, Share2, Lock, Filter, ChevronLeft,
+  ChevronRight, FileSpreadsheet, FileJson, FileText, FileDown, AlertTriangle, BarChart3,
+  MousePointerClick, CreditCard, Database, RefreshCw,
 } from "lucide-react";
+import {
+  ReportIcon, ColumnsIcon, GroupIcon, MetricIcon, FilterIcon, SavedIcon, AlertIcon,
+} from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { Select } from "../components/Select.jsx";
@@ -1025,7 +1028,7 @@ export default function ReportsDashboard({ authUser }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#ff7d88" }}>
-                <AlertTriangle size={15} />
+                <AlertIcon size={15} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Reports")}</h3>
@@ -1106,7 +1109,7 @@ export default function ReportsDashboard({ authUser }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#36d07c" }}>
-                <FileSpreadsheet size={15} />
+                <ReportIcon size={15} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Reports")}</h3>
@@ -1230,7 +1233,7 @@ export default function ReportsDashboard({ authUser }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#64b8ff" }}>
-                <Columns3 size={15} />
+                <ColumnsIcon size={15} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Columns")}</h3>
@@ -1277,7 +1280,7 @@ export default function ReportsDashboard({ authUser }) {
                   title="Group by"
                   hint="One row per unique combination"
                   accent="#a15bff"
-                  icon={Rows3}
+                  icon={GroupIcon}
                   fields={sourceDef.dimensions}
                   selected={current.dimensions || []}
                   onToggle={(key) => toggleKey("dimensions", key)}
@@ -1288,7 +1291,7 @@ export default function ReportsDashboard({ authUser }) {
                   title="Metrics"
                   hint="The numbers measured per row"
                   accent="#36d07c"
-                  icon={Sigma}
+                  icon={MetricIcon}
                   fields={sourceDef.measures}
                   selected={current.measures || []}
                   onToggle={(key) => toggleKey("measures", key)}
@@ -1301,7 +1304,7 @@ export default function ReportsDashboard({ authUser }) {
                 title="Columns"
                 hint={isTable ? "Every field on this record" : "Every field on the raw event"}
                 accent="#49e0c4"
-                icon={Columns3}
+                icon={ColumnsIcon}
                 fields={allFields}
                 selected={current.columns || []}
                 onToggle={(key) => toggleKey("columns", key)}
@@ -1354,7 +1357,7 @@ export default function ReportsDashboard({ authUser }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#f7c625" }}>
-                <Filter size={15} />
+                <FilterIcon size={15} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Filters")}</h3>
@@ -1579,7 +1582,7 @@ export default function ReportsDashboard({ authUser }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#ff9357" }}>
-                <Bookmark size={15} />
+                <SavedIcon size={15} />
               </span>
               <div>
                 <h3 className="panel-title">{t("Saved reports")}</h3>

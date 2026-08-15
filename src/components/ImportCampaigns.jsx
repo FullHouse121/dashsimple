@@ -10,7 +10,8 @@
 // dialog always shows who each campaign lands on, never just a count.
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, Check, DownloadCloud, Loader2, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, Loader2, RefreshCw, X } from "lucide-react";
+import { ImportIcon } from "./icons.jsx";
 import { apiFetch } from "../lib/api.js";
 import { useLanguage } from "../lib/i18n/language.jsx";
 
@@ -145,7 +146,7 @@ export function ImportCampaignsModal({ open, onClose, onImported, defaultBrands 
           <div className="modal-head">
             <div className="import-head-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#36d07c" }}>
-                <DownloadCloud size={16} />
+                <ImportIcon size={16} />
               </span>
               <div>
                 <p className="modal-kicker">{t("Keitaro")}</p>
@@ -309,7 +310,7 @@ export function ImportCampaignsModal({ open, onClose, onImported, defaultBrands 
                   onClick={runImport}
                   disabled={importing || loading || !selectedIds.length}
                 >
-                  {importing ? <Loader2 size={13} className="spin" /> : <DownloadCloud size={13} />}{" "}
+                  {importing ? <Loader2 size={13} className="spin" /> : <ImportIcon size={13} />}{" "}
                   {importing
                     ? t("Importing…")
                     : `${t("Import")} ${selectedIds.length}`}

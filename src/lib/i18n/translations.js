@@ -783,7 +783,6 @@ export const translations = {
     "First seen": "İlk görülme",
     "Last seen": "Son görülme",
     "Reading the cost pipeline…": "Maliyet hattı okunuyor…",
-    "Cost is not reaching the tracker": "Maliyet takipçiye ulaşmıyor",
     "Cost is arriving, but some tokens are dead": "Maliyet geliyor ancak bazı tokenlar ölü",
     "Cost is arriving normally": "Maliyet normal şekilde geliyor",
     "Meta token → Keitaro integration → cost → every ROI number. This reads the end of the chain, not the flags along it.":

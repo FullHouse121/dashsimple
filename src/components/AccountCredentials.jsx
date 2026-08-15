@@ -7,20 +7,10 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  AlertTriangle,
-  AtSign,
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  Fingerprint,
-  KeyRound,
-  Lock,
-  Mail,
-  RefreshCw,
-  ShieldCheck,
-  X,
+  AlertTriangle, AtSign, Check, Copy, Eye, EyeOff, Fingerprint, Lock, Mail, RefreshCw,
+  ShieldCheck, X,
 } from "lucide-react";
+import { AccountIcon } from "./icons.jsx";
 import { apiFetch } from "../lib/api.js";
 
 export const CREDENTIAL_MASK = "••••••••";
@@ -742,7 +732,7 @@ export function AccountCredentialsModal({ row, onClose, t }) {
         <div className="modal-head">
           <div className="credentials-head-title">
             <span className="stats-icon-tile" style={{ "--tile-accent": "#8b5cf6" }}>
-              <KeyRound size={16} />
+              <AccountIcon size={16} />
             </span>
             <div className="vault-identity">
               <p className="modal-kicker">{t("Account access")}</p>

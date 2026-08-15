@@ -1,6 +1,7 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, AlertTriangle, Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, Filter } from "lucide-react";
+import { AlertTriangle, Play, Pause, RefreshCw, Download, Search, X, Copy, CheckCircle, Filter } from "lucide-react";
+import { ClicksIcon } from "../components/icons.jsx";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from "recharts";
 import { apiFetch } from "../lib/api.js";
 import { isLeadershipRole } from "../lib/permissions.js";
@@ -449,7 +450,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
           <div className="panel-head">
             <div className="stats-panel-title">
               <span className="stats-icon-tile" style={{ "--tile-accent": "#58b1ff" }}>
-                <Activity size={15} strokeWidth={2.2} />
+                <ClicksIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
                 <h3 className="panel-title">Live Clicks</h3>
