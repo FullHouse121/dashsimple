@@ -10,6 +10,9 @@ import { createTokenCodec } from "./lib/auth.js";
 import { planCampaignImport } from "./lib/campaign-import.js";
 import { valueByCountry, targetValue } from "./lib/goal-valuation.js";
 import { classifyMetaError, summariseTokenChecks } from "./lib/meta-token-check.js";
+import {
+  createShareToken, resolveExpiry, checkShareAccess, toPublicReport, fingerprintViewer,
+} from "./lib/report-share.js";
 import { resolveCpa } from "../shared/regions.js";
 import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
 import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
@@ -308,6 +311,33 @@ const initDb = async () => {
     // dropped it, because neither the column nor the POST field existed. Every
     // goal ever saved lost the number leadership typed.
     `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
+    // Executive report share links. A row here is a bearer credential, so it
+    // carries its own expiry and revocation rather than relying on the caller
+    // to remember either.
+    `CREATE TABLE IF NOT EXISTS report_shares (
+      id SERIAL PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      title TEXT,
+      config TEXT,
+      created_by INTEGER,
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL,
+      revoked_at TIMESTAMP,
+      view_count INTEGER NOT NULL DEFAULT 0,
+      last_viewed_at TIMESTAMP
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_report_shares_token ON report_shares (token);`,
+    // Who opened it and roughly from where — the question a share link raises
+    // is "did this reach more people than I sent it to", and that needs a log.
+    `CREATE TABLE IF NOT EXISTS report_share_views (
+      id SERIAL PRIMARY KEY,
+      share_id INTEGER NOT NULL,
+      viewed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      ip_coarse TEXT,
+      agent TEXT
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_report_share_views_share ON report_share_views (share_id, viewed_at DESC);`,
     `CREATE TABLE IF NOT EXISTS media_buyers (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -5568,6 +5598,10 @@ app.use((req, res, next) => {
   if (req.path === "/api/keitaro/cron") return next();
   if (req.path === "/api/health/cron") return next();
   if (req.path === "/api/health") return next();
+  // The one deliberately public read in the API. Access is decided by the
+  // token in the path — see checkShareAccess — not by a session, because the
+  // whole point is that a manager without an account can open the link.
+  if (req.path.startsWith("/api/public/report/")) return next();
   // The mailbox sign-in popup navigates here; a browser navigation cannot
   // carry an Authorization header. Both are guarded by a single-use `state`
   // minted by the authenticated /oauth/prepare call.
@@ -15336,6 +15370,255 @@ app.post("/api/alerts/run", async (req, res) => {
 // tracker error strings — but a media buyer is precisely who gets misled by a
 // CPC or ROI computed from spend that never arrived, so the verdict itself has
 // to be readable by anyone. Counts only: no names, no accounts, no errors.
+// ── Executive report ──────────────────────────────────────────────────
+//
+// One composed report for whoever decides where money goes, rather than the
+// query builder next door which answers one question at a time. Aggregated in
+// SQL over the chosen window, with the previous window of equal length beside
+// it, because a manager's first question about any number is "compared to
+// what".
+const buildExecutiveReport = async ({ from, to, title }) => {
+  const dayMs = 86400000;
+  const span = Math.max(1, Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / dayMs) + 1);
+  const prevTo = isoDay(new Date(new Date(`${from}T00:00:00Z`).getTime() - dayMs));
+  const prevFrom = isoDay(new Date(new Date(`${prevTo}T00:00:00Z`).getTime() - (span - 1) * dayMs));
+
+  const totals = async (a, b) =>
+    (await getRow(
+      `SELECT COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(redeposits),0)::int AS redeposits,
+              COALESCE(SUM(spend),0)::float8 AS spend,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats WHERE date >= $1 AND date <= $2`, [a, b])) || {};
+
+  const [current, previous, trend, buyers, countries, brands] = await Promise.all([
+    totals(from, to),
+    totals(prevFrom, prevTo),
+    getRows(
+      `SELECT date,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue,
+              COALESCE(SUM(spend),0)::float8 AS spend
+         FROM media_stats WHERE date >= $1 AND date <= $2
+        GROUP BY date ORDER BY date`, [from, to]),
+    getRows(
+      `SELECT buyer,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue,
+              COALESCE(SUM(spend),0)::float8 AS spend
+         FROM media_stats WHERE date >= $1 AND date <= $2 AND COALESCE(buyer,'') <> ''
+        GROUP BY buyer ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 25`, [from, to]),
+    getRows(
+      `SELECT country,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats WHERE date >= $1 AND date <= $2 AND COALESCE(country,'') <> ''
+        GROUP BY country ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 15`, [from, to]),
+    // Brand is the last segment of the campaign name — the same convention the
+    // rest of the dashboard parses.
+    getRows(
+      `SELECT TRIM(SPLIT_PART(campaign_name, '|', ARRAY_LENGTH(STRING_TO_ARRAY(campaign_name,'|'),1))) AS brand,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats
+        WHERE date >= $1 AND date <= $2 AND COALESCE(campaign_name,'') LIKE '%|%'
+        GROUP BY 1 HAVING COALESCE(SUM(ftds),0) > 0
+        ORDER BY SUM(revenue) DESC LIMIT 12`, [from, to]),
+  ]);
+
+  const num = (v) => Number(v) || 0;
+  const delta = (now, before) => (before > 0 ? ((now - before) / before) * 100 : null);
+  const rate = (n, d) => (d > 0 ? (n / d) * 100 : null);
+
+  const summary = {
+    clicks: num(current.clicks), registers: num(current.registers), ftds: num(current.ftds),
+    redeposits: num(current.redeposits), revenue: num(current.revenue), spend: num(current.spend),
+    roi: num(current.spend) > 0 ? ((num(current.revenue) - num(current.spend)) / num(current.spend)) * 100 : null,
+    previous: {
+      clicks: num(previous.clicks), registers: num(previous.registers), ftds: num(previous.ftds),
+      revenue: num(previous.revenue), spend: num(previous.spend),
+    },
+    deltas: {
+      clicks: delta(num(current.clicks), num(previous.clicks)),
+      registers: delta(num(current.registers), num(previous.registers)),
+      ftds: delta(num(current.ftds), num(previous.ftds)),
+      revenue: delta(num(current.revenue), num(previous.revenue)),
+    },
+  };
+
+  // Where the funnel loses people, as counts and as the rate between steps.
+  const funnel = [
+    { key: "clicks", label: "Clicks", value: summary.clicks, rateFromPrev: null },
+    { key: "registers", label: "Registrations", value: summary.registers, rateFromPrev: rate(summary.registers, summary.clicks) },
+    { key: "ftds", label: "First deposits", value: summary.ftds, rateFromPrev: rate(summary.ftds, summary.registers) },
+    { key: "redeposits", label: "Redeposits", value: summary.redeposits, rateFromPrev: rate(summary.redeposits, summary.ftds) },
+  ];
+
+  // A management report that quotes ROI while the cost pipeline is down is
+  // worse than one that says nothing, so it carries its own caveat.
+  //
+  // Deliberately the cheap check, not buildCostHealth(): that one probes every
+  // Meta token and pulls Keitaro reports, which took this endpoint to twenty
+  // seconds — on a public URL that anyone with the link can hit. Integration
+  // status alone answers the only question the caveat asks.
+  let integrity = { costTrustworthy: false, note: null };
+  try {
+    const integrationsRes = await keitaroAdminFetch("/integrations/facebook");
+    const list = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
+    const failing = list.filter((i) => String(i?.status || "").toLowerCase() === "error").length;
+    const trustworthy = list.length > 0 && failing === 0 && num(current.spend) > 0;
+    integrity = {
+      costTrustworthy: trustworthy,
+      accounts: list.length,
+      failing,
+      note: failing > 0
+        ? `${failing} of ${list.length} ad accounts are not delivering spend, so cost, ROI and profit are understated.`
+        : !num(current.spend)
+          ? "No spend reached the tracker for this period, so cost, ROI and profit cannot be computed."
+          : null,
+    };
+  } catch (error) {
+    // Unknown is not the same as sound: a report that could not check must not
+    // present ROI as verified.
+    integrity = { costTrustworthy: false, note: "Cost integrity could not be checked for this report." };
+  }
+
+  return {
+    title: title || "Performance report",
+    generatedAt: new Date().toISOString(),
+    period: { from, to, days: span, previousFrom: prevFrom, previousTo: prevTo },
+    summary,
+    trend: trend.map((r) => ({
+      date: r.date, clicks: num(r.clicks), registers: num(r.registers),
+      ftds: num(r.ftds), revenue: num(r.revenue), spend: num(r.spend),
+    })),
+    buyers: buyers.map((r) => ({
+      buyer: r.buyer, clicks: num(r.clicks), registers: num(r.registers), ftds: num(r.ftds),
+      revenue: num(r.revenue), spend: num(r.spend), reg2dep: rate(num(r.ftds), num(r.registers)),
+    })),
+    countries: countries.map((r) => ({
+      country: r.country, clicks: num(r.clicks), registers: num(r.registers),
+      ftds: num(r.ftds), revenue: num(r.revenue),
+    })),
+    brands: brands.map((r) => ({ brand: r.brand, ftds: num(r.ftds), revenue: num(r.revenue) })),
+    funnel,
+    integrity,
+  };
+};
+
+const dayOrNull = (value) => {
+  const m = String(value || "").match(/^\d{4}-\d{2}-\d{2}$/);
+  return m ? m[0] : null;
+};
+
+app.get("/api/reports/executive", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const to = dayOrNull(req.query.to) || isoDay(new Date());
+  const from = dayOrNull(req.query.from) || isoDay(new Date(Date.now() - 29 * 86400000));
+  try {
+    return res.json(await buildExecutiveReport({ from, to, title: req.query.title }));
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Failed to build the report." });
+  }
+});
+
+app.get("/api/report-shares", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const rows = await getRows(
+    `SELECT id, token, title, config, created_by_name, created_at, expires_at, revoked_at,
+            view_count, last_viewed_at
+       FROM report_shares ORDER BY created_at DESC LIMIT 100`
+  );
+  return res.json(rows.map((r) => ({ ...r, config: r.config ? JSON.parse(r.config) : null })));
+});
+
+app.post("/api/report-shares", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const { from, to, title, expiresInDays } = req.body ?? {};
+  const toDay = dayOrNull(to) || isoDay(new Date());
+  const fromDay = dayOrNull(from) || isoDay(new Date(Date.now() - 29 * 86400000));
+  const token = createShareToken();
+  const expiresAt = resolveExpiry(expiresInDays);
+  const { rows } = await query(
+    `INSERT INTO report_shares (token, title, config, created_by, created_by_name, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, token, expires_at`,
+    [token, String(title || "Performance report").slice(0, 120),
+     JSON.stringify({ from: fromDay, to: toDay }), req.user?.id || null,
+     req.user?.username || null, expiresAt]
+  );
+  return res.status(201).json(rows[0]);
+});
+
+app.delete("/api/report-shares/:id", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Bad id." });
+  await query(`UPDATE report_shares SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL`, [id]);
+  return res.json({ ok: true });
+});
+
+app.get("/api/report-shares/:id/views", async (req, res) => {
+  if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "Bad id." });
+  return res.json(await getRows(
+    `SELECT viewed_at, ip_coarse, agent FROM report_share_views
+      WHERE share_id = $1 ORDER BY viewed_at DESC LIMIT 100`, [id]));
+});
+
+// The public read. No session — the token in the URL is the credential, so
+// everything that decides access happens here and nowhere else.
+const publicReportHits = new Map();
+app.get("/api/public/report/:token", async (req, res) => {
+  // A token is guessable only in theory, but an unauthenticated endpoint that
+  // will run six aggregate queries deserves a brake regardless.
+  const now = Date.now();
+  const key = req.ip || "anon";
+  const hits = (publicReportHits.get(key) || []).filter((t) => now - t < 60000);
+  if (hits.length >= 30) return res.status(429).json({ error: "Too many requests." });
+  hits.push(now);
+  publicReportHits.set(key, hits);
+
+  const raw = String(req.params.token || "");
+  // Cheap shape check before touching the database.
+  if (raw.length < 20 || raw.length > 200 || !/^[A-Za-z0-9_-]+$/.test(raw)) {
+    return res.status(404).json({ error: "This report link does not exist." });
+  }
+  try {
+    const share = await getRow(
+      `SELECT id, token, title, config, expires_at, revoked_at FROM report_shares WHERE token = $1`, [raw]);
+    const access = checkShareAccess(share, now);
+    if (!access.ok) return res.status(access.reason === "not_found" ? 404 : 410).json({ error: access.message });
+
+    const config = share.config ? JSON.parse(share.config) : {};
+    const report = await buildExecutiveReport({
+      from: config.from, to: config.to, title: share.title,
+    });
+
+    // Record the open, then answer. Failing to log must not deny the read.
+    const seen = fingerprintViewer(req.ip, req.get("user-agent"));
+    query(`UPDATE report_shares SET view_count = view_count + 1, last_viewed_at = NOW() WHERE id = $1`, [share.id]).catch(() => {});
+    query(`INSERT INTO report_share_views (share_id, ip_coarse, agent) VALUES ($1,$2,$3)`,
+      [share.id, seen.ipCoarse, seen.agent]).catch(() => {});
+
+    // Allowlisted projection: a field added to the report later cannot leak
+    // through this endpoint until someone names it in toPublicReport.
+    res.set("Cache-Control", "no-store");
+    res.set("X-Robots-Tag", "noindex, nofollow");
+    return res.json({ ...toPublicReport(report), expiresAt: access.expiresAt, shared: true });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to load the report." });
+  }
+});
+
 app.get("/api/cost-integrity", async (req, res) => {
   try {
     const [integrationsRes, byIntegration] = await Promise.all([
