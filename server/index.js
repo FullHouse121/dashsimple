@@ -15048,6 +15048,42 @@ app.post("/api/alerts/run", async (req, res) => {
   }
 });
 
+// Whether cost figures can be believed, in a form safe for every role.
+// /api/cost-health is leadership-only because it exposes account names and
+// tracker error strings — but a media buyer is precisely who gets misled by a
+// CPC or ROI computed from spend that never arrived, so the verdict itself has
+// to be readable by anyone. Counts only: no names, no accounts, no errors.
+app.get("/api/cost-integrity", async (req, res) => {
+  try {
+    const [integrationsRes, byIntegration] = await Promise.all([
+      keitaroAdminFetch("/integrations/facebook"),
+      getKeitaroCostByIntegration().catch(() => null),
+    ]);
+    const list = Array.isArray(integrationsRes.data) ? integrationsRes.data : [];
+    let delivering = 0;
+    let failing = 0;
+    for (const it of list) {
+      if (String(it?.status || "").toLowerCase() === "error") failing += 1;
+      const attributed = byIntegration ? byIntegration.get(String(it.id)) : null;
+      if (attributed && attributed.recent > 0) delivering += 1;
+    }
+    // Any failing integration means the spend column is missing that account's
+    // cost, which inflates every aggregate ROI computed from it. "One account
+    // is delivering" is not good enough: with 7 of 9 failing, the total is a
+    // small fraction of real spend and reads as spectacular profit.
+    res.json({
+      trustworthy: list.length > 0 && failing === 0 && delivering > 0,
+      accounts: list.length,
+      delivering,
+      failing,
+      windowDays: RECEIVED_SPEND_WINDOW_DAYS,
+    });
+  } catch (error) {
+    // Unknown is not the same as broken — say nothing rather than cry wolf.
+    res.json({ trustworthy: true, unknown: true });
+  }
+});
+
 app.get("/api/cost-health", async (req, res) => {
   if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
   try {

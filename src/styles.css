@@ -23,7 +23,8 @@
   --radius-sm: 10px;
   --stroke-strong: #3a3e47;
   --muted-strong: #a9adb7;
-  --faint: #6b7079;
+  /* 3.73:1 on --bg failed AA for normal text; #7d838d measures 4.62:1. */
+  --faint: #7d838d;
   --green-soft: rgba(54, 208, 124, 0.14);
   --red: #ff7d88;
 }
@@ -20796,4 +20797,41 @@ select option,
   font-size: 10px;
   letter-spacing: 0.02em;
   color: var(--muted, rgba(255, 255, 255, 0.45));
+}
+
+/* ── Unverified metrics ────────────────────────────────────────────────
+   A figure divided by spend is meaningless when no spend reached the
+   tracker. Dimming it is not enough on its own — a number that merely
+   looks quiet still reads as true — so it carries an explicit control
+   that says why and leads to the fix. */
+.card-value.is-untrusted {
+  color: var(--muted-strong);
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 125, 136, 0.45);
+  text-decoration-thickness: 2px;
+}
+
+.card-untrusted {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 198, 37, 0.32);
+  background: rgba(247, 198, 37, 0.09);
+  color: var(--yellow);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.card-untrusted:hover {
+  background: rgba(247, 198, 37, 0.16);
+  border-color: rgba(247, 198, 37, 0.5);
+}
+.card-untrusted:focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 2px;
 }

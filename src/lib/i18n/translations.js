@@ -1436,6 +1436,16 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+    "unverified — cost data incomplete": "doğrulanmadı — maliyet verisi eksik",
+    "Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.":
+      "Bazı reklam hesapları için harcama eksik, bu yüzden bu değer eksik maliyetle hesaplandı. Nedenini görmek için Sağlık'ı açın.",
+    "unverified — no cost data": "doğrulanmadı — maliyet verisi yok",
+    "No spend is reaching the tracker, so this figure has no denominator. Open Health to see why.":
+      "Tracker'a hiç harcama ulaşmıyor, bu yüzden bu değerin paydası yok. Nedenini görmek için Sağlık'ı açın.",
+    "Spend missing": "Harcama eksik",
+    "Cost is not reaching the tracker": "Maliyet tracker'a ulaşmıyor",
+    "Profit and ROI advice is withheld until spend data returns — see Health.":
+      "Harcama verisi dönene kadar kâr ve ROI önerileri gösterilmiyor — Sağlık'a bakın.",
     "this account": "bu hesap",
     "buyer total — account not linked to Keitaro":
       "alıcı toplamı — hesap Keitaro'ya bağlı değil",

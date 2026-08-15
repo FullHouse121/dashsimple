@@ -199,6 +199,7 @@ import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Sele
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
+import { useCostIntegrity } from "./lib/costIntegrity.js";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -1410,6 +1411,16 @@ function HomeDashboard({
   const prevRoi =
     prevTotals && prevTotals.spend > 0 ? ((prevTotals.revenue - prevTotals.spend) / prevTotals.spend) * 100 : null;
 
+  // Every figure below that divides by spend is fiction when the cost pipeline
+  // is down. Crucially the test is NOT `spend === 0`: a broken pipeline still
+  // records a trickle, and $128 against 22,845 clicks renders as a $0.01 CPC
+  // and 704% ROI — plausible enough that nobody questions it. Only the tracker
+  // knows whether any ad account is actually delivering spend, so ask it.
+  // Marked rather than hidden: a buyer who cannot see a number assumes it is
+  // fine, whereas a struck-through one with a reason is unmistakable.
+  const costIntegrity = useCostIntegrity();
+  const costUntrusted = totals.clicks > 0 && costIntegrity && !costIntegrity.trustworthy;
+
   const homePrimaryStats = [
     {
       label: "Clicks",
@@ -1419,7 +1430,7 @@ function HomeDashboard({
       sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
       delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
     },
-    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click", delta: mkDelta(cpc, prevCpc, false) },
+    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click", delta: mkDelta(cpc, prevCpc, false), untrusted: costUntrusted },
     { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel, delta: mkDelta(totals.registers, prevTotals?.registers, true) },
     {
       label: "Cost per Register",
@@ -1427,6 +1438,7 @@ function HomeDashboard({
       icon: Wallet,
       meta: "Cost per register",
       delta: mkDelta(costPerRegister, prevCostPerRegister, false),
+      untrusted: costUntrusted,
     },
   ];
 
@@ -1438,6 +1450,7 @@ function HomeDashboard({
       icon: Wallet,
       meta: "Cost per FTD",
       delta: mkDelta(costPerFtd, prevCostPerFtd, false),
+      untrusted: costUntrusted,
     },
     {
       label: "Total Revenue",
@@ -1452,6 +1465,7 @@ function HomeDashboard({
       icon: BarChart3,
       meta: "Revenue vs Spend",
       delta: mkDelta(roi, prevRoi, true),
+      untrusted: costUntrusted,
     },
   ];
 
@@ -1851,7 +1865,17 @@ function HomeDashboard({
                   </span>
                 ) : null}
               </div>
-              <div className="card-value">{stat.value}</div>
+              <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+              {stat.untrusted ? (
+                <button
+                  type="button"
+                  className="card-untrusted"
+                  onClick={() => goToView("health")}
+                  title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                >
+                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                </button>
+              ) : null}
               {stat.sub ? (
                 <div className="card-sub">
                   <span className="card-sub-dot" />
@@ -1886,7 +1910,17 @@ function HomeDashboard({
                   </span>
                 ) : null}
               </div>
-              <div className="card-value">{stat.value}</div>
+              <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+              {stat.untrusted ? (
+                <button
+                  type="button"
+                  className="card-untrusted"
+                  onClick={() => goToView("health")}
+                  title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                >
+                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                </button>
+              ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
             </motion.div>
           );
@@ -3229,7 +3263,17 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                     <Icon size={20} />
                     {t(stat.label)}
                   </div>
-                  <div className="card-value">{stat.value}</div>
+                  <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+                  {stat.untrusted ? (
+                    <button
+                      type="button"
+                      className="card-untrusted"
+                      onClick={() => goToView("health")}
+                      title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                    >
+                      <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                    </button>
+                  ) : null}
                   <div className="card-meta">{t(stat.meta)}</div>
                 </motion.div>
               );
@@ -8708,6 +8752,8 @@ function StatsFunnelFlow({ stages }) {
 }
 
 function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOptions = [] }) {
+  const { t } = useLanguage();
+  const statsCostIntegrity = useCostIntegrity();
   const isLeadership = isLeadershipRole(authUser?.role);
   const effectiveBuyer = viewerBuyer || authUser?.username || "DeusInsta";
   const globalBuyerFilter = filters?.buyer || "All";
@@ -9636,7 +9682,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
     <>
       <section className="cards">
         {[
-          { label: "Total Spend", value: fmtCost(totals.spend), meta: "Filtered view" },
+          { label: "Total Spend", value: fmtCost(totals.spend), meta: "Filtered view", untrusted: !statsCostIntegrity.trustworthy },
           { label: "Unique Clicks", value: totals.uniqueClicks.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("uniqueClicks") },
           { label: "Total Registers", value: totals.registers.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("registers") },
           { label: "Total FTDs", value: totals.ftds.toLocaleString(), meta: "Filtered view", delta: statsDeltaFor("ftds") },
@@ -9649,7 +9695,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
             transition={{ delay: idx * 0.08, duration: 0.5 }}
           >
             <div className="card-head">{stat.label}</div>
-            <div className="card-value">{stat.value}</div>
+            <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+            {stat.untrusted ? (
+              <button
+                type="button"
+                className="card-untrusted"
+                onClick={() => goToView("health")}
+                title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+              >
+                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+              </button>
+            ) : null}
             {renderStatsDelta(stat.delta)}
             <div className="card-meta">{stat.meta}</div>
           </motion.div>
@@ -9666,7 +9722,17 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
             transition={{ delay: 0.12 + idx * 0.05, duration: 0.45 }}
           >
             <div className="card-head">{stat.label}</div>
-            <div className="card-value">{stat.value}</div>
+            <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+            {stat.untrusted ? (
+              <button
+                type="button"
+                className="card-untrusted"
+                onClick={() => goToView("health")}
+                title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+              >
+                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+              </button>
+            ) : null}
             {stat.sub ? (
               <div className="card-sub">
                 <span className="card-sub-dot" />
@@ -10749,7 +10815,17 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
             transition={{ delay: idx * 0.08, duration: 0.5 }}
           >
             <div className="card-head">{t(stat.label)}</div>
-            <div className="card-value">{stat.value}</div>
+            <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+            {stat.untrusted ? (
+              <button
+                type="button"
+                className="card-untrusted"
+                onClick={() => goToView("health")}
+                title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+              >
+                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+              </button>
+            ) : null}
             <div className="card-meta">{t(stat.meta)}</div>
           </motion.div>
         ))}
@@ -11437,12 +11513,31 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   );
 
   // Rule-based reading of the table — the "what should I do" strip.
+  //
+  // Signals that divide by spend are withheld when no spend reached the tracker.
+  // This strip does not describe data, it tells someone to cut or scale a
+  // campaign; issuing "losing money" off a spend column that is empty because
+  // the Meta pipeline is down could kill a profitable campaign, and the
+  // converse could scale a bleeding one. Silence is the honest output, with one
+  // signal explaining why the rest are missing.
+  const campaignCostIntegrity = useCostIntegrity();
+  const spendTrusted = campaignCostIntegrity ? campaignCostIntegrity.trustworthy !== false : true;
+
   const actionSignals = React.useMemo(() => {
     const rows = visibleCampaigns;
     if (!rows.length) return [];
     const judged = rows.filter((row) => row.uniqueClicks >= 50);
     const medR2d = median(judged.map((row) => row.r2d));
     const signals = [];
+    if (!spendTrusted) {
+      signals.push({
+        tone: "warn",
+        Icon: AlertTriangle,
+        title: t("Spend missing"),
+        campaign: t("Cost is not reaching the tracker"),
+        detail: t("Profit and ROI advice is withheld until spend data returns — see Health."),
+      });
+    }
     const winner = [...rows].sort((a, b) => b.ftds - a.ftds)[0];
     if (winner && winner.ftds > 0) {
       signals.push({
@@ -11453,9 +11548,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         detail: `${winner.ftds.toLocaleString()} FTD · R2D ${winner.r2d.toFixed(1)}% · ${formatCurrency(winner.revenue)}`,
       });
     }
-    const loser = rows
-      .filter((row) => row.totalSpend >= 50 && row.profit < 0)
-      .sort((a, b) => a.profit - b.profit)[0];
+    const loser = spendTrusted
+      ? rows.filter((row) => row.totalSpend >= 50 && row.profit < 0).sort((a, b) => a.profit - b.profit)[0]
+      : null;
     if (loser) {
       signals.push({
         tone: "bad",
@@ -11505,7 +11600,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       });
     }
     return signals.slice(0, 5);
-  }, [visibleCampaigns, toolMedians, t]);
+  }, [visibleCampaigns, toolMedians, spendTrusted, t]);
 
   const [actionError, setActionError] = React.useState(null);
   // Market ROI (Boss + Team Leader only): FTDs valued at per-country CPA rates.
@@ -11704,15 +11799,18 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     { label: "Registrations", value: fmtInt(totals.registers), meta: "Sign-ups", icon: UserPlus, delta: deltaFor("registers") },
     { label: "FTD", value: fmtInt(totals.ftds), meta: "First-time deposits", icon: CreditCard, delta: deltaFor("ftds") },
     { label: "Redeposit", value: fmtInt(totals.redeposits), meta: "Repeat deposits", icon: TrendingUp, delta: deltaFor("redeposits") },
-    { label: "Spend", value: formatCurrency(totals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard, neutralDelta: true },
+    { label: "Spend", value: formatCurrency(totals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard, neutralDelta: true, untrusted: !spendTrusted },
     {
       label: "Profit",
       value: formatCurrency(profitTotal),
       meta: totals.spend > 0 ? `ROI ${(((totals.revenue - totals.spend) / totals.spend) * 100).toFixed(0)}%` : "Revenue − Spend",
       icon: DollarSign,
-      accent: profitTotal >= 0,
-      negative: profitTotal < 0,
+      // Profit is revenue minus a spend figure that is missing accounts, so the
+      // headline ROI overstates by however much cost never arrived.
+      accent: spendTrusted && profitTotal >= 0,
+      negative: spendTrusted && profitTotal < 0,
       delta: deltaFor("revenue"),
+      untrusted: !spendTrusted,
     },
     {
       label: "Top Campaign",
@@ -11803,7 +11901,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           <section className="cards">
             {[
               { label: "Market Revenue", value: formatCurrency(marketTotals.revenue), meta: "FTDs × market CPA", icon: DollarSign },
-              { label: "Spend", value: formatCurrency(marketTotals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard },
+              { label: "Spend", value: formatCurrency(marketTotals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard, untrusted: !spendTrusted },
               {
                 label: "Market Profit",
                 value: formatCurrency(marketTotals.revenue - marketTotals.spend),
@@ -11823,7 +11921,17 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               return (
                 <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}${stat.negative ? " card-negative" : ""}`}>
                   <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
-                  <div className="card-value">{stat.value}</div>
+                  <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+                  {stat.untrusted ? (
+                    <button
+                      type="button"
+                      className="card-untrusted"
+                      onClick={() => goToView("health")}
+                      title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                    >
+                      <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                    </button>
+                  ) : null}
                   <div className="card-meta">{t(stat.meta)}</div>
                 </div>
               );
@@ -11977,7 +12085,22 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           return (
             <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}${stat.negative ? " card-negative" : ""}`}>
               <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
-              <div className={`card-value${stat.small ? " card-value--sm" : ""}`} title={stat.small ? String(stat.value) : undefined}>{stat.value}</div>
+              <div
+                className={`card-value${stat.small ? " card-value--sm" : ""}${stat.untrusted ? " is-untrusted" : ""}`}
+                title={stat.small ? String(stat.value) : undefined}
+              >
+                {stat.value}
+              </div>
+              {stat.untrusted ? (
+                <button
+                  type="button"
+                  className="card-untrusted"
+                  onClick={() => goToView("health")}
+                  title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                >
+                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                </button>
+              ) : null}
               <div className="card-meta">
                 {t(stat.meta)}
                 {stat.neutralDelta ? null : renderDelta(stat.delta)}
@@ -12977,7 +13100,17 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             transition={{ delay: idx * 0.08, duration: 0.5 }}
           >
             <div className="card-head">{t(stat.label)}</div>
-            <div className="card-value">{stat.value}</div>
+            <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+            {stat.untrusted ? (
+              <button
+                type="button"
+                className="card-untrusted"
+                onClick={() => goToView("health")}
+                title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+              >
+                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+              </button>
+            ) : null}
             {stat.user ? (
               <div className="card-meta ub-card-meta">
                 {/* full: cards have the width, and a truncated hash is the one
@@ -13569,7 +13702,17 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
                 {stat.iconNode || (Icon ? <Icon size={18} /> : null)}
                 {t(stat.label)}
               </div>
-              <div className="card-value">{stat.value}</div>
+              <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+              {stat.untrusted ? (
+                <button
+                  type="button"
+                  className="card-untrusted"
+                  onClick={() => goToView("health")}
+                  title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                >
+                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                </button>
+              ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
             </motion.div>
           );
@@ -23113,7 +23256,17 @@ function ProfileDashboard({ authUser }) {
           return (
             <div key={stat.label} className={`card${stat.accent ? " card-accent" : ""}`}>
               <div className="card-head"><Icon size={18} />{t(stat.label)}</div>
-              <div className="card-value">{stat.value}</div>
+              <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
+              {stat.untrusted ? (
+                <button
+                  type="button"
+                  className="card-untrusted"
+                  onClick={() => goToView("health")}
+                  title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
+                >
+                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                </button>
+              ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
             </div>
           );
