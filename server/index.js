@@ -15393,7 +15393,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats WHERE date >= $1 AND date <= $2`, [a, b])) || {};
 
-  const [current, previous, trend, buyers, countries, brands] = await Promise.all([
+  const [current, previous, trend, buyers, countries, brands, tools] = await Promise.all([
     totals(from, to),
     totals(prevFrom, prevTo),
     getRows(
@@ -15435,6 +15435,18 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(brand),'') <> ''
         GROUP BY 1 HAVING COALESCE(SUM(ftds),0) > 0
         ORDER BY SUM(revenue) DESC LIMIT 12`, [from, to]),
+    // The delivery tool (PWA.GROUP, ZMAPPS, LINKI.GROUP…) each brand ran on.
+    // Managers ask which tool converts, not only which brand pays.
+    getRows(
+      `SELECT UPPER(TRIM(tool)) AS tool,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats
+        WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(tool),'') <> ''
+        GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+        ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 10`, [from, to]),
   ]);
 
   const num = (v) => Number(v) || 0;
@@ -15517,8 +15529,64 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       ftds: num(r.ftds), revenue: num(r.revenue),
     })),
     brands: brands.map((r) => ({ brand: r.brand, ftds: num(r.ftds), revenue: num(r.revenue) })),
+    tools: tools.map((r) => ({
+      tool: r.tool, clicks: num(r.clicks), registers: num(r.registers),
+      ftds: num(r.ftds), revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+    })),
     funnel,
     integrity,
+    // The findings a manager would otherwise have to derive by staring at the
+    // tables. Computed here, not in the browser, so the PDF and the share link
+    // tell the same story as the screen — and phrased as observations rather
+    // than advice, because the numbers support the former and not the latter.
+    highlights: (() => {
+      const out = [];
+      const d = summary.deltas;
+      // Traffic up while deposits fall is the single most useful thing this
+      // report can point at, and the easiest to miss in a table.
+      if (d.registers !== null && d.ftds !== null && d.registers > 5 && d.ftds < -5) {
+        out.push({
+          tone: "bad",
+          text: `Registrations rose ${d.registers.toFixed(1)}% while first deposits fell ${Math.abs(d.ftds).toFixed(1)}% — the drop is in conversion, not in traffic.`,
+        });
+      } else if (d.ftds !== null && d.ftds > 10) {
+        out.push({ tone: "good", text: `First deposits are up ${d.ftds.toFixed(1)}% on the previous ${span} days.` });
+      } else if (d.ftds !== null && d.ftds < -10) {
+        out.push({ tone: "bad", text: `First deposits are down ${Math.abs(d.ftds).toFixed(1)}% on the previous ${span} days.` });
+      }
+      const topBuyer = buyers[0];
+      if (topBuyer && num(current.ftds) > 0) {
+        const shareOfFtds = (num(topBuyer.ftds) / num(current.ftds)) * 100;
+        if (shareOfFtds >= 40) {
+          out.push({
+            tone: "warn",
+            text: `${topBuyer.buyer} produced ${shareOfFtds.toFixed(0)}% of all first deposits — the result depends heavily on one buyer.`,
+          });
+        }
+      }
+      const topCountry = countries[0];
+      if (topCountry && num(current.ftds) > 0) {
+        out.push({
+          tone: "info",
+          text: `${topCountry.country} leads on volume with ${num(topCountry.ftds).toLocaleString()} first deposits from ${num(topCountry.clicks).toLocaleString()} clicks.`,
+        });
+      }
+      // Best and worst converting buyer, but only where the sample can carry
+      // the claim — a 100% rate on two registrations is noise, not a finding.
+      const rated = buyers.filter((b) => num(b.registers) >= 50 && b.reg2dep !== null);
+      if (rated.length >= 2) {
+        const best = rated.reduce((a, b) => (b.reg2dep > a.reg2dep ? b : a));
+        const worst = rated.reduce((a, b) => (b.reg2dep < a.reg2dep ? b : a));
+        if (best.buyer !== worst.buyer) {
+          out.push({
+            tone: "info",
+            text: `Registration-to-deposit ranges from ${worst.reg2dep.toFixed(1)}% (${worst.buyer}) to ${best.reg2dep.toFixed(1)}% (${best.buyer}) — a ${(best.reg2dep / Math.max(worst.reg2dep, 0.01)).toFixed(1)}× spread across the team.`,
+          });
+        }
+      }
+      return out.slice(0, 4);
+    })(),
   };
 };
 

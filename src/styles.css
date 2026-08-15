@@ -21516,54 +21516,45 @@ select option,
 .xr-foot { font-size: 11px; color: var(--faint); padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 
 /* ── Print ────────────────────────────────────────────────────────────
-   Export PDF is the browser's own print, so this IS the PDF. Ink-on-paper
-   colours, everything that is not the report removed, and page breaks placed
-   so a table is never severed mid-row. */
+   Export PDF is the browser's own print, so this IS the PDF — and it keeps
+   the dashboard's own colours rather than turning into a white sheet. That
+   needs print-color-adjust: exact, or Chrome drops every background and the
+   report arrives as grey text on white.
+
+   Ask the person exporting to leave "Background graphics" ticked; the rule
+   below is what makes it honoured. */
 @media print {
-  @page { size: A4 portrait; margin: 14mm 12mm; }
+  @page { size: A4 portrait; margin: 10mm 9mm; background: #0d1013; }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 
   /* Everything that frames the app on screen is furniture on paper. */
   .sidebar, .topbar, .nav-item, .panel-head, .offers-tabs,
   .xr-noprint, .app-shell > aside { display: none !important; }
 
-  html, body, .app-shell, .panels, .panel {
-    background: #fff !important;
-    color: #111 !important;
+  html, body, .app-shell, .panels, .panel, .pubrep, .xr-panel {
+    background: #0d1013 !important;
     margin: 0 !important;
     padding: 0 !important;
     box-shadow: none !important;
     border: 0 !important;
   }
 
-  .xr { gap: 18px; color: #111; }
-  .xr-title, .xr-card-value, .xr-table td.xr-strong { color: #111; }
-  .xr-period, .xr-generated, .xr-card-label, .xr-h2, .xr-table th,
-  .xr-funnel-label, .xr-funnel-rate, .xr-foot { color: #555 !important; }
-  .xr-table td { color: #222; }
+  .xr { gap: 16px; }
 
-  .xr-card, .xr-chart {
-    border-color: #ddd !important;
-    background: #fff !important;
-  }
-  .xr-caveat {
-    border-color: #d9a300 !important;
-    background: #fffbeb !important;
-    color: #4a3a00 !important;
-  }
-  .xr-caveat strong { color: #8a6b00 !important; }
-  .xr-head, .xr-foot, .xr-table th { border-color: #ccc !important; }
-  .xr-table td { border-color: #eee !important; }
-  .xr-funnel-track { background: #eee !important; }
-  .xr-funnel-fill { background: #2f9e63 !important; }
-  .xr-delta.is-up { color: #1d7a4a !important; }
-  .xr-delta.is-down { color: #b3261e !important; }
-  .xr-unverified, .xr-card.is-unverified { color: #8a6b00 !important; border-color: #d9a300 !important; }
+  /* Charts are SVG and survive printing; only their container needs to keep
+     its fill, which the colour-adjust rule above guarantees. */
+  .xr-chart, .xr-card { background: rgba(255, 255, 255, 0.02) !important; }
 
   /* A table split across a page boundary mid-row is unreadable. */
   .xr-avoid-break { break-inside: avoid; page-break-inside: avoid; }
   .xr-table tr { break-inside: avoid; page-break-inside: avoid; }
   .xr-block { break-inside: avoid-page; }
   .xr-two { grid-template-columns: 1fr 1fr; }
+  .xr-story { break-inside: avoid; }
 }
 
 /* The share-link page. Its own shell: a manager opening this has no account
@@ -21601,3 +21592,52 @@ select option,
 .xr-share-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
 .xr-copied { font-size: 12px; color: var(--green); margin: 8px 0 0; }
 .xr-panel { padding: 26px 28px; }
+
+/* The narrative: what the tables would say if someone read all of them. */
+.xr-story {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.xr-story-line {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-strong, #a9adb7);
+}
+
+/* A dot, not an icon — four icons stacked would compete with the charts. */
+.xr-story-mark {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  transform: translateY(-2px);
+  background: var(--muted);
+}
+
+.xr-story-line.is-good .xr-story-mark { background: var(--green); }
+.xr-story-line.is-bad .xr-story-mark { background: var(--red); }
+.xr-story-line.is-warn .xr-story-mark { background: var(--yellow); }
+.xr-story-line.is-info .xr-story-mark { background: var(--blue); }
+
+/* A flag or an emblem sits with its label rather than replacing it. */
+.xr-cell-mark { display: inline-flex; align-items: center; gap: 8px; }
+.xr-cell-mark .fi { border-radius: 2px; }
+.xr-cell-mark .brand-mark { max-height: 15px; width: auto; }
+
+/* A tab a buyer can see but not open. Dimmed and padlocked rather than
+   hidden, so it reads as "not yours" instead of "not there". */
+.offers-tab.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.offers-tab.is-locked:hover { background: transparent; border-color: inherit; }

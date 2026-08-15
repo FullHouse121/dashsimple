@@ -14,7 +14,10 @@
 import React from "react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  BarChart, Bar, Cell, PieChart, Pie,
 } from "recharts";
+import { CountryFlag } from "./flags.jsx";
+import { BrandMark } from "./BrandMark.jsx";
 import { formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
 import { axisTickStyle, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from "../lib/format.js";
 
@@ -35,7 +38,10 @@ const Delta = ({ value }) => {
 
 export default function ExecutiveReport({ report }) {
   if (!report) return null;
-  const { summary, period, trend, buyers, countries, brands, funnel, integrity } = report;
+  const { summary, period, trend, buyers, countries, brands, tools, funnel, integrity, highlights } = report;
+  // One accent per series, reused across every chart so a colour means the
+  // same thing on page three as it did on page one.
+  const BRAND_COLOURS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#ff7d88"];
   const money = integrity?.costTrustworthy;
 
   return (
@@ -59,6 +65,19 @@ export default function ExecutiveReport({ report }) {
         <div className="xr-caveat">
           <strong>Read cost figures with care.</strong> {integrity.note}
         </div>
+      ) : null}
+
+      {/* What the tables would tell you if you read all of them. Stated as
+          observations, not advice — the numbers support the first. */}
+      {highlights?.length ? (
+        <section className="xr-story">
+          {highlights.map((h) => (
+            <p key={h.text} className={`xr-story-line is-${h.tone}`}>
+              <span className="xr-story-mark" aria-hidden="true" />
+              {h.text}
+            </p>
+          ))}
+        </section>
       ) : null}
 
       <section className="xr-grid">
@@ -131,6 +150,59 @@ export default function ExecutiveReport({ report }) {
         </div>
       </section>
 
+      {/* Two questions a table answers slowly: how the money splits across
+          brands, and whether the team converts evenly. Both are shape
+          questions, which is what a chart is for. */}
+      <section className="xr-two">
+        <div className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">Revenue by brand</h2>
+          <div className="xr-chart">
+            <ResponsiveContainer width="100%" height={230}>
+              <PieChart>
+                <Pie
+                  data={brands} dataKey="revenue" nameKey="brand"
+                  innerRadius={52} outerRadius={82} paddingAngle={2} stroke="none"
+                >
+                  {brands.map((entry, i) => (
+                    <Cell key={entry.brand} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                  formatter={(v, n) => [formatCurrencyWhole(v), n]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">Registration → deposit by buyer</h2>
+          <div className="xr-chart">
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart
+                data={buyers.filter((b) => b.reg2dep !== null).slice(0, 8)}
+                margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="buyer" tick={{ ...axisTickStyle, fontSize: 10 }} tickLine={false} axisLine={false} interval={0} angle={-18} textAnchor="end" height={54} />
+                <YAxis tick={axisTickStyle} tickLine={false} axisLine={false} width={40} unit="%" />
+                <Tooltip
+                  contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                  formatter={(v) => [`${Number(v).toFixed(1)}%`, "Reg→Dep"]}
+                />
+                <Bar dataKey="reg2dep" radius={[4, 4, 0, 0]}>
+                  {buyers.filter((b) => b.reg2dep !== null).slice(0, 8).map((entry, i) => (
+                    <Cell key={entry.buyer} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
       {/* The funnel as rates, not four counts side by side: where people are
           lost is the question, and only the rate between steps answers it. */}
       <section className="xr-block">
@@ -195,10 +267,34 @@ export default function ExecutiveReport({ report }) {
             <tbody>
               {countries.map((row) => (
                 <tr key={row.country}>
-                  <td className="xr-strong">{row.country}</td>
+                  <td className="xr-strong">
+                    <span className="xr-cell-mark">
+                      <CountryFlag value={row.country} />
+                      {row.country}
+                    </span>
+                  </td>
                   <td>{int(row.clicks)}</td>
                   <td>{int(row.ftds)}</td>
                   <td>{formatCurrencyWhole(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">By tool</h2>
+          <table className="xr-table">
+            <thead><tr><th>Tool</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th></tr></thead>
+            <tbody>
+              {(tools || []).map((row) => (
+                <tr key={row.tool}>
+                  <td className="xr-strong">
+                    <span className="xr-cell-mark"><BrandMark value={row.tool} height={13} /></span>
+                  </td>
+                  <td>{int(row.clicks)}</td>
+                  <td>{int(row.ftds)}</td>
+                  <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
                 </tr>
               ))}
             </tbody>
@@ -212,7 +308,9 @@ export default function ExecutiveReport({ report }) {
             <tbody>
               {brands.map((row) => (
                 <tr key={row.brand}>
-                  <td className="xr-strong">{row.brand}</td>
+                  <td className="xr-strong">
+                    <span className="xr-cell-mark"><BrandMark value={row.brand} height={14} /></span>
+                  </td>
                   <td>{int(row.ftds)}</td>
                   <td>{formatCurrencyWhole(row.revenue)}</td>
                 </tr>

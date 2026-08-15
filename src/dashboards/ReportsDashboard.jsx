@@ -10,6 +10,7 @@ import {
 } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
 import ExecutiveReportPanel from "../components/ExecutiveReportPanel.jsx";
+import { isLeadershipRole } from "../lib/permissions.js";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { Select } from "../components/Select.jsx";
 import { formatCurrency } from "../lib/format.js";
@@ -581,6 +582,10 @@ export default function ReportsDashboard({ authUser }) {
   // question you already have; the executive report is the standing picture
   // someone reads before they have one.
   const [mode, setMode] = React.useState("builder");
+  // The executive report reports on the whole team, so it is leadership's.
+  // A buyer opening Reports still sees the tab — locked — because a section
+  // that simply is not there reads as something missing.
+  const canSeeExecutive = isLeadershipRole(authUser?.role);
 
   const [catalog, setCatalog] = React.useState(null);
   const [catalogError, setCatalogError] = React.useState(null);
@@ -1092,12 +1097,19 @@ export default function ReportsDashboard({ authUser }) {
         <ColumnsIcon size={14} />
         <span>{t("Query builder")}</span>
       </button>
+      {/* Buyers see it locked rather than not at all: hiding a section makes
+          people ask whether it exists, and a padlock answers that in one
+          glance. The server refuses them regardless — this is the honest
+          front of a gate that is already there. */}
       <button
         type="button"
-        className={`offers-tab${mode === "executive" ? " is-active" : ""}`}
-        onClick={() => setMode("executive")}
+        className={`offers-tab${mode === "executive" ? " is-active" : ""}${canSeeExecutive ? "" : " is-locked"}`}
+        onClick={() => canSeeExecutive && setMode("executive")}
+        disabled={!canSeeExecutive}
+        aria-disabled={!canSeeExecutive}
+        title={canSeeExecutive ? undefined : t("Leadership only — the executive report is for managers taking decisions on the whole team's numbers.")}
       >
-        <ReportIcon size={14} />
+        {canSeeExecutive ? <ReportIcon size={14} /> : <Lock size={13} />}
         <span>{t("Executive report")}</span>
       </button>
     </div>

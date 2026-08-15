@@ -63,7 +63,7 @@ export const tokensMatch = (a, b) => {
 // which is the only version of this that stays correct as the report grows.
 const PUBLIC_SECTION_KEYS = new Set([
   "period", "generatedAt", "title", "summary", "trend", "buyers",
-  "countries", "funnel", "brands", "integrity",
+  "countries", "funnel", "brands", "tools", "highlights", "integrity",
 ]);
 
 export const toPublicReport = (report) => {

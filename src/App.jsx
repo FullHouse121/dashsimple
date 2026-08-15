@@ -36,14 +36,8 @@ import {
   Maximize2, ScrollText, RefreshCw, Unlink, Star, Play, Pause,
 } from "lucide-react";
 import logo from "./assets/logo.png";
+import { BrandMark, resolveBrandLogo, BRAND_LOGOS, normalizeBrandKey } from "./components/BrandMark.jsx";
 import keitaroLogo from "./assets/brands/keitaro.svg";
-import zlotLogo from "./assets/brands/zlot-mx.svg";
-import jasinoLogo from "./assets/brands/jasino.svg";
-import pwaGroupLogo from "./assets/brands/pwa-group.svg";
-import zmAppsLogo from "./assets/brands/zm-apps.svg";
-import linkiLogo from "./assets/brands/linki-group.svg";
-import skakLogo from "./assets/brands/skak-apps.svg";
-import pwaPartnersLogo from "./assets/brands/pwa-partners-white.svg";
 
 // Canonical single-path Telegram glyph (tint-able via currentColor) — used in
 // place of the heavy multi-shade source logo for small inline UI.
@@ -64,60 +58,7 @@ const MetaGlyph = ({ size = 18 }) => (
   </svg>
 );
 
-// Brand/traffic-source logo registry. Keys are normalized (lowercased, only
-// a-z0-9), so "PWA Group" / "PWA.GROUP" / "pwagroup" all resolve to one entry.
-const BRAND_LOGOS = {
-  pwagroup: { src: pwaGroupLogo, label: "PWA Group" },
-  zmapps: { src: zmAppsLogo, label: "ZM Apps" },
-  zmap: { src: zmAppsLogo, label: "ZM Apps" },
-  linkigroup: { src: linkiLogo, label: "Linki Group" },
-  linkgroup: { src: linkiLogo, label: "Linki Group" },
-  linki: { src: linkiLogo, label: "Linki Group" },
-  link: { src: linkiLogo, label: "Linki Group" },
-  zlotmx: { src: zlotLogo, label: "ZlotMX" },
-  zlot: { src: zlotLogo, label: "ZlotMX" },
-  jasino: { src: jasinoLogo, label: "Jasino" },
-  skakapps: { src: skakLogo, label: "SkakApp" },
-  skakapp: { src: skakLogo, label: "SkakApp" },
-  skak: { src: skakLogo, label: "SkakApp" },
-  // PWA Partners ships as a pure-black emblem — invert to white for the dark UI
-  pwapartners: { src: pwaPartnersLogo, label: "PWA Partners", invert: true },
-  pwapartner: { src: pwaPartnersLogo, label: "PWA Partners", invert: true },
-};
-const normalizeBrandKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-const resolveBrandLogo = (value) => {
-  const key = normalizeBrandKey(value);
-  if (!key) return null;
-  if (BRAND_LOGOS[key]) return BRAND_LOGOS[key];
-  // guarded prefix match so "pwagroupmx" still resolves, without false hits
-  for (const [k, v] of Object.entries(BRAND_LOGOS)) {
-    if (k.length >= 4 && (key.startsWith(k) || k.startsWith(key))) return v;
-  }
-  return null;
-};
-// Renders a matched brand logo, else a lettermark chip (never a broken image).
-const BrandMark = ({ value, height = 15 }) => {
-  const raw = String(value || "").trim();
-  if (!raw) return <span className="offer-muted">—</span>;
-  const hit = resolveBrandLogo(raw);
-  if (hit) {
-    return (
-      <img
-        className={`brand-mark platform-mark${hit.invert ? " platform-mark--invert" : ""}`}
-        src={hit.src}
-        alt={hit.label}
-        title={hit.label}
-        style={{ height }}
-      />
-    );
-  }
-  return (
-    <span className="brand-lettermark" title={raw}>
-      <span className="brand-lettermark-badge" aria-hidden="true">{raw.slice(0, 1).toUpperCase()}</span>
-      {raw}
-    </span>
-  );
-};
+
 
 // A deploy gives every code-split chunk a new content hash and removes the old
 // files. A tab that was open across the deploy still holds the previous entry
