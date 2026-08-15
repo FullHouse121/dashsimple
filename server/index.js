@@ -9,6 +9,7 @@ import {
 import { createTokenCodec } from "./lib/auth.js";
 import { planCampaignImport } from "./lib/campaign-import.js";
 import { valueByCountry, targetValue } from "./lib/goal-valuation.js";
+import { classifyMetaError, summariseTokenChecks } from "./lib/meta-token-check.js";
 import { resolveCpa } from "../shared/regions.js";
 import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
 import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
@@ -1798,6 +1799,58 @@ const sqlNormalizeBuyerToken = (expression) =>
 // "Cost is being received" means cost within this many days — a lifetime sum
 // stays green forever after the first dollar, which hides dead tokens.
 const RECEIVED_SPEND_WINDOW_DAYS = 3;
+
+// Ask Meta why a token is failing, because Keitaro will not say.
+//
+// Keitaro reports every cause as "third_party_integration.errors.token". On
+// this account that one string was hiding four different jobs: a deleted app,
+// a blocked app, an ad account that never granted ads_read, and tokens that
+// were simply fine. Only Meta can tell them apart, so we ask it.
+//
+// Cached, because a Health load should not fan out fifteen Graph calls every
+// time someone opens the page, and Meta rate-limits.
+const META_GRAPH_VERSION = "v21.0";
+const META_TOKEN_CHECK_TTL_MS = 15 * 60 * 1000;
+let metaTokenCheckCache = { at: 0, value: null };
+
+const checkMetaToken = async (token, accountNumber) => {
+  if (!token) return { ok: false, verdict: "missing", fatal: false, summary: "No token stored", action: "Add the Meta token for this account." };
+  const call = async (path) => {
+    const url = `https://graph.facebook.com/${META_GRAPH_VERSION}${path}${path.includes("?") ? "&" : "?"}access_token=${encodeURIComponent(token)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const body = await res.json().catch(() => ({}));
+    return { ok: res.ok, body };
+  };
+  try {
+    // Is the token itself alive?
+    const me = await call("/me?fields=id");
+    if (!me.ok) return { ok: false, ...classifyMetaError(me.body?.error) };
+    // Alive is not enough — it also has to be able to read this account's spend,
+    // which is the thing Keitaro is actually trying to do.
+    if (!accountNumber) return { ok: true, verdict: "ok", summary: "Token valid (no ad account wired)" };
+    const insights = await call(`/act_${accountNumber}/insights?fields=spend&date_preset=last_7d`);
+    if (!insights.ok) return { ok: false, ...classifyMetaError(insights.body?.error) };
+    const spend = (insights.body?.data || []).reduce((sum, row) => sum + (Number(row.spend) || 0), 0);
+    return { ok: true, verdict: "ok", summary: "Token valid and reading spend", spend7d: Number(spend.toFixed(2)) };
+  } catch (error) {
+    // A network failure here says nothing about the token, so do not blame it.
+    return { ok: false, verdict: "unreachable", fatal: false, summary: "Could not reach Meta to check", action: "Transient — retry.", detail: String(error?.message || error).slice(0, 120) };
+  }
+};
+
+const checkMetaTokens = async (records) => {
+  if (metaTokenCheckCache.value && Date.now() - metaTokenCheckCache.at < META_TOKEN_CHECK_TTL_MS) {
+    return metaTokenCheckCache.value;
+  }
+  const byId = new Map();
+  // Serial on purpose: fifteen accounts is a few seconds, and a burst is what
+  // gets an app rate-limited — which would then look like a token fault.
+  for (const record of records) {
+    byId.set(record.id, await checkMetaToken(record.meta_token, record.account_number));
+  }
+  metaTokenCheckCache = { at: Date.now(), value: byId };
+  return byId;
+};
 
 // One-pass spend aggregates for the integration list. media_stats is scanned
 // once per query (grouped by raw buyer/domain, then normalized over the few
@@ -14519,10 +14572,21 @@ const buildCostHealth = async () => {
   // Our own wiring records, so an account we believe is wired but Keitaro
   // has never heard of still shows up.
   const wired = await query(
-    `SELECT id, account_number, buyer_name, status, is_wired, keitaro_integration_id, last_checked_at
+    `SELECT id, account_number, buyer_name, status, is_wired, keitaro_integration_id, last_checked_at, meta_token
        FROM meta_token_integrations
       ORDER BY account_number ASC`
   ).then((r) => r.rows || []);
+
+  // Keitaro says "errors.token" for every cause. Meta says which one, and the
+  // difference decides the job: re-issue a token, grant a permission, or build
+  // a new app because the old one is gone.
+  let tokenChecks = new Map();
+  try {
+    tokenChecks = await checkMetaTokens(wired);
+  } catch (error) {
+    console.error("[health] meta token check failed:", error?.message || error);
+  }
+  const tokenSummary = summariseTokenChecks([...tokenChecks.values()]);
 
   const spendRows = await query(
     `SELECT MAX(date) AS last_date,
@@ -14561,7 +14625,13 @@ const buildCostHealth = async () => {
       keitaro_integration_id: w.keitaro_integration_id,
       last_checked_at: w.last_checked_at,
       linked: !!w.keitaro_integration_id,
+      // Meta's own verdict on this token. Never the token itself.
+      token_check: tokenChecks.get(w.id) || null,
     })),
+    // One job per cause rather than one row per account: eleven accounts down
+    // for the same deleted app is a single piece of work, and saying so is the
+    // difference between "fix the app" and "chase eleven tokens".
+    tokens: tokenSummary,
     summary: {
       accounts: accounts.length,
       brokenTokens,

@@ -15849,6 +15849,65 @@ select option,
 }
 
 /* Cost: the pipeline drawn as a pipeline, so the broken link is obvious */
+/* The reason, stated once, above the pipeline diagram. Amber not red: the
+   pipeline being down is already said by the verdict line — this explains it,
+   it does not raise the alarm a second time. */
+.hx-diagnosis {
+  margin-bottom: 14px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(247, 198, 37, 0.22);
+  background: rgba(247, 198, 37, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.hx-diagnosis-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--yellow);
+  font-size: 13px;
+}
+
+.hx-diagnosis-head strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.hx-diagnosis-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The instruction, not the diagnosis — this is the line someone acts on. */
+.hx-diagnosis-action {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-strong, #a9adb7);
+}
+
+.hx-diagnosis-groups {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.hx-diagnosis-groups strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 .hx-chain {
   display: flex; align-items: stretch; gap: 4px; flex-wrap: wrap;
   padding: 14px; border-radius: 14px;

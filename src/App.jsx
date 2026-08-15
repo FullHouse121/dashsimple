@@ -5956,8 +5956,13 @@ function HealthDashboard({ authUser }) {
                 {
                   key: "roi",
                   label: t("ROI numbers"),
-                  ok: data.keitaro.costLast7 > 0,
-                  value: data.keitaro.costLast7 > 0 ? t("trustworthy") : t("understated"),
+                  // Same rule the KPI cards use, or the two disagree in the
+                  // user's face: this said "trustworthy" on $16.22 of cost
+                  // across 19,031 clicks with 9 of 9 tokens dead, while every
+                  // ROI figure on the dashboard carried "cost data incomplete".
+                  // Some cost arriving is not the same as the cost being right.
+                  ok: data.keitaro.costLast7 > 0 && dead.length === 0,
+                  value: data.keitaro.costLast7 > 0 && dead.length === 0 ? t("trustworthy") : t("understated"),
                 },
               ];
               return (
@@ -5977,6 +5982,34 @@ function HealthDashboard({ authUser }) {
                       {data.keitaro.clicksLast7.toLocaleString()} {t("clicks")} · {formatCurrency(data.keitaro.costLast7)} {t("cost")} · {t("previous week")} {formatCurrency(data.keitaro.costPrev7)}
                     </span>
                   </div>
+
+                  {/* Keitaro reports every token fault as one opaque string, so
+                      until now this page could say a token was dead but never
+                      why — and "re-issue the token" is the wrong instruction
+                      when the app that minted it no longer exists. Meta's own
+                      verdict, grouped by cause, because eleven accounts down
+                      for one reason is one job and not eleven. */}
+                  {data.tokens?.headline ? (
+                    <div className="hx-diagnosis">
+                      <div className="hx-diagnosis-head">
+                        <AlertTriangle size={14} />
+                        <strong>{t(data.tokens.headline.summary)}</strong>
+                        <span className="hx-diagnosis-count">
+                          {data.tokens.broken}/{data.tokens.total} {t("tokens affected")}
+                        </span>
+                      </div>
+                      <p className="hx-diagnosis-action">{t(data.tokens.headline.action)}</p>
+                      {data.tokens.groups.length > 1 ? (
+                        <ul className="hx-diagnosis-groups">
+                          {data.tokens.groups.map((group) => (
+                            <li key={group.verdict}>
+                              <strong>{group.count}</strong> {t(group.summary)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   {/* The pipeline itself, as a pipeline */}
                   <div className="hx-chain">
