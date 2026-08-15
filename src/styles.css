@@ -20835,3 +20835,108 @@ select option,
   outline: 2px solid var(--yellow);
   outline-offset: 2px;
 }
+
+/* ── Market CPA rates ──────────────────────────────────────────────────
+   A country with no rate is not neutral: its deposits are valued at zero,
+   so Market ROI reads lower than reality. The ones still to price are
+   marked, and the coverage line says what the gap costs. */
+.rate-coverage {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 13px;
+  margin: 0 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: var(--panel-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-strong);
+}
+.rate-coverage svg { flex-shrink: 0; margin-top: 2px; }
+.rate-coverage.is-warn {
+  color: #f0d9a8;
+  border-color: rgba(247, 198, 37, 0.3);
+  background: rgba(247, 198, 37, 0.08);
+}
+.rate-coverage.is-ok {
+  color: var(--green);
+  border-color: rgba(54, 208, 124, 0.28);
+  background: var(--green-soft);
+}
+
+.rate-search-field { margin-bottom: 14px; }
+.rate-search { max-width: 420px; }
+/* .registry-search resets only apply inside .pixel-table-toolbar, so an
+   instance outside it needs the reset repeating or the browser paints a
+   second box inside the search bar. */
+.rate-search input {
+  border: 0;
+  background: none;
+  padding: 0;
+  min-height: 0;
+  color: var(--text);
+  font-size: 13px;
+  width: 100%;
+}
+.rate-search input:focus { outline: none; }
+
+.cpa-item.needs-rate {
+  border-color: rgba(247, 198, 37, 0.34);
+  background: rgba(247, 198, 37, 0.05);
+}
+.cpa-item-ftds {
+  margin-left: 7px;
+  font-style: normal;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cpa-item.needs-rate .cpa-item-ftds { color: var(--yellow); }
+.cpa-item-meta {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.offers-tab-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(247, 198, 37, 0.16);
+  border: 1px solid rgba(247, 198, 37, 0.34);
+  color: var(--yellow);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The rates grid now carries a name, an FTD count and a provenance line, which
+   the original two-element layout could not hold — country names truncated to
+   "United Kingd" and "1 $40". Wider columns, and the row becomes a block so the
+   meta line sits under rather than fighting for horizontal space. */
+.cpa-grid { grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); }
+
+.cpa-item {
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+}
+.cpa-item-country {
+  /* basis 0, not auto: with an auto basis a long name ("United Arab Emirates")
+     refuses to shrink below its content and pushes the input onto a second
+     line, leaving that card taller than every neighbour. */
+  flex: 1 1 0;
+  min-width: 0;
+}
+.cpa-item-input { flex: 0 0 auto; }
+.cpa-item-meta { flex: 1 0 100%; }
+
+@media (max-width: 560px) {
+  .cpa-grid { grid-template-columns: 1fr; }
+}

@@ -11560,8 +11560,20 @@ app.post("/api/campaign-spend", async (req, res) => {
 app.get("/api/market-cpa", async (req, res) => {
   if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
   try {
-    const rows = await getRows(`SELECT country, cpa FROM market_cpa_rates ORDER BY country`);
-    return res.json(rows.map((row) => ({ country: row.country, cpa: Number(row.cpa) || 0 })));
+    // Who set a rate and when is the difference between a considered price and
+    // a placeholder nobody revisited. The table has always recorded both; the
+    // API simply never returned them.
+    const rows = await getRows(
+      `SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`
+    );
+    return res.json(
+      rows.map((row) => ({
+        country: row.country,
+        cpa: Number(row.cpa) || 0,
+        updatedBy: row.updated_by || null,
+        updatedAt: row.updated_at || null,
+      }))
+    );
   } catch (error) {
     return res.status(500).json({ error: "Failed to load CPA rates." });
   }
@@ -11588,8 +11600,20 @@ app.put("/api/market-cpa", async (req, res) => {
         );
       }
     }
-    const rows = await getRows(`SELECT country, cpa FROM market_cpa_rates ORDER BY country`);
-    return res.json(rows.map((row) => ({ country: row.country, cpa: Number(row.cpa) || 0 })));
+    // Who set a rate and when is the difference between a considered price and
+    // a placeholder nobody revisited. The table has always recorded both; the
+    // API simply never returned them.
+    const rows = await getRows(
+      `SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`
+    );
+    return res.json(
+      rows.map((row) => ({
+        country: row.country,
+        cpa: Number(row.cpa) || 0,
+        updatedBy: row.updated_by || null,
+        updatedAt: row.updated_at || null,
+      }))
+    );
   } catch (error) {
     return res.status(500).json({ error: "Failed to save CPA rates." });
   }

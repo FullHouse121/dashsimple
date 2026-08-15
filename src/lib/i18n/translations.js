@@ -1436,6 +1436,21 @@ export const translations = {
     "{n} min ago": "{n} dk önce",
     "{n} h ago": "{n} sa önce",
     "{n} d ago": "{n} gün önce",
+    Rates: "Oranlar",
+    "What one FTD is worth on the market, per country, in USD. Market ROI values every deposit at these prices.":
+      "Bir FTD'nin piyasada ülke bazında USD değeri. Market ROI her yatırımı bu fiyatlarla değerler.",
+    "country earning FTDs has no rate": "FTD getiren ülkenin oranı yok",
+    "countries earning FTDs have no rate": "FTD getiren ülkenin oranı yok",
+    "deposits are being valued at $0, so Market ROI is understated.":
+      "yatırım $0 olarak değerleniyor, bu yüzden Market ROI olduğundan düşük görünüyor.",
+    "Every country earning FTDs in this period has a rate.":
+      "Bu dönemde FTD getiren her ülkenin bir oranı var.",
+    "Priced but no FTDs in this period": "Fiyatlandırılmış ancak bu dönemde FTD yok",
+    "Search any of 242 countries…": "242 ülkeden herhangi birini arayın…",
+    "Showing countries you earn in or have priced. Search to reach any other country.":
+      "Kazanç sağladığınız veya fiyatlandırdığınız ülkeler gösteriliyor. Diğer ülkeler için arama yapın.",
+    matching: "eşleşen",
+    "No countries match that search.": "Bu aramaya uyan ülke yok.",
     "unverified — cost data incomplete": "doğrulanmadı — maliyet verisi eksik",
     "Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.":
       "Bazı reklam hesapları için harcama eksik, bu yüzden bu değer eksik maliyetle hesaplandı. Nedenini görmek için Sağlık'ı açın.",

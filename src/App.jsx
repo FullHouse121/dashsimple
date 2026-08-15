@@ -11626,7 +11626,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   }, [isLeadership]);
 
   React.useEffect(() => {
-    if (campaignTab === "marketroi" && !cpaState.loaded) fetchCpaRates();
+    if ((campaignTab === "marketroi" || campaignTab === "rates") && !cpaState.loaded) fetchCpaRates();
   }, [campaignTab, cpaState.loaded, fetchCpaRates]);
 
   const saveCpaRates = async () => {
@@ -11661,6 +11661,68 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     visibleCampaigns.forEach((row) => row.countryRows.forEach((c) => set.add(c.country)));
     return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [visibleCampaigns, cpaRates]);
+
+  // ── Rates tab ────────────────────────────────────────────────────────
+  // Rates are reference data, not a report, so the editable set must not be
+  // scoped by the current date filter. Doing that is why seven countries that
+  // earn FTDs never got a price: they simply were not offered while the filter
+  // sat on a period they had no traffic in. Every country is reachable here.
+  const [rateSearch, setRateSearch] = React.useState("");
+
+  // FTDs per country in the selected period — what a missing rate actually costs.
+  const ftdsByCountry = React.useMemo(() => {
+    const map = new Map();
+    visibleCampaigns.forEach((row) =>
+      row.countryRows.forEach((c) => {
+        if (!c.country) return;
+        map.set(c.country, (map.get(c.country) || 0) + (Number(c.ftds) || 0));
+      })
+    );
+    return map;
+  }, [visibleCampaigns]);
+
+  const rateMeta = React.useMemo(
+    () => new Map(cpaRates.map((row) => [row.country, row])),
+    [cpaRates]
+  );
+
+  // Earning-but-unpriced first, because those are the ones distorting the
+  // number; then priced; then everywhere else, reachable by search.
+  const rateRows = React.useMemo(() => {
+    const priced = new Set(cpaRates.map((r) => r.country));
+    const known = new Set([...priced, ...ftdsByCountry.keys()]);
+    const rows = supportedCountryOptions.map((country) => ({
+      country,
+      ftds: ftdsByCountry.get(country) || 0,
+      rate: rateMeta.get(country) || null,
+      known: known.has(country),
+    }));
+    const q = rateSearch.trim().toLowerCase();
+    const filtered = q
+      ? rows.filter((r) => r.country.toLowerCase().includes(q))
+      : rows.filter((r) => r.known);
+    return filtered.sort((a, b) => {
+      const rank = (r) => (r.ftds > 0 && !r.rate ? 0 : r.ftds > 0 ? 1 : r.rate ? 2 : 3);
+      const d = rank(a) - rank(b);
+      return d !== 0 ? d : b.ftds - a.ftds || a.country.localeCompare(b.country);
+    });
+  }, [cpaRates, ftdsByCountry, rateMeta, rateSearch]);
+
+  const rateCoverage = React.useMemo(() => {
+    let unpricedCountries = 0;
+    let unpricedFtds = 0;
+    let pricedFtds = 0;
+    ftdsByCountry.forEach((ftds, country) => {
+      if (!ftds) return;
+      if (rateMeta.has(country)) pricedFtds += ftds;
+      else {
+        unpricedCountries += 1;
+        unpricedFtds += ftds;
+      }
+    });
+    const stale = cpaRates.filter((r) => !(ftdsByCountry.get(r.country) > 0)).map((r) => r.country);
+    return { unpricedCountries, unpricedFtds, pricedFtds, stale };
+  }, [ftdsByCountry, rateMeta, cpaRates]);
 
   // FTDs × market CPA per country — what the traffic is worth at market price.
   const marketRows = React.useMemo(
@@ -11890,8 +11952,125 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                   <DollarSign size={14} />
                   <span>{t("Market ROI")}</span>
                 </button>
+                <button
+                  type="button"
+                  className={`offers-tab${campaignTab === "rates" ? " is-active" : ""}`}
+                  onClick={() => setCampaignTab("rates")}
+                >
+                  <Wallet size={14} />
+                  <span>{t("Rates")}</span>
+                  {rateCoverage.unpricedCountries ? (
+                    <span className="offers-tab-badge">{rateCoverage.unpricedCountries}</span>
+                  ) : null}
+                </button>
               </div>
             </div>
+          </motion.div>
+        </section>
+      ) : null}
+
+      {campaignTab === "rates" && isLeadership ? (
+        <section className="panels panels-single">
+          <motion.div className="panel form-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
+            <div className="panel-head">
+              <div>
+                <h3 className="panel-title">{t("Market CPA rates")}</h3>
+                <p className="panel-subtitle">
+                  {t("What one FTD is worth on the market, per country, in USD. Market ROI values every deposit at these prices.")}
+                </p>
+              </div>
+              <button className="action-pill" type="button" onClick={saveCpaRates} disabled={cpaState.saving}>
+                {cpaState.saving ? t("Saving…") : t("Save rates")}
+              </button>
+            </div>
+
+            {cpaState.error ? <p className="logs-error">{cpaState.error}</p> : null}
+
+            {/* An unpriced country is not neutral — its deposits are counted as
+                worth nothing, so Market ROI reads lower than the truth. Say by
+                how much rather than leaving it to be discovered. */}
+            {rateCoverage.unpricedCountries ? (
+              <div className="rate-coverage is-warn">
+                <AlertTriangle size={14} />
+                <span>
+                  <strong>{rateCoverage.unpricedCountries} {rateCoverage.unpricedCountries === 1 ? t("country earning FTDs has no rate") : t("countries earning FTDs have no rate")}</strong>
+                  {" — "}
+                  {rateCoverage.unpricedFtds} {t("deposits are being valued at $0, so Market ROI is understated.")}
+                </span>
+              </div>
+            ) : (
+              <div className="rate-coverage is-ok">
+                <CheckCircle size={14} />
+                <span>{t("Every country earning FTDs in this period has a rate.")}</span>
+              </div>
+            )}
+
+            {rateCoverage.stale.length ? (
+              <div className="rate-coverage">
+                <Clock size={14} />
+                <span>
+                  {t("Priced but no FTDs in this period")}: <strong>{rateCoverage.stale.join(", ")}</strong>
+                </span>
+              </div>
+            ) : null}
+
+            <div className="field rate-search-field">
+              <div className="registry-search rate-search">
+                <Search size={14} aria-hidden="true" />
+                <input
+                  type="text"
+                  value={rateSearch}
+                  onChange={(e) => setRateSearch(e.target.value)}
+                  placeholder={t("Search any of 242 countries…")}
+                />
+                {rateSearch ? (
+                  <button type="button" className="registry-search-clear" onClick={() => setRateSearch("")} aria-label={t("Clear search")}>
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+              <p className="flow-edit-note">
+                {rateSearch
+                  ? `${rateRows.length} ${t("matching")}`
+                  : t("Showing countries you earn in or have priced. Search to reach any other country.")}
+              </p>
+            </div>
+
+            {cpaState.loading ? (
+              <div className="empty-state">{t("Loading…")}</div>
+            ) : (
+              <div className="cpa-grid">
+                {rateRows.map((row) => {
+                  const needsRate = row.ftds > 0 && !row.rate;
+                  return (
+                    <label key={row.country} className={`cpa-item${needsRate ? " needs-rate" : ""}`}>
+                      <span className="cpa-item-country">
+                        <CountryFlag value={row.country} size={12} /> {row.country}
+                        {row.ftds > 0 ? <em className="cpa-item-ftds">{row.ftds} FTD</em> : null}
+                      </span>
+                      <span className="cpa-item-input">
+                        <span className="cpa-currency">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={cpaDraft[row.country] ?? ""}
+                          placeholder="0"
+                          onChange={(e) => setCpaDraft((prev) => ({ ...prev, [row.country]: e.target.value }))}
+                        />
+                      </span>
+                      {row.rate?.updatedBy ? (
+                        <span className="cpa-item-meta">
+                          {row.rate.updatedBy}
+                          {row.rate.updatedAt ? ` · ${new Date(row.rate.updatedAt).toLocaleDateString()}` : ""}
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+                {!rateRows.length ? <div className="empty-state">{t("No countries match that search.")}</div> : null}
+              </div>
+            )}
           </motion.div>
         </section>
       ) : null}
