@@ -11049,6 +11049,13 @@ select option,
   bottom: calc(100% + 8px);
 }
 
+/* Right-anchored when the control sits too close to the window edge for a
+   content-sized menu to open leftward without running off screen. */
+.country-select-picker.drop-left .country-select-menu {
+  left: auto;
+  right: 0;
+}
+
 /* Comment text shown as a quiet clickable cell — opens the comment editor */
 .comment-text-btn {
   background: none;
@@ -11071,7 +11078,15 @@ select option,
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
-  right: 0;
+  /* Sized to its content, not to the trigger. Pinning right:0 meant a filter
+     field 200px wide could only ever show 200px of an option, so campaign and
+     flow names — "Karen | LINKIGROUP | Sweet Bonanza | SE | JASINO" — were cut
+     off with no way to read them. min-width keeps short menus aligned to the
+     control; the cap keeps a long one from running off the screen. */
+  right: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: min(540px, calc(100vw - 32px));
   z-index: 1501;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -11394,9 +11409,19 @@ select option,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 8px;
+  /* Without this the flex item refuses to shrink below its content, so the
+     ellipsis never appeared and the text was clipped mid-word instead. */
+  min-width: 0;
+}
+
+.country-select-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* flag-icons SVG flags — consistent size + subtle rounding across the app.

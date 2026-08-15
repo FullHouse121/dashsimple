@@ -95,6 +95,10 @@ export function CountryDropdownPicker({
   );
 
   const [dropUp, setDropUp] = React.useState(false);
+  // The menu is content-sized, so a control near the right edge can open a
+  // panel wider than the space beside it. Same measurement as dropUp, one axis
+  // over: anchor to the trigger's right instead of its left.
+  const [dropLeft, setDropLeft] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef(null);
   const searchRef = React.useRef(null);
@@ -109,6 +113,9 @@ export function CountryDropdownPicker({
     if (rect) {
       const spaceBelow = window.innerHeight - rect.bottom;
       setDropUp(spaceBelow < 300 && rect.top > spaceBelow);
+      // 540px is the menu's max width; 16px keeps it off the window edge.
+      const spaceRight = window.innerWidth - rect.left;
+      setDropLeft(spaceRight < 540 + 16 && rect.right > spaceRight);
     }
     if (typeof window !== "undefined") {
       // Only one dropdown open at a time — notify the others to close.
@@ -146,7 +153,7 @@ export function CountryDropdownPicker({
   return (
     <div
       ref={rootRef}
-      className={`country-select-picker${dropUp ? " drop-up" : ""}${open ? " is-open" : ""}`}
+      className={`country-select-picker${dropUp ? " drop-up" : ""}${dropLeft ? " drop-left" : ""}${open ? " is-open" : ""}`}
     >
       <button
         type="button"
@@ -265,12 +272,15 @@ export function CountryDropdownPicker({
                 ? normalizedValues.includes(item.value)
                 : item.value === normalizedValue;
               return (
+                // title: a name too long even for the widened menu stays
+                // readable on hover rather than merely being cut off.
                 <button
                   key={`country-select-${item.value || "all"}`}
                   type="button"
                   className={`country-select-option${selected ? " is-selected" : ""}`}
                   role="option"
                   aria-selected={selected}
+                  title={typeof item.label === "string" ? item.label : undefined}
                   onClick={(event) => {
                     if (multiple) {
                       if (typeof onToggle === "function") {
@@ -290,7 +300,10 @@ export function CountryDropdownPicker({
                     ) : (
                       <CountryFlag value={item.value} />
                     )}
-                    {item.label}
+                    {/* Its own element so text-overflow has a box to act on —
+                        a bare text node beside the flag is an anonymous flex
+                        item, which cannot ellipsise and just gets clipped. */}
+                    <span className="country-select-label">{item.label}</span>
                   </span>
                   <span className="country-select-check">{selected ? "✓" : ""}</span>
                 </button>
