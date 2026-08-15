@@ -14075,6 +14075,26 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
   );
 }
 
+// "2026-08-01 → 2026-08-31" is 23 characters to say "Aug 1–31". On a card
+// whose subtitle also carries the period, the country and how long is left,
+// the long form crowded out the part a buyer actually reads.
+const formatGoalRange = (from, to) => {
+  const parse = (value) => {
+    const date = new Date(`${value}T00:00:00`);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const start = parse(from);
+  const end = parse(to);
+  if (!start || !end) return from && to ? `${from} → ${to}` : null;
+  const month = (date) => date.toLocaleDateString("en-US", { month: "short" });
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${month(start)} ${start.getDate()}–${end.getDate()}`;
+  }
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const tail = sameYear ? "" : ` ${end.getFullYear()}`;
+  return `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}${tail}`;
+};
+
 function GoalsDashboard({ authUser }) {
   const { t } = useLanguage();
   const [goalForm, setGoalForm] = React.useState({
@@ -14396,13 +14416,72 @@ function GoalsDashboard({ authUser }) {
     // percentage move when a rate changed rather than when the work did.
     const market = goal.market || null;
     const marketProgress = formatProgress(market?.value ?? null, market?.targetValue);
-    const progressValues = [ftdProgress.pct, r2dProgress.pct].filter((value) => value !== null);
-    const overall =
-      progressValues.length > 0
-        ? progressValues.reduce((sumVal, value) => sumVal + value, 0) / progressValues.length
-        : null;
-    const status =
-      overall === null
+    // The headline is progress toward the FTD target — the thing the goal is
+    // named after. It used to average FTD% with Reg2Dep%, which meant a buyer
+    // who had hit 100% of the deposits they were asked for could read "47% ·
+    // at risk" because their conversion rate was mid. A goal set only on
+    // Reg2Dep still measures on Reg2Dep; nothing else is blended in.
+    const overall = ftdProgress.pct !== null ? ftdProgress.pct : r2dProgress.pct;
+
+    // Where the period stands, for the one line a buyer reads first. Exact
+    // dates say when; "16 days left" says how much rope is left, which is the
+    // question they are actually asking.
+    const timing = (() => {
+      const day = 86400000;
+      const start = goal.date_from ? new Date(`${goal.date_from}T00:00:00`) : null;
+      const end = goal.date_to ? new Date(`${goal.date_to}T00:00:00`) : null;
+      if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+      const raw = new Date();
+      const now = new Date(raw.getFullYear(), raw.getMonth(), raw.getDate());
+      const totalDays = Math.max(1, Math.round((end - start) / day) + 1);
+      if (now < start) {
+        const startsIn = Math.ceil((start - now) / day);
+        return {
+          state: "pending", totalDays, elapsedDays: 0, daysLeft: totalDays, startsIn,
+          label: `${t("starts in")} ${startsIn} ${startsIn === 1 ? t("day") : t("days")}`,
+        };
+      }
+      const capped = now > end ? end : now;
+      const elapsedDays = Math.max(1, Math.round((capped - start) / day) + 1);
+      const daysLeft = Math.max(0, totalDays - elapsedDays);
+      if (now > end) return { state: "ended", totalDays, elapsedDays, daysLeft: 0, label: t("period ended") };
+      return {
+        state: "running", totalDays, elapsedDays, daysLeft,
+        label: `${daysLeft} ${daysLeft === 1 ? t("day") : t("days")} ${t("left")}`,
+      };
+    })();
+
+    // Whether the goal will be MET — which depends on how much of the period
+    // is left, not on how much of the target is done. Judging status on raw
+    // completion made every mid-month card read "behind" at 53% with 16 days
+    // still to run, while the card's own forecast line underneath said "on
+    // track to reach 40". One computation now answers both.
+    const forecast = (() => {
+      const target = Number(goal.ftds_target || 0);
+      if (!timing || timing.state === "pending" || target <= 0) return null;
+      const actual = Number(totals.ftds || 0);
+      const currentPace = actual / timing.elapsedDays;
+      const requiredPace = timing.daysLeft > 0 ? Math.max(0, (target - actual) / timing.daysLeft) : 0;
+      const ended = timing.state === "ended";
+      const projected = ended ? actual : currentPace * timing.totalDays;
+      const projectedPct = (projected / target) * 100;
+      const achieved = actual >= target;
+      return {
+        target, actual, currentPace, requiredPace, projected, projectedPct, achieved, ended,
+        daysLeft: timing.daysLeft, totalDays: timing.totalDays,
+        state: achieved
+          ? "achieved"
+          : projectedPct >= 100
+            ? "on-track"
+            : projectedPct >= 70
+              ? "at-risk"
+              : "behind",
+      };
+    })();
+
+    const status = forecast
+      ? forecast.state
+      : overall === null
         ? "none"
         : overall >= 100
           ? "achieved"
@@ -14422,40 +14501,7 @@ function GoalsDashboard({ authUser }) {
               ? t("At risk")
               : t("Behind");
 
-    // Pace calculation: compare actual daily rate vs. required daily rate.
-    // Only meaningful when the goal period is in progress (not finished, not future).
-    let pace = null;
-    const from = goal.date_from ? new Date(`${goal.date_from}T00:00:00`) : null;
-    const to = goal.date_to ? new Date(`${goal.date_to}T23:59:59`) : null;
-    const today = new Date();
-    const ftdsTargetNum = Number(goal.ftds_target || 0);
-    if (
-      from && to &&
-      !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime()) &&
-      today >= from && ftdsTargetNum > 0 && status !== "achieved"
-    ) {
-      const totalMs = Math.max(1, to.getTime() - from.getTime());
-      const elapsedMs = Math.max(1, Math.min(today.getTime(), to.getTime()) - from.getTime());
-      const totalDays = Math.max(1, Math.round(totalMs / 86400000) + 1);
-      const elapsedDays = Math.max(1, Math.round(elapsedMs / 86400000) + 1);
-      const requiredPace = ftdsTargetNum / totalDays;
-      const actualPace = totals.ftds / elapsedDays;
-      const ratio = requiredPace > 0 ? actualPace / requiredPace : null;
-      let paceStatus = "on-pace";
-      let paceLabel = t("On pace");
-      if (ratio !== null) {
-        if (ratio >= 1.1) {
-          paceStatus = "ahead";
-          paceLabel = t("Ahead");
-        } else if (ratio < 0.9) {
-          paceStatus = "behind-pace";
-          paceLabel = t("Behind pace");
-        }
-      }
-      pace = { requiredPace, actualPace, ratio, status: paceStatus, label: paceLabel, elapsedDays, totalDays };
-    }
-
-    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace, market, marketProgress };
+    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, market, marketProgress, timing, forecast };
   };
 
   const goalSummary = React.useMemo(() => {
@@ -14475,7 +14521,7 @@ function GoalsDashboard({ authUser }) {
 
   return (
     <>
-      <section className="panels goals-panels">
+      <section className={`panels goals-panels${isLeadership ? "" : " is-single"}`}>
         {isLeadership ? (
           <motion.div
             className="panel"
@@ -14713,24 +14759,7 @@ function GoalsDashboard({ authUser }) {
               </div>
             </form>
           </motion.div>
-        ) : (
-          <motion.div
-            className="panel"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{t("Goals Assigned")}</h3>
-                <p className="panel-subtitle">
-                  {t("Your goals are managed by leadership. Track progress below.")}
-                </p>
-              </div>
-            </div>
-            <div className="empty-state">{t("No goal setup access for your role.")}</div>
-          </motion.div>
-        )}
+        ) : null}
 
         <motion.div
           className="panel"
@@ -14804,91 +14833,120 @@ function GoalsDashboard({ authUser }) {
                     return (a.goal.date_to || "").localeCompare(b.goal.date_to || "");
                   })
                   .map(({ goal, info }) => {
-                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace, market, marketProgress } = info;
+                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, market, marketProgress, timing, forecast } = info;
                   const statusClass = `status-${status}`;
                 return (
                   <div key={goal.id} className={`goal-card ${statusClass}${goal.is_global ? " is-global" : ""}`}>
-                    <div className="goal-banner">
-                      <div className="goal-banner-main">
-                        <div>
-                          <div className="goal-title">
-                            {goal.is_global ? t("Global Goal") : goal.buyer}
-                          </div>
-                          <div className="goal-sub">
-                            {t(goal.period)} · {goal.country || t("All Countries")} · {goal.date_from} → {goal.date_to}
-                            {goal.is_global && !isLeadership ? ` · ${t("Based on your metrics")}` : ""}
-                          </div>
+                    <div className="goal-head">
+                      <div className="goal-head-text">
+                        <div className="goal-title">
+                          {goal.is_global ? t("Global Goal") : goal.buyer}
                         </div>
-                        <div className="goal-actions">
-                          {pace ? (
-                            <span
-                              className={`goal-pace-badge ${pace.status}`}
-                              title={`${t("Required")}: ~${pace.requiredPace >= 10 ? Math.round(pace.requiredPace) : pace.requiredPace.toFixed(1)}/${t("day")} · ${t("Actual")}: ~${pace.actualPace >= 10 ? Math.round(pace.actualPace) : pace.actualPace.toFixed(1)}/${t("day")}`}
-                            >
-                              {pace.label}
-                            </span>
-                          ) : null}
-                          <span className={`goal-status ${status}`}>
-                            {statusLabel}
-                          </span>
-                          {isLeadership ? (
-                            <>
-                              <button
-                                className="icon-btn"
-                                type="button"
-                                title={t("Duplicate goal")}
-                                onClick={() => handleGoalDuplicate(goal)}
-                              >
-                                <Copy size={16} />
-                              </button>
-                              <button className="icon-btn" type="button" onClick={() => handleGoalDelete(goal.id)}>
-                                <Trash2 size={16} />
-                              </button>
-                            </>
-                          ) : null}
+                        <div className="goal-sub">
+                          {[
+                            t(goal.period),
+                            goal.country || t("All Countries"),
+                            formatGoalRange(goal.date_from, goal.date_to),
+                            timing?.label,
+                            goal.is_global && !isLeadership ? t("Based on your metrics") : null,
+                          ].filter(Boolean).join(" · ")}
                         </div>
                       </div>
+                      {/* One status signal. The left rail carries the same state
+                          in colour, so a second "behind pace" pill next to a
+                          "BEHIND" pill only competed with it. */}
+                      <div className="goal-actions">
+                        <span className={`goal-status ${status}`}>{statusLabel}</span>
+                        {isLeadership ? (
+                          <>
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              title={t("Duplicate goal")}
+                              onClick={() => handleGoalDuplicate(goal)}
+                            >
+                              <Copy size={16} />
+                            </button>
+                            <button
+                              className="icon-btn"
+                              type="button"
+                              title={t("Delete goal")}
+                              onClick={() => handleGoalDelete(goal.id)}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="goal-body">
+
+                    {/* The headline: one ring, one number, the target it is
+                        measured against. Everything else on the card supports
+                        this rather than competing with it. */}
+                    <div className="goal-primary">
                       <div
                         className={`goal-ring${overall === null ? " is-empty" : ""}`}
                         style={{ "--goal-pct": overall === null ? 0 : Math.max(0, Math.min(100, overall)) }}
                         role="img"
-                        aria-label={overall === null ? t("No targets set") : `${Math.round(overall)}% ${t("progress")}`}
+                        aria-label={
+                          overall === null
+                            ? t("No targets set")
+                            : `${Math.round(overall)}% ${t("of the FTD target")}`
+                        }
                       >
                         <div className="goal-ring-inner">
-                          <span className="goal-ring-pct">{overall === null ? "—" : `${Math.round(overall)}%`}</span>
-                          <span className="goal-ring-cap">{goal.is_global && !isLeadership ? t("Your Progress") : t("Progress")}</span>
+                          <span className="goal-ring-pct">
+                            {overall === null ? "—" : `${Math.round(overall)}%`}
+                          </span>
                         </div>
                       </div>
-                    <div className="goal-metrics">
+                      <div className="goal-primary-metric">
+                        <span className="goal-primary-label">
+                          {goal.is_global && !isLeadership ? t("Your FTDs") : t("FTDs")}
+                        </span>
+                        <div className="goal-primary-value">
+                          {Number(totals.ftds || 0).toLocaleString()}
+                          <span>
+                            {" / "}
+                            {goal.ftds_target && Number(goal.ftds_target) > 0
+                              ? Number(goal.ftds_target).toLocaleString()
+                              : "—"}
+                          </span>
+                        </div>
+                        <div className="goal-bar">
+                          <span
+                            className="goal-bar-fill"
+                            style={{ width: ftdProgress.pct ? `${ftdProgress.pct}%` : "0%" }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Supporting measures. Rows, not tiles — three bordered
+                        boxes side by side read as three equal headlines, which
+                        is exactly what they are not. */}
+                    <div className="goal-rows">
                       {[
-                        {
-                          label: "FTDs",
-                          actual: totals.ftds,
-                          target: goal.ftds_target,
-                          progress: ftdProgress,
-                          color: "var(--green)",
-                        },
-                        {
-                          label: "Reg2Dep",
-                          actual: r2dActual,
-                          target: goal.r2d_target,
-                          progress: r2dProgress,
-                          color: "var(--blue)",
-                          isPercent: true,
-                        },
-                        // Only shown once the rate card can actually price this
-                        // goal. An empty money tile teaches a buyer to ignore
-                        // the money tile.
+                        // A row with neither a value nor a target is furniture.
+                        ...(r2dActual !== null || Number(goal.r2d_target) > 0
+                          ? [{
+                            label: "Reg2Dep",
+                            value: r2dActual === null ? "—" : `${r2dActual.toFixed(2)}%`,
+                            target:
+                              goal.r2d_target && Number(goal.r2d_target) > 0
+                                ? `${Number(goal.r2d_target).toFixed(2)}%`
+                                : "—",
+                            progress: r2dProgress,
+                          }]
+                          : []),
+                        // Only once the rate card can actually price this goal.
+                        // An empty money row teaches a buyer to ignore the money.
                         ...(market && (market.value > 0 || market.targetValue > 0)
                           ? [{
                             label: "Market value",
-                            actual: market.value,
-                            target: market.targetValue,
+                            value: formatCurrency(market.value || 0),
+                            target: market.targetValue > 0 ? formatCurrency(market.targetValue) : "—",
                             progress: marketProgress,
-                            color: "var(--yellow)",
-                            isCurrency: true,
                             notes: [
                               market.blendedCpa
                                 ? `${market.pricedFtds.toLocaleString()} ${t("FTDs")} · ~${formatCurrency(market.blendedCpa)} ${t("each")}`
@@ -14899,157 +14957,88 @@ function GoalsDashboard({ authUser }) {
                                 ? `${t("Target: ")}${Number(goal.ftds_target).toLocaleString()} ${t("FTDs at market rate")}`
                                 : null,
                             ].filter(Boolean),
-                            // FTDs from a country nobody has priced are worth
-                            // an unknown amount, not zero. Say which, so a
-                            // short total is not read as a short month.
+                            // FTDs from a country nobody has priced are worth an
+                            // unknown amount, not zero. Say which, so a short
+                            // total is not read as a short month.
                             warn: market.unpricedFtds > 0
                               ? `${market.unpricedFtds.toLocaleString()} ${t("FTDs not valued")} — ${market.unpricedCountries.join(", ")} ${t("has no rate")}`
                               : null,
                           }]
                           : []),
-                      ].map((metric) => {
-                        const actualLabel = metric.isPercent
-                          ? metric.actual === null
-                            ? "—"
-                            : `${metric.actual.toFixed(2)}%`
-                          : metric.isCurrency
-                            ? formatCurrency(metric.actual || 0)
-                            : metric.actual.toLocaleString();
-                        const targetLabel =
-                          metric.target && Number(metric.target) > 0
-                            ? metric.isPercent
-                              ? `${Number(metric.target).toFixed(2)}%`
-                              : metric.isCurrency
-                                ? formatCurrency(Number(metric.target))
-                                : Number(metric.target).toLocaleString()
-                            : "—";
-                        return (
-                          <div key={metric.label} className="goal-metric" style={{ "--goal-color": metric.color }}>
-                            <div className="goal-metric-head">
-                              <span>{t(metric.label)}</span>
-                              <span className="goal-metric-pct">{metric.progress.label}</span>
-                            </div>
-                            <div className="goal-metric-value">
-                              {actualLabel}
-                              <span> / {targetLabel}</span>
-                            </div>
-                            <div className="goal-bar">
+                      ].map((row) => (
+                        <div key={row.label} className="goal-row">
+                          <div className="goal-row-main">
+                            <span className="goal-row-label">{t(row.label)}</span>
+                            <span className="goal-row-value">
+                              {row.value}
+                              <small>{" / "}{row.target}</small>
+                            </span>
+                            <span className="goal-row-track">
                               <span
-                                className="goal-bar-fill"
-                                style={{ width: metric.progress.pct ? `${metric.progress.pct}%` : "0%" }}
+                                className="goal-row-fill"
+                                style={{ width: row.progress.pct ? `${row.progress.pct}%` : "0%" }}
                               />
-                            </div>
-                            {(metric.notes || []).map((line) => (
-                              <div key={line} className="goal-metric-note">{line}</div>
-                            ))}
-                            {metric.warn ? (
-                              <div className="goal-metric-note is-warn">{metric.warn}</div>
-                            ) : null}
+                            </span>
+                            <span className="goal-row-pct">{row.progress.label}</span>
                           </div>
-                        );
-                      })}
-                    </div>
+                          {(row.notes || []).map((line) => (
+                            <div key={line} className="goal-metric-note">{line}</div>
+                          ))}
+                          {row.warn ? <div className="goal-metric-note is-warn">{row.warn}</div> : null}
+                        </div>
+                      ))}
                     </div>
                     {(() => {
                       // Pace + forecast widget — turns "set target" into "here's how to hit it"
-                      const target = Number(goal.ftds_target || 0);
-                      if (target <= 0) return null;
-
-                      const dayMs = 86400000;
-                      const from = new Date(`${goal.date_from}T00:00:00`);
-                      const to = new Date(`${goal.date_to}T00:00:00`);
-                      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
-
-                      const todayRaw = new Date();
-                      const today = new Date(todayRaw.getFullYear(), todayRaw.getMonth(), todayRaw.getDate());
-                      const totalDays = Math.max(1, Math.round((to - from) / dayMs) + 1);
-                      const actual = Number(totals.ftds || 0);
-
-                      // Period not started yet
-                      if (today < from) {
-                        const startsIn = Math.ceil((from - today) / dayMs);
+                      // Reads the same forecast the status badge and the rail
+                      // were computed from, so the card cannot contradict
+                      // itself the way it did when each end worked it out
+                      // independently.
+                      if (timing?.state === "pending") {
                         return (
                           <div className="goal-pace pending">
-                            <div className="goal-pace-hint">
-                              <span className="goal-pace-mark">◷</span>
-                              Period starts in <strong>{startsIn} {startsIn === 1 ? "day" : "days"}</strong> · {totalDays}-day target
-                            </div>
+                            <span className="goal-pace-mark">◷</span>
+                            <span className="goal-pace-text">
+                              {t("Period starts in")} <strong>{timing.startsIn} {timing.startsIn === 1 ? t("day") : t("days")}</strong>
+                              <span className="goal-pace-aside">{timing.totalDays}-{t("day target")}</span>
+                            </span>
                           </div>
                         );
                       }
-
-                      // Period ended
-                      const periodEnded = today > to;
-                      const clampedToday = periodEnded ? to : today;
-                      const daysElapsed = Math.max(1, Math.round((clampedToday - from) / dayMs) + 1);
-                      const daysRemaining = Math.max(0, totalDays - daysElapsed);
-
-                      const currentPace = actual / daysElapsed;
-                      const requiredPace = daysRemaining > 0 ? Math.max(0, (target - actual) / daysRemaining) : 0;
-                      const projected = periodEnded ? actual : currentPace * totalDays;
-                      const projectedPct = target > 0 ? (projected / target) * 100 : 0;
-
-                      const goalAchieved = actual >= target;
-                      const status = goalAchieved
-                        ? "achieved"
-                        : projectedPct >= 100
-                          ? "on-track"
-                          : projectedPct >= 70
-                            ? "at-risk"
-                            : "behind";
+                      if (!forecast) return null;
 
                       const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
-
-                      // "3.2/day" is an instruction; "3.2/day, worth $2,050"
-                      // is a reason. The rate is the goal's own blend, so the
-                      // money moves with the mix the buyer is actually running.
+                      // "1.8/day" is an instruction; "1.8/day, and $712 still to
+                      // earn" is a reason. The rate is the goal's own blend, so
+                      // the money moves with the mix the buyer is running.
                       const rate = Number(market?.blendedCpa) || 0;
                       const worth = (count) => (rate > 0 ? ` (${formatCurrency(count * rate)})` : "");
+                      const remaining = Math.max(0, forecast.target - forecast.actual);
 
-                      const hint = goalAchieved
-                        ? `Goal hit — ${actual} of ${target} FTDs${worth(actual)}`
-                        : periodEnded
-                          ? `Period ended at ${Math.round(projectedPct)}% of target`
-                          : projectedPct >= 100
-                            ? `On track to reach ${target} FTDs${worth(target)}`
-                            : `Need ${fmtPace(requiredPace)}/day for ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} to hit ${target}${rate > 0 ? ` — ${formatCurrency(Math.max(0, target - actual) * rate)} still to earn` : ""}`;
+                      const hint = forecast.achieved
+                        ? `${t("Goal hit")} — ${forecast.actual} ${t("of")} ${forecast.target} ${t("FTDs")}${worth(forecast.actual)}`
+                        : forecast.ended
+                          ? `${t("Period ended at")} ${Math.round(forecast.projectedPct)}% ${t("of target")}`
+                          : forecast.projectedPct >= 100
+                            ? `${t("On track to reach")} ${forecast.target} ${t("FTDs")}${worth(forecast.target)}`
+                            : `${t("Need")} ${fmtPace(forecast.requiredPace)}/${t("day")} ${t("for")} ${forecast.daysLeft} ${forecast.daysLeft === 1 ? t("day") : t("days")} ${t("to hit")} ${forecast.target}${rate > 0 ? ` — ${formatCurrency(remaining * rate)} ${t("still to earn")}` : ""}`;
 
                       return (
-                        <div className={`goal-pace ${status}`}>
-                          <div className="goal-pace-row">
-                            <div className="goal-pace-cell">
-                              <span className="goal-pace-label">Days left</span>
-                              <span className="goal-pace-value">
-                                {daysRemaining}
-                                <small>/ {totalDays}</small>
-                              </span>
-                            </div>
-                            <div className="goal-pace-cell">
-                              <span className="goal-pace-label">Current pace</span>
-                              <span className="goal-pace-value">
-                                {fmtPace(currentPace)}
-                                <small>/day</small>
-                              </span>
-                            </div>
-                            <div className="goal-pace-cell">
-                              <span className="goal-pace-label">Required</span>
-                              <span className="goal-pace-value">
-                                {requiredPace > 0 ? fmtPace(requiredPace) : "✓"}
-                                {requiredPace > 0 ? <small>/day</small> : null}
-                              </span>
-                            </div>
-                            <div className="goal-pace-cell">
-                              <span className="goal-pace-label">Forecast</span>
-                              <span className="goal-pace-value">
-                                {Math.round(projected)}
-                                <small>({Math.round(projectedPct)}%)</small>
-                              </span>
-                            </div>
-                          </div>
-                          <div className="goal-pace-hint">
-                            <span className="goal-pace-mark">{status === "achieved" ? "✓" : status === "on-track" ? "→" : status === "at-risk" ? "!" : "↓"}</span>
+                        <div className="goal-pace">
+                          <span className="goal-pace-mark">
+                            {status === "achieved" ? "✓" : status === "on-track" ? "→" : status === "at-risk" ? "!" : "↓"}
+                          </span>
+                          <span className="goal-pace-text">
                             {hint}
-                          </div>
+                            {/* A finished period has no current pace and no
+                                forecast — only what happened. */}
+                            {forecast.ended ? null : (
+                              <span className="goal-pace-aside">
+                                {t("Now")} {fmtPace(forecast.currentPace)}/{t("day")}
+                                {` · ${t("forecast")} ${Math.round(forecast.projected)} (${Math.round(forecast.projectedPct)}%)`}
+                              </span>
+                            )}
+                          </span>
                         </div>
                       );
                     })()}

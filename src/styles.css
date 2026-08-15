@@ -2931,14 +2931,28 @@ select {
 
 /* ── Goal pace + forecast widget ─────────────────────────────────── */
 .goal-pace {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 9px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.goal-pace-text {
+  min-width: 0;
+}
+
+/* The facts the sentence does not already contain, trailing it as an aside
+   rather than repeated above it in 16px bold. */
+.goal-pace-aside {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .goal-pace-row {
@@ -2998,56 +3012,39 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
   border-radius: 999px;
   font-size: 10px;
   font-weight: 700;
   flex: 0 0 auto;
+  background: color-mix(in srgb, var(--goal-accent) 16%, transparent);
+  color: var(--goal-accent);
 }
 
 /* Status colors — same palette as notification severity */
-.goal-pace.achieved {
-  border-color: rgba(54, 208, 124, 0.32);
-  background: rgba(54, 208, 124, 0.06);
-}
 .goal-pace.achieved .goal-pace-mark {
   background: rgba(54, 208, 124, 0.18);
   color: var(--green);
 }
 .goal-pace.achieved .goal-pace-hint strong { color: var(--green); }
 
-.goal-pace.on-track {
-  border-color: rgba(54, 208, 124, 0.22);
-  background: rgba(54, 208, 124, 0.04);
-}
 .goal-pace.on-track .goal-pace-mark {
   background: rgba(54, 208, 124, 0.14);
   color: var(--green);
 }
 
-.goal-pace.at-risk {
-  border-color: rgba(247, 198, 37, 0.22);
-  background: rgba(247, 198, 37, 0.04);
-}
 .goal-pace.at-risk .goal-pace-mark {
   background: rgba(247, 198, 37, 0.16);
   color: var(--yellow);
 }
 
-.goal-pace.behind {
-  border-color: rgba(255, 125, 136, 0.24);
-  background: rgba(255, 125, 136, 0.04);
-}
 .goal-pace.behind .goal-pace-mark {
   background: rgba(255, 125, 136, 0.16);
   color: var(--red);
 }
 
-.goal-pace.pending {
-  border-color: rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
-}
 .goal-pace.pending .goal-pace-mark {
   background: rgba(255, 255, 255, 0.06);
   color: var(--muted);
@@ -4804,6 +4801,12 @@ select option,
 
 .goals-panels {
   grid-template-columns: 1.1fr 1.4fr;
+}
+
+/* Without the setup form there is no second column — and half a screen of
+   "no goal setup access for your role" was the first thing a buyer read. */
+.goals-panels.is-single {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -6727,10 +6730,22 @@ select option,
   align-items: center;
 }
 
+/* auto-fit, not auto-fill: auto-fill kept reserving an empty third column, so
+   a buyer with two goals got two 461px cards in 1416px of space and a 79px
+   progress bar. The 720px ceiling stops a lone goal stretching across an
+   ultrawide and turning every row into a runway. */
+/* auto-fit, not auto-fill: auto-fill kept reserving an empty third column, so
+   a buyer with two goals got two 461px cards in 1416px of space and a 79px
+   progress bar. The cap lives on the card rather than the track, so the grid
+   is still free to distribute — it just stops one lone goal stretching across
+   an ultrawide and turning every row into a runway. */
 .goal-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+  /* min() so the 440px floor can never exceed its own container and push
+     the page into a horizontal scroll on a narrow window. */
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
   gap: 16px;
+  align-items: start;
 }
 
 @media (max-width: 920px) {
@@ -6862,17 +6877,21 @@ select option,
   background: rgba(45, 20, 22, 0.55);
 }
 
+/* One surface. The card used to nest five bordered containers — card, banner,
+   metric tile, pace strip, notes — each with its own edge and inset shadow.
+   Structure now comes from spacing and a single hairline, so the only edges
+   left are the ones that separate something. */
 .goal-card {
   position: relative;
-  background: linear-gradient(160deg, rgba(21, 24, 29, 0.96), rgba(15, 18, 22, 0.95));
-  border-radius: 14px;
+  max-width: 760px;
+  background: rgba(19, 22, 27, 0.9);
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 16px 18px 16px 22px;
+  padding: 18px 20px 18px 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.35);
-  transition: border-color 0.2s ease, transform 0.2s ease;
+  gap: 18px;
+  transition: border-color 0.2s ease, background 0.2s ease;
   overflow: hidden;
 }
 
@@ -6883,48 +6902,44 @@ select option,
   left: 0;
   top: 0;
   bottom: 0;
-  width: 3px;
+  width: 4px;
   background: rgba(255, 255, 255, 0.06);
-  transition: background 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.2s ease;
 }
 
 .goal-card.status-behind::before {
   background: var(--red);
-  box-shadow: 0 0 12px rgba(255, 125, 136, 0.5);
 }
 .goal-card.status-at-risk::before {
   background: var(--yellow);
-  box-shadow: 0 0 12px rgba(247, 198, 37, 0.45);
 }
 .goal-card.status-on-track::before {
   background: var(--green);
-  box-shadow: 0 0 12px rgba(54, 208, 124, 0.4);
 }
 .goal-card.status-achieved::before {
   background: var(--green);
-  box-shadow: 0 0 14px rgba(54, 208, 124, 0.6);
 }
 
 .goal-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(22, 26, 31, 0.9);
 }
 
 .goal-head {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: center;
+  align-items: flex-start;
+}
+
+.goal-head-text {
+  min-width: 0;
 }
 
 .goal-banner {
-  background: linear-gradient(135deg, rgba(28, 32, 39, 0.95), rgba(18, 21, 25, 0.95));
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.35);
 }
 
 .goal-banner-main {
@@ -6962,21 +6977,24 @@ select option,
 }
 
 .goal-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 650;
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .goal-sub {
   font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
+  color: var(--faint);
+  margin-top: 3px;
+  line-height: 1.45;
 }
 
 .goal-actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: none;
 }
 
 .goal-status {
@@ -6985,6 +7003,7 @@ select option,
   letter-spacing: 0.6px;
   padding: 4px 10px;
   border-radius: 999px;
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.06);
   color: var(--muted);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -7027,12 +7046,51 @@ select option,
   gap: 16px;
 }
 
+/* The headline. One ring, one number, the target beside it. */
+.goal-primary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.goal-primary-metric {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.goal-primary-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.goal-primary-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-primary-value span {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--faint);
+  letter-spacing: 0;
+}
+
 .goal-ring {
   --goal-pct: 0;
   --ring-color: rgba(255, 255, 255, 0.5);
   flex-shrink: 0;
-  width: 104px;
-  height: 104px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -7044,20 +7102,18 @@ select option,
 }
 
 .goal-ring-inner {
-  width: 82px;
-  height: 82px;
+  width: 70px;
+  height: 70px;
   border-radius: 50%;
-  background: #13161b;
+  background: rgba(19, 22, 27, 1);
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 2px;
-  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.4);
 }
 
 .goal-ring-pct {
-  font-size: 22px;
-  font-weight: 750;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--text);
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -7073,60 +7129,10 @@ select option,
 .goal-card.status-behind .goal-ring { --ring-color: var(--red); }
 .goal-card.status-at-risk .goal-ring { --ring-color: var(--yellow); }
 .goal-card.status-on-track .goal-ring { --ring-color: var(--green); }
-.goal-card.status-achieved .goal-ring {
-  --ring-color: var(--green);
-  box-shadow: 0 0 0 1px rgba(54, 208, 124, 0.25), 0 0 20px rgba(54, 208, 124, 0.22);
-}
+.goal-card.status-achieved .goal-ring { --ring-color: var(--green); }
 .goal-card.status-none .goal-ring,
 .goal-ring.is-empty { --ring-color: rgba(255, 255, 255, 0.14); }
 .goal-ring.is-empty .goal-ring-pct { color: var(--muted); }
-
-.goal-metrics {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  /* auto-fit, not a fixed 2 — a goal the rate card can price shows a third
-     tile, and a hardcoded pair left it stranded on a half-width row. */
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-}
-
-.goal-metric {
-  background: rgba(15, 18, 22, 0.85);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.goal-metric-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.goal-metric-pct {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.goal-metric-value {
-  font-size: 14px;
-  color: var(--text);
-  font-weight: 600;
-}
-
-.goal-metric-value span {
-  color: var(--muted);
-  font-weight: 500;
-  font-size: 12px;
-}
 
 /* The line under a money tile that says how it was arrived at — the FTD count
    and the rate they averaged. A number a buyer cannot account for is a number
@@ -7135,6 +7141,11 @@ select option,
   font-size: 11px;
   line-height: 1.4;
   color: var(--faint);
+  padding-left: 112px;
+}
+
+@media (max-width: 1180px) {
+  .goal-metric-note { padding-left: 102px; }
 }
 
 /* Same line, when part of the goal could not be valued at all. Amber rather
@@ -7158,7 +7169,7 @@ select option,
 
 .goal-bar {
   width: 100%;
-  height: 8px;
+  height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
@@ -7168,17 +7179,114 @@ select option,
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--goal-color), rgba(255, 255, 255, 0.4));
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.35);
+  background: var(--goal-accent, rgba(255, 255, 255, 0.5));
+  transition: width 0.5s ease;
+}
+
+/* One accent per card, and it is the status. Seven hues across three tiles
+   meant none of them signalled anything. */
+.goal-card { --goal-accent: rgba(255, 255, 255, 0.32); }
+.goal-card.status-behind { --goal-accent: var(--red); }
+.goal-card.status-at-risk { --goal-accent: var(--yellow); }
+.goal-card.status-on-track,
+.goal-card.status-achieved { --goal-accent: var(--green); }
+
+/* ── Supporting measures ──────────────────────────────────────────────
+   Rows, not tiles. Three bordered boxes in a row read as three equal
+   headlines, which is precisely what these are not. */
+.goal-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.goal-rows:not(:empty) {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.goal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Fixed columns, not auto. Each row is its own grid, so `auto` sized the
+   label column to "Reg2Dep" on one row and "Market value" on the next — and
+   the two bars started a few pixels apart. Nothing else on the card says
+   "unconsidered" as loudly as two rules that almost line up. */
+.goal-row-main {
+  display: grid;
+  grid-template-columns: 100px 148px minmax(60px, 1fr) 52px;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .goal-row-main {
+    grid-template-columns: 92px 132px minmax(40px, 1fr) 48px;
+    gap: 10px;
+  }
+}
+
+.goal-row-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.goal-row-value {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.goal-row-value small {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.goal-row-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.goal-row-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  /* Muted, not the status colour — these support the headline, they are not
+     a second one. */
+  background: rgba(255, 255, 255, 0.3);
+  transition: width 0.5s ease;
+}
+
+.goal-row-pct {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 44px;
+  text-align: right;
 }
 
 .goal-notes {
   font-size: 12px;
-  color: var(--muted);
-  background: rgba(12, 14, 18, 0.6);
-  border-radius: 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--faint);
+  line-height: 1.5;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .utm-grid .field input {
