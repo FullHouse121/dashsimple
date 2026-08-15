@@ -5391,6 +5391,35 @@ select option,
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Now that the form has the whole page rather than a side column, two columns
+   would stretch a number field to 530px. Three keeps every input at a width
+   that matches what goes in it. */
+@media (min-width: 1100px) {
+  .goals-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Generic .form-grid rules span the first field and the fourth to the full
+     row — Goal Scope and Period land on both by accident of position, which
+     left ragged empty cells once this form had three columns. Named hooks so
+     the layout survives a field being added, and .form-grid repeated in the
+     selector so these outrank the blanket :nth-child(4) rule wherever it
+     sits in the file. */
+  .goals-form.form-grid > .field.goal-field-scope,
+  .goals-form.form-grid > .field.goal-field-period {
+    grid-column: auto;
+  }
+
+  /* Two date pickers and a "to" need more than a third. */
+  .goals-form.form-grid > .field.goal-range {
+    grid-column: 2 / -1;
+  }
+
+  .goals-form.form-grid > .field.goal-field-notes {
+    grid-column: 1 / -1;
+  }
+}
+
 .team-form {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -6799,6 +6828,16 @@ select option,
    of a scan across a grid of cards. */
 .goal-table td {
   vertical-align: middle;
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+
+.goal-table tbody tr {
+  transition: background 0.15s ease;
+}
+
+.goal-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.022);
 }
 
 /* The same status rail the card uses, so the two lists read as one system. */
@@ -6829,6 +6868,7 @@ select option,
   font-size: 10.5px;
   color: var(--faint);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .goal-td-warn {
@@ -6863,8 +6903,8 @@ select option,
 
 .goal-td-track {
   display: block;
-  margin-top: 5px;
-  height: 4px;
+  margin-top: 6px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.07);
   overflow: hidden;
@@ -7210,8 +7250,8 @@ select option,
   --goal-pct: 0;
   --ring-color: rgba(255, 255, 255, 0.5);
   flex-shrink: 0;
-  width: 88px;
-  height: 88px;
+  width: 84px;
+  height: 84px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -7223,8 +7263,8 @@ select option,
 }
 
 .goal-ring-inner {
-  width: 70px;
-  height: 70px;
+  width: 71px;
+  height: 71px;
   border-radius: 50%;
   background: rgba(19, 22, 27, 1);
   display: grid;
@@ -7339,15 +7379,15 @@ select option,
    "unconsidered" as loudly as two rules that almost line up. */
 .goal-row-main {
   display: grid;
-  grid-template-columns: 100px 148px minmax(60px, 1fr) 52px;
+  grid-template-columns: 100px 152px minmax(60px, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
 @media (max-width: 1180px) {
   .goal-row-main {
-    grid-template-columns: 92px 132px minmax(40px, 1fr) 48px;
+    grid-template-columns: 92px 136px minmax(40px, 1fr);
     gap: 10px;
   }
 }

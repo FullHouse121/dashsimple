@@ -182,6 +182,8 @@ import {
   setActiveFxRate,
   currencyFormatter,
   formatCurrency,
+  formatCurrencyWhole,
+  formatPercent,
   formatCurrencyCompact,
   formatAxis,
   formatVolumeAxis,
@@ -14127,6 +14129,9 @@ function GoalsDashboard({ authUser }) {
   const [teamMembers, setTeamMembers] = React.useState([]);
   const [teamState, setTeamState] = React.useState({ loading: true, error: null });
   const [statusFilter, setStatusFilter] = React.useState("all");
+  // Setting a target is an occasional act; reading them is a daily one. A
+  // tab keeps the form one click away without it occupying the page.
+  const [goalTab, setGoalTab] = React.useState("targets");
 
   const updateGoalForm = (key) => (event) => {
     setGoalForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -14260,6 +14265,9 @@ function GoalsDashboard({ authUser }) {
       }
       await fetchGoals();
       resetGoalForm();
+      // Back to the list: the question after saving is "did it land, and where
+      // does it sit" — which the Targets tab answers and this form cannot.
+      setGoalTab("targets");
     } catch (error) {
       setGoalState({ loading: false, error: error.message || "Failed to save goal." });
     }
@@ -14623,11 +14631,8 @@ function GoalsDashboard({ authUser }) {
           ...(r2dActual !== null || Number(goal.r2d_target) > 0
             ? [{
               label: "Reg2Dep",
-              value: r2dActual === null ? "—" : `${r2dActual.toFixed(2)}%`,
-              target:
-                goal.r2d_target && Number(goal.r2d_target) > 0
-                  ? `${Number(goal.r2d_target).toFixed(2)}%`
-                  : "—",
+              value: formatPercent(r2dActual),
+              target: Number(goal.r2d_target) > 0 ? formatPercent(goal.r2d_target) : "—",
               progress: r2dProgress,
             }]
             : []),
@@ -14636,8 +14641,8 @@ function GoalsDashboard({ authUser }) {
           ...(market && (market.value > 0 || market.targetValue > 0)
             ? [{
               label: "Market value",
-              value: formatCurrency(market.value || 0),
-              target: market.targetValue > 0 ? formatCurrency(market.targetValue) : "—",
+              value: formatCurrencyWhole(market.value || 0),
+              target: market.targetValue > 0 ? formatCurrencyWhole(market.targetValue) : "—",
               progress: marketProgress,
               notes: [
                 market.blendedCpa
@@ -14671,7 +14676,6 @@ function GoalsDashboard({ authUser }) {
                   style={{ width: row.progress.pct ? `${row.progress.pct}%` : "0%" }}
                 />
               </span>
-              <span className="goal-row-pct">{row.progress.label}</span>
             </div>
             {(row.notes || []).map((line) => (
               <div key={line} className="goal-metric-note">{line}</div>
@@ -14704,7 +14708,7 @@ function GoalsDashboard({ authUser }) {
         // earn" is a reason. The rate is the goal's own blend, so
         // the money moves with the mix the buyer is running.
         const rate = Number(market?.blendedCpa) || 0;
-        const worth = (count) => (rate > 0 ? ` (${formatCurrency(count * rate)})` : "");
+        const worth = (count) => (rate > 0 ? ` (${formatCurrencyWhole(count * rate)})` : "");
         const remaining = Math.max(0, forecast.target - forecast.actual);
 
         const hint = forecast.achieved
@@ -14713,7 +14717,7 @@ function GoalsDashboard({ authUser }) {
             ? `${t("Period ended at")} ${Math.round(forecast.projectedPct)}% ${t("of target")}`
             : forecast.projectedPct >= 100
               ? `${t("On track to reach")} ${forecast.target} ${t("FTDs")}${worth(forecast.target)}`
-              : `${t("Need")} ${fmtPace(forecast.requiredPace)}/${t("day")} ${t("for")} ${forecast.daysLeft} ${forecast.daysLeft === 1 ? t("day") : t("days")} ${t("to hit")} ${forecast.target}${rate > 0 ? ` — ${formatCurrency(remaining * rate)} ${t("still to earn")}` : ""}`;
+              : `${t("Need")} ${fmtPace(forecast.requiredPace)}/${t("day")} ${t("for")} ${forecast.daysLeft} ${forecast.daysLeft === 1 ? t("day") : t("days")} ${t("to hit")} ${forecast.target}${rate > 0 ? ` — ${formatCurrencyWhole(remaining * rate)} ${t("still to earn")}` : ""}`;
 
         return (
           <div className="goal-pace">
@@ -14726,8 +14730,7 @@ function GoalsDashboard({ authUser }) {
                   forecast — only what happened. */}
               {forecast.ended ? null : (
                 <span className="goal-pace-aside">
-                  {t("Now")} {fmtPace(forecast.currentPace)}/{t("day")}
-                  {` · ${t("forecast")} ${Math.round(forecast.projected)} (${Math.round(forecast.projectedPct)}%)`}
+                  {t("Currently")} {fmtPace(forecast.currentPace)}/{t("day")}
                 </span>
               )}
             </span>
@@ -14753,13 +14756,256 @@ function GoalsDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Goals Overview")}</h3>
+              <h3 className="panel-title">{t("Goals")}</h3>
               <p className="panel-subtitle">
-                {t("Track progress vs. targets using live statistics data.")}
+                {goalTab === "setup"
+                  ? t("Define the target outcomes your media buyers must reach.")
+                  : t("Track progress vs. targets using live statistics data.")}
               </p>
             </div>
+            {isLeadership ? (
+              <div className="offers-tabs">
+                <button
+                  type="button"
+                  className={`offers-tab${goalTab === "targets" ? " is-active" : ""}`}
+                  onClick={() => setGoalTab("targets")}
+                >
+                  <GoalIcon size={14} />
+                  <span>{t("Targets")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`offers-tab${goalTab === "setup" ? " is-active" : ""}`}
+                  onClick={() => setGoalTab("setup")}
+                >
+                  <Plus size={14} />
+                  <span>{t("Set a target")}</span>
+                </button>
+              </div>
+            ) : null}
           </div>
-          {goalState.loading ? (
+          {goalTab === "setup" && isLeadership ? (
+            <form className="form-grid goals-form" onSubmit={handleGoalSubmit}>
+              <div className="field goal-field-scope">
+                <label>{t("Goal Scope")}</label>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={goalForm.isGlobal}
+                    onChange={(event) =>
+                      setGoalForm((prev) => ({ ...prev, isGlobal: event.target.checked }))
+                    }
+                  />
+                  {t("Global Goal")}
+                </label>
+              </div>
+              <div className="field">
+                <label>{t("Media Buyer")}</label>
+                <input
+                  list="buyer-options"
+                  value={goalForm.isGlobal ? t("All Buyers") : goalForm.buyer}
+                  onChange={updateGoalForm("buyer")}
+                  disabled={goalForm.isGlobal}
+                />
+                <datalist id="buyer-options">
+                  {buyerDirectoryOptions.map((buyer) => (
+                    <option key={buyer} value={buyer} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="field">
+                <label>{t("Country")}</label>
+                <CountryDropdownPicker
+                  value={goalForm.country}
+                  onChange={(country) => setGoalForm((prev) => ({ ...prev, country }))}
+                  options={countryOptions}
+                  placeholder={t("Select")}
+                  searchPlaceholder={t("Type to find countries")}
+                  emptyResultsLabel={t("No countries found.")}
+                />
+              </div>
+              <div className="field goal-field-period">
+                <label>{t("Period")}</label>
+                <Select
+                  value={goalForm.period}
+                  onChange={(v) => {
+                    const range = applyPeriodRange(v);
+                    setGoalForm((prev) => ({
+                      ...prev,
+                      period: v,
+                      ...(range ? { dateFrom: range.from, dateTo: range.to } : {}),
+                    }));
+                  }}
+                  options={["Daily", "Weekly", "Monthly", "Custom"].map((item) => ({ value: item, label: t(item) }))}
+                  placeholder={t("Select")}
+                />
+              </div>
+              <div className="field goal-range">
+                <label>{t("Date Range")}</label>
+                <div className="goal-date-presets">
+                  {[
+                    { label: t("Today"), range: { from: new Date(), to: new Date() } },
+                    { label: t("This Week"), range: applyPeriodRange("Weekly") },
+                    { label: t("This Month"), range: applyPeriodRange("Monthly") },
+                    { label: t("Next 7d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 6); return { from: f, to: tt }; })() },
+                    { label: t("Next 30d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 29); return { from: f, to: tt }; })() },
+                  ].map((preset) => {
+                    const fmt = (d) => d instanceof Date
+                      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+                      : d;
+                    const from = preset.range?.from ? fmt(preset.range.from) : null;
+                    const to = preset.range?.to ? fmt(preset.range.to) : null;
+                    const isActive = from && to && goalForm.dateFrom === from && goalForm.dateTo === to;
+                    return (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        className={`date-preset${isActive ? " is-active" : ""}`}
+                        onClick={() => from && to && setGoalForm((prev) => ({ ...prev, dateFrom: from, dateTo: to }))}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="field-row">
+                  <DeusDatePicker value={goalForm.dateFrom} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateFrom: v }))} />
+                  <span className="field-sep">{t("to")}</span>
+                  <DeusDatePicker value={goalForm.dateTo} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateTo: v }))} />
+                </div>
+              </div>
+              {(() => {
+                // Compute period duration + required pace for live hints
+                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
+                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
+                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
+                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
+                const ftdsNum = Number(goalForm.ftdsTarget || 0);
+                const revenueNum = Number(goalForm.revenueTarget || 0);
+                const ftdsPace = days && ftdsNum > 0 ? (ftdsNum / days) : null;
+                const revenuePace = days && revenueNum > 0 ? (revenueNum / days) : null;
+                const fmt = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+                return (
+                  <>
+                    <div className="field">
+                      <label>
+                        {t("FTDs Target")}
+                        {ftdsPace !== null ? <span className="field-pace-hint">~{fmt(ftdsPace)}/{t("day")} · {days} {days === 1 ? t("day") : t("days")}</span> : null}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="50"
+                        value={goalForm.ftdsTarget}
+                        onChange={updateGoalForm("ftdsTarget")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>
+                        {t("Revenue Target")}
+                        {revenuePace !== null ? <span className="field-pace-hint">~{formatCurrency(revenuePace)}/{t("day")}</span> : null}
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="$10,000"
+                        value={goalForm.revenueTarget}
+                        onChange={updateGoalForm("revenueTarget")}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>{t("Reg2Dep Target (%)")}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="25.0"
+                        value={goalForm.r2dTarget}
+                        onChange={updateGoalForm("r2dTarget")}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+              <div className="field goal-field-notes">
+                <label>{t("Notes")}</label>
+                <input value={goalForm.notes} onChange={updateGoalForm("notes")} placeholder={t("Optional context, reward, or constraint")} />
+              </div>
+              {(() => {
+                // Live goal preview — mirrors the saved goal card
+                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
+                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
+                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
+                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
+                const ftdsNum = Number(goalForm.ftdsTarget || 0);
+                const revenueNum = Number(goalForm.revenueTarget || 0);
+                const r2dNum = Number(goalForm.r2dTarget || 0);
+                const hasAny = ftdsNum > 0 || revenueNum > 0 || r2dNum > 0;
+                const scope = goalForm.isGlobal
+                  ? t("All Buyers")
+                  : (goalForm.buyer || t("Any Buyer"));
+                const country = goalForm.country || t("Any Country");
+                const period = goalForm.period || t("Custom");
+                const fmtNum = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
+                return (
+                  <div className="goal-preview-card">
+                    <div className="goal-preview-head">
+                      <span className="goal-preview-tag">{t("Preview")}</span>
+                      <span className="goal-preview-period">{t(period)}</span>
+                    </div>
+                    <div className="goal-preview-scope">
+                      <strong>{scope}</strong>
+                      <span className="goal-preview-dot">·</span>
+                      <span>{country}</span>
+                      {days ? (
+                        <>
+                          <span className="goal-preview-dot">·</span>
+                          <span>{days} {days === 1 ? t("day") : t("days")}</span>
+                        </>
+                      ) : null}
+                    </div>
+                    {hasAny ? (
+                      <div className="goal-preview-metrics">
+                        {ftdsNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("FTDs")}</span>
+                            <span className="goal-preview-value">{ftdsNum}</span>
+                            {days ? <span className="goal-preview-pace">~{fmtNum(ftdsNum / days)}/{t("day")}</span> : null}
+                          </div>
+                        ) : null}
+                        {revenueNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("Revenue")}</span>
+                            <span className="goal-preview-value">{formatCurrency(revenueNum)}</span>
+                            {days ? <span className="goal-preview-pace">~{formatCurrency(revenueNum / days)}/{t("day")}</span> : null}
+                          </div>
+                        ) : null}
+                        {r2dNum > 0 ? (
+                          <div className="goal-preview-metric">
+                            <span className="goal-preview-label">{t("R2D")}</span>
+                            <span className="goal-preview-value">{r2dNum}%</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="goal-preview-empty">
+                        {t("Add a target to see your goal preview.")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="form-actions">
+                <button className="ghost" type="button" onClick={resetGoalForm}>
+                  {t("Reset")}
+                </button>
+                <button className="action-pill" type="submit">
+                  {t("Add Goal")}
+                </button>
+              </div>
+            </form>
+          ) : goalState.loading ? (
             <div className="empty-state">{t("Loading goals…")}</div>
           ) : goalState.error ? (
             <div className="empty-state error">{goalState.error}</div>
@@ -14895,27 +15141,22 @@ function GoalsDashboard({ authUser }) {
                                       <span className="offer-muted">—</span>
                                     ) : (
                                       <span className="goal-td-value">
-                                        {r2dActual.toFixed(2)}%
+                                        {formatPercent(r2dActual)}
                                         <small>
                                           {" / "}
-                                          {Number(goal.r2d_target) > 0
-                                            ? `${Number(goal.r2d_target).toFixed(2)}%`
-                                            : "—"}
+                                          {Number(goal.r2d_target) > 0 ? formatPercent(goal.r2d_target) : "—"}
                                         </small>
                                       </span>
                                     )}
-                                    {r2dProgress.pct !== null ? (
-                                      <small className="goal-td-pct">{r2dProgress.label}</small>
-                                    ) : null}
                                   </td>
                                   <td className="goal-td-num">
                                     {market && (market.value > 0 || market.targetValue > 0) ? (
                                       <>
                                         <span className="goal-td-value">
-                                          {formatCurrency(market.value || 0)}
+                                          {formatCurrencyWhole(market.value || 0)}
                                           <small>
                                             {" / "}
-                                            {market.targetValue > 0 ? formatCurrency(market.targetValue) : "—"}
+                                            {market.targetValue > 0 ? formatCurrencyWhole(market.targetValue) : "—"}
                                           </small>
                                         </span>
                                         {market.blendedCpa ? (
@@ -14947,7 +15188,7 @@ function GoalsDashboard({ authUser }) {
                                       <span className="goal-td-value">{t("Goal hit")}</span>
                                     ) : forecast.ended ? (
                                       <span className="offer-muted">
-                                        {Math.round(forecast.projectedPct)}% {t("at close")}
+                                        {formatPercent(forecast.projectedPct, 0)} {t("at close")}
                                       </span>
                                     ) : (
                                       <>
@@ -14956,8 +15197,7 @@ function GoalsDashboard({ authUser }) {
                                           <small>/{t("day")} {t("needed")}</small>
                                         </span>
                                         <small className="goal-td-pct">
-                                          {t("now")} {fmtPace(forecast.currentPace)} · {t("forecast")}{" "}
-                                          {Math.round(forecast.projected)} ({Math.round(forecast.projectedPct)}%)
+                                          {t("currently")} {fmtPace(forecast.currentPace)}/{t("day")}
                                         </small>
                                       </>
                                     )}
@@ -15003,244 +15243,6 @@ function GoalsDashboard({ authUser }) {
           )}
         </motion.div>
 
-        {isLeadership ? (
-          <motion.div
-            className="panel"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="panel-head">
-              <div>
-                <h3 className="panel-title">{t("Goal Setup")}</h3>
-                <p className="panel-subtitle">
-                  {t("Define the target outcomes your media buyers must reach.")}
-                </p>
-              </div>
-            </div>
-
-            <form className="form-grid goals-form" onSubmit={handleGoalSubmit}>
-              <div className="field">
-                <label>{t("Goal Scope")}</label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={goalForm.isGlobal}
-                    onChange={(event) =>
-                      setGoalForm((prev) => ({ ...prev, isGlobal: event.target.checked }))
-                    }
-                  />
-                  {t("Global Goal")}
-                </label>
-              </div>
-              <div className="field">
-                <label>{t("Media Buyer")}</label>
-                <input
-                  list="buyer-options"
-                  value={goalForm.isGlobal ? t("All Buyers") : goalForm.buyer}
-                  onChange={updateGoalForm("buyer")}
-                  disabled={goalForm.isGlobal}
-                />
-                <datalist id="buyer-options">
-                  {buyerDirectoryOptions.map((buyer) => (
-                    <option key={buyer} value={buyer} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="field">
-                <label>{t("Country")}</label>
-                <CountryDropdownPicker
-                  value={goalForm.country}
-                  onChange={(country) => setGoalForm((prev) => ({ ...prev, country }))}
-                  options={countryOptions}
-                  placeholder={t("Select")}
-                  searchPlaceholder={t("Type to find countries")}
-                  emptyResultsLabel={t("No countries found.")}
-                />
-              </div>
-              <div className="field">
-                <label>{t("Period")}</label>
-                <Select
-                  value={goalForm.period}
-                  onChange={(v) => {
-                    const range = applyPeriodRange(v);
-                    setGoalForm((prev) => ({
-                      ...prev,
-                      period: v,
-                      ...(range ? { dateFrom: range.from, dateTo: range.to } : {}),
-                    }));
-                  }}
-                  options={["Daily", "Weekly", "Monthly", "Custom"].map((item) => ({ value: item, label: t(item) }))}
-                  placeholder={t("Select")}
-                />
-              </div>
-              <div className="field goal-range">
-                <label>{t("Date Range")}</label>
-                <div className="goal-date-presets">
-                  {[
-                    { label: t("Today"), range: { from: new Date(), to: new Date() } },
-                    { label: t("This Week"), range: applyPeriodRange("Weekly") },
-                    { label: t("This Month"), range: applyPeriodRange("Monthly") },
-                    { label: t("Next 7d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 6); return { from: f, to: tt }; })() },
-                    { label: t("Next 30d"), range: (() => { const f = new Date(); const tt = new Date(); tt.setDate(tt.getDate() + 29); return { from: f, to: tt }; })() },
-                  ].map((preset) => {
-                    const fmt = (d) => d instanceof Date
-                      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-                      : d;
-                    const from = preset.range?.from ? fmt(preset.range.from) : null;
-                    const to = preset.range?.to ? fmt(preset.range.to) : null;
-                    const isActive = from && to && goalForm.dateFrom === from && goalForm.dateTo === to;
-                    return (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        className={`date-preset${isActive ? " is-active" : ""}`}
-                        onClick={() => from && to && setGoalForm((prev) => ({ ...prev, dateFrom: from, dateTo: to }))}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="field-row">
-                  <DeusDatePicker value={goalForm.dateFrom} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateFrom: v }))} />
-                  <span className="field-sep">{t("to")}</span>
-                  <DeusDatePicker value={goalForm.dateTo} onChange={(v) => setGoalForm((prev) => ({ ...prev, dateTo: v }))} />
-                </div>
-              </div>
-              {(() => {
-                // Compute period duration + required pace for live hints
-                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
-                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
-                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
-                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
-                const ftdsNum = Number(goalForm.ftdsTarget || 0);
-                const revenueNum = Number(goalForm.revenueTarget || 0);
-                const ftdsPace = days && ftdsNum > 0 ? (ftdsNum / days) : null;
-                const revenuePace = days && revenueNum > 0 ? (revenueNum / days) : null;
-                const fmt = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
-                return (
-                  <>
-                    <div className="field">
-                      <label>
-                        {t("FTDs Target")}
-                        {ftdsPace !== null ? <span className="field-pace-hint">~{fmt(ftdsPace)}/{t("day")} · {days} {days === 1 ? t("day") : t("days")}</span> : null}
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="50"
-                        value={goalForm.ftdsTarget}
-                        onChange={updateGoalForm("ftdsTarget")}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>
-                        {t("Revenue Target")}
-                        {revenuePace !== null ? <span className="field-pace-hint">~{formatCurrency(revenuePace)}/{t("day")}</span> : null}
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="100"
-                        placeholder="$10,000"
-                        value={goalForm.revenueTarget}
-                        onChange={updateGoalForm("revenueTarget")}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>{t("Reg2Dep Target (%)")}</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        placeholder="25.0"
-                        value={goalForm.r2dTarget}
-                        onChange={updateGoalForm("r2dTarget")}
-                      />
-                    </div>
-                  </>
-                );
-              })()}
-              <div className="field">
-                <label>{t("Notes")}</label>
-                <input value={goalForm.notes} onChange={updateGoalForm("notes")} placeholder={t("Optional context, reward, or constraint")} />
-              </div>
-              {(() => {
-                // Live goal preview — mirrors the saved goal card
-                const from = goalForm.dateFrom ? new Date(`${goalForm.dateFrom}T00:00:00`) : null;
-                const to = goalForm.dateTo ? new Date(`${goalForm.dateTo}T00:00:00`) : null;
-                const validRange = from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime());
-                const days = validRange ? Math.max(1, Math.round((to - from) / 86400000) + 1) : null;
-                const ftdsNum = Number(goalForm.ftdsTarget || 0);
-                const revenueNum = Number(goalForm.revenueTarget || 0);
-                const r2dNum = Number(goalForm.r2dTarget || 0);
-                const hasAny = ftdsNum > 0 || revenueNum > 0 || r2dNum > 0;
-                const scope = goalForm.isGlobal
-                  ? t("All Buyers")
-                  : (goalForm.buyer || t("Any Buyer"));
-                const country = goalForm.country || t("Any Country");
-                const period = goalForm.period || t("Custom");
-                const fmtNum = (v) => v >= 10 ? Math.round(v).toString() : v.toFixed(1);
-                return (
-                  <div className="goal-preview-card">
-                    <div className="goal-preview-head">
-                      <span className="goal-preview-tag">{t("Preview")}</span>
-                      <span className="goal-preview-period">{t(period)}</span>
-                    </div>
-                    <div className="goal-preview-scope">
-                      <strong>{scope}</strong>
-                      <span className="goal-preview-dot">·</span>
-                      <span>{country}</span>
-                      {days ? (
-                        <>
-                          <span className="goal-preview-dot">·</span>
-                          <span>{days} {days === 1 ? t("day") : t("days")}</span>
-                        </>
-                      ) : null}
-                    </div>
-                    {hasAny ? (
-                      <div className="goal-preview-metrics">
-                        {ftdsNum > 0 ? (
-                          <div className="goal-preview-metric">
-                            <span className="goal-preview-label">{t("FTDs")}</span>
-                            <span className="goal-preview-value">{ftdsNum}</span>
-                            {days ? <span className="goal-preview-pace">~{fmtNum(ftdsNum / days)}/{t("day")}</span> : null}
-                          </div>
-                        ) : null}
-                        {revenueNum > 0 ? (
-                          <div className="goal-preview-metric">
-                            <span className="goal-preview-label">{t("Revenue")}</span>
-                            <span className="goal-preview-value">{formatCurrency(revenueNum)}</span>
-                            {days ? <span className="goal-preview-pace">~{formatCurrency(revenueNum / days)}/{t("day")}</span> : null}
-                          </div>
-                        ) : null}
-                        {r2dNum > 0 ? (
-                          <div className="goal-preview-metric">
-                            <span className="goal-preview-label">{t("R2D")}</span>
-                            <span className="goal-preview-value">{r2dNum}%</span>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="goal-preview-empty">
-                        {t("Add a target to see your goal preview.")}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              <div className="form-actions">
-                <button className="ghost" type="button" onClick={resetGoalForm}>
-                  {t("Reset")}
-                </button>
-                <button className="action-pill" type="submit">
-                  {t("Add Goal")}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        ) : null}
       </section>
 
 

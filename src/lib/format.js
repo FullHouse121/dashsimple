@@ -25,6 +25,35 @@ export const formatCurrency = (value, rate = activeFxRate) => {
   return currencyFormatter.format(numeric * fxRate);
 };
 
+export const wholeCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+// Money that is an aggregate, not a price. "$10,000.00" spends two characters
+// on precision nobody acts on, and a column of them is measurably harder to
+// scan than a column of "$10,000". Unit rates — a per-FTD price — keep their
+// cents via formatCurrency, because there the cents are the number.
+export const formatCurrencyWhole = (value, rate = activeFxRate) => {
+  if (value === null || value === undefined || value === "" || Number.isNaN(value)) return "—";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  const fxRate = Number.isFinite(rate) ? rate : 1;
+  return wholeCurrencyFormatter.format(numeric * fxRate);
+};
+
+// Percentages are read here, not audited. "12.00%" and "12%" carry the same
+// decision; only one of them is quick to scan. Trailing zeros go, real
+// precision stays.
+export const formatPercent = (value, maxDigits = 2) => {
+  if (value === null || value === undefined || value === "") return "—";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  return `${Number(numeric.toFixed(maxDigits))}%`;
+};
+
 // Short currency for axis ticks and on-bar labels: "$1.2k" / "$45" / "$0.15".
 // Full precision stays in tooltips via formatCurrency.
 export const formatCurrencyCompact = (value, rate = activeFxRate) => {
