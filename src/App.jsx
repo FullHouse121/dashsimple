@@ -1874,7 +1874,7 @@ function HomeDashboard({
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                  <AlertTriangle size={11} /> {t("cost data incomplete")}
                 </button>
               ) : null}
               {stat.sub ? (
@@ -1919,7 +1919,7 @@ function HomeDashboard({
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                  <AlertTriangle size={11} /> {t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
@@ -3272,7 +3272,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       onClick={() => goToView("health")}
                       title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                     >
-                      <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                      <AlertTriangle size={11} /> {t("cost data incomplete")}
                     </button>
                   ) : null}
                   <div className="card-meta">{t(stat.meta)}</div>
@@ -9704,7 +9704,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
                 onClick={() => goToView("health")}
                 title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
               >
-                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                <AlertTriangle size={11} /> {t("cost data incomplete")}
               </button>
             ) : null}
             {renderStatsDelta(stat.delta)}
@@ -9731,7 +9731,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
                 onClick={() => goToView("health")}
                 title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
               >
-                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                <AlertTriangle size={11} /> {t("cost data incomplete")}
               </button>
             ) : null}
             {stat.sub ? (
@@ -10824,7 +10824,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
                 onClick={() => goToView("health")}
                 title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
               >
-                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                <AlertTriangle size={11} /> {t("cost data incomplete")}
               </button>
             ) : null}
             <div className="card-meta">{t(stat.meta)}</div>
@@ -12193,7 +12193,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                       onClick={() => goToView("health")}
                       title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                     >
-                      <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                      <AlertTriangle size={11} /> {t("cost data incomplete")}
                     </button>
                   ) : null}
                   <div className="card-meta">{t(stat.meta)}</div>
@@ -12325,7 +12325,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                  <AlertTriangle size={11} /> {t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">
@@ -13335,7 +13335,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 onClick={() => goToView("health")}
                 title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
               >
-                <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                <AlertTriangle size={11} /> {t("cost data incomplete")}
               </button>
             ) : null}
             {stat.user ? (
@@ -13937,7 +13937,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                  <AlertTriangle size={11} /> {t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
@@ -23491,7 +23491,7 @@ function ProfileDashboard({ authUser }) {
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("unverified — cost data incomplete")}
+                  <AlertTriangle size={11} /> {t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>

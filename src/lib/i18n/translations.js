@@ -1451,7 +1451,7 @@ export const translations = {
       "Kazanç sağladığınız veya fiyatlandırdığınız ülkeler gösteriliyor. Diğer ülkeler için arama yapın.",
     matching: "eşleşen",
     "No countries match that search.": "Bu aramaya uyan ülke yok.",
-    "unverified — cost data incomplete": "doğrulanmadı — maliyet verisi eksik",
+    "cost data incomplete": "maliyet verisi eksik",
     "Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.":
       "Bazı reklam hesapları için harcama eksik, bu yüzden bu değer eksik maliyetle hesaplandı. Nedenini görmek için Sağlık'ı açın.",
     "unverified — no cost data": "doğrulanmadı — maliyet verisi yok",
