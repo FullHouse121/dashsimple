@@ -141,7 +141,7 @@ import {
   RolesIcon, LogIcon, ProfileIcon, CostIcon, ApiIcon, ImportIcon,
   AwardIcon, TriggerIcon,
 } from "./components/icons.jsx";
-import { REGIONS, regionForCountry, resolveCpa } from "./lib/regions.js";
+import { REGIONS, regionForCountry, resolveCpa } from "../shared/regions.js";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -14331,7 +14331,14 @@ function GoalsDashboard({ authUser }) {
     return date >= from && date <= to;
   };
 
+  // The server now aggregates a goal's actuals over every stats row it has.
+  // The browser only ever held the 500 most recent, so a goal wider than a few
+  // days of one buyer was reporting a floor, not a total. Prefer the server's
+  // figure; keep the local sum so a stale deploy still renders progress.
   const totalsForGoal = (goal, viewerBuyer) =>
+    goal.actuals || legacyTotalsForGoal(goal, viewerBuyer);
+
+  const legacyTotalsForGoal = (goal, viewerBuyer) =>
     statsEntries
       .filter((row) => {
         if (!inRange(row.date, goal.date_from, goal.date_to)) return false;
@@ -14382,6 +14389,13 @@ function GoalsDashboard({ authUser }) {
     const ftdProgress = formatProgress(totals.ftds, goal.ftds_target);
     const r2dActual = totals.registers > 0 ? (totals.ftds / totals.registers) * 100 : null;
     const r2dProgress = formatProgress(r2dActual, goal.r2d_target);
+
+    // What those FTDs are worth at market price, valued per country on the
+    // server. Deliberately kept out of the ring below: value is FTDs × rate,
+    // so counting it there would weight FTDs twice and make the headline
+    // percentage move when a rate changed rather than when the work did.
+    const market = goal.market || null;
+    const marketProgress = formatProgress(market?.value ?? null, market?.targetValue);
     const progressValues = [ftdProgress.pct, r2dProgress.pct].filter((value) => value !== null);
     const overall =
       progressValues.length > 0
@@ -14441,7 +14455,7 @@ function GoalsDashboard({ authUser }) {
       pace = { requiredPace, actualPace, ratio, status: paceStatus, label: paceLabel, elapsedDays, totalDays };
     }
 
-    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace };
+    return { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace, market, marketProgress };
   };
 
   const goalSummary = React.useMemo(() => {
@@ -14790,7 +14804,7 @@ function GoalsDashboard({ authUser }) {
                     return (a.goal.date_to || "").localeCompare(b.goal.date_to || "");
                   })
                   .map(({ goal, info }) => {
-                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace } = info;
+                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, pace, market, marketProgress } = info;
                   const statusClass = `status-${status}`;
                 return (
                   <div key={goal.id} className={`goal-card ${statusClass}${goal.is_global ? " is-global" : ""}`}>
@@ -14864,17 +14878,50 @@ function GoalsDashboard({ authUser }) {
                           color: "var(--blue)",
                           isPercent: true,
                         },
+                        // Only shown once the rate card can actually price this
+                        // goal. An empty money tile teaches a buyer to ignore
+                        // the money tile.
+                        ...(market && (market.value > 0 || market.targetValue > 0)
+                          ? [{
+                            label: "Market value",
+                            actual: market.value,
+                            target: market.targetValue,
+                            progress: marketProgress,
+                            color: "var(--yellow)",
+                            isCurrency: true,
+                            notes: [
+                              market.blendedCpa
+                                ? `${market.pricedFtds.toLocaleString()} ${t("FTDs")} · ~${formatCurrency(market.blendedCpa)} ${t("each")}`
+                                : null,
+                              // A target nobody typed must not look like one
+                              // somebody did — say when it was derived.
+                              market.targetSource === "ftds_target"
+                                ? `${t("Target: ")}${Number(goal.ftds_target).toLocaleString()} ${t("FTDs at market rate")}`
+                                : null,
+                            ].filter(Boolean),
+                            // FTDs from a country nobody has priced are worth
+                            // an unknown amount, not zero. Say which, so a
+                            // short total is not read as a short month.
+                            warn: market.unpricedFtds > 0
+                              ? `${market.unpricedFtds.toLocaleString()} ${t("FTDs not valued")} — ${market.unpricedCountries.join(", ")} ${t("has no rate")}`
+                              : null,
+                          }]
+                          : []),
                       ].map((metric) => {
                         const actualLabel = metric.isPercent
                           ? metric.actual === null
                             ? "—"
                             : `${metric.actual.toFixed(2)}%`
-                          : metric.actual.toLocaleString();
+                          : metric.isCurrency
+                            ? formatCurrency(metric.actual || 0)
+                            : metric.actual.toLocaleString();
                         const targetLabel =
                           metric.target && Number(metric.target) > 0
                             ? metric.isPercent
                               ? `${Number(metric.target).toFixed(2)}%`
-                              : Number(metric.target).toLocaleString()
+                              : metric.isCurrency
+                                ? formatCurrency(Number(metric.target))
+                                : Number(metric.target).toLocaleString()
                             : "—";
                         return (
                           <div key={metric.label} className="goal-metric" style={{ "--goal-color": metric.color }}>
@@ -14892,6 +14939,12 @@ function GoalsDashboard({ authUser }) {
                                 style={{ width: metric.progress.pct ? `${metric.progress.pct}%` : "0%" }}
                               />
                             </div>
+                            {(metric.notes || []).map((line) => (
+                              <div key={line} className="goal-metric-note">{line}</div>
+                            ))}
+                            {metric.warn ? (
+                              <div className="goal-metric-note is-warn">{metric.warn}</div>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -14947,13 +15000,19 @@ function GoalsDashboard({ authUser }) {
 
                       const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
 
+                      // "3.2/day" is an instruction; "3.2/day, worth $2,050"
+                      // is a reason. The rate is the goal's own blend, so the
+                      // money moves with the mix the buyer is actually running.
+                      const rate = Number(market?.blendedCpa) || 0;
+                      const worth = (count) => (rate > 0 ? ` (${formatCurrency(count * rate)})` : "");
+
                       const hint = goalAchieved
-                        ? `Goal hit — ${actual} of ${target} FTDs`
+                        ? `Goal hit — ${actual} of ${target} FTDs${worth(actual)}`
                         : periodEnded
                           ? `Period ended at ${Math.round(projectedPct)}% of target`
                           : projectedPct >= 100
-                            ? `On track to reach ${target} FTDs`
-                            : `Need ${fmtPace(requiredPace)}/day for ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} to hit ${target}`;
+                            ? `On track to reach ${target} FTDs${worth(target)}`
+                            : `Need ${fmtPace(requiredPace)}/day for ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"} to hit ${target}${rate > 0 ? ` — ${formatCurrency(Math.max(0, target - actual) * rate)} still to earn` : ""}`;
 
                       return (
                         <div className={`goal-pace ${status}`}>

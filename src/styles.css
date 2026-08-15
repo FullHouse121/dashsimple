@@ -7085,7 +7085,9 @@ select option,
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* auto-fit, not a fixed 2 — a goal the rate card can price shows a third
+     tile, and a hardcoded pair left it stranded on a half-width row. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -7124,6 +7126,34 @@ select option,
   color: var(--muted);
   font-weight: 500;
   font-size: 12px;
+}
+
+/* The line under a money tile that says how it was arrived at — the FTD count
+   and the rate they averaged. A number a buyer cannot account for is a number
+   they will argue with. */
+.goal-metric-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--faint);
+}
+
+/* Same line, when part of the goal could not be valued at all. Amber rather
+   than red: nothing has gone wrong, the total is simply not the whole story. */
+.goal-metric-note.is-warn {
+  color: var(--yellow);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.goal-metric-note.is-warn::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateY(-2px);
 }
 
 .goal-bar {

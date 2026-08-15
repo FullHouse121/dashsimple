@@ -1,5 +1,10 @@
 // Country → region, for market CPA inheritance.
 //
+// Lives in shared/ because both sides need it and there must only ever be one
+// copy: the client uses it to render the rate editor, the server uses it to
+// value goals. Two tables drifting apart would price a country on one screen
+// and call it unpriced on another.
+//
 // A country with no explicit rate takes its region's, so pricing LATAM once
 // covers Colombia, Bolivia, Ecuador, Peru and Chile — and prices the next
 // LATAM country the day it starts producing deposits, instead of counting its

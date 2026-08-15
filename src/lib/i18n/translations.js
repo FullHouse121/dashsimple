@@ -783,6 +783,13 @@ export const translations = {
     "First seen": "İlk görülme",
     "Last seen": "Son görülme",
     "Reading the cost pipeline…": "Maliyet hattı okunuyor…",
+    // Goals, priced at the market CPA rate card.
+    "Market value": "Piyasa değeri",
+    each: "her biri",
+    "FTDs not valued": "FTD değerlenmedi",
+    "has no rate": "için oran tanımlı değil",
+    "Target: ": "Hedef: ",
+    "FTDs at market rate": "FTD piyasa oranıyla",
     "Cost is arriving, but some tokens are dead": "Maliyet geliyor ancak bazı tokenlar ölü",
     "Cost is arriving normally": "Maliyet normal şekilde geliyor",
     "Meta token → Keitaro integration → cost → every ROI number. This reads the end of the chain, not the flags along it.":

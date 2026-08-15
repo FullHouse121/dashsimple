@@ -8,6 +8,8 @@ import {
 } from "./lib/scoping.js";
 import { createTokenCodec } from "./lib/auth.js";
 import { planCampaignImport } from "./lib/campaign-import.js";
+import { valueByCountry, targetValue } from "./lib/goal-valuation.js";
+import { resolveCpa } from "../shared/regions.js";
 import { buildCredentialFields, createSecretBox, hasSecretInput } from "./lib/secrets.js";
 import { assertUsableTotpSecret, generateTotp } from "./lib/totp.js";
 import {
@@ -301,6 +303,10 @@ const initDb = async () => {
       notes TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    // The goal form has always collected a Revenue Target — and the API always
+    // dropped it, because neither the column nor the POST field existed. Every
+    // goal ever saved lost the number leadership typed.
+    `ALTER TABLE goals ADD COLUMN IF NOT EXISTS revenue_target REAL;`,
     `CREATE TABLE IF NOT EXISTS media_buyers (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
@@ -1589,8 +1595,8 @@ const selectUserBehaviorAggregated = async (from, to, limit) =>
 
 const insertGoal = async (payload) => {
   const { rows } = await query(
-    `INSERT INTO goals (buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO goals (buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, revenue_target, is_global, notes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING id`,
     [
       payload.buyer,
@@ -1603,6 +1609,7 @@ const insertGoal = async (payload) => {
       payload.ftds_target,
       payload.spend_target,
       payload.r2d_target,
+      payload.revenue_target,
       payload.is_global,
       payload.notes,
     ]
@@ -1612,7 +1619,7 @@ const insertGoal = async (payload) => {
 
 const selectGoals = async (limit) =>
   getRows(
-    `SELECT id, buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, is_global, notes
+    `SELECT id, buyer, country, period, date_from, date_to, clicks_target, registers_target, ftds_target, spend_target, r2d_target, revenue_target, is_global, notes
      FROM goals
      ORDER BY date_from DESC, id DESC
      LIMIT $1`,
@@ -1621,6 +1628,73 @@ const selectGoals = async (limit) =>
 
 const deleteGoal = async (id) =>
   query(`DELETE FROM goals WHERE id = $1`, [id]);
+
+// Every visible goal's actuals, split by the country they came from, in one
+// round trip.
+//
+// The Goals page used to compute these in the browser from `/api/media-stats
+// ?limit=500`. media_stats is one row per date × buyer × country × campaign ×
+// adset × ad × placement, so 500 rows is a few days of one buyer — every goal
+// wider than that was quietly reporting a fraction of its real FTD count. The
+// aggregate belongs where the rows are.
+//
+// The country split is what lets a goal with no country set be valued at each
+// country's own rate instead of one rate picked for the whole goal.
+const selectGoalActuals = async (goals, viewerBuyer) => {
+  if (!goals.length) return new Map();
+
+  const params = [];
+  const tuples = goals.map((goal) => {
+    const base = params.length;
+    params.push(
+      goal.id,
+      goal.buyer || "",
+      goal.country || "",
+      goal.date_from,
+      goal.date_to,
+      goal.is_global ? 1 : 0
+    );
+    return `($${base + 1}::int, $${base + 2}::text, $${base + 3}::text, $${base + 4}::text, $${base + 5}::text, $${base + 6}::int)`;
+  });
+  params.push(viewerBuyer || null);
+  const viewerParam = `$${params.length}::text`;
+
+  const rows = await getRows(
+    `WITH g(id, buyer, country, date_from, date_to, is_global) AS (VALUES ${tuples.join(", ")})
+     SELECT g.id AS goal_id,
+            COALESCE(m.country, '') AS country,
+            SUM(m.ftds)::int        AS ftds,
+            SUM(m.registers)::int   AS registers,
+            SUM(m.clicks)::int      AS clicks,
+            SUM(COALESCE(m.spend, 0))::float8 AS spend
+     FROM g
+     JOIN media_stats m
+       ON m.date >= g.date_from
+      AND m.date <= g.date_to
+      AND (g.country = '' OR m.country = g.country)
+      -- A buyer's own goal is scoped to them; a global goal is scoped to
+      -- whoever is looking, so each buyer sees a shared target measured
+      -- against their own contribution.
+      AND (g.is_global = 1 OR m.buyer = g.buyer)
+      AND (g.is_global = 0 OR ${viewerParam} IS NULL OR m.buyer = ${viewerParam})
+     GROUP BY g.id, COALESCE(m.country, '')`,
+    params
+  );
+
+  const byGoal = new Map();
+  for (const row of rows) {
+    const id = Number(row.goal_id);
+    if (!byGoal.has(id)) byGoal.set(id, []);
+    byGoal.get(id).push({
+      country: row.country || "",
+      ftds: Number(row.ftds) || 0,
+      registers: Number(row.registers) || 0,
+      clicks: Number(row.clicks) || 0,
+      spend: Number(row.spend) || 0,
+    });
+  }
+  return byGoal;
+};
 
 const insertMediaBuyer = async (payload) => {
   const { rows } = await query(
@@ -7368,14 +7442,76 @@ app.get("/api/goals", async (req, res) => {
   const limitRaw = Number.parseInt(req.query.limit ?? "200", 10);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
   const rows = await selectGoals(limit);
-  if (isLeadership(req.user)) {
-    return res.json(rows);
+
+  const viewerBuyer = isLeadership(req.user) ? null : await resolveViewerBuyer(req.user);
+  const visible = isLeadership(req.user)
+    ? rows
+    : rows.filter((row) => row.is_global || (viewerBuyer && viewerOwnsRow(row, viewerBuyer)));
+
+  // Attach each goal's actuals and what they are worth. Valuing here rather
+  // than in the browser is deliberate: a buyer gets the money and the rate it
+  // averaged out to, and the per-country rate card stays on the server.
+  let actualsByGoal = new Map();
+  let rateByCountry = new Map();
+  let rateByRegion = new Map();
+  // "The aggregate ran" and "this goal had rows" are different facts. Only the
+  // first decides whether the client should trust these numbers — a goal with
+  // genuinely no traffic must report an authoritative zero, not fall back to
+  // the client's own count, which is capped and therefore wrong.
+  let valued = false;
+  try {
+    const [actuals, rateRows, regionRows] = await Promise.all([
+      selectGoalActuals(visible, viewerBuyer),
+      getRows(`SELECT country, cpa FROM market_cpa_rates`),
+      getRows(`SELECT region, cpa FROM market_cpa_regions`),
+    ]);
+    actualsByGoal = actuals;
+    rateByCountry = new Map(rateRows.map((row) => [row.country, Number(row.cpa) || 0]));
+    rateByRegion = new Map(regionRows.map((row) => [row.region, Number(row.cpa) || 0]));
+    valued = true;
+  } catch (error) {
+    // A goal with no valuation still renders its targets and progress. Losing
+    // the money line is worth far less than losing the page.
+    console.error("[goals] valuation failed:", error?.message || error);
   }
-  const viewerBuyer = await resolveViewerBuyer(req.user);
-  const filtered = rows.filter(
-    (row) => row.is_global || (viewerBuyer && viewerOwnsRow(row, viewerBuyer))
-  );
-  return res.json(filtered);
+
+  const enriched = visible.map((goal) => {
+    if (!valued) return goal;
+    const byCountry = actualsByGoal.get(Number(goal.id)) || [];
+    const actuals = byCountry.reduce(
+      (acc, row) => ({
+        clicks: acc.clicks + row.clicks,
+        registers: acc.registers + row.registers,
+        ftds: acc.ftds + row.ftds,
+        spend: acc.spend + row.spend,
+      }),
+      { clicks: 0, registers: 0, ftds: 0, spend: 0 }
+    );
+    const priced = valueByCountry(byCountry, rateByCountry, rateByRegion);
+    // Before the first FTD lands there is no blend to derive a money target
+    // from — but a goal pinned to one country has a known rate from day one,
+    // and showing its target only once traffic arrives is a worse answer than
+    // showing it immediately.
+    const rate =
+      priced.blendedCpa ||
+      (goal.country ? resolveCpa(goal.country, rateByCountry, rateByRegion).cpa : 0);
+    const target = targetValue(goal, rate);
+    return {
+      ...goal,
+      actuals,
+      market: {
+        value: priced.value,
+        blendedCpa: priced.blendedCpa,
+        pricedFtds: priced.pricedFtds,
+        unpricedFtds: priced.unpricedFtds,
+        unpricedCountries: priced.unpricedCountries,
+        targetValue: target.value,
+        targetSource: target.source,
+      },
+    };
+  });
+
+  return res.json(enriched);
 });
 
 app.post("/api/goals", async (req, res) => {
@@ -7393,6 +7529,7 @@ app.post("/api/goals", async (req, res) => {
     clicksTarget,
     registersTarget,
     spendTarget,
+    revenueTarget,
     isGlobal,
     notes = "",
   } = req.body ?? {};
@@ -7417,6 +7554,7 @@ app.post("/api/goals", async (req, res) => {
     ftds_target: numberFromValue(ftdsTarget),
     spend_target: numberFromValue(spendTarget),
     r2d_target: numberFromValue(r2dTarget),
+    revenue_target: numberFromValue(revenueTarget),
     is_global: isGlobal ? 1 : 0,
     notes,
   };
