@@ -12160,18 +12160,25 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               { label: "Market Revenue", value: formatCurrency(marketTotals.revenue), meta: "FTDs × market CPA", icon: DollarSign },
               { label: "Spend", value: formatCurrency(marketTotals.spend), meta: "Auto from Meta via Keitaro · manual fallback", icon: CreditCard, untrusted: !spendTrusted },
               {
+                // Revenue minus a spend figure that is missing accounts, so the
+                // profit is overstated by exactly the cost that never arrived.
                 label: "Market Profit",
                 value: formatCurrency(marketTotals.revenue - marketTotals.spend),
                 meta: "Market revenue − spend",
                 icon: TrendingUp,
-                accent: marketTotals.revenue - marketTotals.spend >= 0,
-                negative: marketTotals.revenue - marketTotals.spend < 0,
+                accent: spendTrusted && marketTotals.revenue - marketTotals.spend >= 0,
+                negative: spendTrusted && marketTotals.revenue - marketTotals.spend < 0,
+                untrusted: !spendTrusted,
               },
               {
+                // Divided by that same spend, so it is the most distorted
+                // figure on the page — 3983% against a real denominator would
+                // be a fraction of that.
                 label: "Market ROI",
                 value: marketTotals.spend > 0 ? `${(((marketTotals.revenue - marketTotals.spend) / marketTotals.spend) * 100).toFixed(0)}%` : "—",
                 meta: "At market CPA rates",
                 icon: Target,
+                untrusted: !spendTrusted,
               },
             ].map((stat) => {
               const Icon = stat.icon;
@@ -12210,43 +12217,6 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
             </section>
           ) : null}
 
-          <section className="panels panels-single">
-            <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-              <div className="panel-head">
-                <div>
-                  <h3 className="panel-title">{t("Market CPA rates")}</h3>
-                  <p className="panel-subtitle">{t("What one FTD sells for on the market, per country (USD). Only Boss and Team Leader see this.")}</p>
-                </div>
-                <button className="action-pill" type="button" onClick={saveCpaRates} disabled={cpaState.saving}>
-                  {cpaState.saving ? t("Saving…") : t("Save rates")}
-                </button>
-              </div>
-              {cpaState.error ? <p className="logs-error">{cpaState.error}</p> : null}
-              {cpaState.loading ? (
-                <div className="empty-state">{t("Loading…")}</div>
-              ) : (
-                <div className="cpa-grid">
-                  {marketCountries.map((country) => (
-                    <label key={country} className="cpa-item">
-                      <span className="cpa-item-country"><CountryFlag value={country} size={12} /> {country}</span>
-                      <span className="cpa-item-input">
-                        <span className="cpa-currency">$</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={cpaDraft[country] ?? ""}
-                          placeholder="0"
-                          onChange={(e) => setCpaDraft((prev) => ({ ...prev, [country]: e.target.value }))}
-                        />
-                      </span>
-                    </label>
-                  ))}
-                  {!marketCountries.length ? <div className="empty-state">{t("No countries in this period yet.")}</div> : null}
-                </div>
-              )}
-            </motion.div>
-          </section>
 
           <section className="panels panels-single">
             <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}>
@@ -12333,7 +12303,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
             </motion.div>
           </section>
         </>
-      ) : (
+      ) : campaignTab === "performance" ? (
         <>
       {/* Period totals for everything currently visible */}
       <section className="cards campaigns-kpis">
@@ -12857,7 +12827,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         </motion.div>
       </section>
         </>
-      )}
+      ) : null}
 
       <AnimatePresence>
         {spendEditor ? (
