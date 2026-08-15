@@ -14519,9 +14519,490 @@ function GoalsDashboard({ authUser }) {
     );
   }, [displayGoals, statsEntries, isLeadership, viewerBuyer]);
 
+
+  // The team's shared target renders as a card: it is one thing, and it is
+  // the context every individual target sits inside. Individual targets are
+  // a list you compare down a column, which is a table's job — so the card
+  // is reused rather than duplicated for the one goal that still wants it.
+  const renderGoalCard = ({ goal, info }) => {
+    const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, market, marketProgress, timing, forecast } = info;
+    const statusClass = `status-${status}`;
+    return (
+    <div key={goal.id} className={`goal-card ${statusClass}${goal.is_global ? " is-global" : ""}`}>
+      <div className="goal-head">
+        <div className="goal-head-text">
+          <div className="goal-title">
+            {goal.is_global ? t("Global Goal") : goal.buyer}
+          </div>
+          <div className="goal-sub">
+            {[
+              t(goal.period),
+              goal.country || t("All Countries"),
+              formatGoalRange(goal.date_from, goal.date_to),
+              timing?.label,
+              goal.is_global && !isLeadership ? t("Based on your metrics") : null,
+            ].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        {/* One status signal. The left rail carries the same state
+            in colour, so a second "behind pace" pill next to a
+            "BEHIND" pill only competed with it. */}
+        <div className="goal-actions">
+          <span className={`goal-status ${status}`}>{statusLabel}</span>
+          {isLeadership ? (
+            <>
+              <button
+                className="icon-btn"
+                type="button"
+                title={t("Duplicate goal")}
+                onClick={() => handleGoalDuplicate(goal)}
+              >
+                <Copy size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                type="button"
+                title={t("Delete goal")}
+                onClick={() => handleGoalDelete(goal.id)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {/* The headline: one ring, one number, the target it is
+          measured against. Everything else on the card supports
+          this rather than competing with it. */}
+      <div className="goal-primary">
+        <div
+          className={`goal-ring${overall === null ? " is-empty" : ""}`}
+          style={{ "--goal-pct": overall === null ? 0 : Math.max(0, Math.min(100, overall)) }}
+          role="img"
+          aria-label={
+            overall === null
+              ? t("No targets set")
+              : `${Math.round(overall)}% ${t("of the FTD target")}`
+          }
+        >
+          <div className="goal-ring-inner">
+            <span className="goal-ring-pct">
+              {overall === null ? "—" : `${Math.round(overall)}%`}
+            </span>
+          </div>
+        </div>
+        <div className="goal-primary-metric">
+          <span className="goal-primary-label">
+            {goal.is_global && !isLeadership ? t("Your FTDs") : t("FTDs")}
+          </span>
+          <div className="goal-primary-value">
+            {Number(totals.ftds || 0).toLocaleString()}
+            <span>
+              {" / "}
+              {goal.ftds_target && Number(goal.ftds_target) > 0
+                ? Number(goal.ftds_target).toLocaleString()
+                : "—"}
+            </span>
+          </div>
+          <div className="goal-bar">
+            <span
+              className="goal-bar-fill"
+              style={{ width: ftdProgress.pct ? `${ftdProgress.pct}%` : "0%" }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Supporting measures. Rows, not tiles — three bordered
+          boxes side by side read as three equal headlines, which
+          is exactly what they are not. */}
+      <div className="goal-rows">
+        {[
+          // A row with neither a value nor a target is furniture.
+          ...(r2dActual !== null || Number(goal.r2d_target) > 0
+            ? [{
+              label: "Reg2Dep",
+              value: r2dActual === null ? "—" : `${r2dActual.toFixed(2)}%`,
+              target:
+                goal.r2d_target && Number(goal.r2d_target) > 0
+                  ? `${Number(goal.r2d_target).toFixed(2)}%`
+                  : "—",
+              progress: r2dProgress,
+            }]
+            : []),
+          // Only once the rate card can actually price this goal.
+          // An empty money row teaches a buyer to ignore the money.
+          ...(market && (market.value > 0 || market.targetValue > 0)
+            ? [{
+              label: "Market value",
+              value: formatCurrency(market.value || 0),
+              target: market.targetValue > 0 ? formatCurrency(market.targetValue) : "—",
+              progress: marketProgress,
+              notes: [
+                market.blendedCpa
+                  ? `${market.pricedFtds.toLocaleString()} ${t("FTDs")} · ~${formatCurrency(market.blendedCpa)} ${t("each")}`
+                  : null,
+                // A target nobody typed must not look like one
+                // somebody did — say when it was derived.
+                market.targetSource === "ftds_target"
+                  ? `${t("Target: ")}${Number(goal.ftds_target).toLocaleString()} ${t("FTDs at market rate")}`
+                  : null,
+              ].filter(Boolean),
+              // FTDs from a country nobody has priced are worth an
+              // unknown amount, not zero. Say which, so a short
+              // total is not read as a short month.
+              warn: market.unpricedFtds > 0
+                ? `${market.unpricedFtds.toLocaleString()} ${t("FTDs not valued")} — ${market.unpricedCountries.join(", ")} ${t("has no rate")}`
+                : null,
+            }]
+            : []),
+        ].map((row) => (
+          <div key={row.label} className="goal-row">
+            <div className="goal-row-main">
+              <span className="goal-row-label">{t(row.label)}</span>
+              <span className="goal-row-value">
+                {row.value}
+                <small>{" / "}{row.target}</small>
+              </span>
+              <span className="goal-row-track">
+                <span
+                  className="goal-row-fill"
+                  style={{ width: row.progress.pct ? `${row.progress.pct}%` : "0%" }}
+                />
+              </span>
+              <span className="goal-row-pct">{row.progress.label}</span>
+            </div>
+            {(row.notes || []).map((line) => (
+              <div key={line} className="goal-metric-note">{line}</div>
+            ))}
+            {row.warn ? <div className="goal-metric-note is-warn">{row.warn}</div> : null}
+          </div>
+        ))}
+      </div>
+      {(() => {
+        // Pace + forecast widget — turns "set target" into "here's how to hit it"
+        // Reads the same forecast the status badge and the rail
+        // were computed from, so the card cannot contradict
+        // itself the way it did when each end worked it out
+        // independently.
+        if (timing?.state === "pending") {
+          return (
+            <div className="goal-pace pending">
+              <span className="goal-pace-mark">◷</span>
+              <span className="goal-pace-text">
+                {t("Period starts in")} <strong>{timing.startsIn} {timing.startsIn === 1 ? t("day") : t("days")}</strong>
+                <span className="goal-pace-aside">{timing.totalDays}-{t("day target")}</span>
+              </span>
+            </div>
+          );
+        }
+        if (!forecast) return null;
+
+        const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
+        // "1.8/day" is an instruction; "1.8/day, and $712 still to
+        // earn" is a reason. The rate is the goal's own blend, so
+        // the money moves with the mix the buyer is running.
+        const rate = Number(market?.blendedCpa) || 0;
+        const worth = (count) => (rate > 0 ? ` (${formatCurrency(count * rate)})` : "");
+        const remaining = Math.max(0, forecast.target - forecast.actual);
+
+        const hint = forecast.achieved
+          ? `${t("Goal hit")} — ${forecast.actual} ${t("of")} ${forecast.target} ${t("FTDs")}${worth(forecast.actual)}`
+          : forecast.ended
+            ? `${t("Period ended at")} ${Math.round(forecast.projectedPct)}% ${t("of target")}`
+            : forecast.projectedPct >= 100
+              ? `${t("On track to reach")} ${forecast.target} ${t("FTDs")}${worth(forecast.target)}`
+              : `${t("Need")} ${fmtPace(forecast.requiredPace)}/${t("day")} ${t("for")} ${forecast.daysLeft} ${forecast.daysLeft === 1 ? t("day") : t("days")} ${t("to hit")} ${forecast.target}${rate > 0 ? ` — ${formatCurrency(remaining * rate)} ${t("still to earn")}` : ""}`;
+
+        return (
+          <div className="goal-pace">
+            <span className="goal-pace-mark">
+              {status === "achieved" ? "✓" : status === "on-track" ? "→" : status === "at-risk" ? "!" : "↓"}
+            </span>
+            <span className="goal-pace-text">
+              {hint}
+              {/* A finished period has no current pace and no
+                  forecast — only what happened. */}
+              {forecast.ended ? null : (
+                <span className="goal-pace-aside">
+                  {t("Now")} {fmtPace(forecast.currentPace)}/{t("day")}
+                  {` · ${t("forecast")} ${Math.round(forecast.projected)} (${Math.round(forecast.projectedPct)}%)`}
+                </span>
+              )}
+            </span>
+          </div>
+        );
+      })()}
+      {goal.notes ? <div className="goal-notes">{goal.notes}</div> : null}
+    </div>
+    );
+  };
+
   return (
     <>
       <section className={`panels goals-panels${isLeadership ? "" : " is-single"}`}>
+        {/* Overview first, setup below. A nine-column table cannot live in
+            half a page, and leadership reads this list far more often than
+            they create a goal — so the list gets the width and the top. */}
+        <motion.div
+          className="panel"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1 }}
+        >
+          <div className="panel-head">
+            <div>
+              <h3 className="panel-title">{t("Goals Overview")}</h3>
+              <p className="panel-subtitle">
+                {t("Track progress vs. targets using live statistics data.")}
+              </p>
+            </div>
+          </div>
+          {goalState.loading ? (
+            <div className="empty-state">{t("Loading goals…")}</div>
+          ) : goalState.error ? (
+            <div className="empty-state error">{goalState.error}</div>
+          ) : displayGoals.length === 0 ? (
+            <div className="empty-state">{t("No goals set yet.")}</div>
+          ) : (
+            (() => {
+              const withInfo = displayGoals.map((g) => ({ goal: g, info: getGoalProgress(g) }));
+              // Two shapes, because they answer two questions. The team target
+              // is context — one goal, read once, so it keeps the card. The
+              // individual targets are a list you compare down a column, and a
+              // grid of cards is the wrong instrument for "who is behind".
+              const teamGoals = withInfo.filter(({ goal }) => goal.is_global);
+              const ownGoals = withInfo.filter(({ goal }) => !goal.is_global);
+              const counts = { all: ownGoals.length, behind: 0, "at-risk": 0, "on-track": 0, achieved: 0, none: 0 };
+              ownGoals.forEach(({ info }) => {
+                counts[info.status] = (counts[info.status] || 0) + 1;
+              });
+              const filtered = statusFilter === "all"
+                ? ownGoals
+                : ownGoals.filter(({ info }) => info.status === statusFilter);
+              const tabs = [
+                { key: "all", label: t("All"), count: counts.all, tone: "neutral" },
+                { key: "behind", label: t("Behind"), count: counts.behind, tone: "red" },
+                { key: "at-risk", label: t("At risk"), count: counts["at-risk"], tone: "yellow" },
+                { key: "on-track", label: t("On track"), count: counts["on-track"], tone: "green" },
+                { key: "achieved", label: t("Achieved"), count: counts.achieved, tone: "green-solid" },
+              ];
+              // Urgent first, then the closest deadline — the order someone
+              // scanning for "what needs me today" would sort it by hand.
+              const rank = { behind: 0, "at-risk": 1, "on-track": 2, achieved: 3, none: 4 };
+              const byUrgency = (a, b) => {
+                const diff = (rank[a.info.status] ?? 5) - (rank[b.info.status] ?? 5);
+                return diff !== 0 ? diff : (a.goal.date_to || "").localeCompare(b.goal.date_to || "");
+              };
+              const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
+              return (
+            <>
+              {teamGoals.length > 0 ? (
+                <div className="goal-section">
+                  <div className="goal-section-head">
+                    <h4 className="goal-section-title">{t("Team target")}</h4>
+                    <span className="goal-section-note">
+                      {isLeadership
+                        ? t("Shared across every buyer")
+                        : t("Shared target, measured on your own numbers")}
+                    </span>
+                  </div>
+                  <div className="goal-list">
+                    {teamGoals.sort(byUrgency).map(renderGoalCard)}
+                  </div>
+                </div>
+              ) : null}
+              <div className="goal-section">
+                <div className="goal-section-head">
+                  <h4 className="goal-section-title">
+                    {isLeadership ? t("Individual targets") : t("Your targets")}
+                  </h4>
+                  <span className="goal-section-note">
+                    {ownGoals.length} {ownGoals.length === 1 ? t("goal") : t("goals")}
+                  </span>
+                </div>
+                {ownGoals.length === 0 ? (
+                  <div className="empty-state">{t("No individual goals set yet.")}</div>
+                ) : (
+                  <>
+                    <div className="goal-summary-strip">
+                      {tabs.map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          className={`goal-summary-tab tone-${item.tone}${statusFilter === item.key ? " is-active" : ""}`}
+                          onClick={() => setStatusFilter(item.key)}
+                          disabled={item.key !== "all" && item.count === 0}
+                        >
+                          <span className="goal-summary-tab-count">{item.count}</span>
+                          <span className="goal-summary-tab-label">{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {filtered.length === 0 ? (
+                      <div className="empty-state">{t("No goals match this filter.")}</div>
+                    ) : (
+                      <div className="table-wrap">
+                        <table className="entries-table goal-table">
+                          <thead>
+                            <tr>
+                              {isLeadership ? <th>{t("Buyer")}</th> : null}
+                              <th>{t("Scope")}</th>
+                              <th>{t("Period")}</th>
+                              <th>{t("FTDs")}</th>
+                              <th>{t("Reg2Dep")}</th>
+                              <th>{t("Market value")}</th>
+                              <th>{t("Pace")}</th>
+                              <th>{t("Status")}</th>
+                              {isLeadership ? <th /> : null}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.sort(byUrgency).map(({ goal, info }) => {
+                              const { totals, ftdProgress, r2dActual, r2dProgress, statusLabel, status, market, marketProgress, timing, forecast } = info;
+                              return (
+                                <tr key={goal.id} className={`goal-row-tr status-${status}`}>
+                                  {isLeadership ? (
+                                    <td className="goal-td-buyer">{goal.buyer}</td>
+                                  ) : null}
+                                  <td>{goal.country || t("All Countries")}</td>
+                                  <td className="goal-td-period">
+                                    <span>{formatGoalRange(goal.date_from, goal.date_to)}</span>
+                                    {timing ? <small>{timing.label}</small> : null}
+                                  </td>
+                                  {/* The measure the goal is named after carries
+                                      the bar; the rest are numbers you read. */}
+                                  <td className="goal-td-primary">
+                                    <span className="goal-td-value">
+                                      {Number(totals.ftds || 0).toLocaleString()}
+                                      <small>
+                                        {" / "}
+                                        {Number(goal.ftds_target) > 0
+                                          ? Number(goal.ftds_target).toLocaleString()
+                                          : "—"}
+                                      </small>
+                                    </span>
+                                    <span className="goal-td-track">
+                                      <span
+                                        className="goal-td-fill"
+                                        style={{ width: ftdProgress.pct ? `${ftdProgress.pct}%` : "0%" }}
+                                      />
+                                    </span>
+                                  </td>
+                                  <td className="goal-td-num">
+                                    {r2dActual === null ? (
+                                      <span className="offer-muted">—</span>
+                                    ) : (
+                                      <span className="goal-td-value">
+                                        {r2dActual.toFixed(2)}%
+                                        <small>
+                                          {" / "}
+                                          {Number(goal.r2d_target) > 0
+                                            ? `${Number(goal.r2d_target).toFixed(2)}%`
+                                            : "—"}
+                                        </small>
+                                      </span>
+                                    )}
+                                    {r2dProgress.pct !== null ? (
+                                      <small className="goal-td-pct">{r2dProgress.label}</small>
+                                    ) : null}
+                                  </td>
+                                  <td className="goal-td-num">
+                                    {market && (market.value > 0 || market.targetValue > 0) ? (
+                                      <>
+                                        <span className="goal-td-value">
+                                          {formatCurrency(market.value || 0)}
+                                          <small>
+                                            {" / "}
+                                            {market.targetValue > 0 ? formatCurrency(market.targetValue) : "—"}
+                                          </small>
+                                        </span>
+                                        {market.blendedCpa ? (
+                                          <small className="goal-td-pct">
+                                            ~{formatCurrency(market.blendedCpa)} {t("each")}
+                                          </small>
+                                        ) : null}
+                                        {market.unpricedFtds > 0 ? (
+                                          <small
+                                            className="goal-td-warn"
+                                            title={`${market.unpricedCountries.join(", ")} ${t("has no rate")}`}
+                                          >
+                                            {market.unpricedFtds} {t("not valued")}
+                                          </small>
+                                        ) : null}
+                                      </>
+                                    ) : (
+                                      <span className="offer-muted">—</span>
+                                    )}
+                                  </td>
+                                  {/* What to do about it, in the unit the buyer
+                                      acts in — not a second copy of progress. */}
+                                  <td className="goal-td-pace">
+                                    {!forecast ? (
+                                      <span className="offer-muted">
+                                        {timing?.state === "pending" ? t("not started") : "—"}
+                                      </span>
+                                    ) : forecast.achieved ? (
+                                      <span className="goal-td-value">{t("Goal hit")}</span>
+                                    ) : forecast.ended ? (
+                                      <span className="offer-muted">
+                                        {Math.round(forecast.projectedPct)}% {t("at close")}
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <span className="goal-td-value">
+                                          {fmtPace(forecast.requiredPace)}
+                                          <small>/{t("day")} {t("needed")}</small>
+                                        </span>
+                                        <small className="goal-td-pct">
+                                          {t("now")} {fmtPace(forecast.currentPace)} · {t("forecast")}{" "}
+                                          {Math.round(forecast.projected)} ({Math.round(forecast.projectedPct)}%)
+                                        </small>
+                                      </>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span className={`goal-status ${status}`}>{statusLabel}</span>
+                                  </td>
+                                  {isLeadership ? (
+                                    <td>
+                                      <div className="campaign-table-actions">
+                                        <button
+                                          className="icon-btn"
+                                          type="button"
+                                          title={t("Duplicate goal")}
+                                          onClick={() => handleGoalDuplicate(goal)}
+                                        >
+                                          <Copy size={16} />
+                                        </button>
+                                        <button
+                                          className="icon-btn"
+                                          type="button"
+                                          title={t("Delete goal")}
+                                          onClick={() => handleGoalDelete(goal.id)}
+                                        >
+                                          <Trash2 size={16} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  ) : null}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+              );
+            })()
+          )}
+        </motion.div>
+
         {isLeadership ? (
           <motion.div
             className="panel"
@@ -14760,299 +15241,6 @@ function GoalsDashboard({ authUser }) {
             </form>
           </motion.div>
         ) : null}
-
-        <motion.div
-          className="panel"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-        >
-          <div className="panel-head">
-            <div>
-              <h3 className="panel-title">{t("Goals Overview")}</h3>
-              <p className="panel-subtitle">
-                {t("Track progress vs. targets using live statistics data.")}
-              </p>
-            </div>
-          </div>
-
-          {goalState.loading ? (
-            <div className="empty-state">{t("Loading goals…")}</div>
-          ) : goalState.error ? (
-            <div className="empty-state error">{goalState.error}</div>
-          ) : displayGoals.length === 0 ? (
-            <div className="empty-state">{t("No goals set yet.")}</div>
-          ) : (
-            (() => {
-              // Pre-compute progress + status for all goals (used for both summary + filtering)
-              const withInfo = displayGoals.map((g) => ({ goal: g, info: getGoalProgress(g) }));
-              const counts = { all: withInfo.length, behind: 0, "at-risk": 0, "on-track": 0, achieved: 0, none: 0 };
-              withInfo.forEach(({ info }) => {
-                counts[info.status] = (counts[info.status] || 0) + 1;
-              });
-              const filtered = statusFilter === "all"
-                ? withInfo
-                : withInfo.filter(({ info }) => info.status === statusFilter);
-
-              const tabs = [
-                { key: "all", label: t("All"), count: counts.all, tone: "neutral" },
-                { key: "behind", label: t("Behind"), count: counts.behind, tone: "red" },
-                { key: "at-risk", label: t("At risk"), count: counts["at-risk"], tone: "yellow" },
-                { key: "on-track", label: t("On track"), count: counts["on-track"], tone: "green" },
-                { key: "achieved", label: t("Achieved"), count: counts.achieved, tone: "green-solid" },
-              ];
-
-              return (
-            <>
-              <div className="goal-summary-strip">
-                {tabs.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    className={`goal-summary-tab tone-${item.tone}${statusFilter === item.key ? " is-active" : ""}`}
-                    onClick={() => setStatusFilter(item.key)}
-                    disabled={item.key !== "all" && item.count === 0}
-                  >
-                    <span className="goal-summary-tab-count">{item.count}</span>
-                    <span className="goal-summary-tab-label">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              {filtered.length === 0 ? (
-                <div className="empty-state">{t("No goals match this filter.")}</div>
-              ) : (
-              <div className="goal-list">
-                {filtered
-                  .sort((a, b) => {
-                    // Sort urgent goals first: behind > at-risk > on-track > achieved
-                    const order = { behind: 0, "at-risk": 1, "on-track": 2, achieved: 3, none: 4 };
-                    const aRank = order[a.info.status] ?? 5;
-                    const bRank = order[b.info.status] ?? 5;
-                    if (aRank !== bRank) return aRank - bRank;
-                    // Secondary: closer deadlines first
-                    return (a.goal.date_to || "").localeCompare(b.goal.date_to || "");
-                  })
-                  .map(({ goal, info }) => {
-                  const { totals, ftdProgress, r2dActual, r2dProgress, overall, statusLabel, status, market, marketProgress, timing, forecast } = info;
-                  const statusClass = `status-${status}`;
-                return (
-                  <div key={goal.id} className={`goal-card ${statusClass}${goal.is_global ? " is-global" : ""}`}>
-                    <div className="goal-head">
-                      <div className="goal-head-text">
-                        <div className="goal-title">
-                          {goal.is_global ? t("Global Goal") : goal.buyer}
-                        </div>
-                        <div className="goal-sub">
-                          {[
-                            t(goal.period),
-                            goal.country || t("All Countries"),
-                            formatGoalRange(goal.date_from, goal.date_to),
-                            timing?.label,
-                            goal.is_global && !isLeadership ? t("Based on your metrics") : null,
-                          ].filter(Boolean).join(" · ")}
-                        </div>
-                      </div>
-                      {/* One status signal. The left rail carries the same state
-                          in colour, so a second "behind pace" pill next to a
-                          "BEHIND" pill only competed with it. */}
-                      <div className="goal-actions">
-                        <span className={`goal-status ${status}`}>{statusLabel}</span>
-                        {isLeadership ? (
-                          <>
-                            <button
-                              className="icon-btn"
-                              type="button"
-                              title={t("Duplicate goal")}
-                              onClick={() => handleGoalDuplicate(goal)}
-                            >
-                              <Copy size={16} />
-                            </button>
-                            <button
-                              className="icon-btn"
-                              type="button"
-                              title={t("Delete goal")}
-                              onClick={() => handleGoalDelete(goal.id)}
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* The headline: one ring, one number, the target it is
-                        measured against. Everything else on the card supports
-                        this rather than competing with it. */}
-                    <div className="goal-primary">
-                      <div
-                        className={`goal-ring${overall === null ? " is-empty" : ""}`}
-                        style={{ "--goal-pct": overall === null ? 0 : Math.max(0, Math.min(100, overall)) }}
-                        role="img"
-                        aria-label={
-                          overall === null
-                            ? t("No targets set")
-                            : `${Math.round(overall)}% ${t("of the FTD target")}`
-                        }
-                      >
-                        <div className="goal-ring-inner">
-                          <span className="goal-ring-pct">
-                            {overall === null ? "—" : `${Math.round(overall)}%`}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="goal-primary-metric">
-                        <span className="goal-primary-label">
-                          {goal.is_global && !isLeadership ? t("Your FTDs") : t("FTDs")}
-                        </span>
-                        <div className="goal-primary-value">
-                          {Number(totals.ftds || 0).toLocaleString()}
-                          <span>
-                            {" / "}
-                            {goal.ftds_target && Number(goal.ftds_target) > 0
-                              ? Number(goal.ftds_target).toLocaleString()
-                              : "—"}
-                          </span>
-                        </div>
-                        <div className="goal-bar">
-                          <span
-                            className="goal-bar-fill"
-                            style={{ width: ftdProgress.pct ? `${ftdProgress.pct}%` : "0%" }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Supporting measures. Rows, not tiles — three bordered
-                        boxes side by side read as three equal headlines, which
-                        is exactly what they are not. */}
-                    <div className="goal-rows">
-                      {[
-                        // A row with neither a value nor a target is furniture.
-                        ...(r2dActual !== null || Number(goal.r2d_target) > 0
-                          ? [{
-                            label: "Reg2Dep",
-                            value: r2dActual === null ? "—" : `${r2dActual.toFixed(2)}%`,
-                            target:
-                              goal.r2d_target && Number(goal.r2d_target) > 0
-                                ? `${Number(goal.r2d_target).toFixed(2)}%`
-                                : "—",
-                            progress: r2dProgress,
-                          }]
-                          : []),
-                        // Only once the rate card can actually price this goal.
-                        // An empty money row teaches a buyer to ignore the money.
-                        ...(market && (market.value > 0 || market.targetValue > 0)
-                          ? [{
-                            label: "Market value",
-                            value: formatCurrency(market.value || 0),
-                            target: market.targetValue > 0 ? formatCurrency(market.targetValue) : "—",
-                            progress: marketProgress,
-                            notes: [
-                              market.blendedCpa
-                                ? `${market.pricedFtds.toLocaleString()} ${t("FTDs")} · ~${formatCurrency(market.blendedCpa)} ${t("each")}`
-                                : null,
-                              // A target nobody typed must not look like one
-                              // somebody did — say when it was derived.
-                              market.targetSource === "ftds_target"
-                                ? `${t("Target: ")}${Number(goal.ftds_target).toLocaleString()} ${t("FTDs at market rate")}`
-                                : null,
-                            ].filter(Boolean),
-                            // FTDs from a country nobody has priced are worth an
-                            // unknown amount, not zero. Say which, so a short
-                            // total is not read as a short month.
-                            warn: market.unpricedFtds > 0
-                              ? `${market.unpricedFtds.toLocaleString()} ${t("FTDs not valued")} — ${market.unpricedCountries.join(", ")} ${t("has no rate")}`
-                              : null,
-                          }]
-                          : []),
-                      ].map((row) => (
-                        <div key={row.label} className="goal-row">
-                          <div className="goal-row-main">
-                            <span className="goal-row-label">{t(row.label)}</span>
-                            <span className="goal-row-value">
-                              {row.value}
-                              <small>{" / "}{row.target}</small>
-                            </span>
-                            <span className="goal-row-track">
-                              <span
-                                className="goal-row-fill"
-                                style={{ width: row.progress.pct ? `${row.progress.pct}%` : "0%" }}
-                              />
-                            </span>
-                            <span className="goal-row-pct">{row.progress.label}</span>
-                          </div>
-                          {(row.notes || []).map((line) => (
-                            <div key={line} className="goal-metric-note">{line}</div>
-                          ))}
-                          {row.warn ? <div className="goal-metric-note is-warn">{row.warn}</div> : null}
-                        </div>
-                      ))}
-                    </div>
-                    {(() => {
-                      // Pace + forecast widget — turns "set target" into "here's how to hit it"
-                      // Reads the same forecast the status badge and the rail
-                      // were computed from, so the card cannot contradict
-                      // itself the way it did when each end worked it out
-                      // independently.
-                      if (timing?.state === "pending") {
-                        return (
-                          <div className="goal-pace pending">
-                            <span className="goal-pace-mark">◷</span>
-                            <span className="goal-pace-text">
-                              {t("Period starts in")} <strong>{timing.startsIn} {timing.startsIn === 1 ? t("day") : t("days")}</strong>
-                              <span className="goal-pace-aside">{timing.totalDays}-{t("day target")}</span>
-                            </span>
-                          </div>
-                        );
-                      }
-                      if (!forecast) return null;
-
-                      const fmtPace = (v) => (v >= 10 ? Math.round(v).toString() : v.toFixed(1));
-                      // "1.8/day" is an instruction; "1.8/day, and $712 still to
-                      // earn" is a reason. The rate is the goal's own blend, so
-                      // the money moves with the mix the buyer is running.
-                      const rate = Number(market?.blendedCpa) || 0;
-                      const worth = (count) => (rate > 0 ? ` (${formatCurrency(count * rate)})` : "");
-                      const remaining = Math.max(0, forecast.target - forecast.actual);
-
-                      const hint = forecast.achieved
-                        ? `${t("Goal hit")} — ${forecast.actual} ${t("of")} ${forecast.target} ${t("FTDs")}${worth(forecast.actual)}`
-                        : forecast.ended
-                          ? `${t("Period ended at")} ${Math.round(forecast.projectedPct)}% ${t("of target")}`
-                          : forecast.projectedPct >= 100
-                            ? `${t("On track to reach")} ${forecast.target} ${t("FTDs")}${worth(forecast.target)}`
-                            : `${t("Need")} ${fmtPace(forecast.requiredPace)}/${t("day")} ${t("for")} ${forecast.daysLeft} ${forecast.daysLeft === 1 ? t("day") : t("days")} ${t("to hit")} ${forecast.target}${rate > 0 ? ` — ${formatCurrency(remaining * rate)} ${t("still to earn")}` : ""}`;
-
-                      return (
-                        <div className="goal-pace">
-                          <span className="goal-pace-mark">
-                            {status === "achieved" ? "✓" : status === "on-track" ? "→" : status === "at-risk" ? "!" : "↓"}
-                          </span>
-                          <span className="goal-pace-text">
-                            {hint}
-                            {/* A finished period has no current pace and no
-                                forecast — only what happened. */}
-                            {forecast.ended ? null : (
-                              <span className="goal-pace-aside">
-                                {t("Now")} {fmtPace(forecast.currentPace)}/{t("day")}
-                                {` · ${t("forecast")} ${Math.round(forecast.projected)} (${Math.round(forecast.projectedPct)}%)`}
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })()}
-                    {goal.notes ? <div className="goal-notes">{goal.notes}</div> : null}
-                  </div>
-                );
-              })}
-              </div>
-              )}
-            </>
-              );
-            })()
-          )}
-        </motion.div>
       </section>
 
 

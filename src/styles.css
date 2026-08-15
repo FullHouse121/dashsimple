@@ -4799,8 +4799,11 @@ select option,
   color: var(--text);
 }
 
+/* One column, always. The two-panel split gave the goals list ~630px, which
+   clipped the individual-targets table at the Pace column and hid Status
+   entirely — a table with half its columns off-screen is not a table. */
 .goals-panels {
-  grid-template-columns: 1.1fr 1.4fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 /* Without the setup form there is no second column — and half a screen of
@@ -6762,6 +6765,124 @@ select option,
 }
 
 /* ── Goal summary strip with filter tabs ─────────────────────────── */
+/* ── Section headings ─────────────────────────────────────────────────
+   The page carries two lists with different jobs, so each says which it is
+   rather than leaving the reader to infer it from the shape. */
+.goal-section + .goal-section {
+  margin-top: 28px;
+}
+
+.goal-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.goal-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.goal-section-note {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+/* ── Individual targets table ─────────────────────────────────────────
+   One row per goal, so "who is behind" is a glance down a column instead
+   of a scan across a grid of cards. */
+.goal-table td {
+  vertical-align: middle;
+}
+
+/* The same status rail the card uses, so the two lists read as one system. */
+.goal-table tbody tr.goal-row-tr td:first-child {
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.06);
+}
+.goal-table tbody tr.status-behind td:first-child { box-shadow: inset 3px 0 0 var(--red); }
+.goal-table tbody tr.status-at-risk td:first-child { box-shadow: inset 3px 0 0 var(--yellow); }
+.goal-table tbody tr.status-on-track td:first-child,
+.goal-table tbody tr.status-achieved td:first-child { box-shadow: inset 3px 0 0 var(--green); }
+
+.goal-td-buyer {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.goal-td-period span {
+  display: block;
+  white-space: nowrap;
+}
+
+.goal-td-period small,
+.goal-td-pct,
+.goal-td-warn {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.goal-td-warn {
+  color: var(--yellow);
+  cursor: help;
+}
+
+.goal-td-value {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.goal-td-value small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+}
+
+.goal-td-num,
+.goal-td-pace {
+  min-width: 118px;
+}
+
+/* Only the measure the goal is named after gets a bar. Four bars per row
+   would be four things competing to be the row's headline. */
+.goal-td-primary {
+  min-width: 132px;
+}
+
+.goal-td-track {
+  display: block;
+  margin-top: 5px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.goal-td-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--goal-accent, rgba(255, 255, 255, 0.4));
+  transition: width 0.5s ease;
+}
+
+.goal-table tbody tr.status-behind { --goal-accent: var(--red); }
+.goal-table tbody tr.status-at-risk { --goal-accent: var(--yellow); }
+.goal-table tbody tr.status-on-track,
+.goal-table tbody tr.status-achieved { --goal-accent: var(--green); }
+
 .goal-summary-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
