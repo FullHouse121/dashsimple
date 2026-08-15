@@ -119,15 +119,58 @@ const BrandMark = ({ value, height = 15 }) => {
   );
 };
 
+// A deploy gives every code-split chunk a new content hash and removes the old
+// files. A tab that was open across the deploy still holds the previous entry
+// bundle, so the first lazy view it opens asks for a filename that no longer
+// exists and throws "Failed to fetch dynamically imported module" — which is
+// how a routine release turned into a broken Conversions and Live Clicks for
+// anyone who had not reloaded.
+//
+// The fix is a reload, which is the one thing the error boundary cannot do for
+// itself. Doing it here is deliberate: a stale chunk is not a render error, and
+// by the time the boundary sees it the user has already been shown a failure
+// for something that just needed newer HTML.
+//
+// The sessionStorage guard is what keeps this from becoming a reload loop: a
+// chunk that is genuinely missing — a bad deploy, an offline device — fails the
+// second time too, and then the error surfaces properly. Success clears the
+// guard so the next release can reload again.
+const lazyWithReload = (key, factory) =>
+  React.lazy(() =>
+    factory()
+      .then((mod) => {
+        try {
+          window.sessionStorage?.removeItem(`chunk-reload:${key}`);
+        } catch (error) {
+          /* private mode — the guard is best-effort */
+        }
+        return mod;
+      })
+      .catch((error) => {
+        let alreadyTried = true;
+        try {
+          const flag = `chunk-reload:${key}`;
+          alreadyTried = Boolean(window.sessionStorage?.getItem(flag));
+          if (!alreadyTried) window.sessionStorage?.setItem(flag, "1");
+        } catch (storageError) {
+          /* no storage: fall through and show the error rather than loop */
+        }
+        if (alreadyTried) throw error;
+        window.location.reload();
+        // Never settles — the reload replaces this document.
+        return new Promise(() => {});
+      })
+  );
+
 // Lazy-loaded dashboard views — each splits into its own chunk so the initial
 // bundle stays small. Add more dashboards here as they're extracted to /src/dashboards/
-const DocumentationDashboard = React.lazy(() => import("./dashboards/DocumentationDashboard.jsx"));
+const DocumentationDashboard = lazyWithReload("docs", () => import("./dashboards/DocumentationDashboard.jsx"));
 
 // Command palette (Cmd+K) — lazy so it doesn't add weight to the initial bundle
-const CommandPalette = React.lazy(() => import("./components/CommandPalette.jsx"));
-const LiveClicksDashboard = React.lazy(() => import("./dashboards/LiveClicksDashboard.jsx"));
-const ConversionsDashboard = React.lazy(() => import("./dashboards/ConversionsDashboard.jsx"));
-const ReportsDashboard = React.lazy(() => import("./dashboards/ReportsDashboard.jsx"));
+const CommandPalette = lazyWithReload("palette", () => import("./components/CommandPalette.jsx"));
+const LiveClicksDashboard = lazyWithReload("live-clicks", () => import("./dashboards/LiveClicksDashboard.jsx"));
+const ConversionsDashboard = lazyWithReload("conversions", () => import("./dashboards/ConversionsDashboard.jsx"));
+const ReportsDashboard = lazyWithReload("reports", () => import("./dashboards/ReportsDashboard.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
