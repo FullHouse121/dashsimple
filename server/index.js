@@ -9698,6 +9698,18 @@ app.post("/api/meta-tokens", async (req, res) => {
     const keitaroName =
       [resolvedBuyerName, String(comment || "").trim()].filter(Boolean).join(" | ") ||
       normalizedAccountNumber;
+    // Ask Meta before Keitaro does.
+    //
+    // This is the buyer's front door: they paste a token here and the dashboard
+    // wires Keitaro for them. Until now the answer was always "added", because
+    // Keitaro accepts a token without trying it and only finds out on its first
+    // poll — by which time the buyer has moved on and nobody is watching. A
+    // whole estate of dead tokens accumulated exactly that way.
+    //
+    // One Graph call at save time turns "added" into "added, and it works" or
+    // "added, but Meta says the app was deleted — here is what to do".
+    const tokenCheck = await checkMetaToken(payload.meta_token, normalizedAccountNumber);
+
     const keitaroPush = await pushMetaIntegrationToKeitaro({
       name: keitaroName,
       adAccountId: normalizedAccountNumber,
@@ -9736,6 +9748,11 @@ app.post("/api/meta-tokens", async (req, res) => {
     const responseBody = row ? sanitizeIntegrationRow(row) : { id: info.id };
     responseBody.campaignsRequested = (keitaroPush.requestedCampaigns || []).length;
     responseBody.campaignsAttached = (keitaroPush.attachedCampaigns || []).length;
+    // Meta's verdict, so the buyer learns now rather than from a red row in
+    // Health next week. Never the token itself.
+    responseBody.tokenCheck = tokenCheck;
+    // A fresh save invalidates the cached estate-wide view.
+    metaTokenCheckCache = { at: 0, value: null };
     return res.status(info.updated ? 200 : 201).json(responseBody);
   } catch (error) {
     await createUnexpectedNotification({

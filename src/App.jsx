@@ -21224,7 +21224,21 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
       await Promise.all([fetchIntegrations(), fetchKeitaroCosts(), fetchAccountOptions?.()]);
       const requested = Number(detail?.campaignsRequested || 0);
       const attached = Number(detail?.campaignsAttached || 0);
-      setCopyFeedback(requested ? `Saved · ${attached}/${requested} campaigns attached` : "Integration saved");
+      const saved = requested ? `Saved · ${attached}/${requested} campaigns attached` : "Integration saved";
+      // "Saved" only ever meant "written down". The server now tries the token
+      // against Meta on the way through, so say which of the two happened —
+      // a buyer who pastes a dead token should find out here, not from a red
+      // row in Health a week later.
+      const check = detail?.tokenCheck;
+      if (check && !check.ok) {
+        setCopyFeedback(null);
+        setIntegrationState({
+          loading: false,
+          error: `${saved}, but Meta rejected the token — ${check.summary}. ${check.action || ""}`.trim(),
+        });
+      } else {
+        setCopyFeedback(check?.ok ? `${saved} · token verified with Meta` : saved);
+      }
       resetForm();
     } catch (error) {
       setIntegrationState({ loading: false, error: error.message || "Failed to save integration." });
