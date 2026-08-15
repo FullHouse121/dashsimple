@@ -13472,7 +13472,14 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("User Behavior")}</h3>
-              <p className="panel-subtitle">{t("External ID performance and campaign attribution.")}</p>
+              <p className="panel-subtitle">
+                {t("External ID performance and campaign attribution.")}{" "}
+                {/* Says once, where it is read, what the dash in the Registers
+                    column means — so nobody has to hover to find out. */}
+                <span className="offer-muted">
+                  {t("Registrations arrive on the click before the deposit, so they cannot be tied to a single player here — see Statistics for registration totals.")}
+                </span>
+              </p>
             </div>
             <div className="panel-actions">
               {/* Same treatment as the Accounts Registry export, rather than
@@ -13560,7 +13567,30 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                         </td>
                         <td>{row.campaign || "—"}</td>
                         <td>{row.clicks.toLocaleString()}</td>
-                        <td>{row.registers.toLocaleString()}</td>
+                        {/* A deposit proves a registration happened, but the
+                            registration postback lands on an earlier click with
+                            a different sub_id, so the tracker holds no
+                            registration against THIS player. Checked across a
+                            full year: of 40 sub_ids that received an FTD, zero
+                            carried a registration. Printing "0" beside a real
+                            deposit asserts something false; "—" says the honest
+                            thing, which is that it cannot be seen from here.
+                            Registration totals per buyer and per campaign are
+                            sound — Statistics, Campaigns and Goals. */}
+                        <td>
+                          {row.registers > 0 ? (
+                            row.registers.toLocaleString()
+                          ) : row.ftds > 0 || row.redeposits > 0 ? (
+                            <span
+                              className="offer-muted"
+                              title={t("This player deposited, so they registered — but the registration postback arrived on a different click, so the tracker holds no registration against this ID. Per-buyer and per-campaign registration totals are unaffected.")}
+                            >
+                              —
+                            </span>
+                          ) : (
+                            "0"
+                          )}
+                        </td>
                         <td>{row.ftds.toLocaleString()}</td>
                         <td>{row.redeposits.toLocaleString()}</td>
                         <td>

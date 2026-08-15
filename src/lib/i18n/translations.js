@@ -785,6 +785,10 @@ export const translations = {
     "Reading the cost pipeline…": "Maliyet hattı okunuyor…",
     // Goals, priced at the market CPA rate card.
     "Market value": "Piyasa değeri",
+    "Registrations arrive on the click before the deposit, so they cannot be tied to a single player here — see Statistics for registration totals.":
+      "Kayıtlar, depozitodan önceki tıklamada gelir; bu nedenle burada tek bir oyuncuya bağlanamaz — kayıt toplamları için İstatistikler'e bakın.",
+    "This player deposited, so they registered — but the registration postback arrived on a different click, so the tracker holds no registration against this ID. Per-buyer and per-campaign registration totals are unaffected.":
+      "Bu oyuncu yatırım yaptı, dolayısıyla kayıt oldu — ancak kayıt postback'i farklı bir tıklamada geldiği için tracker bu ID'ye ait bir kayıt tutmuyor. Alıcı ve kampanya bazlı kayıt toplamları etkilenmez.",
     Targets: "Hedefler",
     "Set a target": "Hedef belirle",
     Currently: "Şu anda",
