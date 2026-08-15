@@ -468,6 +468,16 @@ const initDb = async () => {
       updated_by TEXT,
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );`,
+    // Region-level market CPA. A country with no explicit rate inherits its
+    // region's, so pricing LATAM once covers every country there — including
+    // ones that start producing FTDs next week. Additive only: an explicit
+    // country rate always wins.
+    `CREATE TABLE IF NOT EXISTS market_cpa_regions (
+      region TEXT PRIMARY KEY,
+      cpa NUMERIC NOT NULL DEFAULT 0,
+      updated_by TEXT,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );`,
     `CREATE TABLE IF NOT EXISTS campaign_spend (
       id SERIAL PRIMARY KEY,
       campaign TEXT NOT NULL,
@@ -11563,17 +11573,20 @@ app.get("/api/market-cpa", async (req, res) => {
     // Who set a rate and when is the difference between a considered price and
     // a placeholder nobody revisited. The table has always recorded both; the
     // API simply never returned them.
-    const rows = await getRows(
-      `SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`
-    );
-    return res.json(
-      rows.map((row) => ({
-        country: row.country,
-        cpa: Number(row.cpa) || 0,
-        updatedBy: row.updated_by || null,
-        updatedAt: row.updated_at || null,
-      }))
-    );
+    const [rows, regionRows] = await Promise.all([
+      getRows(`SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`),
+      getRows(`SELECT region, cpa, updated_by, updated_at FROM market_cpa_regions ORDER BY region`),
+    ]);
+    const shape = (row, key) => ({
+      [key]: row[key],
+      cpa: Number(row.cpa) || 0,
+      updatedBy: row.updated_by || null,
+      updatedAt: row.updated_at || null,
+    });
+    return res.json({
+      rates: rows.map((row) => shape(row, "country")),
+      regions: regionRows.map((row) => shape(row, "region")),
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to load CPA rates." });
   }
@@ -11582,7 +11595,25 @@ app.get("/api/market-cpa", async (req, res) => {
 app.put("/api/market-cpa", async (req, res) => {
   if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
   const rates = Array.isArray(req.body?.rates) ? req.body.rates : [];
+  const regions = Array.isArray(req.body?.regions) ? req.body.regions : [];
   if (rates.length > 300) return res.status(400).json({ error: "Too many rates." });
+  if (regions.length > 40) return res.status(400).json({ error: "Too many regions." });
+  for (const entry of regions) {
+    const region = String(entry?.region || "").trim().slice(0, 40);
+    const cpa = Number(entry?.cpa);
+    if (!region || !Number.isFinite(cpa) || cpa < 0 || cpa > 100000) continue;
+    if (cpa === 0) {
+      await query(`DELETE FROM market_cpa_regions WHERE region = $1`, [region]);
+    } else {
+      await query(
+        `INSERT INTO market_cpa_regions (region, cpa, updated_by, updated_at)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (region) DO UPDATE
+           SET cpa = EXCLUDED.cpa, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [region, cpa, req.user?.username || "System"]
+      );
+    }
+  }
   try {
     for (const rate of rates) {
       const country = String(rate?.country || "").trim().slice(0, 80);
@@ -11603,17 +11634,20 @@ app.put("/api/market-cpa", async (req, res) => {
     // Who set a rate and when is the difference between a considered price and
     // a placeholder nobody revisited. The table has always recorded both; the
     // API simply never returned them.
-    const rows = await getRows(
-      `SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`
-    );
-    return res.json(
-      rows.map((row) => ({
-        country: row.country,
-        cpa: Number(row.cpa) || 0,
-        updatedBy: row.updated_by || null,
-        updatedAt: row.updated_at || null,
-      }))
-    );
+    const [rows, regionRows] = await Promise.all([
+      getRows(`SELECT country, cpa, updated_by, updated_at FROM market_cpa_rates ORDER BY country`),
+      getRows(`SELECT region, cpa, updated_by, updated_at FROM market_cpa_regions ORDER BY region`),
+    ]);
+    const shape = (row, key) => ({
+      [key]: row[key],
+      cpa: Number(row.cpa) || 0,
+      updatedBy: row.updated_by || null,
+      updatedAt: row.updated_at || null,
+    });
+    return res.json({
+      rates: rows.map((row) => shape(row, "country")),
+      regions: regionRows.map((row) => shape(row, "region")),
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to save CPA rates." });
   }

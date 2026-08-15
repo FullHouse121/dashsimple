@@ -20940,3 +20940,28 @@ select option,
 @media (max-width: 560px) {
   .cpa-grid { grid-template-columns: 1fr; }
 }
+
+/* Regional defaults — one price covering a whole region. */
+.rate-regions {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: rgba(11, 12, 14, 0.4);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.rate-regions-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.rate-regions-title { font-size: 12.5px; font-weight: 650; color: var(--text); }
+.rate-regions-note { font-size: 11px; color: var(--muted); }
+.rate-regions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); gap: 8px; }
+.rate-region {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 9px 7px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: rgba(11, 12, 14, 0.5);
+}
+/* A region worth setting: it would price countries currently valued at zero. */
+.rate-region.is-useful { border-color: rgba(247, 198, 37, 0.32); background: rgba(247, 198, 37, 0.05); }
+.rate-region-name { font-size: 12.5px; color: var(--text); min-width: 0; }
+.rate-region-hint { display: block; font-style: normal; font-size: 10px; color: var(--yellow); margin-top: 1px; }
+.cpa-item-meta.is-inherited { color: var(--blue); }

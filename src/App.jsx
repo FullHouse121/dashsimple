@@ -200,6 +200,7 @@ import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
+import { REGIONS, regionForCountry, resolveCpa } from "./lib/regions.js";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -11607,6 +11608,8 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
   const [campaignTab, setCampaignTab] = React.useState("performance");
   const [cpaRates, setCpaRates] = React.useState([]); // [{country, cpa}]
   const [cpaDraft, setCpaDraft] = React.useState({});
+  const [regionRates, setRegionRates] = React.useState([]);
+  const [regionDraft, setRegionDraft] = React.useState({});
   const [cpaState, setCpaState] = React.useState({ loading: false, saving: false, error: null, loaded: false });
 
   const fetchCpaRates = React.useCallback(async () => {
@@ -11616,9 +11619,14 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
       const response = await apiFetch("/api/market-cpa");
       if (!response.ok) throw new Error("Failed to load CPA rates.");
       const data = await response.json();
-      const rows = Array.isArray(data) ? data : [];
+      // The endpoint used to return a bare array; accept both so a stale
+      // deploy on either side does not blank the editor.
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.rates) ? data.rates : [];
+      const regions = Array.isArray(data?.regions) ? data.regions : [];
       setCpaRates(rows);
       setCpaDraft(Object.fromEntries(rows.map((row) => [row.country, String(row.cpa)])));
+      setRegionRates(regions);
+      setRegionDraft(Object.fromEntries(regions.map((row) => [row.region, String(row.cpa)])));
       setCpaState({ loading: false, saving: false, error: null, loaded: true });
     } catch (error) {
       setCpaState({ loading: false, saving: false, error: error.message, loaded: true });
@@ -11633,10 +11641,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     try {
       setCpaState((prev) => ({ ...prev, saving: true, error: null }));
       const rates = Object.entries(cpaDraft).map(([country, cpa]) => ({ country, cpa: Number(cpa) || 0 }));
+      const regions = Object.entries(regionDraft).map(([region, cpa]) => ({ region, cpa: Number(cpa) || 0 }));
       const response = await apiFetch("/api/market-cpa", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rates }),
+        body: JSON.stringify({ rates, regions }),
       });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
@@ -11650,10 +11659,30 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     }
   };
 
-  const cpaRateMap = React.useMemo(
+  const explicitRateMap = React.useMemo(
     () => new Map(cpaRates.map((row) => [row.country, Number(row.cpa) || 0])),
     [cpaRates]
   );
+  const regionRateMap = React.useMemo(
+    () => new Map(regionRates.map((row) => [row.region, Number(row.cpa) || 0])),
+    [regionRates]
+  );
+  // The rate Market ROI actually uses: the country's own price, or its
+  // region's when it has none. Every consumer reads through this, so a
+  // regional default takes effect everywhere at once.
+  const cpaRateMap = React.useMemo(() => {
+    const map = new Map(explicitRateMap);
+    const countries = new Set([
+      ...explicitRateMap.keys(),
+      ...visibleCampaigns.flatMap((row) => row.countryRows.map((c) => c.country)),
+    ]);
+    countries.forEach((country) => {
+      if (!country) return;
+      const { cpa } = resolveCpa(country, explicitRateMap, regionRateMap);
+      if (cpa > 0) map.set(country, cpa);
+    });
+    return map;
+  }, [explicitRateMap, regionRateMap, visibleCampaigns]);
 
   // Every country seen in the current data — the rate card grows with reality.
   const marketCountries = React.useMemo(() => {
@@ -11714,7 +11743,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     let pricedFtds = 0;
     ftdsByCountry.forEach((ftds, country) => {
       if (!ftds) return;
-      if (rateMeta.has(country)) pricedFtds += ftds;
+      // Inherited counts as priced — the deposit is being valued, just not by
+      // a number somebody typed for that country specifically.
+      if ((cpaRateMap.get(country) || 0) > 0) pricedFtds += ftds;
       else {
         unpricedCountries += 1;
         unpricedFtds += ftds;
@@ -11722,7 +11753,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
     });
     const stale = cpaRates.filter((r) => !(ftdsByCountry.get(r.country) > 0)).map((r) => r.country);
     return { unpricedCountries, unpricedFtds, pricedFtds, stale };
-  }, [ftdsByCountry, rateMeta, cpaRates]);
+  }, [ftdsByCountry, cpaRateMap, cpaRates]);
 
   // FTDs × market CPA per country — what the traffic is worth at market price.
   const marketRows = React.useMemo(
@@ -12014,6 +12045,47 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               </div>
             ) : null}
 
+            {/* Price a region once and every country in it inherits, including
+                ones that start producing deposits next week. An explicit
+                country rate below always wins. */}
+            <div className="rate-regions">
+              <div className="rate-regions-head">
+                <span className="rate-regions-title">{t("Regional defaults")}</span>
+                <span className="rate-regions-note">{t("Used when a country has no rate of its own")}</span>
+              </div>
+              <div className="rate-regions-grid">
+                {REGIONS.map((region) => {
+                  const covered = [...ftdsByCountry.entries()].filter(
+                    ([country, ftds]) => ftds > 0 && regionForCountry(country) === region && !(explicitRateMap.get(country) > 0)
+                  );
+                  const wouldCover = covered.reduce((sum, [, ftds]) => sum + ftds, 0);
+                  return (
+                    <label key={region} className={`rate-region${wouldCover ? " is-useful" : ""}`}>
+                      <span className="rate-region-name">
+                        {region}
+                        {wouldCover ? (
+                          <em className="rate-region-hint">
+                            {t("would price")} {covered.length} · {wouldCover} FTD
+                          </em>
+                        ) : null}
+                      </span>
+                      <span className="cpa-item-input">
+                        <span className="cpa-currency">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={regionDraft[region] ?? ""}
+                          placeholder="0"
+                          onChange={(e) => setRegionDraft((prev) => ({ ...prev, [region]: e.target.value }))}
+                        />
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="field rate-search-field">
               <div className="registry-search rate-search">
                 <Search size={14} aria-hidden="true" />
@@ -12041,7 +12113,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
             ) : (
               <div className="cpa-grid">
                 {rateRows.map((row) => {
-                  const needsRate = row.ftds > 0 && !row.rate;
+                  const resolved = resolveCpa(row.country, explicitRateMap, regionRateMap);
+                  const inherited = resolved.source === "region";
+                  const needsRate = row.ftds > 0 && resolved.cpa <= 0;
                   return (
                     <label key={row.country} className={`cpa-item${needsRate ? " needs-rate" : ""}`}>
                       <span className="cpa-item-country">
@@ -12059,7 +12133,11 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                           onChange={(e) => setCpaDraft((prev) => ({ ...prev, [row.country]: e.target.value }))}
                         />
                       </span>
-                      {row.rate?.updatedBy ? (
+                      {inherited ? (
+                        <span className="cpa-item-meta is-inherited">
+                          ${resolved.cpa} {t("via")} {resolved.region} {t("default")}
+                        </span>
+                      ) : row.rate?.updatedBy ? (
                         <span className="cpa-item-meta">
                           {row.rate.updatedBy}
                           {row.rate.updatedAt ? ` · ${new Date(row.rate.updatedAt).toLocaleDateString()}` : ""}
