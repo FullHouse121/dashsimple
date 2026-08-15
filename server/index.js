@@ -15422,14 +15422,17 @@ const buildExecutiveReport = async ({ from, to, title }) => {
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats WHERE date >= $1 AND date <= $2 AND COALESCE(country,'') <> ''
         GROUP BY country ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 15`, [from, to]),
-    // Brand is the last segment of the campaign name — the same convention the
-    // rest of the dashboard parses.
+    // media_stats carries a parsed `brand` column, which covers every FTD.
+    // An earlier version of this split campaign_name on "|" and took the last
+    // segment — but that column holds the buyer's META campaign name, not the
+    // Keitaro one, so the report listed "1-1-3", "-Copy" and "24.07" as
+    // brands. Upper-cased because ZLOTMX and ZlotMX are one brand typed twice.
     getRows(
-      `SELECT TRIM(SPLIT_PART(campaign_name, '|', ARRAY_LENGTH(STRING_TO_ARRAY(campaign_name,'|'),1))) AS brand,
+      `SELECT UPPER(TRIM(brand)) AS brand,
               COALESCE(SUM(ftds),0)::int AS ftds,
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats
-        WHERE date >= $1 AND date <= $2 AND COALESCE(campaign_name,'') LIKE '%|%'
+        WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(brand),'') <> ''
         GROUP BY 1 HAVING COALESCE(SUM(ftds),0) > 0
         ORDER BY SUM(revenue) DESC LIMIT 12`, [from, to]),
   ]);
@@ -15459,7 +15462,12 @@ const buildExecutiveReport = async ({ from, to, title }) => {
     { key: "clicks", label: "Clicks", value: summary.clicks, rateFromPrev: null },
     { key: "registers", label: "Registrations", value: summary.registers, rateFromPrev: rate(summary.registers, summary.clicks) },
     { key: "ftds", label: "First deposits", value: summary.ftds, rateFromPrev: rate(summary.ftds, summary.registers) },
-    { key: "redeposits", label: "Redeposits", value: summary.redeposits, rateFromPrev: rate(summary.redeposits, summary.ftds) },
+    // Not a conversion rate: a depositor redeposits many times, so this step
+    // routinely exceeds 100% and "125% converted" is nonsense. It is a
+    // multiplier — redeposits per first deposit — and is labelled as one.
+    { key: "redeposits", label: "Redeposits", value: summary.redeposits,
+      rateFromPrev: null,
+      perPrev: summary.ftds > 0 ? summary.redeposits / summary.ftds : null },
   ];
 
   // A management report that quotes ROI while the cost pipeline is down is

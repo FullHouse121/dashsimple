@@ -9,6 +9,7 @@ import {
   ReportIcon, ColumnsIcon, GroupIcon, MetricIcon, FilterIcon, SavedIcon, AlertIcon,
 } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
+import ExecutiveReportPanel from "../components/ExecutiveReportPanel.jsx";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { Select } from "../components/Select.jsx";
 import { formatCurrency } from "../lib/format.js";
@@ -576,6 +577,11 @@ const renderCell = (value, column) => {
 export default function ReportsDashboard({ authUser }) {
   const { t } = useLanguage();
 
+  // Two tools, not two tabs of one. The builder pulls a table to answer a
+  // question you already have; the executive report is the standing picture
+  // someone reads before they have one.
+  const [mode, setMode] = React.useState("builder");
+
   const [catalog, setCatalog] = React.useState(null);
   const [catalogError, setCatalogError] = React.useState(null);
   const [source, setSource] = React.useState("performance");
@@ -1074,8 +1080,41 @@ export default function ReportsDashboard({ authUser }) {
     .filter((column) => column.role === "measure" && result.totals?.[column.key] !== undefined)
     .slice(0, 4);
 
+  // The switch sits above both tools, because choosing between them is the
+  // first decision — not a setting buried inside one of them.
+  const modeSwitch = (
+    <div className="offers-tabs xr-mode xr-noprint">
+      <button
+        type="button"
+        className={`offers-tab${mode === "builder" ? " is-active" : ""}`}
+        onClick={() => setMode("builder")}
+      >
+        <ColumnsIcon size={14} />
+        <span>{t("Query builder")}</span>
+      </button>
+      <button
+        type="button"
+        className={`offers-tab${mode === "executive" ? " is-active" : ""}`}
+        onClick={() => setMode("executive")}
+      >
+        <ReportIcon size={14} />
+        <span>{t("Executive report")}</span>
+      </button>
+    </div>
+  );
+
+  if (mode === "executive") {
+    return (
+      <section className="panels panels-single">
+        {modeSwitch}
+        <ExecutiveReportPanel t={t} />
+      </section>
+    );
+  }
+
   return (
     <>
+      {modeSwitch}
       {result && headlineColumns.length ? (
         <section className="cards report">
           {headlineColumns.map((column, index) => (

@@ -21361,3 +21361,243 @@ select option,
 .rate-region-name { font-size: 12.5px; color: var(--text); min-width: 0; }
 .rate-region-hint { display: block; font-style: normal; font-size: 10px; color: var(--yellow); margin-top: 1px; }
 .cpa-item-meta.is-inherited { color: var(--blue); }
+
+/* ── Executive report ──────────────────────────────────────────────────
+   One stylesheet for the screen, the print output and the public link, so
+   the report cannot drift into three versions of itself. The print rules at
+   the bottom override colour and layout only — never structure. */
+.xr {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  color: var(--text);
+}
+
+.xr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.xr-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.xr-period { margin: 5px 0 0; font-size: 12.5px; color: var(--faint); }
+.xr-vs { margin-left: 10px; opacity: 0.8; }
+.xr-generated { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+
+/* Above the numbers it qualifies, never below. */
+.xr-caveat {
+  padding: 12px 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(247, 198, 37, 0.26);
+  background: rgba(247, 198, 37, 0.06);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-strong, #a9adb7);
+}
+.xr-caveat strong { color: var(--yellow); }
+
+.xr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: 12px;
+}
+
+.xr-card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.018);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Cost-derived cards read as provisional when the pipeline cannot vouch for
+   them, rather than sitting identical to counts that are solid. */
+.xr-card.is-unverified { border-style: dashed; border-color: rgba(247, 198, 37, 0.28); }
+
+.xr-card-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.xr-card-value {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.xr-unverified { font-size: 10.5px; color: var(--yellow); }
+
+.xr-delta { font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.xr-delta.is-up { color: var(--green); }
+.xr-delta.is-down { color: var(--red); }
+.xr-delta.is-none { color: var(--faint); }
+
+.xr-block { display: flex; flex-direction: column; gap: 12px; }
+
+.xr-h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.xr-chart {
+  padding: 12px 10px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.xr-funnel { display: flex; flex-direction: column; gap: 9px; }
+
+.xr-funnel-row {
+  display: grid;
+  grid-template-columns: 130px minmax(60px, 1fr) 90px 110px;
+  align-items: center;
+  gap: 14px;
+  font-size: 12.5px;
+}
+
+.xr-funnel-label { color: var(--faint); }
+
+.xr-funnel-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.xr-funnel-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.xr-funnel-value { font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
+.xr-funnel-rate { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; }
+
+.xr-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 24px; }
+
+.xr-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+
+.xr-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--faint);
+  font-weight: 600;
+  padding: 0 10px 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.xr-table td {
+  padding: 8px 10px 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-strong, #a9adb7);
+}
+
+.xr-table td.xr-strong { color: var(--text); font-weight: 600; }
+.xr-table th:not(:first-child), .xr-table td:not(:first-child) { text-align: right; }
+
+.xr-foot { font-size: 11px; color: var(--faint); padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+
+/* ── Print ────────────────────────────────────────────────────────────
+   Export PDF is the browser's own print, so this IS the PDF. Ink-on-paper
+   colours, everything that is not the report removed, and page breaks placed
+   so a table is never severed mid-row. */
+@media print {
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+
+  /* Everything that frames the app on screen is furniture on paper. */
+  .sidebar, .topbar, .nav-item, .panel-head, .offers-tabs,
+  .xr-noprint, .app-shell > aside { display: none !important; }
+
+  html, body, .app-shell, .panels, .panel {
+    background: #fff !important;
+    color: #111 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+  }
+
+  .xr { gap: 18px; color: #111; }
+  .xr-title, .xr-card-value, .xr-table td.xr-strong { color: #111; }
+  .xr-period, .xr-generated, .xr-card-label, .xr-h2, .xr-table th,
+  .xr-funnel-label, .xr-funnel-rate, .xr-foot { color: #555 !important; }
+  .xr-table td { color: #222; }
+
+  .xr-card, .xr-chart {
+    border-color: #ddd !important;
+    background: #fff !important;
+  }
+  .xr-caveat {
+    border-color: #d9a300 !important;
+    background: #fffbeb !important;
+    color: #4a3a00 !important;
+  }
+  .xr-caveat strong { color: #8a6b00 !important; }
+  .xr-head, .xr-foot, .xr-table th { border-color: #ccc !important; }
+  .xr-table td { border-color: #eee !important; }
+  .xr-funnel-track { background: #eee !important; }
+  .xr-funnel-fill { background: #2f9e63 !important; }
+  .xr-delta.is-up { color: #1d7a4a !important; }
+  .xr-delta.is-down { color: #b3261e !important; }
+  .xr-unverified, .xr-card.is-unverified { color: #8a6b00 !important; border-color: #d9a300 !important; }
+
+  /* A table split across a page boundary mid-row is unreadable. */
+  .xr-avoid-break { break-inside: avoid; page-break-inside: avoid; }
+  .xr-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .xr-block { break-inside: avoid-page; }
+  .xr-two { grid-template-columns: 1fr 1fr; }
+}
+
+/* The share-link page. Its own shell: a manager opening this has no account
+   and no nav, so the report is the entire page. */
+.pubrep {
+  min-height: 100vh;
+  background: var(--bg, #0d1013);
+  padding: 32px 20px 56px;
+  display: flex;
+  justify-content: center;
+}
+
+.pubrep-sheet {
+  width: 100%;
+  max-width: 1080px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.pubrep-msg { color: var(--muted); font-size: 14px; text-align: center; padding: 80px 20px; }
+.pubrep-msg-title { font-size: 20px; color: var(--text); margin: 0 0 10px; }
+.pubrep-msg-sub { font-size: 12.5px; color: var(--faint); margin-top: 8px; }
+.pubrep-actions { display: flex; justify-content: flex-end; }
+
+@media print {
+  .pubrep { background: #fff !important; padding: 0 !important; min-height: 0 !important; }
+  .pubrep-sheet { max-width: none; gap: 0; }
+}
+
+/* The switch between the two report tools, above both of them. */
+.xr-mode { margin-bottom: 16px; }
+.xr-controls { align-items: end; }
+.xr-share-note { font-size: 11.5px; color: var(--faint); line-height: 1.5; margin: 4px 0 0; }
+.xr-share-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+.xr-copied { font-size: 12px; color: var(--green); margin: 8px 0 0; }
+.xr-panel { padding: 26px 28px; }
