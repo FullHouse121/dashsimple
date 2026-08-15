@@ -20804,33 +20804,39 @@ select option,
    tracker. Dimming it is not enough on its own — a number that merely
    looks quiet still reads as true — so it carries an explicit control
    that says why and leads to the fix. */
+/* De-emphasised rather than struck through: the figure is still the real
+   output of the calculation, it just cannot be relied on. A strike read as
+   "this is wrong", which overstates it — the badge below carries the meaning. */
 .card-value.is-untrusted {
   color: var(--muted-strong);
-  text-decoration: line-through;
-  text-decoration-color: rgba(255, 125, 136, 0.45);
-  text-decoration-thickness: 2px;
 }
 
+/* Quiet by default. It appears on four cards at once, so a loud amber pill on
+   each turned the whole row into a warning; it only needs to be noticed when
+   the number is being read, then act like a control on hover. */
 .card-untrusted {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   margin-top: 6px;
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(247, 198, 37, 0.32);
-  background: rgba(247, 198, 37, 0.09);
-  color: var(--yellow);
-  font-size: 10.5px;
-  font-weight: 650;
+  border: 1px solid transparent;
+  background: rgba(247, 198, 37, 0.06);
+  color: color-mix(in srgb, var(--yellow) 62%, var(--muted-strong));
+  font-size: 10px;
+  font-weight: 550;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 0.16s ease, border-color 0.16s ease;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
+.card-untrusted svg { opacity: 0.7; }
 .card-untrusted:hover {
-  background: rgba(247, 198, 37, 0.16);
-  border-color: rgba(247, 198, 37, 0.5);
+  background: rgba(247, 198, 37, 0.12);
+  border-color: rgba(247, 198, 37, 0.28);
+  color: var(--yellow);
 }
+.card-untrusted:hover svg { opacity: 1; }
 .card-untrusted:focus-visible {
   outline: 2px solid var(--yellow);
   outline-offset: 2px;
