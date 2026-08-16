@@ -15659,7 +15659,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       return [
         row("revenue", "Revenue", num(current.revenue), num(previous.revenue), "money"),
         row("registers", "Registrations", num(current.registers), num(previous.registers), "count"),
-        row("ftds", "Purchases", num(current.ftds), num(previous.ftds), "count"),
+        row("ftds", "First deposits", num(current.ftds), num(previous.ftds), "count"),
         row("redeposits", "Redeposits", num(current.redeposits), num(previous.redeposits), "count"),
         row("arpu", "ARPU", nowArpu, prevArpu, "money4"),
         // Cents matter on a per-player figure: "$9" and "$8.83" are the
