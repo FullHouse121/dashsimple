@@ -15681,12 +15681,13 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       if (d.registers !== null && d.ftds !== null && d.registers > 5 && d.ftds < -5) {
         out.push({
           tone: "bad",
+          section: "summary",
           text: `Registrations rose ${d.registers.toFixed(1)}% while first deposits fell ${Math.abs(d.ftds).toFixed(1)}% — the drop is in conversion, not in traffic.`,
         });
       } else if (d.ftds !== null && d.ftds > 10) {
-        out.push({ tone: "good", text: `First deposits are up ${d.ftds.toFixed(1)}% on the previous ${span} days.` });
+        out.push({ tone: "good", section: "summary", text: `First deposits are up ${d.ftds.toFixed(1)}% on the previous ${span} days.` });
       } else if (d.ftds !== null && d.ftds < -10) {
-        out.push({ tone: "bad", text: `First deposits are down ${Math.abs(d.ftds).toFixed(1)}% on the previous ${span} days.` });
+        out.push({ tone: "bad", section: "summary", text: `First deposits are down ${Math.abs(d.ftds).toFixed(1)}% on the previous ${span} days.` });
       }
       const topBuyer = buyers[0];
       if (topBuyer && num(current.ftds) > 0) {
@@ -15694,6 +15695,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         if (shareOfFtds >= 40) {
           out.push({
             tone: "warn",
+            section: "buyers",
             text: `${topBuyer.buyer} produced ${shareOfFtds.toFixed(0)}% of all first deposits — the result depends heavily on one buyer.`,
           });
         }
@@ -15702,6 +15704,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       if (topCountry && num(current.ftds) > 0) {
         out.push({
           tone: "info",
+          section: "geo",
           text: `${topCountry.country} leads on volume with ${num(topCountry.ftds).toLocaleString()} first deposits from ${num(topCountry.clicks).toLocaleString()} clicks.`,
         });
       }
@@ -15714,6 +15717,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         if (best.buyer !== worst.buyer) {
           out.push({
             tone: "info",
+            section: "funnel",
             text: `Registration-to-deposit ranges from ${worst.reg2dep.toFixed(1)}% (${worst.buyer}) to ${best.reg2dep.toFixed(1)}% (${best.buyer}) — a ${(best.reg2dep / Math.max(worst.reg2dep, 0.01)).toFixed(1)}× spread across the team.`,
           });
         }
@@ -15725,6 +15729,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         if (Math.abs(move) >= 15) {
           out.push({
             tone: move > 0 ? "good" : "bad",
+            section: "quality",
             text: `Earnings per click ${move > 0 ? "rose" : "fell"} ${Math.abs(move).toFixed(0)}% to $${summary.epc.toFixed(4)} — every 1,000 clicks now returns about $${(summary.epc * 1000).toFixed(0)}.`,
           });
         }
@@ -15738,6 +15743,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         if (share >= 45) {
           out.push({
             tone: "warn",
+            section: "placement",
             text: `${share.toFixed(0)}% of traffic came through ${topPlacement.placement} — the account leans on a single placement.`,
           });
         }
@@ -15750,11 +15756,12 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         if (share >= 8) {
           out.push({
             tone: "warn",
+            section: "players",
             text: `One player in ${topPlayer.country} produced ${share.toFixed(0)}% of revenue ($${num(topPlayer.revenue).toFixed(0)} across ${num(topPlayer.redeposits)} redeposits) — the total is not evenly earned.`,
           });
         }
       }
-      return out.slice(0, 6);
+      return out.slice(0, 10);
     })(),
   };
 };
