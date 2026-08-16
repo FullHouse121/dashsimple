@@ -167,17 +167,24 @@ export default function ExecutiveReport({ report }) {
                 <span className="xr-tile-icon is-blue"><ShieldCheck size={14} /></span>
                 <span className="xr-tile-label">Clean traffic</span>
               </div>
+              {/* Half-dial with the value below the arc rather than across
+                  it — at 98% the bar closes over the centre and the number
+                  was being printed on top of its own stroke. */}
               <div className="xr-gauge">
-                <ResponsiveContainer width="100%" height={128}>
+                <ResponsiveContainer width="100%" height={104}>
                   <RadialBarChart
-                    innerRadius="70%" outerRadius="100%" startAngle={210} endAngle={-30}
+                    innerRadius="76%" outerRadius="100%" startAngle={180} endAngle={0}
                     data={[{ name: "clean", value: Math.max(0, Math.min(100, quality.cleanRate || 0)) }]}
+                    cy="100%"
                   >
                     <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" cornerRadius={8} fill="#36d07c" background={{ fill: "rgba(255,255,255,0.06)" }} />
+                    <RadialBar dataKey="value" cornerRadius={6} fill="#36d07c" background={{ fill: "rgba(255,255,255,0.07)" }} />
                   </RadialBarChart>
                 </ResponsiveContainer>
-                <span className="xr-gauge-value">{(quality.cleanRate || 0).toFixed(1)}%</span>
+                <div className="xr-gauge-read">
+                  <strong>{(quality.cleanRate || 0).toFixed(1)}%</strong>
+                  <span>of {quality.clicks.toLocaleString()} clicks</span>
+                </div>
               </div>
               {/* The parts, not a sentence: a manager who sees 98.3% will
                   next ask what the other 1.7% was. */}
@@ -236,24 +243,48 @@ export default function ExecutiveReport({ report }) {
       <section className="xr-two">
         <div className="xr-block xr-avoid-break">
           <h2 className="xr-h2">Revenue by brand</h2>
-          <div className="xr-chart">
-            <ResponsiveContainer width="100%" height={230}>
-              <PieChart>
-                <Pie
-                  data={brands} dataKey="revenue" nameKey="brand"
-                  innerRadius={52} outerRadius={82} paddingAngle={2} stroke="none"
-                >
-                  {brands.map((entry, i) => (
-                    <Cell key={entry.brand} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
-                  formatter={(v, n) => [formatCurrencyWhole(v), n]}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-              </PieChart>
-            </ResponsiveContainer>
+          {/* A ring with the total in its hole, and a legend that carries the
+              numbers. Coloured words under a donut make you look twice — once
+              to match the colour, again to find the value — so the legend
+              states the amount and the share itself. */}
+          <div className="xr-donut">
+            <div className="xr-donut-chart">
+              <ResponsiveContainer width="100%" height={188}>
+                <PieChart>
+                  <Pie
+                    data={brands} dataKey="revenue" nameKey="brand"
+                    innerRadius={62} outerRadius={88} paddingAngle={2}
+                    stroke="none" cornerRadius={4}
+                  >
+                    {brands.map((entry, i) => (
+                      <Cell key={entry.brand} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                    formatter={(v, n) => [formatCurrencyWhole(v), n]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="xr-donut-centre">
+                <strong>{formatCurrencyWhole(brands.reduce((a, b) => a + b.revenue, 0))}</strong>
+                <span>total revenue</span>
+              </div>
+            </div>
+            <ul className="xr-donut-legend">
+              {brands.map((entry, i) => {
+                const total = brands.reduce((a, b) => a + b.revenue, 0);
+                const share = total > 0 ? (entry.revenue / total) * 100 : 0;
+                return (
+                  <li key={entry.brand}>
+                    <span className="xr-donut-swatch" style={{ background: BRAND_COLOURS[i % BRAND_COLOURS.length] }} />
+                    <span className="xr-donut-name"><BrandMark value={entry.brand} height={13} /></span>
+                    <span className="xr-donut-value">{formatCurrencyWhole(entry.revenue)}</span>
+                    <span className="xr-donut-share">{share.toFixed(1)}%</span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
 

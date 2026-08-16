@@ -15445,6 +15445,11 @@ const buildExecutiveReport = async ({ from, to, title }) => {
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats
         WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(tool),'') <> ''
+          -- These are not delivery tools. FB is the traffic source, NAMING is
+          -- an artefact of the campaign-naming convention, and YOUTARGET is a
+          -- tag rather than a tool — all three arrive in this field and none
+          -- of them answers "which tool converts".
+          AND UPPER(TRIM(tool)) NOT IN ('FB', 'NAMING', 'YOUTARGET')
         GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
         ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 10`, [from, to]),
     // Where the ad actually ran. Meta writes a language code into this field
