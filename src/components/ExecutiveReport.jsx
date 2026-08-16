@@ -62,8 +62,61 @@ export default function ExecutiveReport({ report }) {
   const BRAND_COLOURS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#ff7d88"];
   const money = integrity?.costTrustworthy;
 
+  const verdict = (() => {
+    const g = Object.fromEntries((growth || []).map((r) => [r.key, r]));
+    const rev = g.revenue?.delta;
+    const arpu = g.arpu?.delta;
+    if (rev === null || rev === undefined) return { tone: "flat", line: "Period under review" };
+    if (rev >= 10 && (arpu ?? 0) >= 0) return { tone: "good", line: "Growing, and growing better" };
+    if (rev >= 10) return { tone: "warn", line: "Growing on volume, not on quality" };
+    if (rev <= -10 && (arpu ?? 0) <= 0) return { tone: "bad", line: "Down on both volume and quality" };
+    if (rev <= -10) return { tone: "bad", line: "Revenue down on the previous period" };
+    return { tone: "flat", line: "Broadly flat on the previous period" };
+  })();
+
   return (
     <article className="xr">
+      {/* Cover. Print-only: on screen the controls above already frame the
+          report, but a PDF that opens straight into a KPI grid reads like a
+          screenshot rather than a document someone prepared. It carries the
+          one-line verdict, the period, and the four figures a manager checks
+          before reading anything else. */}
+      <section className="xr-cover">
+        <div className="xr-cover-top">
+          <span className="xr-cover-brand">DEUS<em>MACHINE</em></span>
+          <span className="xr-cover-kind">Performance report</span>
+        </div>
+        <div className="xr-cover-mid">
+          <span className={`xr-cover-verdict is-${verdict.tone}`}>{verdict.line}</span>
+          <h1 className="xr-cover-title">{report.title || "Performance report"}</h1>
+          <p className="xr-cover-period">
+            {period.from} → {period.to}
+            <em>{period.days} days · measured against {period.previousFrom} → {period.previousTo}</em>
+          </p>
+        </div>
+        <div className="xr-cover-figures">
+          {[
+            { label: "Revenue", value: formatCurrencyWhole(summary.revenue), delta: summary.deltas.revenue },
+            { label: "First deposits", value: int(summary.ftds), delta: summary.deltas.ftds },
+            { label: "Registrations", value: int(summary.registers), delta: summary.deltas.registers },
+            { label: "Unique clicks", value: uniqueClicks === null ? int(summary.clicks) : int(uniqueClicks), delta: summary.deltas.clicks },
+          ].map((f) => (
+            <div key={f.label} className="xr-cover-fig">
+              <span>{f.label}</span>
+              <strong>{f.value}</strong>
+              <Delta value={f.delta} />
+            </div>
+          ))}
+        </div>
+        {integrity?.note ? (
+          <p className="xr-cover-caveat">{integrity.note}</p>
+        ) : null}
+        <div className="xr-cover-foot">
+          <span>Generated {new Date(report.generatedAt).toLocaleString()}</span>
+          <span>Confidential — internal performance data</span>
+        </div>
+      </section>
+
       <header className="xr-head">
         <div>
           <h1 className="xr-title">{report.title || "Performance report"}</h1>

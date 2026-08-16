@@ -21535,6 +21535,25 @@ select option,
   .sidebar, .topbar, .nav-item, .panel-head, .offers-tabs,
   .xr-noprint, .app-shell > aside { display: none !important; }
 
+  /* The app shell is a grid with a sidebar column; hiding the sidebar leaves
+     the content column sized to it, which squeezed the whole report into
+     ~180px on paper. Force every ancestor of the report back to full width. */
+  /* .app is a `260px 1fr` grid. Hiding the sidebar takes it out of the grid,
+     so main slides into the SIDEBAR's column and the whole report renders
+     260px wide. Collapsing the grid is what actually fixes it — the earlier
+     rule named .app-shell, which does not exist. */
+  html, body, #root, .app, .app-shell, .main, .view-anim,
+  .panels, .panels-single, .panel, .pubrep, .pubrep-sheet, .xr-panel, .xr {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    grid-template-columns: none !important;
+    float: none !important;
+  }
+
+  .xr { display: flex !important; }
+  .xr-cover { display: flex !important; }
+
   html, body, .app-shell, .panels, .panel, .pubrep, .xr-panel {
     background: #0d1013 !important;
     margin: 0 !important;
@@ -21999,3 +22018,135 @@ select option,
 
 .xr-growth-foot { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .xr-growth-foot em { font-style: normal; font-size: 10.5px; color: var(--faint); }
+
+/* ── PDF cover ────────────────────────────────────────────────────────
+   Hidden on screen: the tab already frames the report there. In print it is
+   page one, because a PDF that opens straight into a KPI grid reads like a
+   screenshot rather than something someone prepared. */
+.xr-cover { display: none; }
+
+@media print {
+  .xr-cover {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    /* Fill the first sheet and push the report to page two. */
+    min-height: calc(100vh - 20mm);
+    break-after: page;
+    page-break-after: always;
+    padding: 4mm 0 8mm;
+    background:
+      radial-gradient(80% 55% at 12% 8%, rgba(54, 208, 124, 0.16), transparent 62%),
+      radial-gradient(70% 50% at 92% 96%, rgba(100, 184, 255, 0.1), transparent 60%);
+  }
+
+  .xr-cover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .xr-cover-brand {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--green);
+  }
+  .xr-cover-brand em { font-style: normal; color: var(--text); }
+
+  .xr-cover-kind {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--faint);
+  }
+
+  .xr-cover-mid { display: flex; flex-direction: column; gap: 14px; }
+
+  /* The verdict, before any number — the sentence a manager repeats. */
+  .xr-cover-verdict {
+    align-self: flex-start;
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.13em;
+    padding: 7px 13px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+  }
+  .xr-cover-verdict.is-good { color: var(--green); }
+  .xr-cover-verdict.is-warn { color: var(--yellow); }
+  .xr-cover-verdict.is-bad { color: var(--red); }
+  .xr-cover-verdict.is-flat { color: var(--muted); }
+
+  .xr-cover-title {
+    margin: 0;
+    font-size: 46px;
+    line-height: 1.04;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    max-width: 15ch;
+  }
+
+  .xr-cover-period { margin: 0; font-size: 15px; color: var(--muted-strong, #a9adb7); }
+  .xr-cover-period em {
+    display: block;
+    margin-top: 5px;
+    font-style: normal;
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+
+  .xr-cover-figures {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .xr-cover-fig {
+    padding: 14px 15px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .xr-cover-fig span {
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--faint);
+  }
+  .xr-cover-fig strong {
+    font-size: 23px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .xr-cover-caveat {
+    margin: 0;
+    padding: 11px 14px;
+    border-radius: 10px;
+    border-left: 3px solid var(--yellow);
+    background: rgba(247, 198, 37, 0.08);
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--muted-strong, #a9adb7);
+  }
+
+  .xr-cover-foot {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--faint);
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  /* The on-screen header repeats the cover — drop it from the PDF. */
+  .xr-head { display: none; }
+}
