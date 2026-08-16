@@ -15492,13 +15492,14 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         WHERE date >= $1 AND date <= $2 AND COALESCE(external_id,'') <> ''
         GROUP BY external_id HAVING COALESCE(SUM(revenue),0) > 0
         ORDER BY SUM(revenue) DESC LIMIT 8`, [from, to]),
-    // Traffic quality lives in the tracker, not in media_stats: bots and
-    // proxies never reach our aggregate. One extra call, worth it — a manager
-    // reading a conversion rate should know what share of the clicks were real.
+    // Unique clicks and traffic quality both live in the tracker — media_stats
+    // has neither. Grouped by campaign rather than by day, because the Keitaro
+    // campaign name carries buyer, tool, geo and brand, so one call yields the
+    // unique-click count for every dimension this report breaks down by.
     keitaroReportBuild({
-      from, to, grouping: ["day"],
+      from, to, grouping: ["campaign"],
       metrics: ["clicks", "campaign_unique_clicks", "bots", "proxies"],
-      limit: 400,
+      limit: 5000,
     }).catch(() => ({ ok: false, rows: [] })),
   ]);
 
@@ -15612,6 +15613,17 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       externalId: r.external_id, country: r.country, buyer: r.buyer,
       ftds: num(r.ftds), redeposits: num(r.redeposits), revenue: num(r.revenue),
     })),
+    // Unique clicks per buyer, from the campaign names the tracker returns.
+    uniqueByBuyer: (() => {
+      const rows = quality?.ok ? quality.rows : [];
+      const out = {};
+      for (const row of rows) {
+        const buyer = parseCampaignName(row.campaign || "").buyer;
+        if (!buyer) continue;
+        out[buyer] = (out[buyer] || 0) + (Number(row.campaign_unique_clicks) || 0);
+      }
+      return out;
+    })(),
     quality: (() => {
       const rows = quality?.ok ? quality.rows : [];
       const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
@@ -15628,6 +15640,32 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         // One number for "how much of this traffic was worth paying for".
         cleanRate: rate(clicks - bots - proxies, clicks),
       };
+    })(),
+    // Market growth: the six measures that describe whether the business grew,
+    // each against the equivalent stretch before it. ARPU and LTV are derived
+    // rather than stored — ARPU per registered user, LTV per depositor, which
+    // is the pair that says whether traffic got better or only bigger.
+    growth: (() => {
+      const arpu = (rev, regs) => (regs > 0 ? rev / regs : null);
+      const ltv = (rev, ftds) => (ftds > 0 ? rev / ftds : null);
+      const nowArpu = arpu(num(current.revenue), num(current.registers));
+      const prevArpu = arpu(num(previous.revenue), num(previous.registers));
+      const nowLtv = ltv(num(current.revenue), num(current.ftds));
+      const prevLtv = ltv(num(previous.revenue), num(previous.ftds));
+      const row = (key, label, now, before, format) => ({
+        key, label, value: now, previous: before, format,
+        delta: before > 0 && now !== null ? ((now - before) / before) * 100 : null,
+      });
+      return [
+        row("revenue", "Revenue", num(current.revenue), num(previous.revenue), "money"),
+        row("registers", "Registrations", num(current.registers), num(previous.registers), "count"),
+        row("ftds", "Purchases", num(current.ftds), num(previous.ftds), "count"),
+        row("redeposits", "Redeposits", num(current.redeposits), num(previous.redeposits), "count"),
+        row("arpu", "ARPU", nowArpu, prevArpu, "money4"),
+        // Cents matter on a per-player figure: "$9" and "$8.83" are the
+        // same rounding away from a different decision.
+        row("ltv", "LTV", nowLtv, prevLtv, "money4"),
+      ];
     })(),
     funnel,
     integrity,

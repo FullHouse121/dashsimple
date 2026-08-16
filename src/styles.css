@@ -21699,7 +21699,6 @@ select option,
 .xr-tile-note { margin: 0; font-size: 11.5px; color: var(--faint); }
 
 /* The gauge reads as a dial, so the number sits inside the arc. */
-.xr-tile-gauge { position: relative; }
 
 /* ── Ranking ──────────────────────────────────────────────────────────
    Order and distance in one row: the bar is the distance, the position
@@ -21939,3 +21938,64 @@ select option,
 @media (max-width: 720px) {
   .xr-donut { grid-template-columns: 1fr; }
 }
+
+/* The dial card sizes to its contents rather than stretching to match the
+   tile beside it — the arc was being pushed into the middle of an empty box
+   with the reading marooned under it. */
+.xr-tile-gauge { justify-content: flex-start; gap: 6px; }
+.xr-tile-gauge .xr-gauge { margin-top: 2px; }
+.xr-tile-gauge .xr-tile-split { margin-top: auto; padding-top: 6px; }
+
+/* ── Market growth ────────────────────────────────────────────────────
+   Six measures, each with the period before it. Volume and quality sit in
+   one band on purpose: a period where revenue rose while ARPU and LTV fell
+   grew by buying more traffic, not by getting better, and that is only
+   visible when both are in the same glance. */
+.xr-growth { display: flex; flex-direction: column; gap: 12px; }
+
+.xr-growth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  gap: 10px;
+}
+
+.xr-growth-cell {
+  position: relative;
+  padding: 13px 15px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.016);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+/* A hairline of direction along the top edge — readable before the number. */
+.xr-growth-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.xr-growth-cell.is-up::before { background: var(--green); }
+.xr-growth-cell.is-down::before { background: var(--red); }
+
+.xr-growth-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.xr-growth-value {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.xr-growth-foot { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.xr-growth-foot em { font-style: normal; font-size: 10.5px; color: var(--faint); }

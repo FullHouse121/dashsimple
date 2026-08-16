@@ -53,7 +53,10 @@ const Delta = ({ value }) => {
 export default function ExecutiveReport({ report }) {
   if (!report) return null;
   const { summary, period, trend, buyers, countries, brands, tools, funnel, integrity, highlights } = report;
-  const { placements, campaigns, topPlayers, quality } = report;
+  const { placements, campaigns, topPlayers, quality, growth, uniqueByBuyer } = report;
+  // Unique clicks are the honest denominator: one person reloading five times
+  // is one person, and every rate built on raw clicks flatters itself.
+  const uniqueClicks = quality?.unique ?? null;
   // One accent per series, reused across every chart so a colour means the
   // same thing on page three as it did on page one.
   const BRAND_COLOURS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#ff7d88"];
@@ -95,9 +98,46 @@ export default function ExecutiveReport({ report }) {
         </section>
       ) : null}
 
+      {/* Did the business grow, and did it grow because traffic got bigger or
+          because it got better? The first four answer volume, ARPU and LTV
+          answer quality — and a period where volume rose while both fell is
+          the one worth catching. */}
+      {growth?.length ? (
+        <section className="xr-growth">
+          <h2 className="xr-h2">Market growth vs previous period</h2>
+          <div className="xr-growth-grid">
+            {growth.map((row) => {
+              const show = (v) =>
+                v === null || v === undefined
+                  ? "—"
+                  : row.format === "money"
+                    ? formatCurrencyWhole(v)
+                    : row.format === "money4"
+                      ? `$${Number(v).toFixed(2)}`
+                      : int(v);
+              const up = row.delta !== null && row.delta >= 0;
+              return (
+                <div key={row.key} className={`xr-growth-cell${row.delta === null ? "" : up ? " is-up" : " is-down"}`}>
+                  <span className="xr-growth-label">{row.label}</span>
+                  <strong className="xr-growth-value">{show(row.value)}</strong>
+                  <span className="xr-growth-foot">
+                    <Delta value={row.delta} />
+                    <em>was {show(row.previous)}</em>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
       <section className="xr-grid">
         {[
-          { label: "Clicks", value: int(summary.clicks), delta: summary.deltas.clicks },
+          {
+            label: "Unique clicks",
+            value: uniqueClicks === null ? int(summary.clicks) : int(uniqueClicks),
+            delta: summary.deltas.clicks,
+          },
           { label: "Registrations", value: int(summary.registers), delta: summary.deltas.registers },
           { label: "First deposits", value: int(summary.ftds), delta: summary.deltas.ftds },
           { label: "Revenue", value: formatCurrencyWhole(summary.revenue), delta: summary.deltas.revenue },
@@ -156,7 +196,8 @@ export default function ExecutiveReport({ report }) {
             ) : null}
           </div>
           <p className="xr-tile-note">
-            {formatCurrencyWhole(summary.revenue)} from {int(summary.clicks)} clicks
+            {formatCurrencyWhole(summary.revenue)} from{" "}
+            {uniqueClicks === null ? int(summary.clicks) : int(uniqueClicks)} unique clicks
           </p>
         </div>
 
