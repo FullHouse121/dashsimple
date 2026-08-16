@@ -15393,7 +15393,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats WHERE date >= $1 AND date <= $2`, [a, b])) || {};
 
-  const [current, previous, trend, buyers, countries, brands, tools] = await Promise.all([
+  const [current, previous, trend, buyers, countries, brands, tools, placements, campaigns, topPlayers, quality] = await Promise.all([
     totals(from, to),
     totals(prevFrom, prevTo),
     getRows(
@@ -15447,6 +15447,47 @@ const buildExecutiveReport = async ({ from, to, title }) => {
         WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(tool),'') <> ''
         GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
         ORDER BY SUM(ftds) DESC, SUM(clicks) DESC LIMIT 10`, [from, to]),
+    // Where the ad actually ran. Meta writes a language code into this field
+    // on some placements ("es"), which is not a placement — excluded by length
+    // rather than by a blocklist that would need maintaining.
+    getRows(
+      `SELECT placement,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats
+        WHERE date >= $1 AND date <= $2 AND LENGTH(COALESCE(TRIM(placement),'')) > 3
+        GROUP BY 1 ORDER BY SUM(clicks) DESC LIMIT 8`, [from, to]),
+    getRows(
+      `SELECT campaign_name AS campaign,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats
+        WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(campaign_name),'') <> ''
+        GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+        ORDER BY SUM(revenue) DESC NULLS LAST LIMIT 10`, [from, to]),
+    // The players carrying the period. user_behavior is per external_id, which
+    // is the closest thing to a player this data has.
+    getRows(
+      `SELECT external_id, MAX(country) AS country, MAX(buyer) AS buyer,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(redeposits),0)::int AS redeposits,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM user_behavior
+        WHERE date >= $1 AND date <= $2 AND COALESCE(external_id,'') <> ''
+        GROUP BY external_id HAVING COALESCE(SUM(revenue),0) > 0
+        ORDER BY SUM(revenue) DESC LIMIT 8`, [from, to]),
+    // Traffic quality lives in the tracker, not in media_stats: bots and
+    // proxies never reach our aggregate. One extra call, worth it — a manager
+    // reading a conversion rate should know what share of the clicks were real.
+    keitaroReportBuild({
+      from, to, grouping: ["day"],
+      metrics: ["clicks", "campaign_unique_clicks", "bots", "proxies"],
+      limit: 400,
+    }).catch(() => ({ ok: false, rows: [] })),
   ]);
 
   const num = (v) => Number(v) || 0;
@@ -15457,6 +15498,10 @@ const buildExecutiveReport = async ({ from, to, title }) => {
     clicks: num(current.clicks), registers: num(current.registers), ftds: num(current.ftds),
     redeposits: num(current.redeposits), revenue: num(current.revenue), spend: num(current.spend),
     roi: num(current.spend) > 0 ? ((num(current.revenue) - num(current.spend)) / num(current.spend)) * 100 : null,
+    // Earnings per click — the one number that survives a broken cost pipeline,
+    // because it divides by clicks rather than by spend.
+    epc: num(current.clicks) > 0 ? num(current.revenue) / num(current.clicks) : null,
+    epcPrev: num(previous.clicks) > 0 ? num(previous.revenue) / num(previous.clicks) : null,
     previous: {
       clicks: num(previous.clicks), registers: num(previous.registers), ftds: num(previous.ftds),
       revenue: num(previous.revenue), spend: num(previous.spend),
@@ -15523,6 +15568,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
     buyers: buyers.map((r) => ({
       buyer: r.buyer, clicks: num(r.clicks), registers: num(r.registers), ftds: num(r.ftds),
       revenue: num(r.revenue), spend: num(r.spend), reg2dep: rate(num(r.ftds), num(r.registers)),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
     })),
     countries: countries.map((r) => ({
       country: r.country, clicks: num(r.clicks), registers: num(r.registers),
@@ -15534,6 +15580,37 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       ftds: num(r.ftds), revenue: num(r.revenue),
       reg2dep: rate(num(r.ftds), num(r.registers)),
     })),
+    placements: placements.map((r) => ({
+      placement: r.placement, clicks: num(r.clicks), registers: num(r.registers),
+      ftds: num(r.ftds), revenue: num(r.revenue),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+    })),
+    campaigns: campaigns.map((r) => ({
+      campaign: r.campaign, clicks: num(r.clicks), registers: num(r.registers),
+      ftds: num(r.ftds), revenue: num(r.revenue),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+    })),
+    topPlayers: topPlayers.map((r) => ({
+      externalId: r.external_id, country: r.country, buyer: r.buyer,
+      ftds: num(r.ftds), redeposits: num(r.redeposits), revenue: num(r.revenue),
+    })),
+    quality: (() => {
+      const rows = quality?.ok ? quality.rows : [];
+      const sum = (k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+      const clicks = sum("clicks");
+      if (!clicks) return null;
+      const unique = sum("campaign_unique_clicks");
+      const bots = sum("bots");
+      const proxies = sum("proxies");
+      return {
+        clicks, unique, bots, proxies,
+        uniqueRate: rate(unique, clicks),
+        botRate: rate(bots, clicks),
+        proxyRate: rate(proxies, clicks),
+        // One number for "how much of this traffic was worth paying for".
+        cleanRate: rate(clicks - bots - proxies, clicks),
+      };
+    })(),
     funnel,
     integrity,
     // The findings a manager would otherwise have to derive by staring at the
@@ -15585,7 +15662,43 @@ const buildExecutiveReport = async ({ from, to, title }) => {
           });
         }
       }
-      return out.slice(0, 4);
+      // EPC is the honest headline while cost is broken — it divides by clicks,
+      // which we have, rather than by spend, which we do not.
+      if (summary.epc !== null && summary.epcPrev) {
+        const move = ((summary.epc - summary.epcPrev) / summary.epcPrev) * 100;
+        if (Math.abs(move) >= 15) {
+          out.push({
+            tone: move > 0 ? "good" : "bad",
+            text: `Earnings per click ${move > 0 ? "rose" : "fell"} ${Math.abs(move).toFixed(0)}% to $${summary.epc.toFixed(4)} — every 1,000 clicks now returns about $${(summary.epc * 1000).toFixed(0)}.`,
+          });
+        }
+      }
+      // Placement concentration: one placement carrying the account is a
+      // dependency, and Meta can change it without warning.
+      const topPlacement = placements[0];
+      const placementClicks = placements.reduce((a, r) => a + num(r.clicks), 0);
+      if (topPlacement && placementClicks > 0) {
+        const share = (num(topPlacement.clicks) / placementClicks) * 100;
+        if (share >= 45) {
+          out.push({
+            tone: "warn",
+            text: `${share.toFixed(0)}% of traffic came through ${topPlacement.placement} — the account leans on a single placement.`,
+          });
+        }
+      }
+      // One player carrying the revenue is a fact worth knowing before anyone
+      // reads the total as recurring.
+      const topPlayer = topPlayers[0];
+      if (topPlayer && num(current.revenue) > 0) {
+        const share = (num(topPlayer.revenue) / num(current.revenue)) * 100;
+        if (share >= 8) {
+          out.push({
+            tone: "warn",
+            text: `One player in ${topPlayer.country} produced ${share.toFixed(0)}% of revenue ($${num(topPlayer.revenue).toFixed(0)} across ${num(topPlayer.redeposits)} redeposits) — the total is not evenly earned.`,
+          });
+        }
+      }
+      return out.slice(0, 6);
     })(),
   };
 };

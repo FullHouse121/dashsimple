@@ -21641,3 +21641,159 @@ select option,
   cursor: not-allowed;
 }
 .offers-tab.is-locked:hover { background: transparent; border-color: inherit; }
+
+/* ── Report: bento band ───────────────────────────────────────────────
+   An uneven grid on purpose. Four identical cards in a row give every
+   number the same weight; these do not carry the same weight. */
+.xr-bento {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 12px;
+}
+
+.xr-tile {
+  padding: 15px 17px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255, 255, 255, 0.04), transparent 58%),
+    rgba(255, 255, 255, 0.016);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.xr-tile-head { display: flex; align-items: center; gap: 9px; }
+
+/* The icon tile from the reference: a tinted square, not a bare glyph. */
+.xr-tile-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.xr-tile-icon.is-green { background: rgba(54, 208, 124, 0.14); color: var(--green); }
+.xr-tile-icon.is-blue { background: rgba(100, 184, 255, 0.14); color: var(--blue); }
+.xr-tile-icon.is-purple { background: rgba(161, 91, 255, 0.14); color: var(--purple); }
+
+.xr-tile-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+
+.xr-tile-body { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+
+.xr-tile-value {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.xr-tile-note { margin: 0; font-size: 11.5px; color: var(--faint); }
+
+/* The gauge reads as a dial, so the number sits inside the arc. */
+.xr-tile-gauge { position: relative; }
+.xr-gauge { position: relative; margin: -6px 0 -14px; }
+.xr-gauge-value {
+  position: absolute;
+  left: 0; right: 0;
+  top: 56%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: 21px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ── Ranking ──────────────────────────────────────────────────────────
+   Order and distance in one row: the bar is the distance, the position
+   is the order, and neither needs a header to be read. */
+.xr-rank { display: flex; flex-direction: column; gap: 6px; }
+
+.xr-rank-row {
+  display: grid;
+  grid-template-columns: 26px minmax(90px, 132px) minmax(60px, 1fr) 92px 78px 92px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.014);
+  font-size: 12.5px;
+}
+
+.xr-rank-row.is-first { background: rgba(54, 208, 124, 0.07); }
+
+.xr-rank-pos {
+  width: 22px; height: 22px;
+  border-radius: 7px;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 700;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+.xr-rank-row.is-first .xr-rank-pos { background: var(--green); color: #06210f; }
+
+.xr-rank-name { font-weight: 600; color: var(--text); }
+
+.xr-rank-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+.xr-rank-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+
+.xr-rank-metric { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.xr-rank-sub { color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; font-size: 11.5px; }
+
+/* ── Players ──────────────────────────────────────────────────────────
+   Cards, not rows: eight of them read as a podium, which is the point. */
+.xr-players {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(158px, 100%), 1fr));
+  gap: 10px;
+}
+
+.xr-player {
+  position: relative;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.016);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.xr-player.is-first { border-color: rgba(54, 208, 124, 0.3); background: rgba(54, 208, 124, 0.05); }
+
+.xr-player-rank {
+  position: absolute;
+  top: 10px; right: 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--faint);
+}
+.xr-player.is-first .xr-player-rank { color: var(--green); }
+
+.xr-player-geo { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--faint); }
+.xr-player-value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.xr-player-sub { font-size: 11px; color: var(--faint); }
+
+/* A campaign name is long; clip it rather than let it set the column. */
+.xr-clip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.xr-h2 { display: flex; align-items: center; gap: 7px; }
+
+@media (max-width: 900px) {
+  .xr-bento { grid-template-columns: 1fr; }
+  .xr-rank-row { grid-template-columns: 24px 1fr 84px; }
+  .xr-rank-bar, .xr-rank-sub { display: none; }
+}

@@ -14,10 +14,11 @@
 import React from "react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  BarChart, Bar, Cell, PieChart, Pie,
+  BarChart, Bar, Cell, PieChart, Pie, RadialBarChart, RadialBar, PolarAngleAxis,
 } from "recharts";
 import { CountryFlag } from "./flags.jsx";
 import { BrandMark } from "./BrandMark.jsx";
+import { Coins, ShieldCheck, Fingerprint, Trophy, MapPin, Crown } from "lucide-react";
 import { formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
 import { axisTickStyle, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from "../lib/format.js";
 
@@ -39,6 +40,7 @@ const Delta = ({ value }) => {
 export default function ExecutiveReport({ report }) {
   if (!report) return null;
   const { summary, period, trend, buyers, countries, brands, tools, funnel, integrity, highlights } = report;
+  const { placements, campaigns, topPlayers, quality } = report;
   // One accent per series, reused across every chart so a colour means the
   // same thing on page three as it did on page one.
   const BRAND_COLOURS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#ff7d88"];
@@ -120,6 +122,67 @@ export default function ExecutiveReport({ report }) {
             {money ? null : <span className="xr-unverified">unverified cost</span>}
           </div>
         ))}
+      </section>
+
+      {/* Traffic quality and EPC sit together because they answer the same
+          question from two sides: was this traffic real, and was it worth
+          anything. EPC leads because it survives a broken cost pipeline —
+          it divides by clicks, not by spend. */}
+      <section className="xr-bento">
+        <div className="xr-tile xr-tile-wide">
+          <div className="xr-tile-head">
+            <span className="xr-tile-icon is-green"><Coins size={14} /></span>
+            <span className="xr-tile-label">Earnings per click</span>
+          </div>
+          <div className="xr-tile-body">
+            <strong className="xr-tile-value">
+              {summary.epc === null ? "—" : `$${summary.epc.toFixed(4)}`}
+            </strong>
+            {summary.epcPrev ? (
+              <Delta value={((summary.epc - summary.epcPrev) / summary.epcPrev) * 100} />
+            ) : null}
+          </div>
+          <p className="xr-tile-note">
+            {formatCurrencyWhole(summary.revenue)} from {int(summary.clicks)} clicks
+          </p>
+        </div>
+
+        {quality ? (
+          <>
+            <div className="xr-tile xr-tile-gauge">
+              <div className="xr-tile-head">
+                <span className="xr-tile-icon is-blue"><ShieldCheck size={14} /></span>
+                <span className="xr-tile-label">Clean traffic</span>
+              </div>
+              <div className="xr-gauge">
+                <ResponsiveContainer width="100%" height={128}>
+                  <RadialBarChart
+                    innerRadius="70%" outerRadius="100%" startAngle={210} endAngle={-30}
+                    data={[{ name: "clean", value: Math.max(0, Math.min(100, quality.cleanRate || 0)) }]}
+                  >
+                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                    <RadialBar dataKey="value" cornerRadius={8} fill="#36d07c" background={{ fill: "rgba(255,255,255,0.06)" }} />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+                <span className="xr-gauge-value">{(quality.cleanRate || 0).toFixed(1)}%</span>
+              </div>
+              <p className="xr-tile-note">
+                {quality.bots.toLocaleString()} bots · {quality.proxies.toLocaleString()} proxies
+              </p>
+            </div>
+
+            <div className="xr-tile">
+              <div className="xr-tile-head">
+                <span className="xr-tile-icon is-purple"><Fingerprint size={14} /></span>
+                <span className="xr-tile-label">Unique clicks</span>
+              </div>
+              <div className="xr-tile-body">
+                <strong className="xr-tile-value">{(quality.uniqueRate || 0).toFixed(1)}%</strong>
+              </div>
+              <p className="xr-tile-note">{quality.unique.toLocaleString()} of {quality.clicks.toLocaleString()}</p>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="xr-block">
@@ -234,6 +297,92 @@ export default function ExecutiveReport({ report }) {
           })}
         </div>
       </section>
+
+      {/* A ranking, not a table. Who is carrying the period is a question of
+          order and distance, and a bar behind the row shows both at once. */}
+      <section className="xr-block xr-avoid-break">
+        <h2 className="xr-h2"><Trophy size={13} /> Buyer ranking</h2>
+        <div className="xr-rank">
+          {buyers.slice(0, 8).map((row, i) => {
+            const top = buyers[0]?.revenue || 0;
+            return (
+              <div key={row.buyer} className={`xr-rank-row${i === 0 ? " is-first" : ""}`}>
+                <span className="xr-rank-pos">{i + 1}</span>
+                <span className="xr-rank-name">{row.buyer}</span>
+                <span className="xr-rank-bar">
+                  <span style={{ width: `${top > 0 ? Math.max((row.revenue / top) * 100, 2) : 0}%` }} />
+                </span>
+                <span className="xr-rank-metric">{formatCurrencyWhole(row.revenue)}</span>
+                <span className="xr-rank-sub">{int(row.ftds)} FTDs</span>
+                <span className="xr-rank-sub">{row.epc === null ? "—" : `$${row.epc.toFixed(3)} EPC`}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Campaigns and placements together: what was run, and where it ran. */}
+      <section className="xr-two">
+        <div className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">Top campaigns</h2>
+          <table className="xr-table">
+            <thead><tr><th>Campaign</th><th>Clicks</th><th>FTDs</th><th>EPC</th><th>Revenue</th></tr></thead>
+            <tbody>
+              {(campaigns || []).map((row) => (
+                <tr key={row.campaign}>
+                  <td className="xr-strong xr-clip" title={row.campaign}>{row.campaign}</td>
+                  <td>{int(row.clicks)}</td>
+                  <td>{int(row.ftds)}</td>
+                  <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
+                  <td>{formatCurrencyWhole(row.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="xr-block xr-avoid-break">
+          <h2 className="xr-h2"><MapPin size={13} /> Placement</h2>
+          <div className="xr-chart">
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={(placements || []).slice(0, 6)} layout="vertical" margin={{ top: 4, right: 16, left: 4, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" horizontal={false} />
+                <XAxis type="number" tick={axisTickStyle} tickLine={false} axisLine={false} />
+                <YAxis type="category" dataKey="placement" tick={{ ...axisTickStyle, fontSize: 10 }} tickLine={false} axisLine={false} width={128} />
+                <Tooltip
+                  contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                  formatter={(v, n) => [n === "clicks" ? int(v) : v, n === "clicks" ? "Clicks" : n]}
+                />
+                <Bar dataKey="clicks" radius={[0, 4, 4, 0]}>
+                  {(placements || []).slice(0, 6).map((entry, i) => (
+                    <Cell key={entry.placement} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      {/* The players who actually paid for the period. */}
+      {topPlayers?.length ? (
+        <section className="xr-block xr-avoid-break">
+          <h2 className="xr-h2"><Crown size={13} /> Highest-value players</h2>
+          <div className="xr-players">
+            {topPlayers.map((p, i) => (
+              <div key={p.externalId} className={`xr-player${i === 0 ? " is-first" : ""}`}>
+                <span className="xr-player-rank">{i + 1}</span>
+                <span className="xr-player-geo"><CountryFlag value={p.country} /> {p.country || "—"}</span>
+                <strong className="xr-player-value">{formatCurrencyWhole(p.revenue)}</strong>
+                <span className="xr-player-sub">
+                  {p.redeposits} redeposit{p.redeposits === 1 ? "" : "s"}
+                  {p.buyer ? ` · ${p.buyer}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="xr-block xr-avoid-break">
         <h2 className="xr-h2">By buyer</h2>
