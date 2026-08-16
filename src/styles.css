@@ -21797,3 +21797,16 @@ select option,
   .xr-rank-row { grid-template-columns: 24px 1fr 84px; }
   .xr-rank-bar, .xr-rank-sub { display: none; }
 }
+
+/* What the player is worth in total, under the single payment on this row.
+   Quiet: the row's own amount stays the primary number. */
+.conv-player-total {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: help;
+}

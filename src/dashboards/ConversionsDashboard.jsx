@@ -293,6 +293,28 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
   // and simply hid the rest, so anything older than that was unreachable
   // without narrowing the window or opening the CSV.
   const pager = usePagination(filteredRows.length);
+  // What a player is worth in total, not just on this line.
+  //
+  // A redeposit row shows one payment — $39.37 — while the same player may
+  // have paid twenty times over the period. Reading down the column you can
+  // see every individual amount and still have no idea which players matter,
+  // which is the question anyone scanning this table is actually asking.
+  //
+  // Totalled over filteredRows, so it answers for the range and filters on
+  // screen rather than for all time: change the date range and the total
+  // changes with it, which is the only behaviour that is not misleading.
+  const playerTotals = React.useMemo(() => {
+    const byPlayer = new Map();
+    for (const row of filteredRows) {
+      const id = row.externalId;
+      const revenue = Number(row.revenue) || 0;
+      if (!id || revenue <= 0) continue;
+      const prev = byPlayer.get(id) || { revenue: 0, payments: 0 };
+      byPlayer.set(id, { revenue: prev.revenue + revenue, payments: prev.payments + 1 });
+    }
+    return byPlayer;
+  }, [filteredRows]);
+
   const visibleRows = filteredRows.slice(pager.from, pager.to);
   const statusChip = (status) => {
     const statusMeta = CONVERSION_STATUS_META[status];
@@ -668,6 +690,20 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                           <td>{statusChip(row.status)}</td>
                           <td className={row.revenue > 0 ? "conv-revenue" : undefined}>
                             {row.revenue > 0 ? formatCurrency(row.revenue) : <span className="lc-dim-dash">—</span>}
+                            {/* Only where it adds something: one payment IS the
+                                player total, and repeating it would be noise. */}
+                            {(() => {
+                              const total = playerTotals.get(row.externalId);
+                              if (!total || total.payments < 2 || !(row.revenue > 0)) return null;
+                              return (
+                                <span
+                                  className="conv-player-total"
+                                  title={`${total.payments} payments from this player in the current range`}
+                                >
+                                  {formatCurrency(total.revenue)} total · {total.payments}×
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td
                             className="live-click-geo"
