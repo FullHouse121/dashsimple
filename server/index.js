@@ -15459,14 +15459,21 @@ const buildExecutiveReport = async ({ from, to, title }) => {
          FROM media_stats
         WHERE date >= $1 AND date <= $2 AND LENGTH(COALESCE(TRIM(placement),'')) > 3
         GROUP BY 1 ORDER BY SUM(clicks) DESC LIMIT 8`, [from, to]),
+    // The KEITARO campaign, rebuilt from the fields it was parsed into on
+    // ingest. campaign_name cannot be used: it holds whatever Meta was given,
+    // so the list came back with "ChromeMobile" and "EC-JJ-T2-28/7" beside real
+    // campaigns. buyer|tool|game|geo|brand is the naming convention the whole
+    // dashboard already parses, so this reproduces it exactly.
     getRows(
-      `SELECT campaign_name AS campaign,
+      `SELECT CONCAT_WS(' | ', NULLIF(TRIM(buyer),''), NULLIF(TRIM(tool),''),
+                        NULLIF(TRIM(game),''), NULLIF(TRIM(geo),''), NULLIF(TRIM(brand),'')) AS campaign,
               COALESCE(SUM(clicks),0)::int AS clicks,
               COALESCE(SUM(registers),0)::int AS registers,
               COALESCE(SUM(ftds),0)::int AS ftds,
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats
-        WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(campaign_name),'') <> ''
+        WHERE date >= $1 AND date <= $2
+          AND COALESCE(TRIM(buyer),'') <> '' AND COALESCE(TRIM(brand),'') <> ''
         GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
         ORDER BY SUM(revenue) DESC NULLS LAST LIMIT 10`, [from, to]),
     // The players carrying the period. user_behavior is per external_id, which
@@ -15573,8 +15580,13 @@ const buildExecutiveReport = async ({ from, to, title }) => {
     countries: countries.map((r) => ({
       country: r.country, clicks: num(r.clicks), registers: num(r.registers),
       ftds: num(r.ftds), revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
     })),
-    brands: brands.map((r) => ({ brand: r.brand, ftds: num(r.ftds), revenue: num(r.revenue) })),
+    brands: brands.map((r) => ({
+      brand: r.brand, ftds: num(r.ftds), revenue: num(r.revenue),
+      revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+    })),
     tools: tools.map((r) => ({
       tool: r.tool, clicks: num(r.clicks), registers: num(r.registers),
       ftds: num(r.ftds), revenue: num(r.revenue),
@@ -15589,6 +15601,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       campaign: r.campaign, clicks: num(r.clicks), registers: num(r.registers),
       ftds: num(r.ftds), revenue: num(r.revenue),
       epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+      reg2dep: rate(num(r.ftds), num(r.registers)),
     })),
     topPlayers: topPlayers.map((r) => ({
       externalId: r.external_id, country: r.country, buyer: r.buyer,

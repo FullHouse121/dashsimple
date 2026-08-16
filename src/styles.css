@@ -21797,3 +21797,70 @@ select option,
   .xr-rank-row { grid-template-columns: 24px 1fr 84px; }
   .xr-rank-bar, .xr-rank-sub { display: none; }
 }
+
+/* ── Report: share bars in tables ─────────────────────────────────────
+   A column of currency hides which rows dominate. The bar sits behind the
+   number rather than in its own column, so the table gains a comparison
+   without gaining a width. */
+.xr-share-td { position: relative; }
+
+.xr-share {
+  position: relative;
+  display: block;
+  padding: 3px 0;
+}
+
+.xr-share-bar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  opacity: 0.16;
+}
+.xr-share-bar.is-green { background: var(--green); }
+.xr-share-bar.is-blue { background: var(--blue); }
+.xr-share-bar.is-purple { background: var(--purple); }
+.xr-share-bar.is-yellow { background: var(--yellow); }
+
+.xr-share-text { position: relative; }
+
+/* Rank column: narrow, quiet, and out of the way of the name. */
+.xr-table-rank .xr-pos {
+  width: 22px;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: left !important;
+}
+
+/* Clean-traffic parts, so 98.3% is answerable rather than just stated. */
+.xr-tile-split {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--faint);
+}
+.xr-tile-split span { display: flex; flex-direction: column; gap: 1px; }
+.xr-tile-split em {
+  font-style: normal;
+  font-weight: 650;
+  font-size: 12.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* What the funnel drops between steps — the number the survivors imply but
+   never state. */
+.xr-funnel-lost {
+  display: block;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--red);
+  margin-top: 1px;
+}
+
+@media print {
+  .xr-share-bar { opacity: 0.22; }
+}

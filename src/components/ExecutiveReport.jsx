@@ -24,6 +24,19 @@ import { axisTickStyle, tooltipStyle, tooltipItemStyle, tooltipLabelStyle } from
 
 const int = (v) => Number(v || 0).toLocaleString();
 
+// A tinted bar behind the row, sized to its share of the column's largest
+// value. A table of numbers hides which rows dominate; this shows it without
+// spending a column on it.
+const ShareCell = ({ value, max, children, tone = "green" }) => {
+  const pct = max > 0 ? Math.max((value / max) * 100, 1.5) : 0;
+  return (
+    <span className="xr-share">
+      <span className={`xr-share-bar is-${tone}`} style={{ width: `${pct}%` }} aria-hidden="true" />
+      <span className="xr-share-text">{children}</span>
+    </span>
+  );
+};
+
 // A delta is only meaningful against a period that had something in it.
 const Delta = ({ value }) => {
   if (value === null || value === undefined || !Number.isFinite(value)) {
@@ -166,9 +179,13 @@ export default function ExecutiveReport({ report }) {
                 </ResponsiveContainer>
                 <span className="xr-gauge-value">{(quality.cleanRate || 0).toFixed(1)}%</span>
               </div>
-              <p className="xr-tile-note">
-                {quality.bots.toLocaleString()} bots · {quality.proxies.toLocaleString()} proxies
-              </p>
+              {/* The parts, not a sentence: a manager who sees 98.3% will
+                  next ask what the other 1.7% was. */}
+              <div className="xr-tile-split">
+                <span><em>{quality.bots.toLocaleString()}</em>bots</span>
+                <span><em>{quality.proxies.toLocaleString()}</em>proxies</span>
+                <span><em>{(quality.clicks - quality.bots - quality.proxies).toLocaleString()}</em>real</span>
+              </div>
             </div>
 
             <div className="xr-tile">
@@ -280,7 +297,12 @@ export default function ExecutiveReport({ report }) {
                 <span className="xr-funnel-track">
                   <span className="xr-funnel-fill" style={{ width: `${width}%` }} />
                 </span>
-                <span className="xr-funnel-value">{int(step.value)}</span>
+                <span className="xr-funnel-value">
+                  {int(step.value)}
+                  {i > 0 && funnel[i - 1] && step.perPrev === undefined ? (
+                    <em className="xr-funnel-lost">−{int(Math.max(0, funnel[i - 1].value - step.value))}</em>
+                  ) : null}
+                </span>
                 <span className="xr-funnel-rate">
                   {i === 0
                     ? "—"
@@ -325,18 +347,27 @@ export default function ExecutiveReport({ report }) {
       <section className="xr-two">
         <div className="xr-block xr-avoid-break">
           <h2 className="xr-h2">Top campaigns</h2>
-          <table className="xr-table">
-            <thead><tr><th>Campaign</th><th>Clicks</th><th>FTDs</th><th>EPC</th><th>Revenue</th></tr></thead>
+          <table className="xr-table xr-table-rank">
+            <thead>
+              <tr><th /><th>Campaign</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>EPC</th><th>Revenue</th></tr>
+            </thead>
             <tbody>
-              {(campaigns || []).map((row) => (
-                <tr key={row.campaign}>
-                  <td className="xr-strong xr-clip" title={row.campaign}>{row.campaign}</td>
-                  <td>{int(row.clicks)}</td>
-                  <td>{int(row.ftds)}</td>
-                  <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
-                  <td>{formatCurrencyWhole(row.revenue)}</td>
-                </tr>
-              ))}
+              {(campaigns || []).map((row, i) => {
+                const max = campaigns[0]?.revenue || 0;
+                return (
+                  <tr key={row.campaign}>
+                    <td className="xr-pos">{i + 1}</td>
+                    <td className="xr-strong xr-clip" title={row.campaign}>{row.campaign}</td>
+                    <td>{int(row.clicks)}</td>
+                    <td>{int(row.ftds)}</td>
+                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.revenue} max={max}>{formatCurrencyWhole(row.revenue)}</ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -390,20 +421,26 @@ export default function ExecutiveReport({ report }) {
           <thead>
             <tr>
               <th>Buyer</th><th>Clicks</th><th>Registrations</th><th>FTDs</th>
-              <th>Reg→Dep</th><th>Revenue</th>
+              <th>Reg→Dep</th><th>EPC</th><th>Revenue</th>
             </tr>
           </thead>
           <tbody>
-            {buyers.map((row) => (
-              <tr key={row.buyer}>
-                <td className="xr-strong">{row.buyer}</td>
-                <td>{int(row.clicks)}</td>
-                <td>{int(row.registers)}</td>
-                <td className="xr-strong">{int(row.ftds)}</td>
-                <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
-                <td>{formatCurrencyWhole(row.revenue)}</td>
-              </tr>
-            ))}
+            {buyers.map((row) => {
+              const max = Math.max(...buyers.map((b) => b.revenue), 0);
+              return (
+                <tr key={row.buyer}>
+                  <td className="xr-strong">{row.buyer}</td>
+                  <td>{int(row.clicks)}</td>
+                  <td>{int(row.registers)}</td>
+                  <td className="xr-strong">{int(row.ftds)}</td>
+                  <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                  <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
+                  <td className="xr-share-td">
+                    <ShareCell value={row.revenue} max={max}>{formatCurrencyWhole(row.revenue)}</ShareCell>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>
@@ -412,21 +449,29 @@ export default function ExecutiveReport({ report }) {
         <div className="xr-block xr-avoid-break">
           <h2 className="xr-h2">By country</h2>
           <table className="xr-table">
-            <thead><tr><th>Country</th><th>Clicks</th><th>FTDs</th><th>Revenue</th></tr></thead>
+            <thead><tr><th>Country</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
             <tbody>
-              {countries.map((row) => (
-                <tr key={row.country}>
-                  <td className="xr-strong">
-                    <span className="xr-cell-mark">
-                      <CountryFlag value={row.country} />
-                      {row.country}
-                    </span>
-                  </td>
-                  <td>{int(row.clicks)}</td>
-                  <td>{int(row.ftds)}</td>
-                  <td>{formatCurrencyWhole(row.revenue)}</td>
-                </tr>
-              ))}
+              {countries.map((row) => {
+                const max = Math.max(...countries.map((c) => c.revenue), 0);
+                return (
+                  <tr key={row.country}>
+                    <td className="xr-strong">
+                      <span className="xr-cell-mark">
+                        <CountryFlag value={row.country} />
+                        {row.country}
+                      </span>
+                    </td>
+                    <td>{int(row.clicks)}</td>
+                    <td>{int(row.ftds)}</td>
+                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.revenue} max={max} tone="blue">
+                        {formatCurrencyWhole(row.revenue)}
+                      </ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -434,18 +479,23 @@ export default function ExecutiveReport({ report }) {
         <div className="xr-block xr-avoid-break">
           <h2 className="xr-h2">By tool</h2>
           <table className="xr-table">
-            <thead><tr><th>Tool</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th></tr></thead>
+            <thead><tr><th>Tool</th><th>Clicks</th><th>Reg→Dep</th><th>FTDs</th></tr></thead>
             <tbody>
-              {(tools || []).map((row) => (
-                <tr key={row.tool}>
-                  <td className="xr-strong">
-                    <span className="xr-cell-mark"><BrandMark value={row.tool} height={13} /></span>
-                  </td>
-                  <td>{int(row.clicks)}</td>
-                  <td>{int(row.ftds)}</td>
-                  <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
-                </tr>
-              ))}
+              {(tools || []).map((row) => {
+                const max = Math.max(...(tools || []).map((t) => t.ftds), 0);
+                return (
+                  <tr key={row.tool}>
+                    <td className="xr-strong">
+                      <span className="xr-cell-mark"><BrandMark value={row.tool} height={13} /></span>
+                    </td>
+                    <td>{int(row.clicks)}</td>
+                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.ftds} max={max} tone="purple">{int(row.ftds)}</ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -453,17 +503,25 @@ export default function ExecutiveReport({ report }) {
         <div className="xr-block xr-avoid-break">
           <h2 className="xr-h2">By brand</h2>
           <table className="xr-table">
-            <thead><tr><th>Brand</th><th>FTDs</th><th>Revenue</th></tr></thead>
+            <thead><tr><th>Brand</th><th>FTDs</th><th>Per FTD</th><th>Revenue</th></tr></thead>
             <tbody>
-              {brands.map((row) => (
-                <tr key={row.brand}>
-                  <td className="xr-strong">
-                    <span className="xr-cell-mark"><BrandMark value={row.brand} height={14} /></span>
-                  </td>
-                  <td>{int(row.ftds)}</td>
-                  <td>{formatCurrencyWhole(row.revenue)}</td>
-                </tr>
-              ))}
+              {brands.map((row) => {
+                const max = Math.max(...brands.map((b) => b.revenue), 0);
+                return (
+                  <tr key={row.brand}>
+                    <td className="xr-strong">
+                      <span className="xr-cell-mark"><BrandMark value={row.brand} height={14} /></span>
+                    </td>
+                    <td>{int(row.ftds)}</td>
+                    <td>{row.revenuePerFtd === null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.revenue} max={max} tone="yellow">
+                        {formatCurrencyWhole(row.revenue)}
+                      </ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
