@@ -790,49 +790,49 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
         </div>
       ) : null}
 
-      <div className="br-two">
-        {countries?.length ? (
-          <section className="br-block">
-            <h2 className="br-h2">Your markets</h2>
-            <p className="br-note">
-              Reg→Dep marked with · is built on too few registrations to trust. Repeat is redeposits per depositor —
-              where players come back is where money compounds without more spend. Worth is
-              {worthTotal > 0 ? ` — ${formatCurrencyWhole(worthTotal)} across the markets with a rate on file.` : "."}
-            </p>
-            <table className="br-table">
-              <thead><tr>
-                  <Th label="Market" sortKey="country" sort={marketSort.sort} toggle={marketSort.toggle} align="left" />
-                  <Th label="FTDs" sortKey="ftds" sort={marketSort.sort} toggle={marketSort.toggle} />
-                  <Th label="Reg→Dep" sortKey="reg2dep" sort={marketSort.sort} toggle={marketSort.toggle} />
-                  <Th label="Repeat" sortKey="repeatPerFtd" sort={marketSort.sort} toggle={marketSort.toggle} />
-                  <Th label="CPA" sortKey="cpa" sort={marketSort.sort} toggle={marketSort.toggle} />
-                  <Th label="Worth" sortKey="worth" sort={marketSort.sort} toggle={marketSort.toggle} />
-                  {/* The table was ordered by revenue while not showing it,
-                      which is indistinguishable from no order at all. */}
-                  <Th label="Revenue" sortKey="revenue" sort={marketSort.sort} toggle={marketSort.toggle} />
-                </tr></thead>
-              <tbody>
-                {marketSort.rows.map((c) => (
-                  <tr key={c.country}>
-                    <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
-                    <td>{int(c.ftds)}</td>
-                    <td>
-                      {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
-                      {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
-                    </td>
-                    {/* Redeposits per depositor. Where players come back is
-                        where money compounds without more spend. */}
-                    <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
-                    <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
-                    <td>{c.worth == null ? "—" : formatCurrencyWhole(c.worth)}</td>
-                    <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ) : null}
+      {countries?.length ? (
+        <section className="br-block">
+          <h2 className="br-h2">Your markets</h2>
+          <p className="br-note">
+            Reg→Dep marked with · is built on too few registrations to trust. Repeat is redeposits per depositor —
+            where players come back is where money compounds without more spend. Worth is
+            {worthTotal > 0 ? ` — ${formatCurrencyWhole(worthTotal)} across the markets with a rate on file.` : "."}
+          </p>
+          <table className="br-table">
+            <thead><tr>
+                <Th label="Market" sortKey="country" sort={marketSort.sort} toggle={marketSort.toggle} align="left" />
+                <Th label="FTDs" sortKey="ftds" sort={marketSort.sort} toggle={marketSort.toggle} />
+                <Th label="Reg→Dep" sortKey="reg2dep" sort={marketSort.sort} toggle={marketSort.toggle} />
+                <Th label="Repeat" sortKey="repeatPerFtd" sort={marketSort.sort} toggle={marketSort.toggle} />
+                <Th label="CPA" sortKey="cpa" sort={marketSort.sort} toggle={marketSort.toggle} />
+                <Th label="Worth" sortKey="worth" sort={marketSort.sort} toggle={marketSort.toggle} />
+                {/* The table was ordered by revenue while not showing it,
+                    which is indistinguishable from no order at all. */}
+                <Th label="Revenue" sortKey="revenue" sort={marketSort.sort} toggle={marketSort.toggle} />
+              </tr></thead>
+            <tbody>
+              {marketSort.rows.map((c) => (
+                <tr key={c.country}>
+                  <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
+                  <td>{int(c.ftds)}</td>
+                  <td>
+                    {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
+                    {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                  </td>
+                  {/* Redeposits per depositor. Where players come back is
+                      where money compounds without more spend. */}
+                  <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
+                  <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
+                  <td>{c.worth == null ? "—" : formatCurrencyWhole(c.worth)}</td>
+                  <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
+      <div className="br-two">
         {r.brands?.length || r.tools?.length ? (
           <section className="br-block">
             <h2 className="br-h2">Brand and tool</h2>

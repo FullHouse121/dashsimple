@@ -22532,7 +22532,20 @@ select option,
 .br-bars-fill { display: block; height: 100%; border-radius: 999px; }
 .br-bars-value { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.br-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px; }
+/* Two columns, and exactly two — auto-fit was packing a third section in
+   whenever the window allowed, which is how a seven-column table ended up in
+   a third of the width. `minmax(0, 1fr)` matters as much: a bare 1fr refuses
+   to shrink below its content, so an oversized table pushes out of its cell
+   and paints over the next one instead of scrolling inside its own. */
+.br-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+@media (max-width: 1040px) { .br-two { grid-template-columns: minmax(0, 1fr); } }
+
+/* No table may bleed into its neighbour. If one does not fit, it scrolls
+   inside its own section — visibly, with the edge showing there is more. */
+.br-block { min-width: 0; }
+.br-block .br-table { display: block; overflow-x: auto; white-space: nowrap; }
+.br-block .br-table thead, .br-block .br-table tbody { display: table; width: 100%; }
+.br-table .br-strong { white-space: normal; }
 
 @media (max-width: 720px) {
   .br-head { flex-direction: column; }
