@@ -15915,7 +15915,7 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
   };
 
   const s2 = scoped(2);
-  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, allCountryRows] =
+  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, prevCampaignRows, allCountryRows] =
     await Promise.all([
       totalsFor(from, to),
       totalsFor(prevFrom, prevTo),
@@ -15953,6 +15953,7 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
                 COALESCE(SUM(clicks),0)::int AS clicks,
                 COALESCE(SUM(registers),0)::int AS registers,
                 COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(redeposits),0)::int AS redeposits,
                 COALESCE(SUM(revenue),0)::float8 AS revenue
            FROM media_stats
           WHERE date >= $1 AND date <= $2 AND COALESCE(country,'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
@@ -16055,6 +16056,21 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
           GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
 
+      // The same campaigns over the previous window. A rate on its own is a
+      // fact; a rate against last period is a decision — feed it or kill it.
+      (async () => {
+        const prev = scoped(2);
+        return getRows(
+          `SELECT CONCAT_WS(' | ', NULLIF(TRIM(buyer),''), NULLIF(TRIM(tool),''),
+                            NULLIF(TRIM(game),''), NULLIF(TRIM(geo),''), NULLIF(TRIM(brand),'')) AS campaign,
+                  COALESCE(SUM(clicks),0)::int AS clicks,
+                  COALESCE(SUM(ftds),0)::int AS ftds,
+                  COALESCE(SUM(revenue),0)::float8 AS revenue
+             FROM media_stats
+            WHERE date >= $1 AND date <= $2${prev.sql ? ` AND ${prev.sql}` : ""}
+            GROUP BY 1`, [prevFrom, prevTo, ...prev.params]).catch(() => []);
+      })(),
+
       // Every market this buyer touched in the window, IGNORING the country
       // filter — the picker has to keep offering the markets you filtered
       // away, or choosing one would empty the menu you chose it from.
@@ -16152,15 +16168,32 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
       }
     : null;
 
-  const campaigns = campaignRows.map((r) => ({
-    campaign: r.campaign,
-    clicks: num(r.clicks),
-    registers: num(r.registers),
-    ftds: num(r.ftds),
-    revenue: num(r.revenue),
-    reg2dep: rate(num(r.ftds), num(r.registers)),
-    epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
-  }));
+  const prevByCampaign = new Map(
+    (prevCampaignRows || []).map((r) => [r.campaign, { ftds: num(r.ftds), revenue: num(r.revenue), clicks: num(r.clicks) }])
+  );
+  // Below this many registrations a conversion rate is noise, and a report
+  // that lets someone act on noise is worse than one that says less. The flag
+  // travels with the row so the page can mark it rather than hide it.
+  const RATE_MIN_REGISTERS = 30;
+  const campaigns = campaignRows.map((r) => {
+    const was = prevByCampaign.get(r.campaign) || null;
+    return {
+      campaign: r.campaign,
+      clicks: num(r.clicks),
+      registers: num(r.registers),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+      thin: num(r.registers) < RATE_MIN_REGISTERS,
+      previous: was ? { ftds: was.ftds, revenue: was.revenue } : null,
+      deltaFtds: was ? delta(num(r.ftds), was.ftds) : null,
+      deltaRevenue: was ? delta(num(r.revenue), was.revenue) : null,
+      // New this period, which is a different thing from "grew" and deserves
+      // to be read differently.
+      isNew: !was || (was.clicks === 0 && was.ftds === 0),
+    };
+  });
 
   const card = new Map(
     (cpaRates || []).filter((r) => Number(r.cpa) > 0).map((r) => [String(r.country || "").trim().toLowerCase(), Number(r.cpa)])
@@ -16174,6 +16207,11 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
       ftds: num(r.ftds),
       revenue: num(r.revenue),
       reg2dep: rate(num(r.ftds), num(r.registers)),
+      thin: num(r.registers) < 30,
+      redeposits: num(r.redeposits),
+      // Redeposits per first deposit — not a percentage, because a depositor
+      // can return many times and "300% converted" is nonsense.
+      repeatPerFtd: num(r.ftds) > 0 ? num(r.redeposits) / num(r.ftds) : null,
       cpa,
       // What this buyer's deposits in this market are worth at the rate card:
       // the most motivating figure available to someone choosing where to push.

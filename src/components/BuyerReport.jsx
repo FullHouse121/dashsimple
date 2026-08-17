@@ -106,10 +106,19 @@ const buildCsv = (r) => {
   ]);
   section("What to do next", ["#", "Finding", "Detail"],
     (r.actions || []).map((a, i) => [i + 1, a.title, a.body]));
-  section("Campaigns", ["Campaign", "Clicks", "Registrations", "FTDs", "Reg to dep %", "Revenue"],
-    (r.campaigns || []).map((c) => [c.campaign, c.clicks, c.registers, c.ftds, c.reg2dep, c.revenue]));
-  section("Markets", ["Country", "Clicks", "Registrations", "FTDs", "Reg to dep %", "CPA", "Worth at rate card", "Revenue"],
-    (r.countries || []).map((c) => [c.country, c.clicks, c.registers, c.ftds, c.reg2dep, c.cpa, c.worth, c.revenue]));
+  section("Campaigns",
+    ["Campaign", "Clicks", "Registrations", "FTDs", "FTDs last period", "FTD change %", "Reg to dep %", "Sample", "Revenue"],
+    (r.campaigns || []).map((c) => [
+      c.campaign, c.clicks, c.registers, c.ftds,
+      c.isNew ? "new" : c.previous?.ftds ?? "", c.isNew ? "" : c.deltaFtds,
+      c.reg2dep, c.thin ? "thin" : "ok", c.revenue,
+    ]));
+  section("Markets",
+    ["Country", "Clicks", "Registrations", "FTDs", "Redeposits", "Repeat per FTD", "Reg to dep %", "Sample", "CPA", "Worth at rate card", "Revenue"],
+    (r.countries || []).map((c) => [
+      c.country, c.clicks, c.registers, c.ftds, c.redeposits, c.repeatPerFtd,
+      c.reg2dep, c.thin ? "thin" : "ok", c.cpa, c.worth, c.revenue,
+    ]));
   section("Brands", ["Brand", "Clicks", "FTDs", "Reg to dep %", "Revenue per FTD", "Revenue"],
     (r.brands || []).map((x) => [x.brand, x.clicks, x.ftds, x.reg2dep, x.revenuePerFtd, x.revenue]));
   section("Tools", ["Tool", "Clicks", "FTDs", "Reg to dep %", "Revenue"],
@@ -445,13 +454,16 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           </p>
           <table className="br-table">
             <thead>
-              <tr><th>Campaign</th><th>Clicks</th><th>Regs</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr>
+              <tr>
+                <th>Campaign</th><th>Clicks</th><th>Regs</th><th>FTDs</th>
+                <th>vs last period</th><th>Reg→Dep</th><th>Revenue</th>
+              </tr>
             </thead>
             <tbody>
               {campaigns.map((c) => {
                 // Only rates built on a real sample are coloured; a 100% on two
                 // registrations is noise and colouring it invites a bad call.
-                const rated = c.registers >= 30 && c.reg2dep !== null && benchmark.reg2dep !== null;
+                const rated = !c.thin && c.reg2dep !== null && benchmark.reg2dep !== null;
                 const tone = rated ? (c.reg2dep >= benchmark.reg2dep ? "is-ahead" : "is-behind") : "";
                 return (
                   <tr key={c.campaign}>
@@ -459,7 +471,27 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                     <td>{int(c.clicks)}</td>
                     <td>{int(c.registers)}</td>
                     <td>{int(c.ftds)}</td>
-                    <td className={tone}>{c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}</td>
+                    {/* Feed it or kill it. A rate alone cannot answer that;
+                        the same campaign against last period can. */}
+                    <td>
+                      {c.isNew ? (
+                        <span className="br-tag is-new">new</span>
+                      ) : c.deltaFtds === null ? (
+                        <span className="br-dim">—</span>
+                      ) : (
+                        <span className={c.deltaFtds >= 0 ? "is-ahead" : "is-behind"}>
+                          {c.deltaFtds >= 0 ? "▲" : "▼"} {Math.abs(c.deltaFtds).toFixed(0)}%
+                          <em className="br-was"> was {int(c.previous?.ftds ?? 0)}</em>
+                        </span>
+                      )}
+                    </td>
+                    <td className={tone}>
+                      {c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}
+                      {/* Marked, not hidden: a 100% rate on two signups is
+                          noise, and a report that lets someone act on it is
+                          worse than one that says less. */}
+                      {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                    </td>
                     <td className="br-share-td">
                       <span className="br-share">
                         <span
@@ -482,17 +514,24 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           <section className="br-block">
             <h2 className="br-h2">Your markets</h2>
             <p className="br-note">
-              What your deposits are worth at the rate card
+              Reg→Dep marked with · is built on too few registrations to trust. Repeat is redeposits per depositor —
+              where players come back is where money compounds without more spend. Worth is
               {worthTotal > 0 ? ` — ${formatCurrencyWhole(worthTotal)} across the markets with a rate on file.` : "."}
             </p>
             <table className="br-table">
-              <thead><tr><th>Market</th><th>FTDs</th><th>Reg→Dep</th><th>CPA</th><th>Worth</th></tr></thead>
+              <thead><tr><th>Market</th><th>FTDs</th><th>Reg→Dep</th><th>Repeat</th><th>CPA</th><th>Worth</th></tr></thead>
               <tbody>
                 {countries.filter((c) => c.clicks > 0).map((c) => (
                   <tr key={c.country}>
                     <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
                     <td>{int(c.ftds)}</td>
-                    <td>{c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}</td>
+                    <td>
+                      {c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}
+                      {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                    </td>
+                    {/* Redeposits per depositor. Where players come back is
+                        where money compounds without more spend. */}
+                    <td>{c.repeatPerFtd === null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
                     <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
                     <td className="br-strong">{c.worth === null ? "—" : formatCurrencyWhole(c.worth)}</td>
                   </tr>

@@ -1105,6 +1105,18 @@ export default function ReportsDashboard({ authUser }) {
         <ColumnsIcon size={14} />
         <span>{t("Query builder")}</span>
       </button>
+      {/* Before the executive report: a buyer opens this and nothing else,
+          so it goes where they will look first. Leadership reads down past it
+          to the team view. */}
+      <button
+        type="button"
+        className={`offers-tab${mode === "buyer" ? " is-active" : ""}`}
+        onClick={() => setMode("buyer")}
+        title={canSeeExecutive ? t("Open any buyer's report.") : t("Your own numbers, and what to do about them.")}
+      >
+        <AwardIcon size={14} />
+        <span>{t("Buyer report")}</span>
+      </button>
       {/* Buyers see it locked rather than not at all: hiding a section makes
           people ask whether it exists, and a padlock answers that in one
           glance. The server refuses them regardless — this is the honest
@@ -1119,17 +1131,6 @@ export default function ReportsDashboard({ authUser }) {
       >
         {canSeeExecutive ? <ReportIcon size={14} /> : <Lock size={13} />}
         <span>{t("Executive report")}</span>
-      </button>
-      {/* After the executive report, not before: the order follows the
-          drill-down — the whole team, then one person in it. */}
-      <button
-        type="button"
-        className={`offers-tab${mode === "buyer" ? " is-active" : ""}`}
-        onClick={() => setMode("buyer")}
-        title={canSeeExecutive ? t("Open any buyer's report.") : t("Your own numbers, and what to do about them.")}
-      >
-        <AwardIcon size={14} />
-        <span>{t("Buyer report")}</span>
       </button>
     </div>
   );

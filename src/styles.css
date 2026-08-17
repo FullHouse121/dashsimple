@@ -22616,3 +22616,28 @@ select option,
   .br-table thead { display: table-header-group; }
   .br-table tr { break-inside: avoid; }
 }
+
+/* A campaign that did not exist last period is not a campaign that grew, and
+   the two must not read the same. */
+.br-tag.is-new {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--blue);
+  background: rgba(100, 184, 255, 0.12);
+  border: 1px solid rgba(100, 184, 255, 0.28);
+}
+.br-was { font-style: normal; color: var(--faint); font-size: 10.5px; margin-left: 5px; }
+
+/* A rate built on too few registrations is marked rather than hidden: the
+   number is still true, it just cannot carry a decision on its own. */
+.br-thin {
+  color: var(--yellow);
+  font-weight: 700;
+  margin-left: 4px;
+  cursor: help;
+}
