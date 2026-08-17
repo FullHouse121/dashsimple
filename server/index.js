@@ -15914,8 +15914,22 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     );
   };
 
+  const splitFor = async (a, b) => {
+    const sc = scoped(2);
+    return (
+      (await getRow(
+        `SELECT COALESCE(SUM(ftd_revenue),0)::float8 AS from_new,
+                COALESCE(SUM(redeposit_revenue),0)::float8 AS from_returning,
+                COALESCE(SUM(revenue),0)::float8 AS total
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2${sc.sql ? ` AND ${sc.sql}` : ""}`,
+        [a, b, ...sc.params]
+      )) || {}
+    );
+  };
+
   const s2 = scoped(2);
-  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, prevCampaignRows, allCountryRows] =
+  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, prevCampaignRows, creativeRows, gameRows, split, splitPrev, allCountryRows] =
     await Promise.all([
       totalsFor(from, to),
       totalsFor(prevFrom, prevTo),
@@ -16070,6 +16084,41 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
             WHERE date >= $1 AND date <= $2${prev.sql ? ` AND ${prev.sql}` : ""}
             GROUP BY 1`, [prevFrom, prevTo, ...prev.params]).catch(() => []);
       })(),
+
+      // ── Which creative, and which game ───────────────────────────────
+      // The deepest level a buyer optimises at, and it has been sitting in
+      // media_stats unread: 16,000 rows carry an ad name.
+      getRows(
+        `SELECT TRIM(ad_name) AS ad,
+                COALESCE(NULLIF(TRIM(adset_name),''),'—') AS adset,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(ad_name),'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1, 2 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC, COALESCE(SUM(ftds),0) DESC LIMIT 12`,
+        [from, to, ...s2.params]).catch(() => []),
+      getRows(
+        `SELECT TRIM(game) AS game,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(game),'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`,
+        [from, to, ...s2.params]).catch(() => []),
+
+      // ── Revenue at source ────────────────────────────────────────────
+      // What new depositors paid against what the existing base paid. This
+      // was withdrawn from the executive report because user_behavior_daily
+      // does not reconcile — media_stats carries the same split and DOES:
+      // ftd_revenue + redeposit_revenue matches revenue to the cent.
+      splitFor(from, to),
+      splitFor(prevFrom, prevTo),
 
       // Every market this buyer touched in the window, IGNORING the country
       // filter — the picker has to keep offering the markets you filtered
@@ -16300,6 +16349,25 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     });
   }
 
+  const srcNew = num(split.from_new);
+  const srcOld = num(split.from_returning);
+  if (srcNew + srcOld > 0) {
+    const share = (srcOld / (srcNew + srcOld)) * 100;
+    if (share >= 55) {
+      actions.push({
+        tone: "warn",
+        title: `${share.toFixed(0)}% of your revenue came from players you already had`,
+        body: `$${srcOld.toFixed(0)} from returning depositors against $${srcNew.toFixed(0)} from new ones. The base is carrying the number — if acquisition stays where it is, next period starts lower.`,
+      });
+    } else if (share <= 25) {
+      actions.push({
+        tone: "good",
+        title: `${(100 - share).toFixed(0)}% of your revenue came from new depositors`,
+        body: `$${srcNew.toFixed(0)} from players won this period. Acquisition is doing the work; the repeat value should follow it.`,
+      });
+    }
+  }
+
   const bestMarket = countries.filter((c) => c.worth !== null).sort((a, b) => b.worth - a.worth)[0];
   if (bestMarket && bestMarket.ftds > 0) {
     actions.push({
@@ -16345,6 +16413,56 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     })),
     // Every market the buyer touched, before the filter — the picker must keep
     // offering what you filtered away.
+    creatives: (creativeRows || []).map((r) => ({
+      ad: r.ad,
+      adset: r.adset,
+      clicks: num(r.clicks),
+      registers: num(r.registers),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+      thin: num(r.registers) < RATE_MIN_REGISTERS,
+    })),
+    games: (gameRows || []).map((r) => ({
+      game: r.game,
+      clicks: num(r.clicks),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+      thin: num(r.registers) < RATE_MIN_REGISTERS,
+    })),
+
+    // Where the money came from. A single revenue total cannot tell a period
+    // that acquired well from one that lived off players won earlier, and the
+    // two call for opposite decisions.
+    revenueSource: (() => {
+      const neu = num(split.from_new);
+      const old = num(split.from_returning);
+      const total = neu + old;
+      if (total <= 0) return null;
+      return {
+        fromNew: neu,
+        fromReturning: old,
+        total,
+        newShare: (neu / total) * 100,
+        returningShare: (old / total) * 100,
+        deltaNew: delta(neu, num(splitPrev.from_new)),
+        deltaReturning: delta(old, num(splitPrev.from_returning)),
+      };
+    })(),
+
+    // The buyer's own funnel, with what fell out at each step.
+    funnel: [
+      { key: "clicks", label: "Clicks", value: mine.clicks, rateFromPrev: null },
+      { key: "registers", label: "Registrations", value: mine.registers, rateFromPrev: rate(mine.registers, mine.clicks) },
+      { key: "ftds", label: "First deposits", value: mine.ftds, rateFromPrev: rate(mine.ftds, mine.registers) },
+      // A multiplier, not a rate: a depositor can return many times.
+      { key: "redeposits", label: "Redeposits", value: mine.redeposits, rateFromPrev: null,
+        perPrev: mine.ftds > 0 ? mine.redeposits / mine.ftds : null },
+    ],
+
     availableCountries: (allCountryRows || []).map((r) => r.country).filter(Boolean),
     // What this report was narrowed to, carried on the payload so an export
     // can say so on its own face instead of relying on memory.

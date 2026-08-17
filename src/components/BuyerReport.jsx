@@ -99,6 +99,10 @@ const normalise = (r) => {
     tools: rows(r.tools, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null }),
     placements: rows(r.placements, { clicks: 0, ftds: 0, share: null }),
     devices: rows(r.devices, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null, revenuePerFtd: null }),
+    creatives: rows(r.creatives, { clicks: 0, registers: 0, ftds: 0, revenue: 0, reg2dep: null, epc: null, thin: false }),
+    games: rows(r.games, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null, revenuePerFtd: null, thin: false }),
+    funnel: Array.isArray(r.funnel) ? r.funnel : [],
+    revenueSource: r.revenueSource || null,
     trend: Array.isArray(r.trend) ? r.trend : [],
     actions: Array.isArray(r.actions) ? r.actions : [],
     availableCountries: Array.isArray(r.availableCountries) ? r.availableCountries : [],
@@ -159,6 +163,18 @@ const buildCsv = (r) => {
     (r.brands || []).map((x) => [x.brand, x.clicks, x.ftds, x.reg2dep, x.revenuePerFtd, x.revenue]));
   section("Tools", ["Tool", "Clicks", "FTDs", "Reg to dep %", "Revenue"],
     (r.tools || []).map((x) => [x.tool, x.clicks, x.ftds, x.reg2dep, x.revenue]));
+  section("Creatives", ["Ad", "Adset", "Clicks", "Registrations", "FTDs", "Reg to dep %", "Sample", "Revenue"],
+    (r.creatives || []).map((c) => [c.ad, c.adset, c.clicks, c.registers, c.ftds, c.reg2dep, c.thin ? "thin" : "ok", c.revenue]));
+  section("Offers", ["Game", "Clicks", "FTDs", "Reg to dep %", "Revenue per FTD", "Revenue"],
+    (r.games || []).map((g) => [g.game, g.clicks, g.ftds, g.reg2dep, g.revenuePerFtd, g.revenue]));
+  if (r.revenueSource) {
+    section("Where the money came from", ["Source", "Revenue", "Share %", "Change vs last period %"], [
+      ["New depositors", r.revenueSource.fromNew, r.revenueSource.newShare, r.revenueSource.deltaNew],
+      ["Returning players", r.revenueSource.fromReturning, r.revenueSource.returningShare, r.revenueSource.deltaReturning],
+    ]);
+  }
+  section("Funnel", ["Step", "Count", "Rate from previous step %"],
+    (r.funnel || []).map((f) => [f.label, f.value, f.rateFromPrev]));
   section("Placements", ["Placement", "Clicks", "FTDs", "Share of clicks %"],
     (r.placements || []).map((x) => [x.placement, x.clicks, x.ftds, x.share]));
   section("Devices", ["Device", "OS", "Clicks", "FTDs", "Revenue per FTD", "Revenue"],
@@ -451,6 +467,80 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
         </div>
       </section>
 
+      {r.revenueSource || r.funnel?.length ? (
+        <div className="br-two">
+          {r.revenueSource ? (
+            <section className="br-block">
+              <h2 className="br-h2">Where the money came from</h2>
+              <p className="br-note">
+                New depositors against players you already had. A single revenue total cannot tell a period that
+                acquired well from one that lived off earlier wins — and the two call for opposite decisions.
+              </p>
+              <div className="br-source">
+                <span className="br-source-bar">
+                  <span className="is-new" style={{ width: `${Math.max(r.revenueSource.newShare, 1)}%` }} />
+                  <span className="is-old" style={{ width: `${Math.max(r.revenueSource.returningShare, 1)}%` }} />
+                </span>
+                <div className="br-source-legend">
+                  {[
+                    { label: "New depositors", value: r.revenueSource.fromNew, share: r.revenueSource.newShare, delta: r.revenueSource.deltaNew, cls: "is-new" },
+                    { label: "Returning players", value: r.revenueSource.fromReturning, share: r.revenueSource.returningShare, delta: r.revenueSource.deltaReturning, cls: "is-old" },
+                  ].map((x) => (
+                    <span key={x.label} className="br-source-item">
+                      <em className={x.cls}>{formatCurrencyWhole(x.value)}</em>
+                      <span>{x.label} · {formatPercent(x.share, 0)}</span>
+                      {x.delta == null ? null : (
+                        <b className={x.delta >= 0 ? "is-up" : "is-down"}>
+                          {x.delta >= 0 ? "▲" : "▼"} {Math.abs(x.delta).toFixed(0)}% vs last period
+                        </b>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {r.funnel?.length ? (
+            <section className="br-block">
+              <h2 className="br-h2">Where your funnel loses people</h2>
+              <p className="br-note">Each step against the one above it, and the count that did not make it.</p>
+              <div className="br-funnel">
+                {r.funnel.map((step, i) => {
+                  const top = r.funnel[0]?.value || 0;
+                  const lost = i > 0 ? Math.max(0, r.funnel[i - 1].value - step.value) : 0;
+                  return (
+                    <div className="br-funnel-row" key={step.key}>
+                      <span className="br-funnel-label">
+                        <span className="br-funnel-dot" style={{ background: RAMP[i % RAMP.length] }} />
+                        {step.label}
+                      </span>
+                      <span className="br-funnel-track">
+                        <span style={{ width: `${top > 0 ? Math.max((step.value / top) * 100, 1) : 0}%`, background: RAMP[i % RAMP.length] }} />
+                        {i > 0 && step.perPrev === undefined && top > 0 ? (
+                          <span className="br-funnel-drop" style={{ width: `${(lost / top) * 100}%` }} />
+                        ) : null}
+                      </span>
+                      <span className="br-funnel-value">
+                        {int(step.value)}
+                        {i > 0 && step.perPrev === undefined ? <em>−{int(lost)}</em> : null}
+                      </span>
+                      <span className="br-funnel-rate">
+                        {i === 0
+                          ? "—"
+                          : step.perPrev != null
+                            ? `×${step.perPrev.toFixed(2)} per FTD`
+                            : step.rateFromPrev == null ? "—" : formatPercent(step.rateFromPrev, 2)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
       {trend?.length > 1 ? (
         <section className="br-block">
           <h2 className="br-h2">Your traffic, day by day</h2>
@@ -543,6 +633,64 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             </tbody>
           </table>
         </section>
+      ) : null}
+
+      {r.creatives?.length || r.games?.length ? (
+        <div className="br-two">
+          {r.creatives?.length ? (
+            <section className="br-block">
+              <h2 className="br-h2">Your creatives</h2>
+              <p className="br-note">
+                Ad level, with the adset it ran in — the deepest thing you control, and the fastest to change.
+              </p>
+              <table className="br-table">
+                <thead><tr><th>Ad</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {r.creatives.map((c) => (
+                    <tr key={`${c.ad}-${c.adset}`}>
+                      <td className="br-strong">
+                        {c.ad}
+                        {c.adset && c.adset !== "—" ? <span className="br-sub-line">{c.adset}</span> : null}
+                      </td>
+                      <td>{int(c.clicks)}</td>
+                      <td>{int(c.ftds)}</td>
+                      <td>
+                        {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
+                        {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                      </td>
+                      <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
+
+          {r.games?.length ? (
+            <section className="br-block">
+              <h2 className="br-h2">Your offers</h2>
+              <p className="br-note">Which game the traffic was sent to, and what each one returned per depositor.</p>
+              <table className="br-table">
+                <thead><tr><th>Offer</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Per FTD</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {r.games.map((g) => (
+                    <tr key={g.game}>
+                      <td className="br-strong">{g.game}</td>
+                      <td>{int(g.clicks)}</td>
+                      <td>{int(g.ftds)}</td>
+                      <td>
+                        {g.reg2dep == null ? "—" : formatPercent(g.reg2dep, 1)}
+                        {g.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                      </td>
+                      <td>{g.revenuePerFtd == null ? "—" : formatCurrency(g.revenuePerFtd)}</td>
+                      <td className="br-strong">{formatCurrencyWhole(g.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="br-two">
