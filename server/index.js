@@ -15856,10 +15856,433 @@ const buildExecutiveReport = async ({ from, to, title }) => {
   };
 };
 
+// ── The buyer's own report ────────────────────────────────────────────
+//
+// A different document from the executive report, not a smaller one. That one
+// asks how the business did and opens with a verdict; this one asks what the
+// person reading it should change this week, and opens with the answer.
+//
+// Three rules shape it:
+//
+//   scoped      a buyer sees their own traffic and nothing else. The scope is
+//               applied in SQL, before any LIMIT, using the same clause the
+//               rest of the app trusts.
+//   benchmarked comparison is the strongest signal a buyer has about whether
+//               a rate is good, so every headline carries the team median
+//               beside it — the MEDIAN, never a colleague's name or revenue.
+//               A report that publishes everyone's numbers to everyone is a
+//               league table, and that is a different decision.
+//   derived     the actions are computed from the same figures printed
+//               underneath them, so advice can never contradict its evidence.
+//
+// Cost is absent throughout, deliberately: with the Meta pipeline down, a
+// buyer-facing CPA or ROI would be a fiction the reader cannot check.
+const buildBuyerReport = async ({ from, to, buyer }) => {
+  const dayMs = 86400000;
+  const span = Math.max(1, Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / dayMs) + 1);
+  const prevTo = isoDay(new Date(new Date(`${from}T00:00:00Z`).getTime() - dayMs));
+  const prevFrom = isoDay(new Date(new Date(`${prevTo}T00:00:00Z`).getTime() - (span - 1) * dayMs));
+
+  const scoped = (paramOffset) => buyerScopeClause(buyer, paramOffset);
+
+  // One buyer's totals for a window.
+  const totalsFor = async (a, b) => {
+    const s = scoped(2);
+    return (
+      (await getRow(
+        `SELECT COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(redeposits),0)::int AS redeposits,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2${s.sql ? ` AND ${s.sql}` : ""}`,
+        [a, b, ...s.params]
+      )) || {}
+    );
+  };
+
+  const s2 = scoped(2);
+  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates] =
+    await Promise.all([
+      totalsFor(from, to),
+      totalsFor(prevFrom, prevTo),
+
+      getRows(
+        `SELECT date,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY date ORDER BY date`,
+        [from, to, ...s2.params]
+      ),
+
+      // A buyer's campaigns are the thing they actually change, so this is the
+      // most operational table in the document.
+      getRows(
+        `SELECT CONCAT_WS(' | ', NULLIF(TRIM(buyer),''), NULLIF(TRIM(tool),''),
+                          NULLIF(TRIM(game),''), NULLIF(TRIM(geo),''), NULLIF(TRIM(brand),'')) AS campaign,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC, COALESCE(SUM(ftds),0) DESC LIMIT 12`,
+        [from, to, ...s2.params]
+      ),
+
+      getRows(
+        `SELECT country,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(country,'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY country HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC, COALESCE(SUM(ftds),0) DESC LIMIT 10`,
+        [from, to, ...s2.params]
+      ),
+
+      getRows(
+        `SELECT COALESCE(NULLIF(TRIM(placement),''),'Unknown') AS placement,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(ftds),0)::int AS ftds
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(clicks),0) DESC LIMIT 6`,
+        [from, to, ...s2.params]
+      ).catch(() => []),
+
+      // device_stats has a `buyer` column but NO campaign column, so the
+      // shared scope clause cannot be used here: it always emits a campaign
+      // predicate, and naming a column that does not exist is a 42703 that
+      // takes the query down. Matched on buyer alone.
+      (async () => {
+        const forms = buyerShortForms(buyer)
+          .map((f) => String(f).toLowerCase().replace(/[^a-z0-9]/g, ""))
+          .filter(Boolean);
+        const params = [];
+        const parts = [];
+        forms.forEach((f) => {
+          params.push(`${f}%`);
+          parts.push(`REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g') LIKE $${2 + params.length}`);
+          params.push(f);
+          parts.push(`$${2 + params.length} LIKE REGEXP_REPLACE(LOWER(COALESCE(buyer, '')), '[^a-z0-9]+', '', 'g') || '%'`);
+        });
+        const d = parts.length ? { sql: `(${parts.join(" OR ")})`, params } : { sql: "", params: [] };
+        return getRows(
+          `SELECT COALESCE(NULLIF(TRIM(device),''),'Unknown') AS device,
+                  COALESCE(NULLIF(TRIM(os),''),'Unknown') AS os,
+                  COALESCE(SUM(clicks),0)::int AS clicks,
+                  COALESCE(SUM(registers),0)::int AS registers,
+                  COALESCE(SUM(ftds),0)::int AS ftds,
+                  COALESCE(SUM(revenue),0)::float8 AS revenue
+             FROM device_stats
+            WHERE date >= $1 AND date <= $2${d.sql ? ` AND ${d.sql}` : ""}
+            GROUP BY 1,2 HAVING COALESCE(SUM(clicks),0) > 0
+            ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 6`,
+          [from, to, ...d.params]
+        ).catch(() => []);
+      })(),
+
+      // The team, for benchmarking only. Names are read here and discarded
+      // before the payload is built — the buyer receives medians, never a
+      // colleague's figures.
+      getRows(
+        `SELECT buyer,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(buyer,'') <> ''
+          GROUP BY buyer HAVING COALESCE(SUM(registers),0) >= 50`,
+        [from, to]
+      ),
+
+      getRows(
+        `SELECT buyer, country, period, date_from, date_to,
+                clicks_target, registers_target, ftds_target, revenue_target, r2d_target
+           FROM goals
+          WHERE date_to >= $1 AND date_from <= $2
+          ORDER BY date_from DESC`,
+        [from, to]
+      ).catch(() => []),
+
+      getRows("SELECT country, cpa::float8 AS cpa FROM market_cpa_rates").catch(() => []),
+    ]);
+
+  const num = (v) => Number(v) || 0;
+  const rate = (n, d) => (d > 0 ? (n / d) * 100 : null);
+  const delta = (now, before) => (before > 0 ? ((now - before) / before) * 100 : null);
+  const median = (xs) => {
+    const v = xs.filter((x) => x !== null && Number.isFinite(x)).sort((a, b) => a - b);
+    if (!v.length) return null;
+    const m = Math.floor(v.length / 2);
+    return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+  };
+
+  const mine = {
+    clicks: num(current.clicks),
+    registers: num(current.registers),
+    ftds: num(current.ftds),
+    redeposits: num(current.redeposits),
+    revenue: num(current.revenue),
+  };
+  mine.reg2dep = rate(mine.ftds, mine.registers);
+  mine.click2reg = rate(mine.registers, mine.clicks);
+  mine.epc = mine.clicks > 0 ? mine.revenue / mine.clicks : null;
+  mine.revenuePerFtd = mine.ftds > 0 ? mine.revenue / mine.ftds : null;
+  mine.deltas = {
+    clicks: delta(mine.clicks, num(previous.clicks)),
+    registers: delta(mine.registers, num(previous.registers)),
+    ftds: delta(mine.ftds, num(previous.ftds)),
+    revenue: delta(mine.revenue, num(previous.revenue)),
+  };
+
+  // Medians across everyone with a sample big enough to carry a rate. A 100%
+  // conversion on two registrations is noise, and it would drag the bar the
+  // whole team is measured against.
+  const peers = teamRows.map((r) => ({
+    reg2dep: rate(num(r.ftds), num(r.registers)),
+    epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+    click2reg: rate(num(r.registers), num(r.clicks)),
+    revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+  }));
+  const benchmark = {
+    buyers: peers.length,
+    reg2dep: median(peers.map((p) => p.reg2dep)),
+    epc: median(peers.map((p) => p.epc)),
+    click2reg: median(peers.map((p) => p.click2reg)),
+    revenuePerFtd: median(peers.map((p) => p.revenuePerFtd)),
+  };
+
+  // The buyer's own target, if one has been set for them and this window.
+  // `is_global` goals apply to everyone; a named goal wins over a global one.
+  const forms = buyerShortForms(buyer).map((f) => String(f).toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const matchesMe = (g) => {
+    const b = String(g.buyer || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!b || b === "global") return true;
+    return forms.some((f) => f && (b.startsWith(f) || f.startsWith(b)));
+  };
+  const mineGoals = goalRows.filter(matchesMe);
+  const named = mineGoals.filter((g) => {
+    const b = String(g.buyer || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    return b && b !== "global";
+  });
+  const goal = (named[0] || mineGoals[0]) || null;
+  const today = isoDay(new Date());
+  const target = goal
+    ? {
+        buyer: goal.buyer,
+        country: goal.country || null,
+        period: goal.period || null,
+        from: isoDay(new Date(goal.date_from)),
+        to: isoDay(new Date(goal.date_to)),
+        // Days left in the goal's own window, not the report's.
+        daysLeft: Math.max(
+          0,
+          Math.round((new Date(`${isoDay(new Date(goal.date_to))}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / dayMs)
+        ),
+        rows: [
+          { key: "ftds", label: "First deposits", target: num(goal.ftds_target), actual: mine.ftds, format: "count" },
+          { key: "registers", label: "Registrations", target: num(goal.registers_target), actual: mine.registers, format: "count" },
+          { key: "clicks", label: "Clicks", target: num(goal.clicks_target), actual: mine.clicks, format: "count" },
+          { key: "revenue", label: "Revenue", target: num(goal.revenue_target), actual: mine.revenue, format: "money" },
+          { key: "r2d", label: "Reg→Deposit", target: num(goal.r2d_target), actual: mine.reg2dep ?? 0, format: "percent" },
+        ]
+          .filter((r) => r.target > 0)
+          .map((r) => ({ ...r, progress: r.target > 0 ? (r.actual / r.target) * 100 : null, short: r.target - r.actual })),
+      }
+    : null;
+
+  const campaigns = campaignRows.map((r) => ({
+    campaign: r.campaign,
+    clicks: num(r.clicks),
+    registers: num(r.registers),
+    ftds: num(r.ftds),
+    revenue: num(r.revenue),
+    reg2dep: rate(num(r.ftds), num(r.registers)),
+    epc: num(r.clicks) > 0 ? num(r.revenue) / num(r.clicks) : null,
+  }));
+
+  const card = new Map(
+    (cpaRates || []).filter((r) => Number(r.cpa) > 0).map((r) => [String(r.country || "").trim().toLowerCase(), Number(r.cpa)])
+  );
+  const countries = countryRows.map((r) => {
+    const cpa = card.get(String(r.country || "").trim().toLowerCase()) || null;
+    return {
+      country: r.country,
+      clicks: num(r.clicks),
+      registers: num(r.registers),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      cpa,
+      // What this buyer's deposits in this market are worth at the rate card:
+      // the most motivating figure available to someone choosing where to push.
+      worth: cpa ? num(r.ftds) * cpa : null,
+    };
+  });
+
+  const placementClicks = placementRows.reduce((a, r) => a + num(r.clicks), 0);
+  const placements = placementRows.map((r) => ({
+    placement: r.placement,
+    clicks: num(r.clicks),
+    ftds: num(r.ftds),
+    share: rate(num(r.clicks), placementClicks),
+  }));
+
+  const devices = deviceRows.map((r) => ({
+    device: r.device,
+    os: r.os,
+    clicks: num(r.clicks),
+    ftds: num(r.ftds),
+    revenue: num(r.revenue),
+    reg2dep: rate(num(r.ftds), num(r.registers)),
+    revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+  }));
+
+  // ── What to do ────────────────────────────────────────────────────────
+  // Ranked, capped, and each one derived from a figure printed below it. A
+  // buyer who is handed nine actions does none of them, so the list stops at
+  // four and leads with the biggest gap.
+  const actions = [];
+
+  const shortRow = (target?.rows || [])
+    .filter((r) => r.short > 0)
+    .sort((a, b) => b.short / Math.max(b.target, 1) - a.short / Math.max(a.target, 1))[0];
+  if (shortRow) {
+    const perDay = target.daysLeft > 0 ? shortRow.short / target.daysLeft : null;
+    actions.push({
+      tone: "warn",
+      title: `${Math.round(shortRow.short).toLocaleString()} ${shortRow.label.toLowerCase()} short of target`,
+      body:
+        target.daysLeft > 0
+          ? `You are at ${Math.round(shortRow.progress)}% of ${Math.round(shortRow.target).toLocaleString()} with ${target.daysLeft} day${target.daysLeft === 1 ? "" : "s"} left — about ${Math.ceil(perDay).toLocaleString()} a day from here.`
+          : `The window closed at ${Math.round(shortRow.progress)}% of ${Math.round(shortRow.target).toLocaleString()}.`,
+    });
+  }
+
+  if (mine.reg2dep !== null && benchmark.reg2dep !== null && mine.registers >= 50) {
+    const gap = benchmark.reg2dep - mine.reg2dep;
+    if (gap > 1) {
+      // The deposits sitting in the gap are the clearest number in the report:
+      // same traffic, team-median conversion.
+      const wouldBe = Math.round((benchmark.reg2dep / 100) * mine.registers) - mine.ftds;
+      actions.push({
+        tone: "bad",
+        title: "Your signups convert below the team",
+        body: `${mine.reg2dep.toFixed(1)}% against a team median of ${benchmark.reg2dep.toFixed(1)}%. At the median, the ${mine.registers.toLocaleString()} registrations you already have would be ${wouldBe.toLocaleString()} more deposits. The traffic is arriving; it stops after the signup.`,
+      });
+    } else if (gap < -1) {
+      actions.push({
+        tone: "good",
+        title: "Your signups convert above the team",
+        body: `${mine.reg2dep.toFixed(1)}% against a team median of ${benchmark.reg2dep.toFixed(1)}%. Whatever is different about your funnel is worth writing down and repeating.`,
+      });
+    }
+  }
+
+  const rated = campaigns.filter((c) => c.registers >= 30 && c.reg2dep !== null);
+  if (rated.length >= 2) {
+    const best = rated.reduce((a, b) => (b.reg2dep > a.reg2dep ? b : a));
+    const worst = rated.reduce((a, b) => (b.reg2dep < a.reg2dep ? b : a));
+    if (best.campaign !== worst.campaign && best.reg2dep - worst.reg2dep > 3) {
+      actions.push({
+        tone: "info",
+        title: "Your own campaigns disagree by a wide margin",
+        body: `${best.reg2dep.toFixed(1)}% on your best against ${worst.reg2dep.toFixed(1)}% on your weakest, on ${worst.registers.toLocaleString()} registrations. The gap is inside your own account, which makes it the cheapest thing to fix.`,
+      });
+    }
+  }
+
+  const topPlacement = placements[0];
+  if (topPlacement && topPlacement.share !== null && topPlacement.share >= 45) {
+    actions.push({
+      tone: "warn",
+      title: `${Math.round(topPlacement.share)}% of your traffic is on one placement`,
+      body: `${topPlacement.placement} carries most of your volume. Meta can change delivery without warning, and a single placement is a single point of failure.`,
+    });
+  }
+
+  const bestMarket = countries.filter((c) => c.worth !== null).sort((a, b) => b.worth - a.worth)[0];
+  if (bestMarket && bestMarket.ftds > 0) {
+    actions.push({
+      tone: "good",
+      title: `${bestMarket.country} is your most valuable market`,
+      body: `${bestMarket.ftds.toLocaleString()} deposits at $${bestMarket.cpa} on the rate card — worth $${Math.round(bestMarket.worth).toLocaleString()}. Protect this budget before moving anything else.`,
+    });
+  }
+
+  return {
+    kind: "buyer",
+    buyer,
+    generatedAt: new Date().toISOString(),
+    period: { from, to, days: span, previousFrom: prevFrom, previousTo: prevTo },
+    summary: mine,
+    benchmark,
+    target,
+    trend: trendRows.map((r) => ({
+      date: r.date,
+      clicks: num(r.clicks),
+      registers: num(r.registers),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+    })),
+    campaigns,
+    countries,
+    placements,
+    devices,
+    actions: actions.slice(0, 4),
+    // Cost is deliberately absent: with the ad-platform pipeline down, a
+    // buyer-facing CPA or ROI would be a number the reader cannot check and
+    // cannot act on.
+    notes: { costOmitted: true },
+  };
+};
+
 const dayOrNull = (value) => {
   const m = String(value || "").match(/^\d{4}-\d{2}-\d{2}$/);
   return m ? m[0] : null;
 };
+
+app.get("/api/reports/buyer", async (req, res) => {
+  const to = dayOrNull(req.query.to) || isoDay(new Date());
+  const from = dayOrNull(req.query.from) || isoDay(new Date(Date.now() - 29 * 86400000));
+
+  // Who this report is about. For a buyer it is themselves, resolved from the
+  // session — the query string cannot name someone else, so there is no way
+  // to read a colleague's report by editing the URL.
+  //
+  // Leadership has no buyer of their own, so they may name one. That is the
+  // only way a Team Leader can see what their team sees, and it is gated on
+  // the same isLeadership check the executive report uses.
+  const own = await resolveViewerBuyer(req.user);
+  const requested = String(req.query.buyer || "").trim();
+  const buyer = own || (isLeadership(req.user) && requested ? requested : "");
+
+  if (!buyer) {
+    return res.status(400).json({
+      error: isLeadership(req.user)
+        ? "Name a buyer to see their report."
+        : "No buyer is linked to this account yet. Ask an admin to set your Keitaro name in Roles.",
+    });
+  }
+
+  try {
+    return res.json(await buildBuyerReport({ from, to, buyer }));
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Failed to build the report." });
+  }
+});
 
 app.get("/api/reports/executive", async (req, res) => {
   if (!isLeadership(req.user)) return res.status(403).json({ error: "Forbidden." });
