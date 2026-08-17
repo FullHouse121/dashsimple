@@ -102,4 +102,24 @@ check("filters combine", () => {
 });
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
-process.exit(failed ? 1 : 0);
+// Runs two ways. Directly (`node --experimental-strip-types …`) it prints a
+// summary and exits with a status, which is what it was written for. Under
+// vitest — which collects it because of the .test. in the name — calling
+// process.exit aborts the worker, and vitest reports the whole FILE as failed
+// even though every assertion inside it passed. That is how CI came to show
+// "4 failed / 250 passed": four files killed, nothing actually broken.
+//
+// So the exit is skipped under vitest, and a failure is raised as an error
+// instead. Without that second half the file would pass silently even when
+// its own counter said otherwise — worse than the red build it replaces.
+if (process.env.VITEST) {
+  // The assertions above already ran at import; this registers the one suite
+  // vitest needs so the file counts as a test rather than as an empty module,
+  // and fails loudly if the counter says anything went wrong.
+  const { test, expect } = await import("vitest");
+  test("filters: every assertion passes", () => {
+    expect(failed, `${failed} assertion(s) failed — see the output above`).toBe(0);
+  });
+} else {
+  process.exit(failed ? 1 : 0);
+}

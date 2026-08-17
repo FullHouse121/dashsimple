@@ -85,7 +85,19 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
         // caller like every other consumer in the app.
         const res = await apiFetch(`/api/reports/buyer${qs.toString() ? `?${qs}` : ""}`);
         const body = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(body?.error || "Could not load your report.");
+        if (!res.ok) {
+          // A 404 here is not "your report failed" — it is this page asking
+          // for an endpoint the running server does not have yet, which
+          // happens whenever the front end deploys ahead of the API. Saying
+          // "could not load" sends someone hunting through their own data for
+          // a fault that is in the deployment.
+          if (res.status === 404) {
+            throw new Error(
+              "This report needs a newer version of the API than the server is running. It will work once the backend finishes deploying."
+            );
+          }
+          throw new Error(body?.error || "Could not load your report.");
+        }
         if (alive) setState({ loading: false, error: null, report: body });
       } catch (error) {
         if (alive) setState({ loading: false, error: error.message || "Could not load your report.", report: null });
