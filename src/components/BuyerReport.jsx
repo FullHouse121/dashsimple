@@ -589,56 +589,58 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             Ranked by revenue. The spread in the Reg→Dep column is the cheapest thing to fix, because it is inside your
             own account.
           </p>
-          <table className="br-table">
-            <thead>
-              <tr>
-                <Th label="Campaign" sortKey="campaign" sort={campaignSort.sort} toggle={campaignSort.toggle} align="left" />
-                <Th label="Clicks" sortKey="clicks" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-                <Th label="Regs" sortKey="registers" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-                <Th label="FTDs" sortKey="ftds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-                <Th label="vs last period" sortKey="deltaFtds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-                <Th label="Reg→Dep" sortKey="reg2dep" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-                <Th label="Revenue" sortKey="revenue" sort={campaignSort.sort} toggle={campaignSort.toggle} />
-              </tr>
-            </thead>
-            <tbody>
-              {campaignSort.rows.map((c) => {
-                // Only rates built on a real sample are coloured; a 100% on two
-                // registrations is noise and colouring it invites a bad call.
-                const rated = !c.thin && c.reg2dep !== null && benchmark.reg2dep !== null;
-                const tone = rated ? (c.reg2dep >= benchmark.reg2dep ? "is-ahead" : "is-behind") : "";
-                return (
-                  <tr key={c.campaign}>
-                    <td className="br-strong">{c.campaign}</td>
-                    <td>{int(c.clicks)}</td>
-                    <td>{int(c.registers)}</td>
-                    <td>{int(c.ftds)}</td>
-                    {/* Feed it or kill it. A rate alone cannot answer that;
-                        the same campaign against last period can. */}
-                    <td>
-                      <ChangeBadge isNew={c.isNew} delta={c.deltaFtds} previous={c.previous?.ftds} />
-                    </td>
-                    <td className={tone}>
-                      {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
-                      {/* Marked, not hidden: a 100% rate on two signups is
-                          noise, and a report that lets someone act on it is
-                          worse than one that says less. */}
-                      {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
-                    </td>
-                    <td className="br-share-td">
-                      <span className="br-share">
-                        <span
-                          className="br-share-bar"
-                          style={{ width: `${maxCampaignRevenue > 0 ? Math.max((c.revenue / maxCampaignRevenue) * 100, 1.5) : 0}%` }}
-                        />
-                        <span className="br-share-text">{formatCurrencyWhole(c.revenue)}</span>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="br-scroll">
+            <table className="br-table">
+              <thead>
+                <tr>
+                  <Th label="Campaign" sortKey="campaign" sort={campaignSort.sort} toggle={campaignSort.toggle} align="left" />
+                  <Th label="Clicks" sortKey="clicks" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                  <Th label="Regs" sortKey="registers" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                  <Th label="FTDs" sortKey="ftds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                  <Th label="vs last period" sortKey="deltaFtds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                </tr>
+              </thead>
+              <tbody>
+                {campaignSort.rows.map((c) => {
+                  // Only rates built on a real sample are coloured; a 100% on two
+                  // registrations is noise and colouring it invites a bad call.
+                  const rated = !c.thin && c.reg2dep !== null && benchmark.reg2dep !== null;
+                  const tone = rated ? (c.reg2dep >= benchmark.reg2dep ? "is-ahead" : "is-behind") : "";
+                  return (
+                    <tr key={c.campaign}>
+                      <td className="br-strong">{c.campaign}</td>
+                      <td>{int(c.clicks)}</td>
+                      <td>{int(c.registers)}</td>
+                      <td>{int(c.ftds)}</td>
+                      {/* Feed it or kill it. A rate alone cannot answer that;
+                          the same campaign against last period can. */}
+                      <td>
+                        <ChangeBadge isNew={c.isNew} delta={c.deltaFtds} previous={c.previous?.ftds} />
+                      </td>
+                      <td className={tone}>
+                        {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
+                        {/* Marked, not hidden: a 100% rate on two signups is
+                            noise, and a report that lets someone act on it is
+                            worse than one that says less. */}
+                        {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                      </td>
+                      <td className="br-share-td">
+                        <span className="br-share">
+                          <span
+                            className="br-share-bar"
+                            style={{ width: `${maxCampaignRevenue > 0 ? Math.max((c.revenue / maxCampaignRevenue) * 100, 1.5) : 0}%` }}
+                          />
+                          <span className="br-share-text">{formatCurrencyWhole(c.revenue)}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 
@@ -650,32 +652,34 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               <p className="br-note">
                 Ad level, with the adset it ran in — the deepest thing you control, and the fastest to change.
               </p>
-              <table className="br-table">
-                <thead><tr>
-                  <Th label="Ad" sortKey="ad" sort={creativeSort.sort} toggle={creativeSort.toggle} align="left" />
-                  <Th label="Clicks" sortKey="clicks" sort={creativeSort.sort} toggle={creativeSort.toggle} />
-                  <Th label="FTDs" sortKey="ftds" sort={creativeSort.sort} toggle={creativeSort.toggle} />
-                  <Th label="Reg→Dep" sortKey="reg2dep" sort={creativeSort.sort} toggle={creativeSort.toggle} />
-                  <Th label="Revenue" sortKey="revenue" sort={creativeSort.sort} toggle={creativeSort.toggle} />
-                </tr></thead>
-                <tbody>
-                  {creativeSort.rows.map((c) => (
-                    <tr key={`${c.ad}-${c.adset}`}>
-                      <td className="br-strong">
-                        {c.ad}
-                        {c.adset && c.adset !== "—" ? <span className="br-sub-line">{c.adset}</span> : null}
-                      </td>
-                      <td>{int(c.clicks)}</td>
-                      <td>{int(c.ftds)}</td>
-                      <td>
-                        {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
-                        {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
-                      </td>
-                      <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="br-scroll">
+                <table className="br-table">
+                  <thead><tr>
+                    <Th label="Ad" sortKey="ad" sort={creativeSort.sort} toggle={creativeSort.toggle} align="left" />
+                    <Th label="Clicks" sortKey="clicks" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                    <Th label="FTDs" sortKey="ftds" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                    <Th label="Reg→Dep" sortKey="reg2dep" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                    <Th label="Revenue" sortKey="revenue" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                  </tr></thead>
+                  <tbody>
+                    {creativeSort.rows.map((c) => (
+                      <tr key={`${c.ad}-${c.adset}`}>
+                        <td className="br-strong">
+                          {c.ad}
+                          {c.adset && c.adset !== "—" ? <span className="br-sub-line">{c.adset}</span> : null}
+                        </td>
+                        <td>{int(c.clicks)}</td>
+                        <td>{int(c.ftds)}</td>
+                        <td>
+                          {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
+                          {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                        </td>
+                        <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
 
@@ -683,31 +687,33 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             <section className="br-block">
               <h2 className="br-h2">Your offers</h2>
               <p className="br-note">Which game the traffic was sent to, and what each one returned per depositor.</p>
-              <table className="br-table">
-                <thead><tr>
-                  <Th label="Offer" sortKey="game" sort={offerSort.sort} toggle={offerSort.toggle} align="left" />
-                  <Th label="Clicks" sortKey="clicks" sort={offerSort.sort} toggle={offerSort.toggle} />
-                  <Th label="FTDs" sortKey="ftds" sort={offerSort.sort} toggle={offerSort.toggle} />
-                  <Th label="Reg→Dep" sortKey="reg2dep" sort={offerSort.sort} toggle={offerSort.toggle} />
-                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={offerSort.sort} toggle={offerSort.toggle} />
-                  <Th label="Revenue" sortKey="revenue" sort={offerSort.sort} toggle={offerSort.toggle} />
-                </tr></thead>
-                <tbody>
-                  {offerSort.rows.map((g) => (
-                    <tr key={g.game}>
-                      <td className="br-strong">{g.game}</td>
-                      <td>{int(g.clicks)}</td>
-                      <td>{int(g.ftds)}</td>
-                      <td>
-                        {g.reg2dep == null ? "—" : formatPercent(g.reg2dep, 1)}
-                        {g.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
-                      </td>
-                      <td>{g.revenuePerFtd == null ? "—" : formatCurrency(g.revenuePerFtd)}</td>
-                      <td className="br-strong">{formatCurrencyWhole(g.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="br-scroll">
+                <table className="br-table">
+                  <thead><tr>
+                    <Th label="Offer" sortKey="game" sort={offerSort.sort} toggle={offerSort.toggle} align="left" />
+                    <Th label="Clicks" sortKey="clicks" sort={offerSort.sort} toggle={offerSort.toggle} />
+                    <Th label="FTDs" sortKey="ftds" sort={offerSort.sort} toggle={offerSort.toggle} />
+                    <Th label="Reg→Dep" sortKey="reg2dep" sort={offerSort.sort} toggle={offerSort.toggle} />
+                    <Th label="Per FTD" sortKey="revenuePerFtd" sort={offerSort.sort} toggle={offerSort.toggle} />
+                    <Th label="Revenue" sortKey="revenue" sort={offerSort.sort} toggle={offerSort.toggle} />
+                  </tr></thead>
+                  <tbody>
+                    {offerSort.rows.map((g) => (
+                      <tr key={g.game}>
+                        <td className="br-strong">{g.game}</td>
+                        <td>{int(g.clicks)}</td>
+                        <td>{int(g.ftds)}</td>
+                        <td>
+                          {g.reg2dep == null ? "—" : formatPercent(g.reg2dep, 1)}
+                          {g.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                        </td>
+                        <td>{g.revenuePerFtd == null ? "—" : formatCurrency(g.revenuePerFtd)}</td>
+                        <td className="br-strong">{formatCurrencyWhole(g.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
           ) : null}
         </div>
@@ -721,37 +727,39 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             where players come back is where money compounds without more spend. Worth is
             {worthTotal > 0 ? ` — ${formatCurrencyWhole(worthTotal)} across the markets with a rate on file.` : "."}
           </p>
-          <table className="br-table">
-            <thead><tr>
-                <Th label="Market" sortKey="country" sort={marketSort.sort} toggle={marketSort.toggle} align="left" />
-                <Th label="FTDs" sortKey="ftds" sort={marketSort.sort} toggle={marketSort.toggle} />
-                <Th label="Reg→Dep" sortKey="reg2dep" sort={marketSort.sort} toggle={marketSort.toggle} />
-                <Th label="Repeat" sortKey="repeatPerFtd" sort={marketSort.sort} toggle={marketSort.toggle} />
-                <Th label="CPA" sortKey="cpa" sort={marketSort.sort} toggle={marketSort.toggle} />
-                <Th label="Worth" sortKey="worth" sort={marketSort.sort} toggle={marketSort.toggle} />
-                {/* The table was ordered by revenue while not showing it,
-                    which is indistinguishable from no order at all. */}
-                <Th label="Revenue" sortKey="revenue" sort={marketSort.sort} toggle={marketSort.toggle} />
-              </tr></thead>
-            <tbody>
-              {marketSort.rows.map((c) => (
-                <tr key={c.country}>
-                  <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
-                  <td>{int(c.ftds)}</td>
-                  <td>
-                    {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
-                    {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
-                  </td>
-                  {/* Redeposits per depositor. Where players come back is
-                      where money compounds without more spend. */}
-                  <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
-                  <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
-                  <td>{c.worth == null ? "—" : formatCurrencyWhole(c.worth)}</td>
-                  <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="br-scroll">
+            <table className="br-table">
+              <thead><tr>
+                  <Th label="Market" sortKey="country" sort={marketSort.sort} toggle={marketSort.toggle} align="left" />
+                  <Th label="FTDs" sortKey="ftds" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Repeat" sortKey="repeatPerFtd" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="CPA" sortKey="cpa" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Worth" sortKey="worth" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  {/* The table was ordered by revenue while not showing it,
+                      which is indistinguishable from no order at all. */}
+                  <Th label="Revenue" sortKey="revenue" sort={marketSort.sort} toggle={marketSort.toggle} />
+                </tr></thead>
+              <tbody>
+                {marketSort.rows.map((c) => (
+                  <tr key={c.country}>
+                    <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
+                    <td>{int(c.ftds)}</td>
+                    <td>
+                      {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
+                      {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
+                    </td>
+                    {/* Redeposits per depositor. Where players come back is
+                        where money compounds without more spend. */}
+                    <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
+                    <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
+                    <td>{c.worth == null ? "—" : formatCurrencyWhole(c.worth)}</td>
+                    <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
 
@@ -764,52 +772,56 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               about in a review.
             </p>
             {r.brands?.length ? (
-              <table className="br-table">
-                <thead><tr>
-                  <Th label="Brand" sortKey="brand" sort={brandSort.sort} toggle={brandSort.toggle} align="left" />
-                  <Th label="FTDs" sortKey="ftds" sort={brandSort.sort} toggle={brandSort.toggle} />
-                  <Th label="Reg→Dep" sortKey="reg2dep" sort={brandSort.sort} toggle={brandSort.toggle} />
-                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={brandSort.sort} toggle={brandSort.toggle} />
-                  <Th label="Revenue" sortKey="revenue" sort={brandSort.sort} toggle={brandSort.toggle} />
-                </tr></thead>
-                <tbody>
-                  {brandSort.rows.map((x) => (
-                    <tr key={x.brand}>
-                      <td className="br-strong">
-                        <span className="br-cell-mark"><BrandMark value={x.brand} height={14} /></span>
-                      </td>
-                      <td>{int(x.ftds)}</td>
-                      <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
-                      <td>{x.revenuePerFtd == null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
-                      <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="br-scroll">
+                <table className="br-table">
+                  <thead><tr>
+                    <Th label="Brand" sortKey="brand" sort={brandSort.sort} toggle={brandSort.toggle} align="left" />
+                    <Th label="FTDs" sortKey="ftds" sort={brandSort.sort} toggle={brandSort.toggle} />
+                    <Th label="Reg→Dep" sortKey="reg2dep" sort={brandSort.sort} toggle={brandSort.toggle} />
+                    <Th label="Per FTD" sortKey="revenuePerFtd" sort={brandSort.sort} toggle={brandSort.toggle} />
+                    <Th label="Revenue" sortKey="revenue" sort={brandSort.sort} toggle={brandSort.toggle} />
+                  </tr></thead>
+                  <tbody>
+                    {brandSort.rows.map((x) => (
+                      <tr key={x.brand}>
+                        <td className="br-strong">
+                          <span className="br-cell-mark"><BrandMark value={x.brand} height={14} /></span>
+                        </td>
+                        <td>{int(x.ftds)}</td>
+                        <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                        <td>{x.revenuePerFtd == null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
+                        <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : null}
             {r.tools?.length ? (
-              <table className="br-table br-table-tight">
-                <thead><tr>
-                  <Th label="Tool" sortKey="tool" sort={toolSort.sort} toggle={toolSort.toggle} align="left" />
-                  <Th label="Clicks" sortKey="clicks" sort={toolSort.sort} toggle={toolSort.toggle} />
-                  <Th label="FTDs" sortKey="ftds" sort={toolSort.sort} toggle={toolSort.toggle} />
-                  <Th label="Reg→Dep" sortKey="reg2dep" sort={toolSort.sort} toggle={toolSort.toggle} />
-                  <Th label="Revenue" sortKey="revenue" sort={toolSort.sort} toggle={toolSort.toggle} />
-                </tr></thead>
-                <tbody>
-                  {toolSort.rows.map((x) => (
-                    <tr key={x.tool}>
-                      <td className="br-strong">
-                        <span className="br-cell-mark"><BrandMark value={x.tool} height={13} /></span>
-                      </td>
-                      <td>{int(x.clicks)}</td>
-                      <td>{int(x.ftds)}</td>
-                      <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
-                      <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="br-scroll">
+                <table className="br-table br-table-tight">
+                  <thead><tr>
+                    <Th label="Tool" sortKey="tool" sort={toolSort.sort} toggle={toolSort.toggle} align="left" />
+                    <Th label="Clicks" sortKey="clicks" sort={toolSort.sort} toggle={toolSort.toggle} />
+                    <Th label="FTDs" sortKey="ftds" sort={toolSort.sort} toggle={toolSort.toggle} />
+                    <Th label="Reg→Dep" sortKey="reg2dep" sort={toolSort.sort} toggle={toolSort.toggle} />
+                    <Th label="Revenue" sortKey="revenue" sort={toolSort.sort} toggle={toolSort.toggle} />
+                  </tr></thead>
+                  <tbody>
+                    {toolSort.rows.map((x) => (
+                      <tr key={x.tool}>
+                        <td className="br-strong">
+                          <span className="br-cell-mark"><BrandMark value={x.tool} height={13} /></span>
+                        </td>
+                        <td>{int(x.clicks)}</td>
+                        <td>{int(x.ftds)}</td>
+                        <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                        <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : null}
           </section>
         ) : null}
@@ -831,29 +843,31 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             </ul>
           ) : null}
           {devices?.length ? (
-            <table className="br-table br-table-tight">
-              <thead><tr>
-                  <Th label="Device" sortKey="device" sort={deviceSort.sort} toggle={deviceSort.toggle} align="left" />
-                  <Th label="FTDs" sortKey="ftds" sort={deviceSort.sort} toggle={deviceSort.toggle} />
-                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={deviceSort.sort} toggle={deviceSort.toggle} />
-                  <Th label="Revenue" sortKey="revenue" sort={deviceSort.sort} toggle={deviceSort.toggle} />
-                </tr></thead>
-              <tbody>
-                {deviceSort.rows.map((d) => (
-                  <tr key={`${d.device}-${d.os}`}>
-                    <td className="br-strong">
-                      <span className="br-cell-mark">
-                        {osHasGlyph(d.os) ? <OsGlyph os={d.os} size={15} /> : null}
-                        {d.device} · {d.os}
-                      </span>
-                    </td>
-                    <td>{int(d.ftds)}</td>
-                    <td>{d.revenuePerFtd == null ? "—" : formatCurrency(d.revenuePerFtd)}</td>
-                    <td>{formatCurrencyWhole(d.revenue)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="br-scroll">
+              <table className="br-table br-table-tight">
+                <thead><tr>
+                    <Th label="Device" sortKey="device" sort={deviceSort.sort} toggle={deviceSort.toggle} align="left" />
+                    <Th label="FTDs" sortKey="ftds" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                    <Th label="Per FTD" sortKey="revenuePerFtd" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                    <Th label="Revenue" sortKey="revenue" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                  </tr></thead>
+                <tbody>
+                  {deviceSort.rows.map((d) => (
+                    <tr key={`${d.device}-${d.os}`}>
+                      <td className="br-strong">
+                        <span className="br-cell-mark">
+                          {osHasGlyph(d.os) ? <OsGlyph os={d.os} size={15} /> : null}
+                          {d.device} · {d.os}
+                        </span>
+                      </td>
+                      <td>{int(d.ftds)}</td>
+                      <td>{d.revenuePerFtd == null ? "—" : formatCurrency(d.revenuePerFtd)}</td>
+                      <td>{formatCurrencyWhole(d.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : null}
         </section>
       </div>

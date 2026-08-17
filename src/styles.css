@@ -22561,10 +22561,17 @@ select option,
 @media (max-width: 1040px) { .br-two { grid-template-columns: minmax(0, 1fr); } }
 
 /* No table may bleed into its neighbour. If one does not fit, it scrolls
-   inside its own section — visibly, with the edge showing there is more. */
+   inside its own section.
+
+   The overflow belongs to a WRAPPER, never to the table. Setting
+   `display: block` on a <table> stops it behaving as one, and the follow-on —
+   making thead and tbody `display: table` to get the rows back — gives each of
+   them its own column widths, so the headers stop lining up with the numbers
+   underneath them. That is what happened here: CLICKS, REGS and FTDS sat far
+   to the left of their own figures. */
 .br-block { min-width: 0; }
-.br-block .br-table { display: block; overflow-x: auto; white-space: nowrap; }
-.br-block .br-table thead, .br-block .br-table tbody { display: table; width: 100%; }
+.br-scroll { overflow-x: auto; max-width: 100%; }
+.br-block .br-table { width: 100%; white-space: nowrap; }
 .br-table .br-strong { white-space: normal; }
 
 @media (max-width: 720px) {
