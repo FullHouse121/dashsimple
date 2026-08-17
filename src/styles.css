@@ -22508,6 +22508,13 @@ select option,
 }
 
 .br-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+.br-totals-cards .br-total {
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.016);
+}
+.br-totals-cards .br-total em { font-size: 23px; }
 .br-total { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--faint); }
 .br-total em { font-style: normal; font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .br-total b { font-size: 10.5px; font-weight: 700; }
@@ -22529,7 +22536,9 @@ select option,
 .br-table .is-ahead { color: #4ee39c; font-weight: 600; }
 .br-table .is-behind { color: #ff8a7a; font-weight: 600; }
 .br-dim { color: var(--faint); }
-.br-cell-mark { display: inline-flex; align-items: center; gap: 8px; }
+.br-cell-mark { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.br-cell-mark .brand-mark { max-height: 15px; width: auto; flex-shrink: 0; }
+.br-cell-mark svg { flex-shrink: 0; }
 .br-table-tight { margin-top: 14px; }
 
 .br-share { position: relative; display: block; padding: 2px 0; text-align: right; overflow: hidden; }
@@ -22653,42 +22662,48 @@ select option,
 .br-chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
+  min-width: 74px;
+  padding: 4px 10px;
+  border-radius: 8px;
   border: 1px solid transparent;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  line-height: 1.5;
+  line-height: 1.45;
 }
-.br-chip-arrow { font-size: 8px; line-height: 1; }
+.br-chip-arrow {
+  font-size: 9px;
+  line-height: 1;
+  transform: translateY(-0.5px);
+}
 .br-chip-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
   background: currentColor;
-  box-shadow: 0 0 0 3px rgba(100, 184, 255, 0.16);
+  transform: rotate(45deg);
 }
 .br-chip.is-new {
-  color: var(--blue);
-  background: rgba(100, 184, 255, 0.1);
-  border-color: rgba(100, 184, 255, 0.3);
+  color: #8fccff;
+  background: linear-gradient(180deg, rgba(100, 184, 255, 0.16), rgba(100, 184, 255, 0.07));
+  border-color: rgba(100, 184, 255, 0.34);
   text-transform: uppercase;
   font-size: 9.5px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 .br-chip.is-up {
-  color: #4ee39c;
-  background: rgba(54, 208, 124, 0.1);
-  border-color: rgba(54, 208, 124, 0.3);
+  color: #6bf0b0;
+  background: linear-gradient(180deg, rgba(54, 208, 124, 0.18), rgba(54, 208, 124, 0.07));
+  border-color: rgba(54, 208, 124, 0.34);
 }
 .br-chip.is-down {
-  color: #ff8a7a;
-  background: rgba(255, 107, 107, 0.1);
-  border-color: rgba(255, 107, 107, 0.3);
+  color: #ff9a8c;
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.18), rgba(255, 107, 107, 0.07));
+  border-color: rgba(255, 107, 107, 0.34);
 }
 
 /* The reference point, not the finding — kept outside the badge and quiet. */

@@ -38,11 +38,19 @@ export const resolveBrandLogo = (value) => {
   const key = normalizeBrandKey(value);
   if (!key) return null;
   if (BRAND_LOGOS[key]) return BRAND_LOGOS[key];
-  // guarded prefix match so "pwagroupmx" still resolves, without false hits
-  for (const [k, v] of Object.entries(BRAND_LOGOS)) {
-    if (k.length >= 4 && (key.startsWith(k) || k.startsWith(key))) return v;
-  }
-  return null;
+  // Prefix match in ONE direction only: a value may be a more specific form of
+  // a known brand ("pwagroupmx" → PWA Group), but a known brand must never be
+  // matched by a shorter unknown value. `k.startsWith(key)` did exactly that,
+  // so the tool "PWA" borrowed PWA.GROUP's logo and the two appeared in the
+  // same table as one brand with two different sets of numbers — a table you
+  // cannot read, and the kind of thing that gets called a data bug.
+  //
+  // Longest key first, so "pwagroup" is tried before any shorter entry that
+  // also prefixes the value.
+  const candidates = Object.entries(BRAND_LOGOS)
+    .filter(([k]) => k.length >= 4 && key.startsWith(k))
+    .sort((a, b) => b[0].length - a[0].length);
+  return candidates.length ? candidates[0][1] : null;
 };
 // Renders a matched brand logo, else a lettermark chip (never a broken image).
 export const BrandMark = ({ value, height = 15 }) => {

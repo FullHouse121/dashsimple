@@ -22,7 +22,8 @@ import { apiFetch } from "../lib/api.js";
 import { CountryDropdownPicker, DeusDatePicker } from "./Select.jsx";
 import { Printer } from "lucide-react";
 import { formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
-import { CountryFlag } from "./flags.jsx";
+import { CountryFlag, OsGlyph, osHasGlyph } from "./flags.jsx";
+import { BrandMark } from "./BrandMark.jsx";
 import { AlertIcon, AwardIcon, GoalIcon, HealthIcon } from "./icons.jsx";
 
 const int = (v) => Number(v || 0).toLocaleString();
@@ -476,7 +477,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           </p>
         ) : null}
 
-        <div className="br-totals">
+        <div className="br-totals br-totals-cards">
           {[
             { label: "Clicks", value: int(me.clicks), delta: deltas.clicks },
             // Unique clicks come from the tracker, not media_stats: one person
@@ -802,7 +803,9 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                 <tbody>
                   {brandSort.rows.map((x) => (
                     <tr key={x.brand}>
-                      <td className="br-strong">{x.brand}</td>
+                      <td className="br-strong">
+                        <span className="br-cell-mark"><BrandMark value={x.brand} height={14} /></span>
+                      </td>
                       <td>{int(x.ftds)}</td>
                       <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
                       <td>{x.revenuePerFtd == null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
@@ -824,7 +827,9 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                 <tbody>
                   {toolSort.rows.map((x) => (
                     <tr key={x.tool}>
-                      <td className="br-strong">{x.tool}</td>
+                      <td className="br-strong">
+                        <span className="br-cell-mark"><BrandMark value={x.tool} height={13} /></span>
+                      </td>
                       <td>{int(x.clicks)}</td>
                       <td>{int(x.ftds)}</td>
                       <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
@@ -864,7 +869,12 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               <tbody>
                 {deviceSort.rows.map((d) => (
                   <tr key={`${d.device}-${d.os}`}>
-                    <td className="br-strong">{d.device} · {d.os}</td>
+                    <td className="br-strong">
+                      <span className="br-cell-mark">
+                        {osHasGlyph(d.os) ? <OsGlyph os={d.os} size={15} /> : null}
+                        {d.device} · {d.os}
+                      </span>
+                    </td>
                     <td>{int(d.ftds)}</td>
                     <td>{d.revenuePerFtd == null ? "—" : formatCurrency(d.revenuePerFtd)}</td>
                     <td>{formatCurrencyWhole(d.revenue)}</td>
