@@ -11316,11 +11316,23 @@ const buildBuyerPrefilter = (usernames) => {
 // The exclusion is by GROUP, not by campaign name, so the team decides what
 // is external from inside Keitaro without a code change. Names are matched
 // case-insensitively; ids may be given directly.
-// Defaults to a group that does not exist yet, so nothing is excluded until
-// one is deliberately created for it. "Outsource" was the wrong default: it
-// is a mixed bag holding real campaigns (Leo | Traffic Junky, the Miniapp and
-// Mahsur sets) alongside the external ones, so excluding it hid live traffic.
-const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "External Source")
+// Defaults to Outsource, by instruction: its campaigns are not to appear in
+// the reports.
+//
+// An earlier default of "External Source" named a group that does not exist
+// in this tracker, so the filter excluded nothing at all — which is how
+// 163,066 Outsource clicks stayed visible in every Keitaro-backed view while
+// the eight real buyers together had 55,347.
+//
+// The caveat that put it there is real and worth keeping in view: Outsource
+// is a mixed bag. `Leo | Youtarget | Fortune Gems 2` (26,618 clicks) and
+// `Leo | FB | SAFEST` (7,505) sit in it, and Leo is a live buyer — those go
+// too. That is the right call only while those campaigns belong in that
+// group; the fix for them is to move them in Keitaro, not to widen this.
+//
+// Overridable per environment: EXTERNAL_CAMPAIGN_GROUPS takes names or ids,
+// comma separated.
+const externalGroupNames = String(process.env.EXTERNAL_CAMPAIGN_GROUPS || "Outsource")
   .split(",")
   .map((name) => name.trim())
   .filter(Boolean);
@@ -16476,13 +16488,15 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     // tracker reports the whole account, and the buyer label is inside the
     // campaign name, which is what buyerShortForms already knows how to match.
     quality: (() => {
-      const forms = buyerShortForms(buyer)
-        .map((f) => String(f).toLowerCase().replace(/[^a-z0-9]/g, ""))
-        .filter(Boolean);
-      const mineRows = (qualityRaw?.ok ? qualityRaw.rows : []).filter((r) => {
-        const name = String(r.campaign || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        return forms.some((f) => name.includes(f));
-      });
+      // keitaroNameMatchesBuyer, not a substring test: Keitaro names are
+      // inconsistent ("Leo | …", "ZM.APPS - Leo - …"), and it matches the
+      // buyer's identity forms as WHOLE WORDS. Stripping punctuation and
+      // asking `includes` both over-matches — "leo" inside another word — and
+      // under-matches, because a buyer's short form only appears once aliases
+      // are consulted, which this matcher does and a raw compare does not.
+      const mineRows = (qualityRaw?.ok ? qualityRaw.rows : []).filter((r) =>
+        keitaroNameMatchesBuyer(r.campaign, buyer)
+      );
       const sum = (k) => mineRows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
       const clicks = sum("clicks");
       if (!clicks) return null;
