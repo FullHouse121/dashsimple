@@ -16068,7 +16068,8 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
                 COALESCE(SUM(revenue),0)::float8 AS revenue
            FROM media_stats
           WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(brand),'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
-          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          GROUP BY 1
+         HAVING COALESCE(SUM(ftds),0) > 0 OR COALESCE(SUM(revenue),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
       getRows(
         `SELECT UPPER(TRIM(tool)) AS tool,
@@ -16079,7 +16080,7 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
            FROM media_stats
           WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(tool),'') <> ''
             AND UPPER(TRIM(tool)) NOT IN ('FB','NAMING','YOUTARGET')${s2.sql ? ` AND ${s2.sql}` : ""}
-          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          GROUP BY 1 HAVING COALESCE(SUM(ftds),0) > 0 OR COALESCE(SUM(revenue),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
 
       // Traffic quality from the tracker: unique clicks, bots and proxies.
@@ -16129,7 +16130,7 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
                 COALESCE(SUM(revenue),0)::float8 AS revenue
            FROM media_stats
           WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(game),'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
-          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          GROUP BY 1 HAVING COALESCE(SUM(ftds),0) > 0 OR COALESCE(SUM(revenue),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`,
         [from, to, ...s2.params]).catch(() => []),
 

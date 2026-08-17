@@ -71,6 +71,41 @@ function Benchmarked({ label, value, median, format, better = "higher" }) {
 
 
 
+
+// The "vs last period" cell, as one designed set rather than three unrelated
+// treatments.
+//
+// It carried a blue pill for new, bare red text with an arrow for a fall, and
+// a plain dash for nothing — three visual languages in one column, so the eye
+// had to re-learn the format on every row. All three are badges now, built
+// from the dashboard's own KPI pill: full-round, tinted fill, matching
+// border, tabular figures.
+//
+// "was N" stays outside the badge and stays quiet. It is the reference point,
+// not the finding, and putting it inside doubled the badge's width for
+// something nobody scans.
+function ChangeBadge({ isNew, delta, previous }) {
+  if (isNew) {
+    return (
+      <span className="br-chip is-new" title="No traffic on this in the previous period">
+        <span className="br-chip-dot" />
+        New
+      </span>
+    );
+  }
+  if (delta == null) return <span className="br-dim">—</span>;
+  const up = delta >= 0;
+  return (
+    <span className="br-chip-wrap">
+      <span className={`br-chip ${up ? "is-up" : "is-down"}`}>
+        <span className="br-chip-arrow">{up ? "▲" : "▼"}</span>
+        {Math.abs(delta).toFixed(0)}%
+      </span>
+      {previous == null ? null : <em className="br-was">was {int(previous)}</em>}
+    </span>
+  );
+}
+
 // ── Sorting ───────────────────────────────────────────────────────────
 //
 // Every table here arrived sorted by revenue, which was defensible until you
@@ -608,16 +643,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                     {/* Feed it or kill it. A rate alone cannot answer that;
                         the same campaign against last period can. */}
                     <td>
-                      {c.isNew ? (
-                        <span className="br-tag is-new">new</span>
-                      ) : c.deltaFtds == null ? (
-                        <span className="br-dim">—</span>
-                      ) : (
-                        <span className={c.deltaFtds >= 0 ? "is-ahead" : "is-behind"}>
-                          {c.deltaFtds >= 0 ? "▲" : "▼"} {Math.abs(c.deltaFtds).toFixed(0)}%
-                          <em className="br-was"> was {int(c.previous?.ftds ?? 0)}</em>
-                        </span>
-                      )}
+                      <ChangeBadge isNew={c.isNew} delta={c.deltaFtds} previous={c.previous?.ftds} />
                     </td>
                     <td className={tone}>
                       {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
