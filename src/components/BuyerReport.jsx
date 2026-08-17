@@ -69,6 +69,42 @@ function Benchmarked({ label, value, median, format, better = "higher" }) {
 }
 
 
+
+// Give every row the keys this page reads, before the page reads them.
+//
+// The front end and the API deploy separately, so a browser can be running
+// this file against a server that predates it — and then a field the page
+// treats as "null or a number" is simply absent. `x === null` does not catch
+// undefined, so `x.toFixed()` throws and the whole section dies behind an
+// error boundary. That is what "Cannot read properties of undefined (reading
+// 'toFixed')" was.
+//
+// Filling the shape once here is worth more than a guard at every use: the
+// guards are easy to write correctly and easy to forget, and forgetting one
+// costs the entire view rather than one cell. Anything missing becomes null,
+// which every formatter below already renders as an em dash.
+const NUM = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const normalise = (r) => {
+  if (!r || r.needsBuyer) return r;
+  const rows = (list, shape) => (Array.isArray(list) ? list : []).map((row) => ({ ...shape, ...row }));
+  return {
+    ...r,
+    summary: { clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0, reg2dep: null, click2reg: null, epc: null, revenuePerFtd: null, deltas: {}, ...(r.summary || {}) },
+    benchmark: { buyers: 0, reg2dep: null, epc: null, click2reg: null, revenuePerFtd: null, ...(r.benchmark || {}) },
+    campaigns: rows(r.campaigns, { clicks: 0, registers: 0, ftds: 0, revenue: 0, reg2dep: null, epc: null, thin: false, previous: null, deltaFtds: null, deltaRevenue: null, isNew: false })
+      .map((c) => ({ ...c, deltaFtds: NUM(c.deltaFtds), deltaRevenue: NUM(c.deltaRevenue), reg2dep: NUM(c.reg2dep) })),
+    countries: rows(r.countries, { clicks: 0, registers: 0, ftds: 0, redeposits: 0, revenue: 0, reg2dep: null, cpa: null, worth: null, repeatPerFtd: null, thin: false })
+      .map((c) => ({ ...c, repeatPerFtd: NUM(c.repeatPerFtd), reg2dep: NUM(c.reg2dep), worth: NUM(c.worth) })),
+    brands: rows(r.brands, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null, revenuePerFtd: null }),
+    tools: rows(r.tools, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null }),
+    placements: rows(r.placements, { clicks: 0, ftds: 0, share: null }),
+    devices: rows(r.devices, { clicks: 0, ftds: 0, revenue: 0, reg2dep: null, revenuePerFtd: null }),
+    trend: Array.isArray(r.trend) ? r.trend : [],
+    actions: Array.isArray(r.actions) ? r.actions : [],
+    availableCountries: Array.isArray(r.availableCountries) ? r.availableCountries : [],
+  };
+};
+
 // Every section of the report as one CSV, sections stacked and labelled, with
 // the period and any market filter written at the top — an export that does
 // not say what it was filtered to is a trap for whoever opens it later.
@@ -190,7 +226,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           }
           throw new Error(body?.error || "Could not load your report.");
         }
-        if (alive) setState({ loading: false, error: null, report: body });
+        if (alive) setState({ loading: false, error: null, report: normalise(body) });
       } catch (error) {
         if (alive) setState({ loading: false, error: error.message || "Could not load your report.", report: null });
       }
@@ -405,7 +441,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             <span className="br-total" key={t.label}>
               <em>{t.value}</em>
               {t.label}
-              {t.delta === null || t.delta === undefined ? null : (
+              {t.delta == null ? null : (
                 <b className={t.delta >= 0 ? "is-up" : "is-down"}>
                   {t.delta >= 0 ? "▲" : "▼"} {Math.abs(t.delta).toFixed(1)}%
                 </b>
@@ -476,7 +512,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                     <td>
                       {c.isNew ? (
                         <span className="br-tag is-new">new</span>
-                      ) : c.deltaFtds === null ? (
+                      ) : c.deltaFtds == null ? (
                         <span className="br-dim">—</span>
                       ) : (
                         <span className={c.deltaFtds >= 0 ? "is-ahead" : "is-behind"}>
@@ -486,7 +522,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                       )}
                     </td>
                     <td className={tone}>
-                      {c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}
+                      {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
                       {/* Marked, not hidden: a 100% rate on two signups is
                           noise, and a report that lets someone act on it is
                           worse than one that says less. */}
@@ -526,12 +562,12 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                     <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
                     <td>{int(c.ftds)}</td>
                     <td>
-                      {c.reg2dep === null ? "—" : formatPercent(c.reg2dep, 1)}
+                      {c.reg2dep == null ? "—" : formatPercent(c.reg2dep, 1)}
                       {c.thin ? <span className="br-thin" title="Too few registrations for this rate to mean much">·</span> : null}
                     </td>
                     {/* Redeposits per depositor. Where players come back is
                         where money compounds without more spend. */}
-                    <td>{c.repeatPerFtd === null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
+                    <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
                     <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
                     <td className="br-strong">{c.worth === null ? "—" : formatCurrencyWhole(c.worth)}</td>
                   </tr>
@@ -556,8 +592,8 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                     <tr key={x.brand}>
                       <td className="br-strong">{x.brand}</td>
                       <td>{int(x.ftds)}</td>
-                      <td>{x.reg2dep === null ? "—" : formatPercent(x.reg2dep, 1)}</td>
-                      <td>{x.revenuePerFtd === null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
+                      <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                      <td>{x.revenuePerFtd == null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
                       <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
                     </tr>
                   ))}
@@ -573,7 +609,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                       <td className="br-strong">{x.tool}</td>
                       <td>{int(x.clicks)}</td>
                       <td>{int(x.ftds)}</td>
-                      <td>{x.reg2dep === null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                      <td>{x.reg2dep == null ? "—" : formatPercent(x.reg2dep, 1)}</td>
                       <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
                     </tr>
                   ))}
@@ -607,7 +643,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                   <tr key={`${d.device}-${d.os}`}>
                     <td className="br-strong">{d.device} · {d.os}</td>
                     <td>{int(d.ftds)}</td>
-                    <td>{d.revenuePerFtd === null ? "—" : formatCurrency(d.revenuePerFtd)}</td>
+                    <td>{d.revenuePerFtd == null ? "—" : formatCurrency(d.revenuePerFtd)}</td>
                     <td>{formatCurrencyWhole(d.revenue)}</td>
                   </tr>
                 ))}

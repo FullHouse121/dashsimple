@@ -252,14 +252,14 @@ export default function ExecutiveReport({ report }) {
           </div>
           <div className="xr-tile-body">
             <strong className="xr-tile-value is-green">
-              {summary.epc === null ? "—" : `$${summary.epc.toFixed(4)}`}
+              {summary.epc == null ? "—" : `$${summary.epc.toFixed(4)}`}
             </strong>
             {summary.epcPrev ? (
               <Delta value={((summary.epc - summary.epcPrev) / summary.epcPrev) * 100} />
             ) : null}
           </div>
           <p className="xr-tile-note">
-            {summary.epc === null
+            {summary.epc == null
               ? "No click data for this period."
               : `${formatCurrencyWhole(summary.revenue)} ÷ ${int(summary.clicks)} tracked clicks — every 1,000 returns about $${(summary.epc * 1000).toFixed(0)}.`}
           </p>
@@ -409,11 +409,11 @@ export default function ExecutiveReport({ report }) {
                     </td>
                     <td>{int(row.clicks)}</td>
                     <td>{int(row.ftds)}</td>
-                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td>{row.reg2dep == null ? "—" : formatPercent(row.reg2dep, 1)}</td>
                     {/* Two platforms can convert alike and be worth twice as
                         much per depositor; this is the column that decides
                         where the next dollar goes. */}
-                    <td className="xr-strong">{row.revenuePerFtd === null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
+                    <td className="xr-strong">{row.revenuePerFtd == null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
                     <td className="xr-share-td">
                       <ShareCell value={row.revenue} max={max} tone="green">
                         {formatCurrencyWhole(row.revenue)}
@@ -662,7 +662,7 @@ export default function ExecutiveReport({ report }) {
                 </span>
                 <span className="xr-rank-metric">{formatCurrencyWhole(row.revenue)}</span>
                 <span className="xr-rank-sub">{int(row.ftds)} FTDs</span>
-                <span className="xr-rank-sub">{row.epc === null ? "—" : `$${row.epc.toFixed(3)} EPC`}</span>
+                <span className="xr-rank-sub">{row.epc == null ? "—" : `$${row.epc.toFixed(3)} EPC`}</span>
               </div>
             );
           })}
@@ -686,8 +686,8 @@ export default function ExecutiveReport({ report }) {
                     <td className="xr-strong xr-clip" title={row.campaign}>{row.campaign}</td>
                     <td>{int(row.clicks)}</td>
                     <td>{int(row.ftds)}</td>
-                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
-                    <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
+                    <td>{row.reg2dep == null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td>{row.epc == null ? "—" : `$${row.epc.toFixed(3)}`}</td>
                     <td className="xr-share-td">
                       <ShareCell value={row.revenue} max={max}>{formatCurrencyWhole(row.revenue)}</ShareCell>
                     </td>
@@ -759,8 +759,8 @@ export default function ExecutiveReport({ report }) {
                   <td>{int(row.clicks)}</td>
                   <td>{int(row.registers)}</td>
                   <td className="xr-strong">{int(row.ftds)}</td>
-                  <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
-                  <td>{row.epc === null ? "—" : `$${row.epc.toFixed(3)}`}</td>
+                  <td>{row.reg2dep == null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                  <td>{row.epc == null ? "—" : `$${row.epc.toFixed(3)}`}</td>
                   <td className="xr-share-td">
                     <ShareCell value={row.revenue} max={max}>{formatCurrencyWhole(row.revenue)}</ShareCell>
                   </td>
@@ -789,7 +789,7 @@ export default function ExecutiveReport({ report }) {
                     </td>
                     <td>{int(row.clicks)}</td>
                     <td>{int(row.ftds)}</td>
-                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td>{row.reg2dep == null ? "—" : formatPercent(row.reg2dep, 1)}</td>
                     <td className="xr-share-td">
                       <ShareCell value={row.revenue} max={max} tone="blue">
                         {formatCurrencyWhole(row.revenue)}
@@ -820,7 +820,7 @@ export default function ExecutiveReport({ report }) {
                       <span className="xr-cell-mark"><BrandMark value={row.tool} height={13} /></span>
                     </td>
                     <td>{int(row.clicks)}</td>
-                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    <td>{row.reg2dep == null ? "—" : formatPercent(row.reg2dep, 1)}</td>
                     <td className="xr-share-td">
                       <ShareCell value={row.ftds} max={max} tone="purple">{int(row.ftds)}</ShareCell>
                     </td>
@@ -844,7 +844,7 @@ export default function ExecutiveReport({ report }) {
                       <span className="xr-cell-mark"><BrandMark value={row.brand} height={14} /></span>
                     </td>
                     <td>{int(row.ftds)}</td>
-                    <td>{row.revenuePerFtd === null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
+                    <td>{row.revenuePerFtd == null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
                     <td className="xr-share-td">
                       <ShareCell value={row.revenue} max={max} tone="yellow">
                         {formatCurrencyWhole(row.revenue)}
