@@ -15929,7 +15929,7 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
   };
 
   const s2 = scoped(2);
-  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, prevCampaignRows, creativeRows, gameRows, split, splitPrev, allCountryRows] =
+  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, qualityRaw, prevCampaignRows, creativeRows, gameRows, split, splitPrev, allCountryRows] =
     await Promise.all([
       totalsFor(from, to),
       totalsFor(prevFrom, prevTo),
@@ -16069,6 +16069,15 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
             AND UPPER(TRIM(tool)) NOT IN ('FB','NAMING','YOUTARGET')${s2.sql ? ` AND ${s2.sql}` : ""}
           GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
+
+      // Traffic quality from the tracker: unique clicks, bots and proxies.
+      // media_stats has none of it, and a buyer told their traffic is 12% bots
+      // can act on that this afternoon.
+      keitaroReportBuild({
+        from, to, grouping: ["campaign"],
+        metrics: ["clicks", "campaign_unique_clicks", "bots", "proxies"],
+        limit: 5000,
+      }).catch(() => ({ ok: false, rows: [] })),
 
       // The same campaigns over the previous window. A rate on its own is a
       // fact; a rate against last period is a decision — feed it or kill it.
@@ -16462,6 +16471,32 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
       { key: "redeposits", label: "Redeposits", value: mine.redeposits, rateFromPrev: null,
         perPrev: mine.ftds > 0 ? mine.redeposits / mine.ftds : null },
     ],
+
+    // Only this buyer's campaigns count toward their traffic quality — the
+    // tracker reports the whole account, and the buyer label is inside the
+    // campaign name, which is what buyerShortForms already knows how to match.
+    quality: (() => {
+      const forms = buyerShortForms(buyer)
+        .map((f) => String(f).toLowerCase().replace(/[^a-z0-9]/g, ""))
+        .filter(Boolean);
+      const mineRows = (qualityRaw?.ok ? qualityRaw.rows : []).filter((r) => {
+        const name = String(r.campaign || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        return forms.some((f) => name.includes(f));
+      });
+      const sum = (k) => mineRows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+      const clicks = sum("clicks");
+      if (!clicks) return null;
+      const unique = sum("campaign_unique_clicks");
+      const bots = sum("bots");
+      const proxies = sum("proxies");
+      return {
+        clicks, unique, bots, proxies,
+        uniqueRate: rate(unique, clicks),
+        botRate: rate(bots, clicks),
+        proxyRate: rate(proxies, clicks),
+        cleanRate: rate(clicks - bots - proxies, clicks),
+      };
+    })(),
 
     availableCountries: (allCountryRows || []).map((r) => r.country).filter(Boolean),
     // What this report was narrowed to, carried on the payload so an export

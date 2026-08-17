@@ -22407,7 +22407,10 @@ select option,
    them. Comparison is the recurring device — a figure is close to useless to
    a buyer without the team's middle beside it — so `is-ahead` / `is-behind`
    appear throughout and mean the same thing every time. */
-.br { display: flex; flex-direction: column; gap: 22px; }
+.br { display: flex; flex-direction: column; gap: 40px; }
+.br .br-block + .br-block,
+.br > .br-block,
+.br > .br-two { padding-top: 4px; }
 
 .br-head {
   display: flex;
@@ -22495,6 +22498,14 @@ select option,
 }
 .br-metric-bench em.is-ahead { color: #4ee39c; background: rgba(54, 208, 124, 0.12); }
 .br-metric-bench em.is-behind { color: #ff8a7a; background: rgba(255, 107, 107, 0.12); }
+
+.br-quality {
+  margin: 14px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--faint);
+  max-width: 110ch;
+}
 
 .br-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
 .br-total { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--faint); }
@@ -22592,16 +22603,18 @@ select option,
    answers a question rather than reporting a fixed thirty days. Laid out as a
    row of labelled fields to match every other toolbar in the app. */
 .br-controls {
-  display: grid;
-  grid-template-columns: minmax(240px, 330px) minmax(180px, 280px) 1fr;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
   gap: 14px;
-  align-items: end;
   padding: 14px 16px;
   border-radius: var(--radius-md);
   border: 1px solid var(--stroke);
   background: rgba(255, 255, 255, 0.016);
 }
 .br-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.br-controls > .br-control:nth-child(1) { flex: 0 1 320px; }
+.br-controls > .br-control:nth-child(2) { flex: 0 1 240px; }
 .br-control > label {
   font-size: 10px;
   font-weight: 600;
@@ -22611,13 +22624,11 @@ select option,
 }
 .br-dates { display: flex; gap: 8px; min-width: 0; }
 .br-dates > * { flex: 1 1 0; min-width: 0; }
-.br-control-actions { justify-self: end; }
 .br-export { display: flex; gap: 8px; }
 .br-export .ghost { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
 
 @media (max-width: 900px) {
-  .br-controls { grid-template-columns: 1fr; }
-  .br-control-actions { justify-self: start; }
+  .br-controls > .br-control { flex: 1 1 100%; }
 }
 
 /* Printing the report is the PDF route, so the furniture goes and the

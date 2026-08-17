@@ -20,8 +20,8 @@ import {
 } from "recharts";
 import { apiFetch } from "../lib/api.js";
 import { CountryDropdownPicker, DeusDatePicker } from "./Select.jsx";
-import { Download, Printer } from "lucide-react";
-import { csvCell, formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
+import { Printer } from "lucide-react";
+import { formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
 import { CountryFlag } from "./flags.jsx";
 import { AlertIcon, AwardIcon, GoalIcon, HealthIcon } from "./icons.jsx";
 
@@ -174,97 +174,6 @@ const normalise = (r) => {
     actions: Array.isArray(r.actions) ? r.actions : [],
     availableCountries: Array.isArray(r.availableCountries) ? r.availableCountries : [],
   };
-};
-
-// Every section of the report as one CSV, sections stacked and labelled, with
-// the period and any market filter written at the top — an export that does
-// not say what it was filtered to is a trap for whoever opens it later.
-const buildCsv = (r) => {
-  const lines = [];
-  const row = (...cells) => lines.push(cells.map(csvCell).join(","));
-  row("DEUS Affiliates — buyer report");
-  row("Buyer", r.buyer);
-  row("Period", `${r.period?.from} to ${r.period?.to}`);
-  row("Markets", r.filters?.countries?.length ? r.filters.countries.join(" / ") : "All");
-  row("Generated", new Date(r.generatedAt || Date.now()).toLocaleString());
-  row("Note", "Cost figures are omitted while the ad-platform link is down.");
-  lines.push("");
-
-  const section = (title, headers, rows) => {
-    if (!rows?.length) return;
-    row(title);
-    row(...headers);
-    rows.forEach((cells) => row(...cells));
-    lines.push("");
-  };
-
-  const s = r.summary || {};
-  section("Summary", ["Metric", "Value"], [
-    ["Clicks", s.clicks], ["Registrations", s.registers], ["First deposits", s.ftds],
-    ["Redeposits", s.redeposits], ["Revenue", s.revenue],
-    ["Click to registration %", s.click2reg], ["Registration to deposit %", s.reg2dep],
-    ["Earnings per click", s.epc], ["Revenue per deposit", s.revenuePerFtd],
-  ]);
-  const b = r.benchmark || {};
-  section("Team median (for comparison)", ["Metric", "Median"], [
-    ["Click to registration %", b.click2reg], ["Registration to deposit %", b.reg2dep],
-    ["Earnings per click", b.epc], ["Revenue per deposit", b.revenuePerFtd],
-    ["Buyers in median", b.buyers],
-  ]);
-  section("What to do next", ["#", "Finding", "Detail"],
-    (r.actions || []).map((a, i) => [i + 1, a.title, a.body]));
-  section("Campaigns",
-    ["Campaign", "Clicks", "Registrations", "FTDs", "FTDs last period", "FTD change %", "Reg to dep %", "Sample", "Revenue"],
-    (r.campaigns || []).map((c) => [
-      c.campaign, c.clicks, c.registers, c.ftds,
-      c.isNew ? "new" : c.previous?.ftds ?? "", c.isNew ? "" : c.deltaFtds,
-      c.reg2dep, c.thin ? "thin" : "ok", c.revenue,
-    ]));
-  section("Markets",
-    ["Country", "Clicks", "Registrations", "FTDs", "Redeposits", "Repeat per FTD", "Reg to dep %", "Sample", "CPA", "Worth at rate card", "Revenue"],
-    (r.countries || []).map((c) => [
-      c.country, c.clicks, c.registers, c.ftds, c.redeposits, c.repeatPerFtd,
-      c.reg2dep, c.thin ? "thin" : "ok", c.cpa, c.worth, c.revenue,
-    ]));
-  section("Brands", ["Brand", "Clicks", "FTDs", "Reg to dep %", "Revenue per FTD", "Revenue"],
-    (r.brands || []).map((x) => [x.brand, x.clicks, x.ftds, x.reg2dep, x.revenuePerFtd, x.revenue]));
-  section("Tools", ["Tool", "Clicks", "FTDs", "Reg to dep %", "Revenue"],
-    (r.tools || []).map((x) => [x.tool, x.clicks, x.ftds, x.reg2dep, x.revenue]));
-  section("Creatives", ["Ad", "Adset", "Clicks", "Registrations", "FTDs", "Reg to dep %", "Sample", "Revenue"],
-    (r.creatives || []).map((c) => [c.ad, c.adset, c.clicks, c.registers, c.ftds, c.reg2dep, c.thin ? "thin" : "ok", c.revenue]));
-  section("Offers", ["Game", "Clicks", "FTDs", "Reg to dep %", "Revenue per FTD", "Revenue"],
-    (r.games || []).map((g) => [g.game, g.clicks, g.ftds, g.reg2dep, g.revenuePerFtd, g.revenue]));
-  if (r.revenueSource) {
-    section("Where the money came from", ["Source", "Revenue", "Share %", "Change vs last period %"], [
-      ["New depositors", r.revenueSource.fromNew, r.revenueSource.newShare, r.revenueSource.deltaNew],
-      ["Returning players", r.revenueSource.fromReturning, r.revenueSource.returningShare, r.revenueSource.deltaReturning],
-    ]);
-  }
-  section("Funnel", ["Step", "Count", "Rate from previous step %"],
-    (r.funnel || []).map((f) => [f.label, f.value, f.rateFromPrev]));
-  section("Placements", ["Placement", "Clicks", "FTDs", "Share of clicks %"],
-    (r.placements || []).map((x) => [x.placement, x.clicks, x.ftds, x.share]));
-  section("Devices", ["Device", "OS", "Clicks", "FTDs", "Revenue per FTD", "Revenue"],
-    (r.devices || []).map((x) => [x.device, x.os, x.clicks, x.ftds, x.revenuePerFtd, x.revenue]));
-  section("Day by day", ["Date", "Clicks", "Registrations", "FTDs", "Revenue"],
-    (r.trend || []).map((t) => [t.date, t.clicks, t.registers, t.ftds, t.revenue]));
-  if (r.target?.rows?.length) {
-    section("Against target", ["Metric", "Actual", "Target", "Progress %"],
-      r.target.rows.map((t) => [t.label, t.actual, t.target, t.progress]));
-  }
-  return lines.join("\n");
-};
-
-const downloadCsv = (r) => {
-  const blob = new Blob([`\ufeff${buildCsv(r)}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `deus-${String(r.buyer || "buyer").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${r.period?.from}-to-${r.period?.to}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 };
 
 export default function BuyerReport({ range, buyer = null, onPickBuyer = null }) {
@@ -433,12 +342,9 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               emptyResultsLabel="No markets found."
             />
           </div>
-          <div className="br-control br-control-actions">
+          <div className="br-control">
             <label>Export</label>
             <div className="br-export">
-              <button type="button" className="ghost" onClick={() => downloadCsv(r)} title="Every section as one CSV">
-                <Download size={14} /> CSV
-              </button>
               <button type="button" className="ghost" onClick={() => window.print()} title="Print or save as PDF">
                 <Printer size={14} /> PDF
               </button>
@@ -526,9 +432,27 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           <Benchmarked label="Earnings per click" value={me.epc} median={benchmark.epc} format="money4" />
           <Benchmarked label="Revenue per deposit" value={me.revenuePerFtd} median={benchmark.revenuePerFtd} format="money" />
         </div>
+        {r.quality ? (
+          <p className="br-quality">
+            Of {int(r.quality.clicks)} clicks the tracker saw, {int(r.quality.unique)} were unique
+            ({formatPercent(r.quality.uniqueRate, 1)}), {int(r.quality.bots)} were bots and {int(r.quality.proxies)} came
+            through proxies — {formatPercent(r.quality.cleanRate, 1)} clean. Rates below are built on tracked clicks, not
+            unique ones.
+          </p>
+        ) : null}
+
         <div className="br-totals">
           {[
             { label: "Clicks", value: int(me.clicks), delta: deltas.clicks },
+            // Unique clicks come from the tracker, not media_stats: one person
+            // reloading five times is one visitor.
+            ...(r.quality
+              ? [{
+                  label: `Unique clicks · ${formatPercent(r.quality.uniqueRate, 0)}`,
+                  value: int(r.quality.unique),
+                  delta: null,
+                }]
+              : []),
             { label: "Registrations", value: int(me.registers), delta: deltas.registers },
             { label: "First deposits", value: int(me.ftds), delta: deltas.ftds },
             { label: "Revenue", value: formatCurrencyWhole(me.revenue), delta: deltas.revenue },
