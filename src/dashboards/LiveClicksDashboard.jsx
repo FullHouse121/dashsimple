@@ -18,6 +18,7 @@ import {
   LIVE_CLICKS_RENDER_CAP,
   SUB_MEANINGS,
   liveClickSubIssues,
+  liveClicksLookupDays,
 } from "../lib/live.js";
 
 // Near-real-time click stream from Keitaro's click log. Polls every 15s
@@ -245,7 +246,13 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     if (q.length < 3) return;
     setDeep({ rows: null, loading: true, error: null, term: q });
     try {
-      const response = await apiFetch(`/api/keitaro/clicks-lookup?q=${encodeURIComponent(q)}&days=30`);
+      // Reach back far enough to cover the window the user actually chose.
+      // A flat 30 days meant "Previous month" could not find a click from
+      // last month once the current month was past its 30th day.
+      const days = liveClicksLookupDays(windowMinutes, customRange);
+      const response = await apiFetch(
+        `/api/keitaro/clicks-lookup?q=${encodeURIComponent(q)}&days=${days}`
+      );
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         throw new Error(detail?.error || "Lookup failed.");
@@ -255,7 +262,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
     } catch (error) {
       setDeep({ rows: null, loading: false, error: error.message || "Lookup failed.", term: q });
     }
-  }, []);
+  }, [windowMinutes, customRange]);
   // Reset deep results whenever the search or window changes.
   React.useEffect(() => {
     setDeep({ rows: null, loading: false, error: null, term: "" });
@@ -602,7 +609,12 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
           ) : deepActive && deep.error ? (
             <div className="empty-state error">{deep.error}</div>
           ) : deepActive && deep.rows && deep.rows.length === 0 ? (
-            <div className="empty-state">No click matching “{deep.term}” in the last 30 days.</div>
+            <div className="empty-state">
+              No click matching “{deep.term}” in the last {liveClicksLookupDays(windowMinutes, customRange)} days.
+              {liveClicksLookupDays(windowMinutes, customRange) >= 90
+                ? " That is as far back as the tracker will search."
+                : " Widen the window to search further back."}
+            </div>
           ) : (
             <>
               {deepActive && deep.rows && deep.rows.length ? (
