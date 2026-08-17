@@ -15877,13 +15877,25 @@ const buildExecutiveReport = async ({ from, to, title }) => {
 //
 // Cost is absent throughout, deliberately: with the Meta pipeline down, a
 // buyer-facing CPA or ROI would be a fiction the reader cannot check.
-const buildBuyerReport = async ({ from, to, buyer }) => {
+const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = [] }) => {
   const dayMs = 86400000;
   const span = Math.max(1, Math.round((new Date(`${to}T00:00:00Z`) - new Date(`${from}T00:00:00Z`)) / dayMs) + 1);
   const prevTo = isoDay(new Date(new Date(`${from}T00:00:00Z`).getTime() - dayMs));
   const prevFrom = isoDay(new Date(new Date(`${prevTo}T00:00:00Z`).getTime() - (span - 1) * dayMs));
 
-  const scoped = (paramOffset) => buyerScopeClause(buyer, paramOffset);
+  // Buyer scope AND the chosen markets, as one clause. Threaded through every
+  // query rather than some of them: a filter that reaches the campaign table
+  // but not the device table produces a report whose own sections disagree,
+  // which is worse than offering no filter at all.
+  const picked = (countryFilter || []).map((c) => String(c).trim()).filter(Boolean);
+  const scoped = (paramOffset) => {
+    const base = buyerScopeClause(buyer, paramOffset);
+    if (!picked.length) return base;
+    const params = [...base.params, picked];
+    const idx = paramOffset + params.length;
+    const clause = `LOWER(TRIM(COALESCE(country,''))) = ANY(SELECT LOWER(TRIM(x)) FROM UNNEST($${idx}::text[]) AS x)`;
+    return { sql: base.sql ? `${base.sql} AND ${clause}` : clause, params };
+  };
 
   // One buyer's totals for a window.
   const totalsFor = async (a, b) => {
@@ -15903,7 +15915,7 @@ const buildBuyerReport = async ({ from, to, buyer }) => {
   };
 
   const s2 = scoped(2);
-  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates] =
+  const [current, previous, trendRows, campaignRows, countryRows, placementRows, deviceRows, teamRows, goalRows, cpaRates, brandRows, toolRows, allCountryRows] =
     await Promise.all([
       totalsFor(from, to),
       totalsFor(prevFrom, prevTo),
@@ -16017,6 +16029,43 @@ const buildBuyerReport = async ({ from, to, buyer }) => {
       ).catch(() => []),
 
       getRows("SELECT country, cpa::float8 AS cpa FROM market_cpa_rates").catch(() => []),
+
+      // Which brand the money arrived through, and which delivery tool carried
+      // it — the two cuts a buyer is asked about in a review and currently has
+      // to leave the report to answer.
+      getRows(
+        `SELECT UPPER(TRIM(brand)) AS brand,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(brand),'') <> ''${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
+      getRows(
+        `SELECT UPPER(TRIM(tool)) AS tool,
+                COALESCE(SUM(clicks),0)::int AS clicks,
+                COALESCE(SUM(registers),0)::int AS registers,
+                COALESCE(SUM(ftds),0)::int AS ftds,
+                COALESCE(SUM(revenue),0)::float8 AS revenue
+           FROM media_stats
+          WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(tool),'') <> ''
+            AND UPPER(TRIM(tool)) NOT IN ('FB','NAMING','YOUTARGET')${s2.sql ? ` AND ${s2.sql}` : ""}
+          GROUP BY 1 HAVING COALESCE(SUM(clicks),0) > 0
+          ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
+
+      // Every market this buyer touched in the window, IGNORING the country
+      // filter — the picker has to keep offering the markets you filtered
+      // away, or choosing one would empty the menu you chose it from.
+      (async () => {
+        const all = buyerScopeClause(buyer, 2);
+        return getRows(
+          `SELECT DISTINCT country FROM media_stats
+            WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(country),'') <> ''
+              ${all.sql ? `AND ${all.sql}` : ""}
+            ORDER BY country`, [from, to, ...all.params]).catch(() => []);
+      })(),
     ]);
 
   const num = (v) => Number(v) || 0;
@@ -16241,6 +16290,27 @@ const buildBuyerReport = async ({ from, to, buyer }) => {
     countries,
     placements,
     devices,
+    brands: (brandRows || []).map((r) => ({
+      brand: r.brand,
+      clicks: num(r.clicks),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+      revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+    })),
+    tools: (toolRows || []).map((r) => ({
+      tool: r.tool,
+      clicks: num(r.clicks),
+      ftds: num(r.ftds),
+      revenue: num(r.revenue),
+      reg2dep: rate(num(r.ftds), num(r.registers)),
+    })),
+    // Every market the buyer touched, before the filter — the picker must keep
+    // offering what you filtered away.
+    availableCountries: (allCountryRows || []).map((r) => r.country).filter(Boolean),
+    // What this report was narrowed to, carried on the payload so an export
+    // can say so on its own face instead of relying on memory.
+    filters: { countries: picked },
     actions: actions.slice(0, 4),
     // Cost is deliberately absent: with the ad-platform pipeline down, a
     // buyer-facing CPA or ROI would be a number the reader cannot check and
@@ -16296,8 +16366,17 @@ app.get("/api/reports/buyer", async (req, res) => {
     });
   }
 
+  // Repeated ?country= or one comma-separated value; capped so a hand-built
+  // URL cannot turn the filter into an unbounded IN list.
+  const countries = []
+    .concat(req.query.country || [])
+    .flatMap((v) => String(v).split(","))
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+
   try {
-    return res.json(await buildBuyerReport({ from, to, buyer }));
+    return res.json(await buildBuyerReport({ from, to, buyer, countries }));
   } catch (error) {
     return res.status(500).json({ error: error.message || "Failed to build the report." });
   }

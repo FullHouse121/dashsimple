@@ -19,7 +19,9 @@ import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
 } from "recharts";
 import { apiFetch } from "../lib/api.js";
-import { formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
+import { CountryDropdownPicker, DeusDatePicker } from "./Select.jsx";
+import { Download, Printer } from "lucide-react";
+import { csvCell, formatCurrency, formatCurrencyWhole, formatPercent } from "../lib/format.js";
 import { CountryFlag } from "./flags.jsx";
 import { AlertIcon, AwardIcon, GoalIcon, HealthIcon } from "./icons.jsx";
 
@@ -66,7 +68,87 @@ function Benchmarked({ label, value, median, format, better = "higher" }) {
   );
 }
 
+
+// Every section of the report as one CSV, sections stacked and labelled, with
+// the period and any market filter written at the top — an export that does
+// not say what it was filtered to is a trap for whoever opens it later.
+const buildCsv = (r) => {
+  const lines = [];
+  const row = (...cells) => lines.push(cells.map(csvCell).join(","));
+  row("DEUS Affiliates — buyer report");
+  row("Buyer", r.buyer);
+  row("Period", `${r.period?.from} to ${r.period?.to}`);
+  row("Markets", r.filters?.countries?.length ? r.filters.countries.join(" / ") : "All");
+  row("Generated", new Date(r.generatedAt || Date.now()).toLocaleString());
+  row("Note", "Cost figures are omitted while the ad-platform link is down.");
+  lines.push("");
+
+  const section = (title, headers, rows) => {
+    if (!rows?.length) return;
+    row(title);
+    row(...headers);
+    rows.forEach((cells) => row(...cells));
+    lines.push("");
+  };
+
+  const s = r.summary || {};
+  section("Summary", ["Metric", "Value"], [
+    ["Clicks", s.clicks], ["Registrations", s.registers], ["First deposits", s.ftds],
+    ["Redeposits", s.redeposits], ["Revenue", s.revenue],
+    ["Click to registration %", s.click2reg], ["Registration to deposit %", s.reg2dep],
+    ["Earnings per click", s.epc], ["Revenue per deposit", s.revenuePerFtd],
+  ]);
+  const b = r.benchmark || {};
+  section("Team median (for comparison)", ["Metric", "Median"], [
+    ["Click to registration %", b.click2reg], ["Registration to deposit %", b.reg2dep],
+    ["Earnings per click", b.epc], ["Revenue per deposit", b.revenuePerFtd],
+    ["Buyers in median", b.buyers],
+  ]);
+  section("What to do next", ["#", "Finding", "Detail"],
+    (r.actions || []).map((a, i) => [i + 1, a.title, a.body]));
+  section("Campaigns", ["Campaign", "Clicks", "Registrations", "FTDs", "Reg to dep %", "Revenue"],
+    (r.campaigns || []).map((c) => [c.campaign, c.clicks, c.registers, c.ftds, c.reg2dep, c.revenue]));
+  section("Markets", ["Country", "Clicks", "Registrations", "FTDs", "Reg to dep %", "CPA", "Worth at rate card", "Revenue"],
+    (r.countries || []).map((c) => [c.country, c.clicks, c.registers, c.ftds, c.reg2dep, c.cpa, c.worth, c.revenue]));
+  section("Brands", ["Brand", "Clicks", "FTDs", "Reg to dep %", "Revenue per FTD", "Revenue"],
+    (r.brands || []).map((x) => [x.brand, x.clicks, x.ftds, x.reg2dep, x.revenuePerFtd, x.revenue]));
+  section("Tools", ["Tool", "Clicks", "FTDs", "Reg to dep %", "Revenue"],
+    (r.tools || []).map((x) => [x.tool, x.clicks, x.ftds, x.reg2dep, x.revenue]));
+  section("Placements", ["Placement", "Clicks", "FTDs", "Share of clicks %"],
+    (r.placements || []).map((x) => [x.placement, x.clicks, x.ftds, x.share]));
+  section("Devices", ["Device", "OS", "Clicks", "FTDs", "Revenue per FTD", "Revenue"],
+    (r.devices || []).map((x) => [x.device, x.os, x.clicks, x.ftds, x.revenuePerFtd, x.revenue]));
+  section("Day by day", ["Date", "Clicks", "Registrations", "FTDs", "Revenue"],
+    (r.trend || []).map((t) => [t.date, t.clicks, t.registers, t.ftds, t.revenue]));
+  if (r.target?.rows?.length) {
+    section("Against target", ["Metric", "Actual", "Target", "Progress %"],
+      r.target.rows.map((t) => [t.label, t.actual, t.target, t.progress]));
+  }
+  return lines.join("\n");
+};
+
+const downloadCsv = (r) => {
+  const blob = new Blob([`\ufeff${buildCsv(r)}`], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `deus-${String(r.buyer || "buyer").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${r.period?.from}-to-${r.period?.to}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
 export default function BuyerReport({ range, buyer = null, onPickBuyer = null }) {
+  // The report's own range and market filter, seeded from whatever the page
+  // arrived with. A buyer asked to explain a month does not want to be told
+  // the page only knows how to show thirty days.
+  const [own, setOwn] = React.useState({ from: range?.from || "", to: range?.to || "" });
+  React.useEffect(() => {
+    setOwn({ from: range?.from || "", to: range?.to || "" });
+  }, [range?.from, range?.to]);
+  const [markets, setMarkets] = React.useState([]);
+  const marketKey = markets.join(",");
   const [state, setState] = React.useState({ loading: true, error: null, report: null });
 
   React.useEffect(() => {
@@ -75,8 +157,9 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
     (async () => {
       try {
         const qs = new URLSearchParams();
-        if (range?.from) qs.set("from", range.from);
-        if (range?.to) qs.set("to", range.to);
+        if (own.from) qs.set("from", own.from);
+        if (own.to) qs.set("to", own.to);
+        if (marketKey) qs.set("country", marketKey);
         // Only leadership may name a buyer; for everyone else the server
         // resolves it from the session and ignores this entirely.
         if (buyer) qs.set("buyer", buyer);
@@ -104,7 +187,7 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
       }
     })();
     return () => { alive = false; };
-  }, [range?.from, range?.to, buyer]);
+  }, [own.from, own.to, marketKey, buyer]);
 
   if (state.loading) return <div className="br-msg">Building your report…</div>;
   if (state.error) return <div className="br-msg is-error">{state.error}</div>;
@@ -123,6 +206,9 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             <p className="br-sub">Choose whose report to open. {r.period?.from} → {r.period?.to}</p>
           </div>
         </header>
+
+
+
         {r.buyers?.length ? (
           <ul className="br-picker">
             {r.buyers.map((b) => (
@@ -180,6 +266,45 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           ad-platform link is down
         </span>
       </header>
+
+        <div className="br-controls br-noprint">
+          {/* The report owns its own range and markets. Asking a buyer to
+              explain a quarter and giving them a fixed thirty days is how a
+              report becomes something people export and rebuild by hand. */}
+          <div className="br-control">
+            <label>From — to</label>
+            <div className="br-dates">
+              <DeusDatePicker value={own.from} max={own.to || ""} onChange={(v) => setOwn((p) => ({ ...p, from: v }))} />
+              <DeusDatePicker value={own.to} min={own.from || ""} onChange={(v) => setOwn((p) => ({ ...p, to: v }))} />
+            </div>
+          </div>
+          <div className="br-control">
+            <label>Markets</label>
+            <CountryDropdownPicker
+              multiple
+              removable
+              values={markets}
+              onToggle={(c) =>
+                setMarkets((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
+              }
+              options={(r.availableCountries || []).map((c) => ({ value: c, label: c, search: c }))}
+              placeholder="All markets"
+              searchPlaceholder="Type to find a market"
+              emptyResultsLabel="No markets found."
+            />
+          </div>
+          <div className="br-control br-control-actions">
+            <label>Export</label>
+            <div className="br-export">
+              <button type="button" className="ghost" onClick={() => downloadCsv(r)} title="Every section as one CSV">
+                <Download size={14} /> CSV
+              </button>
+              <button type="button" className="ghost" onClick={() => window.print()} title="Print or save as PDF">
+                <Printer size={14} /> PDF
+              </button>
+            </div>
+          </div>
+        </div>
 
       {/* The answer first. A buyer handed nine things to do does none of them,
           so the endpoint caps this at four and leads with the biggest gap. */}
@@ -374,6 +499,48 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                 ))}
               </tbody>
             </table>
+          </section>
+        ) : null}
+
+        {r.brands?.length || r.tools?.length ? (
+          <section className="br-block">
+            <h2 className="br-h2">Brand and tool</h2>
+            <p className="br-note">
+              Which brand the money arrived through, and which delivery tool carried it — the two cuts you get asked
+              about in a review.
+            </p>
+            {r.brands?.length ? (
+              <table className="br-table">
+                <thead><tr><th>Brand</th><th>FTDs</th><th>Reg→Dep</th><th>Per FTD</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {r.brands.map((x) => (
+                    <tr key={x.brand}>
+                      <td className="br-strong">{x.brand}</td>
+                      <td>{int(x.ftds)}</td>
+                      <td>{x.reg2dep === null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                      <td>{x.revenuePerFtd === null ? "—" : formatCurrency(x.revenuePerFtd)}</td>
+                      <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+            {r.tools?.length ? (
+              <table className="br-table br-table-tight">
+                <thead><tr><th>Tool</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
+                <tbody>
+                  {r.tools.map((x) => (
+                    <tr key={x.tool}>
+                      <td className="br-strong">{x.tool}</td>
+                      <td>{int(x.clicks)}</td>
+                      <td>{int(x.ftds)}</td>
+                      <td>{x.reg2dep === null ? "—" : formatPercent(x.reg2dep, 1)}</td>
+                      <td className="br-strong">{formatCurrencyWhole(x.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
           </section>
         ) : null}
 

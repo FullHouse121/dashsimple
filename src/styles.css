@@ -22574,3 +22574,45 @@ select option,
   font-weight: 600;
 }
 .br-back:hover { text-decoration: underline; }
+
+/* Controls on the buyer report: its own range and market filter, so the page
+   answers a question rather than reporting a fixed thirty days. Laid out as a
+   row of labelled fields to match every other toolbar in the app. */
+.br-controls {
+  display: grid;
+  grid-template-columns: minmax(240px, 330px) minmax(180px, 280px) 1fr;
+  gap: 14px;
+  align-items: end;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.016);
+}
+.br-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.br-control > label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+.br-dates { display: flex; gap: 8px; min-width: 0; }
+.br-dates > * { flex: 1 1 0; min-width: 0; }
+.br-control-actions { justify-self: end; }
+.br-export { display: flex; gap: 8px; }
+.br-export .ghost { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .br-controls { grid-template-columns: 1fr; }
+  .br-control-actions { justify-self: start; }
+}
+
+/* Printing the report is the PDF route, so the furniture goes and the
+   sections stop breaking across pages mid-table. */
+@media print {
+  .br-noprint, .br-back { display: none !important; }
+  .br { gap: 16px; }
+  .br-block, .br-actions, .br-metrics, .br-targets { break-inside: avoid; }
+  .br-table thead { display: table-header-group; }
+  .br-table tr { break-inside: avoid; }
+}
