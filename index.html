@@ -6,6 +6,20 @@
     <meta name="theme-color" content="#121315" />
     <title>DeusMachine</title>
 
+    <!-- Tab icon. There was none, so every tab showed the browser's generic
+         globe. Served from public/, which Vite copies to the build root, so
+         the same paths work in dev and in production.
+
+         Two raster sizes rather than one: browsers pick 32 for the tab strip
+         and 192 for bookmarks and Android home screens, and letting one size
+         be scaled to the other is where a mark turns to mush. The source is a
+         512px PNG (the supplied .svg is a PNG in an SVG wrapper), so each size
+         is area-averaged from the full original rather than stepped down
+         through the others. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <!-- Warm up critical network connections in parallel with bundle -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
