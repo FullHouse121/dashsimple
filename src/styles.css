@@ -1038,32 +1038,6 @@ select {
   flex-wrap: wrap;
 }
 
-/* The emblem anchors the left of the bar, which otherwise held nothing on
-   desktop — the mobile menu button is hidden there, so every control sat hard
-   right against an empty expanse. Decorative: the sidebar already names the
-   product, so this carries no alt text and is hidden from screen readers
-   rather than read out as a second, redundant "Deus Affiliates".
-
-   It dims until the window is hovered so it reads as a mark rather than as a
-   control — nothing in this bar is clickable that does not look clickable. */
-.topbar-emblem {
-  height: 30px;
-  width: auto;
-  flex-shrink: 0;
-  opacity: 0.85;
-  filter: drop-shadow(0 2px 8px rgba(54, 208, 124, 0.22));
-  transition: opacity 0.18s ease;
-  user-select: none;
-  -webkit-user-drag: none;
-}
-.topbar:hover .topbar-emblem { opacity: 1; }
-
-/* On mobile the menu button owns the left, so the emblem steps aside rather
-   than pushing the toggle off its edge. */
-@media (max-width: 900px) {
-  .topbar-emblem { display: none; }
-}
-
 .action-pill {
   background: linear-gradient(180deg, #3fe08a 0%, #2fc275 100%);
   border: 1px solid rgba(54, 208, 124, 0.9);
