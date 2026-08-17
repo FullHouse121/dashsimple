@@ -36,6 +36,7 @@ import {
   Maximize2, ScrollText, RefreshCw, Unlink, Star, Play, Pause,
 } from "lucide-react";
 import logo from "./assets/logo.png";
+import emblem from "./assets/deus-emblem.png";
 import { BrandMark, resolveBrandLogo, BRAND_LOGOS, normalizeBrandKey } from "./components/BrandMark.jsx";
 import keitaroLogo from "./assets/brands/keitaro.svg";
 
@@ -26367,6 +26368,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
+          <img className="topbar-emblem" src={emblem} alt="" aria-hidden="true" />
           <button
             className="mobile-nav-toggle"
             type="button"
