@@ -14,7 +14,7 @@
 import React from "react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  BarChart, Bar, Cell, PieChart, Pie, RadialBarChart, RadialBar, PolarAngleAxis,
+  BarChart, Bar, Cell, PieChart, Pie,
 } from "recharts";
 import { CountryFlag } from "./flags.jsx";
 import { BrandMark } from "./BrandMark.jsx";
@@ -61,6 +61,15 @@ export default function ExecutiveReport({ report }) {
   // same thing on page three as it did on page one.
   const BRAND_COLOURS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#ff7d88"];
   const money = integrity?.costTrustworthy;
+  // One canonical order for people, and one colour per person derived from
+  // it. Sorted in the report rather than upstream: the API's order is right
+  // for other consumers, but a rank has to agree with the bar beside it.
+  const rankedBuyers = [...(buyers || [])].sort((a, b) => b.revenue - a.revenue);
+  const earningCountries = [...(countries || [])]
+    .filter((c) => c.ftds > 0 || c.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue);
+  const silentCountries = (countries || []).length - earningCountries.length;
+  const buyerColour = new Map(rankedBuyers.map((b, i) => [b.buyer, BRAND_COLOURS[i % BRAND_COLOURS.length]]));
 
   const verdict = (() => {
     const g = Object.fromEntries((growth || []).map((r) => [r.key, r]));
@@ -241,7 +250,7 @@ export default function ExecutiveReport({ report }) {
             <span className="xr-tile-label">Earnings per click</span>
           </div>
           <div className="xr-tile-body">
-            <strong className="xr-tile-value">
+            <strong className="xr-tile-value is-green">
               {summary.epc === null ? "—" : `$${summary.epc.toFixed(4)}`}
             </strong>
             {summary.epcPrev ? (
@@ -249,9 +258,39 @@ export default function ExecutiveReport({ report }) {
             ) : null}
           </div>
           <p className="xr-tile-note">
-            {formatCurrencyWhole(summary.revenue)} from{" "}
-            {uniqueClicks === null ? int(summary.clicks) : int(uniqueClicks)} unique clicks
+            {summary.epc === null
+              ? "No click data for this period."
+              : `${formatCurrencyWhole(summary.revenue)} ÷ ${int(summary.clicks)} tracked clicks — every 1,000 returns about $${(summary.epc * 1000).toFixed(0)}.`}
           </p>
+
+          {/* This period against the last, at one scale. The longer bar is the
+              better rate, before the percentage is read. */}
+          {summary.epc !== null && summary.epcPrev ? (
+            <div className="xr-compare">
+              {[
+                { label: "This period", v: summary.epc, tone: "is-green" },
+                { label: "Previous", v: summary.epcPrev, tone: "is-muted" },
+              ].map((r) => (
+                <span className="xr-compare-row" key={r.label}>
+                  <span className="xr-compare-label">{r.label}</span>
+                  <span className="xr-compare-track">
+                    <span
+                      className={`xr-compare-fill ${r.tone}`}
+                      style={{ width: `${Math.max((r.v / Math.max(summary.epc, summary.epcPrev)) * 100, 2)}%` }}
+                    />
+                  </span>
+                  <span className="xr-compare-value">${r.v.toFixed(4)}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {/* The figures the rate divides, so the working is on the tile. */}
+          <div className="xr-tile-foot">
+            <span><em>{formatCurrencyWhole(summary.revenue)}</em>revenue</span>
+            <span><em>{int(summary.clicks)}</em>tracked clicks</span>
+            <span><em>{summary.epcPrev ? `$${summary.epcPrev.toFixed(4)}` : "—"}</em>was</span>
+          </div>
         </div>
 
         {quality ? (
@@ -261,32 +300,51 @@ export default function ExecutiveReport({ report }) {
                 <span className="xr-tile-icon is-blue"><ShieldCheck size={14} /></span>
                 <span className="xr-tile-label">Clean traffic</span>
               </div>
-              {/* Half-dial with the value below the arc rather than across
-                  it — at 98% the bar closes over the centre and the number
-                  was being printed on top of its own stroke. */}
-              <div className="xr-gauge">
-                <ResponsiveContainer width="100%" height={104}>
-                  <RadialBarChart
-                    innerRadius="76%" outerRadius="100%" startAngle={180} endAngle={0}
-                    data={[{ name: "clean", value: Math.max(0, Math.min(100, quality.cleanRate || 0)) }]}
-                    cy="100%"
-                  >
-                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
-                    <RadialBar dataKey="value" cornerRadius={6} fill="#36d07c" background={{ fill: "rgba(255,255,255,0.07)" }} />
-                  </RadialBarChart>
+              {/* A closed ring, not a half dial: it shows the composition
+                  rather than one rate, and the figure sits in the hole
+                  instead of being crowded under an arc. */}
+              <div className="xr-ring">
+                <ResponsiveContainer width="100%" height={150}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Real", value: Math.max(0, quality.clicks - quality.bots - quality.proxies) },
+                        { name: "Bots", value: quality.bots },
+                        { name: "Proxies", value: quality.proxies },
+                      ]}
+                      dataKey="value" nameKey="name"
+                      innerRadius="70%" outerRadius="100%"
+                      paddingAngle={2} cornerRadius={3} stroke="none"
+                      startAngle={90} endAngle={-270}
+                    >
+                      {["#36d07c", "#ff7d88", "#f7c625"].map((c) => <Cell key={c} fill={c} />)}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle}
+                      formatter={(v, n) => [Number(v).toLocaleString(), n]}
+                    />
+                  </PieChart>
                 </ResponsiveContainer>
-                <div className="xr-gauge-read">
+                <div className="xr-ring-centre">
                   <strong>{(quality.cleanRate || 0).toFixed(1)}%</strong>
-                  <span>of {quality.clicks.toLocaleString()} clicks</span>
+                  <span>clean</span>
                 </div>
               </div>
               {/* The parts, not a sentence: a manager who sees 98.3% will
                   next ask what the other 1.7% was. */}
-              <div className="xr-tile-split">
-                <span><em>{quality.bots.toLocaleString()}</em>bots</span>
-                <span><em>{quality.proxies.toLocaleString()}</em>proxies</span>
-                <span><em>{(quality.clicks - quality.bots - quality.proxies).toLocaleString()}</em>real</span>
-              </div>
+              <ul className="xr-legend">
+                {[
+                  { label: "Real", value: quality.clicks - quality.bots - quality.proxies, colour: "#36d07c" },
+                  { label: "Bots", value: quality.bots, colour: "#ff7d88" },
+                  { label: "Proxies", value: quality.proxies, colour: "#f7c625" },
+                ].map((r) => (
+                  <li key={r.label}>
+                    <span className="xr-legend-dot" style={{ background: r.colour }} />
+                    <span className="xr-legend-name">{r.label}</span>
+                    <span className="xr-legend-value">{r.value.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <div className="xr-tile">
@@ -295,9 +353,26 @@ export default function ExecutiveReport({ report }) {
                 <span className="xr-tile-label">Unique clicks</span>
               </div>
               <div className="xr-tile-body">
-                <strong className="xr-tile-value">{(quality.uniqueRate || 0).toFixed(1)}%</strong>
+                <strong className="xr-tile-value is-purple">{(quality.uniqueRate || 0).toFixed(1)}%</strong>
               </div>
-              <p className="xr-tile-note">{quality.unique.toLocaleString()} of {quality.clicks.toLocaleString()}</p>
+              <p className="xr-tile-note">
+                {quality.unique.toLocaleString()} of {quality.clicks.toLocaleString()} clicks
+              </p>
+              <div className="xr-split-bar">
+                <span style={{ width: `${Math.max(0, Math.min(100, quality.uniqueRate || 0))}%` }} />
+              </div>
+              <ul className="xr-legend">
+                {[
+                  { label: "Unique visitors", value: quality.unique, colour: "#a15bff" },
+                  { label: "Return visits", value: Math.max(0, quality.clicks - quality.unique), colour: "rgba(255,255,255,0.22)" },
+                ].map((r) => (
+                  <li key={r.label}>
+                    <span className="xr-legend-dot" style={{ background: r.colour }} />
+                    <span className="xr-legend-name">{r.label}</span>
+                    <span className="xr-legend-value">{r.value.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </>
         ) : null}
@@ -371,10 +446,18 @@ export default function ExecutiveReport({ report }) {
                 const share = total > 0 ? (entry.revenue / total) * 100 : 0;
                 return (
                   <li key={entry.brand}>
-                    <span className="xr-donut-swatch" style={{ background: BRAND_COLOURS[i % BRAND_COLOURS.length] }} />
-                    <span className="xr-donut-name"><BrandMark value={entry.brand} height={13} /></span>
-                    <span className="xr-donut-value">{formatCurrencyWhole(entry.revenue)}</span>
-                    <span className="xr-donut-share">{share.toFixed(1)}%</span>
+                    <span className="xr-donut-row">
+                      <span className="xr-donut-swatch" style={{ background: BRAND_COLOURS[i % BRAND_COLOURS.length] }} />
+                      <span className="xr-donut-name"><BrandMark value={entry.brand} height={13} /></span>
+                      <span className="xr-donut-value">{formatCurrencyWhole(entry.revenue)}</span>
+                      <span className="xr-donut-share">{share.toFixed(1)}%</span>
+                    </span>
+                    <span className="xr-donut-track">
+                      <span
+                        className="xr-donut-fill"
+                        style={{ width: `${Math.max(share, 1.5)}%`, background: BRAND_COLOURS[i % BRAND_COLOURS.length] }}
+                      />
+                    </span>
                   </li>
                 );
               })}
@@ -387,7 +470,7 @@ export default function ExecutiveReport({ report }) {
           <div className="xr-chart">
             <ResponsiveContainer width="100%" height={230}>
               <BarChart
-                data={buyers.filter((b) => b.reg2dep !== null).slice(0, 8)}
+                data={rankedBuyers.filter((b) => b.reg2dep !== null).slice(0, 8)}
                 margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
               >
                 <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
@@ -398,8 +481,8 @@ export default function ExecutiveReport({ report }) {
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "Reg→Dep"]}
                 />
                 <Bar dataKey="reg2dep" radius={[4, 4, 0, 0]}>
-                  {buyers.filter((b) => b.reg2dep !== null).slice(0, 8).map((entry, i) => (
-                    <Cell key={entry.buyer} fill={BRAND_COLOURS[i % BRAND_COLOURS.length]} />
+                  {rankedBuyers.filter((b) => b.reg2dep !== null).slice(0, 8).map((entry) => (
+                    <Cell key={entry.buyer} fill={buyerColour.get(entry.buyer) || BRAND_COLOURS[0]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -418,9 +501,22 @@ export default function ExecutiveReport({ report }) {
             const width = top > 0 ? Math.max((step.value / top) * 100, 1.5) : 0;
             return (
               <div key={step.key} className="xr-funnel-row">
-                <span className="xr-funnel-label">{step.label}</span>
+                <span className="xr-funnel-label">
+                  <span className="xr-funnel-dot" style={{ background: BRAND_COLOURS[i % BRAND_COLOURS.length] }} />
+                  {step.label}
+                </span>
                 <span className="xr-funnel-track">
-                  <span className="xr-funnel-fill" style={{ width: `${width}%` }} />
+                  <span
+                    className="xr-funnel-fill"
+                    style={{ width: `${width}%`, background: BRAND_COLOURS[i % BRAND_COLOURS.length] }}
+                  />
+                  {/* What was lost at this step, drawn where it was lost. */}
+                  {i > 0 && step.perPrev === undefined && top > 0 ? (
+                    <span
+                      className="xr-funnel-drop"
+                      style={{ width: `${(Math.max(0, funnel[i - 1].value - step.value) / top) * 100}%` }}
+                    />
+                  ) : null}
                 </span>
                 <span className="xr-funnel-value">
                   {int(step.value)}
@@ -450,14 +546,20 @@ export default function ExecutiveReport({ report }) {
       <section className="xr-block xr-avoid-break">
         <h2 className="xr-h2"><Trophy size={13} /> Buyer ranking</h2>
         <div className="xr-rank">
-          {buyers.slice(0, 8).map((row, i) => {
-            const top = buyers[0]?.revenue || 0;
+          {rankedBuyers.slice(0, 8).map((row, i) => {
+            const top = rankedBuyers[0]?.revenue || 0;
+            const colour = buyerColour.get(row.buyer) || BRAND_COLOURS[0];
             return (
               <div key={row.buyer} className={`xr-rank-row${i === 0 ? " is-first" : ""}`}>
-                <span className="xr-rank-pos">{i + 1}</span>
+                <span
+                  className="xr-rank-pos"
+                  style={i === 0 ? undefined : { background: `${colour}22`, color: colour }}
+                >
+                  {i + 1}
+                </span>
                 <span className="xr-rank-name">{row.buyer}</span>
                 <span className="xr-rank-bar">
-                  <span style={{ width: `${top > 0 ? Math.max((row.revenue / top) * 100, 2) : 0}%` }} />
+                  <span style={{ width: `${top > 0 ? Math.max((row.revenue / top) * 100, 2) : 0}%`, background: colour }} />
                 </span>
                 <span className="xr-rank-metric">{formatCurrencyWhole(row.revenue)}</span>
                 <span className="xr-rank-sub">{int(row.ftds)} FTDs</span>
@@ -576,8 +678,8 @@ export default function ExecutiveReport({ report }) {
           <table className="xr-table">
             <thead><tr><th>Country</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
             <tbody>
-              {countries.map((row) => {
-                const max = Math.max(...countries.map((c) => c.revenue), 0);
+              {earningCountries.map((row) => {
+                const max = Math.max(...earningCountries.map((c) => c.revenue), 0);
                 return (
                   <tr key={row.country}>
                     <td className="xr-strong">
@@ -599,6 +701,11 @@ export default function ExecutiveReport({ report }) {
               })}
             </tbody>
           </table>
+          {silentCountries > 0 ? (
+            <p className="xr-table-note">
+              {silentCountries} further countr{silentCountries === 1 ? "y" : "ies"} received traffic but produced no deposit.
+            </p>
+          ) : null}
         </div>
 
         <div className="xr-block xr-avoid-break">
