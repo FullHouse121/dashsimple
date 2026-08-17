@@ -15393,7 +15393,7 @@ const buildExecutiveReport = async ({ from, to, title }) => {
               COALESCE(SUM(revenue),0)::float8 AS revenue
          FROM media_stats WHERE date >= $1 AND date <= $2`, [a, b])) || {};
 
-  const [current, previous, trend, buyers, countries, brands, tools, placements, campaigns, topPlayers, quality] = await Promise.all([
+  const [current, previous, trend, buyers, countries, brands, tools, placements, campaigns, topPlayers, quality, deviceRows, cpaRates] = await Promise.all([
     totals(from, to),
     totals(prevFrom, prevTo),
     getRows(
@@ -15501,6 +15501,23 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       metrics: ["clicks", "campaign_unique_clicks", "bots", "proxies"],
       limit: 5000,
     }).catch(() => ({ ok: false, rows: [] })),
+
+    // ── Device and OS ────────────────────────────────────────────────────
+    // 22k rows the report has never read, and the one dimension a buyer can
+    // act on the same afternoon.
+    getRows(
+      `SELECT COALESCE(NULLIF(TRIM(device),''),'Unknown') AS device,
+              COALESCE(NULLIF(TRIM(os),''),'Unknown') AS os,
+              COALESCE(SUM(clicks),0)::int AS clicks,
+              COALESCE(SUM(registers),0)::int AS registers,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM device_stats WHERE date >= $1 AND date <= $2
+        GROUP BY 1, 2 HAVING COALESCE(SUM(clicks),0) > 0
+        ORDER BY SUM(revenue) DESC, SUM(ftds) DESC LIMIT 10`, [from, to]).catch(() => []),
+
+    // The commercial rate card, for the expected-payout comparison below.
+    getRows("SELECT country, cpa::float8 AS cpa FROM market_cpa_rates").catch(() => []),
   ]);
 
   const num = (v) => Number(v) || 0;
@@ -15668,6 +15685,79 @@ const buildExecutiveReport = async ({ from, to, title }) => {
       ];
     })(),
     funnel,
+
+    // ── Device and OS ────────────────────────────────────────────────────
+    // device_stats only sees the traffic Keitaro could fingerprint, so it is
+    // a subset — around two thirds of clicks and deposits for a typical
+    // window. `coverage` states that on the section itself; without it a
+    // reader compares these totals to the ones above and finds them short.
+    devices: (() => {
+      const rows = (deviceRows || []).map((r) => ({
+        device: r.device,
+        os: r.os,
+        clicks: num(r.clicks),
+        registers: num(r.registers),
+        ftds: num(r.ftds),
+        revenue: num(r.revenue),
+        reg2dep: rate(num(r.ftds), num(r.registers)),
+        revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
+      }));
+      if (!rows.length) return null;
+      const seen = rows.reduce((a, r) => a + r.clicks, 0);
+      return {
+        rows,
+        clicks: seen,
+        ftds: rows.reduce((a, r) => a + r.ftds, 0),
+        revenue: rows.reduce((a, r) => a + r.revenue, 0),
+        coverage: rate(seen, num(current.clicks)),
+      };
+    })(),
+
+    // ── Expected payout against booked revenue ───────────────────────────
+    // The one money comparison that survives a broken spend pipeline: it uses
+    // the rate card and the deposit count, neither of which comes from Meta.
+    //
+    // It is a RECONCILIATION, not a profit figure — what the CPA card says
+    // these deposits are worth, beside what the tracker booked. A gap is a
+    // question (wrong rate on file, revshare rather than CPA, deposits not
+    // yet approved), which is why the shape below reports the gap rather than
+    // asserting either side is correct.
+    marketValue: (() => {
+      const card = new Map(
+        (cpaRates || [])
+          .filter((r) => Number(r.cpa) > 0)
+          .map((r) => [String(r.country || "").trim().toLowerCase(), Number(r.cpa)])
+      );
+      if (!card.size) return null;
+      const rows = countries
+        .map((c) => {
+          const cpa = card.get(String(c.country || "").trim().toLowerCase());
+          if (!cpa) return null;
+          const expected = num(c.ftds) * cpa;
+          return {
+            country: c.country,
+            cpa,
+            ftds: num(c.ftds),
+            expected,
+            booked: num(c.revenue),
+            gap: num(c.revenue) - expected,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.expected - a.expected);
+      if (!rows.length) return null;
+      return {
+        rows,
+        expected: rows.reduce((a, r) => a + r.expected, 0),
+        booked: rows.reduce((a, r) => a + r.booked, 0),
+        // Countries with deposits but no rate on file cannot be valued, and
+        // silently dropping them would understate the expected total.
+        unpriced: countries.filter(
+          (c) => num(c.ftds) > 0 && !card.get(String(c.country || "").trim().toLowerCase())
+        ).length,
+      };
+    })(),
+
     integrity,
     // The findings a manager would otherwise have to derive by staring at the
     // tables. Computed here, not in the browser, so the PDF and the share link

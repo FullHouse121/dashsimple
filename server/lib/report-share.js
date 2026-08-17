@@ -65,6 +65,7 @@ const PUBLIC_SECTION_KEYS = new Set([
   "period", "generatedAt", "title", "summary", "trend", "buyers",
   "countries", "funnel", "brands", "tools", "highlights", "integrity",
   "placements", "campaigns", "topPlayers", "quality", "growth", "uniqueByBuyer",
+  "revenueSource", "cohorts", "devices", "marketValue",
 ]);
 
 export const toPublicReport = (report) => {

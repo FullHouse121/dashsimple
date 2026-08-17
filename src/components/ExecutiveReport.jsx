@@ -54,6 +54,7 @@ export default function ExecutiveReport({ report }) {
   if (!report) return null;
   const { summary, period, trend, buyers, countries, brands, tools, funnel, integrity, highlights } = report;
   const { placements, campaigns, topPlayers, quality, growth, uniqueByBuyer } = report;
+  const { devices, marketValue } = report;
   // Unique clicks are the honest denominator: one person reloading five times
   // is one person, and every rate built on raw clicks flatters itself.
   const uniqueClicks = quality?.unique ?? null;
@@ -377,6 +378,104 @@ export default function ExecutiveReport({ report }) {
           </>
         ) : null}
       </section>
+
+      {/* Which device paid. The one dimension in this report a buyer can act
+          on the same afternoon, and it has never appeared here. device_stats
+          only sees the traffic Keitaro could fingerprint, so the section
+          states its own coverage rather than letting a reader subtract these
+          totals from the ones above and find them short. */}
+      {devices?.rows?.length ? (
+        <section className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">Which device paid</h2>
+          <p className="xr-h2-note">
+            {devices.coverage !== null
+              ? `Platform and OS, for the ${formatPercent(devices.coverage, 1)} of clicks the tracker could fingerprint — a subset, so these totals sit below the ones above.`
+              : "Platform and OS for the traffic the tracker could fingerprint."}
+          </p>
+          <table className="xr-table">
+            <thead>
+              <tr><th>Platform</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Per FTD</th><th>Revenue</th></tr>
+            </thead>
+            <tbody>
+              {devices.rows.filter((r) => r.clicks > 0).slice(0, 7).map((row, i) => {
+                const max = Math.max(...devices.rows.map((r) => r.revenue), 0);
+                return (
+                  <tr key={`${row.device}-${row.os}`}>
+                    <td className="xr-strong">
+                      <span className="xr-cell-mark">
+                        <span className="xr-legend-dot" style={{ background: BRAND_COLOURS[i % BRAND_COLOURS.length] }} />
+                        {row.device} · {row.os}
+                      </span>
+                    </td>
+                    <td>{int(row.clicks)}</td>
+                    <td>{int(row.ftds)}</td>
+                    <td>{row.reg2dep === null ? "—" : formatPercent(row.reg2dep, 1)}</td>
+                    {/* Two platforms can convert alike and be worth twice as
+                        much per depositor; this is the column that decides
+                        where the next dollar goes. */}
+                    <td className="xr-strong">{row.revenuePerFtd === null ? "—" : formatCurrency(row.revenuePerFtd)}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.revenue} max={max} tone="green">
+                        {formatCurrencyWhole(row.revenue)}
+                      </ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
+      {/* What the deposits are worth at the rate card, against what the
+          tracker booked. The only money comparison in this report that does
+          not pass through the Meta pipeline — which is exactly why it earns a
+          place while that pipeline is down. */}
+      {marketValue?.rows?.length ? (
+        <section className="xr-block xr-avoid-break">
+          <h2 className="xr-h2">What these deposits are worth</h2>
+          <p className="xr-h2-note">
+            The CPA rate card against what the tracker booked. A gap is a question, not a loss — a stale rate on file, a
+            revenue-share deal counted as CPA, or deposits not yet approved would each produce one.
+            {marketValue.unpriced > 0
+              ? ` ${marketValue.unpriced} market${marketValue.unpriced === 1 ? "" : "s"} with deposits have no rate on file and are excluded.`
+              : ""}
+          </p>
+          <div className="xr-value-band">
+            <span className="xr-value-cell">
+              <em style={{ color: "var(--yellow)" }}>{formatCurrencyWhole(marketValue.expected)}</em>
+              expected at rate card
+            </span>
+            <span className="xr-value-cell">
+              <em style={{ color: "var(--green)" }}>{formatCurrencyWhole(marketValue.booked)}</em>
+              booked by the tracker
+            </span>
+          </div>
+          <table className="xr-table">
+            <thead><tr><th>Market</th><th>CPA</th><th>FTDs</th><th>Expected</th><th>Booked</th></tr></thead>
+            <tbody>
+              {marketValue.rows.slice(0, 8).map((row) => {
+                const max = Math.max(...marketValue.rows.map((r) => r.expected), 0);
+                return (
+                  <tr key={row.country}>
+                    <td className="xr-strong">
+                      <span className="xr-cell-mark"><CountryFlag value={row.country} />{row.country}</span>
+                    </td>
+                    <td>${row.cpa}</td>
+                    <td>{int(row.ftds)}</td>
+                    <td style={{ color: "var(--yellow)" }}>{formatCurrencyWhole(row.expected)}</td>
+                    <td className="xr-share-td">
+                      <ShareCell value={row.booked} max={max} tone="green">
+                        {formatCurrencyWhole(row.booked)}
+                      </ShareCell>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       <section className="xr-block">
         <h2 className="xr-h2">Performance over time</h2>
