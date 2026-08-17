@@ -15,6 +15,7 @@ import BuyerReport from "../components/BuyerReport.jsx";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { Select } from "../components/Select.jsx";
 import { formatCurrency } from "../lib/format.js";
+import { DeusDatePicker } from "../components/Select.jsx";
 
 // Report builder. Pick a source, pick the columns, pick the filters, run it,
 // export it, save it as a preset.
@@ -1262,21 +1263,19 @@ export default function ReportsDashboard({ authUser }) {
             <div className="field report-range">
               <label>{t("From — To")}</label>
               <div className="live-custom-range-inputs">
-                <input
-                  type="date"
+                <DeusDatePicker
                   value={range.from}
-                  max={range.to || undefined}
-                  onChange={(event) => {
-                    setRange((prev) => ({ ...prev, from: event.target.value }));
+                  max={range.to || ""}
+                  onChange={(v) => {
+                    setRange((prev) => ({ ...prev, from: v }));
                     setRangePreset("custom");
                   }}
                 />
-                <input
-                  type="date"
+                <DeusDatePicker
                   value={range.to}
-                  min={range.from || undefined}
-                  onChange={(event) => {
-                    setRange((prev) => ({ ...prev, to: event.target.value }));
+                  min={range.from || ""}
+                  onChange={(v) => {
+                    setRange((prev) => ({ ...prev, to: v }));
                     setRangePreset("custom");
                   }}
                 />

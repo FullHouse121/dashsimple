@@ -8,6 +8,7 @@ import { motion } from "framer-motion";
 import { Copy, Trash2, Link2, FileText, RefreshCw } from "lucide-react";
 import { apiFetch } from "../lib/api.js";
 import ExecutiveReport from "./ExecutiveReport.jsx";
+import { DeusDatePicker, Select } from "./Select.jsx";
 
 const isoDay = (d) => d.toISOString().slice(0, 10);
 const daysAgo = (n) => isoDay(new Date(Date.now() - n * 86400000));
@@ -97,19 +98,27 @@ export default function ExecutiveReportPanel({ t }) {
         <div className="form-grid xr-controls">
           <div className="field">
             <label>{t("From")}</label>
-            <input type="date" value={range.from} onChange={(e) => setRange((r) => ({ ...r, from: e.target.value }))} />
+            <DeusDatePicker
+              value={range.from}
+              max={range.to || ""}
+              onChange={(v) => setRange((r) => ({ ...r, from: v }))}
+            />
           </div>
           <div className="field">
             <label>{t("To")}</label>
-            <input type="date" value={range.to} onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))} />
+            <DeusDatePicker
+              value={range.to}
+              min={range.from || ""}
+              onChange={(v) => setRange((r) => ({ ...r, to: v }))}
+            />
           </div>
           <div className="field">
             <label>{t("Share link expires in")}</label>
-            <select value={expiryDays} onChange={(e) => setExpiryDays(Number(e.target.value))}>
-              <option value={7}>7 {t("days")}</option>
-              <option value={30}>30 {t("days")}</option>
-              <option value={90}>90 {t("days")}</option>
-            </select>
+            <Select
+              value={String(expiryDays)}
+              onChange={(v) => setExpiryDays(Number(v))}
+              options={[7, 30, 90].map((d) => ({ value: String(d), label: `${d} ${t("days")}` }))}
+            />
           </div>
           <div className="field">
             <label>&nbsp;</label>

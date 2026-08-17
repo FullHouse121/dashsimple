@@ -12822,10 +12822,9 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
               <div className="modal-body">
                 <div className="field">
                   <label>{t("Date")}</label>
-                  <input
-                    type="date"
+                  <DeusDatePicker
                     value={spendEditor.date}
-                    onChange={(e) => setSpendEditor((prev) => ({ ...prev, date: e.target.value }))}
+                    onChange={(v) => setSpendEditor((prev) => ({ ...prev, date: v }))}
                   />
                 </div>
                 <div className="field">

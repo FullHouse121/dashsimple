@@ -21671,6 +21671,15 @@ select option,
 /* The switch between the two report tools, above both of them. */
 .xr-mode { margin-bottom: 16px; }
 .xr-controls { align-items: end; }
+/* Two inherited defaults from .form-grid do not suit this panel. Its first
+   field spans the whole row — right where that field is a search box, wrong
+   where From, To and the expiry are peers. And two columns pushed the expiry
+   and the button onto rows of their own. Four controls, one line, with the
+   button sizing to itself. */
+.xr-controls > .field:first-child { grid-column: auto; }
+@media (min-width: 900px) {
+  .xr-controls { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+}
 .xr-share-note { font-size: 11.5px; color: var(--faint); line-height: 1.5; margin: 4px 0 0; }
 .xr-share-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
 .xr-copied { font-size: 12px; color: var(--green); margin: 8px 0 0; }
