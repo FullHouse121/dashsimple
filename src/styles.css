@@ -19085,6 +19085,29 @@ select option,
       it is clipped with everything else — z-index cannot escape an
       overflow:hidden ancestor. Lifting the clip only while a picker is open
       keeps the corners intact the rest of the time. */
+/* ── An open date picker has to out-stack the page ────────────────────
+   The menu carries z-index 1300, which sounds decisive and is not: it only
+   ranks the menu inside the nearest stacking context, and `.form-grid` sets
+   `position: relative; z-index: 1`, which creates one. Everything inside is
+   then capped at that context's level, so a sticky table header below it and
+   the next panel's title — both later in the document — painted straight
+   through the calendar. It looked like a transparency bug; the background was
+   opaque all along.
+
+   So the fix is to lift the CONTAINERS while a picker is open, not to raise
+   the menu again. Scoped to `[open]` so nothing changes when it is shut. */
+.form-grid:has(.deus-date-picker[open]),
+.pixel-table-toolbar:has(.deus-date-picker[open]),
+.br-controls:has(.deus-date-picker[open]) {
+  position: relative;
+  z-index: 60;
+}
+.panel:has(.deus-date-picker[open]),
+.panels > .panel:has(.deus-date-picker[open]) {
+  position: relative;
+  z-index: 60;
+}
+
 .panel:has(.deus-date-picker[open]),
 .panel:has(.deus-date-picker[open]) .pixel-table-toolbar,
 .panel:has(.deus-date-picker[open]) .live-custom-range,
