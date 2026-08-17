@@ -22687,3 +22687,13 @@ select option,
 /* An ad name with its adset beneath it, so the row identifies the creative
    without a second column of near-duplicate text. */
 .br-sub-line { display: block; font-size: 10.5px; font-weight: 400; color: var(--faint); margin-top: 2px; }
+
+/* A sortable header says so before it is clicked, and says which way once it
+   is. The caret is dim until the column is the active one, so the table has
+   exactly one obvious answer to "what is this ordered by". */
+.br-th { cursor: pointer; user-select: none; white-space: nowrap; }
+.br-th:hover { color: var(--text); }
+.br-th-caret { margin-left: 5px; font-size: 8.5px; opacity: 0.35; }
+.br-th.is-sorted { color: var(--green); }
+.br-th.is-sorted .br-th-caret { opacity: 1; }
+.br-th:focus-visible { outline: 2px solid rgba(54, 208, 124, 0.6); outline-offset: -2px; border-radius: 4px; }

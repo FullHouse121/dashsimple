@@ -70,6 +70,73 @@ function Benchmarked({ label, value, median, format, better = "higher" }) {
 
 
 
+
+// ── Sorting ───────────────────────────────────────────────────────────
+//
+// Every table here arrived sorted by revenue, which was defensible until you
+// notice the markets table does not HAVE a revenue column: it was ordered by
+// a number the reader could not see, so it read as no order at all.
+//
+// Two answers, both applied. Each table now shows the column it is sorted by,
+// and every column can be sorted — because which column matters depends on
+// the question, and a buyer chasing a leak sorts by conversion where one
+// chasing money sorts by revenue.
+//
+// Nulls always sink. A market with no rate on file has no worth to compare,
+// and floating those rows to the top of a descending sort would bury the ones
+// that do.
+function useSorted(rows, initialKey, initialDir = "desc") {
+  const [sort, setSort] = React.useState({ key: initialKey, dir: initialDir });
+  const sorted = React.useMemo(() => {
+    const list = [...(rows || [])];
+    const { key, dir } = sort;
+    if (!key) return list;
+    const sign = dir === "asc" ? 1 : -1;
+    return list.sort((a, b) => {
+      const x = a?.[key];
+      const y = b?.[key];
+      const xEmpty = x == null || x === "";
+      const yEmpty = y == null || y === "";
+      if (xEmpty && yEmpty) return 0;
+      if (xEmpty) return 1;
+      if (yEmpty) return -1;
+      if (typeof x === "number" && typeof y === "number") return (x - y) * sign;
+      return String(x).localeCompare(String(y)) * sign;
+    });
+  }, [rows, sort]);
+  const toggle = React.useCallback((key) => {
+    setSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        // A new column starts descending for numbers — "most first" is what
+        // someone means when they click a money column — and ascending for
+        // text, where alphabetical is the expectation.
+        : { key, dir: "desc" }
+    );
+  }, []);
+  return { rows: sorted, sort, toggle };
+}
+
+// A header cell that says whether it is the one doing the sorting.
+function Th({ label, sortKey, sort, toggle, align = "right" }) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={`br-th${active ? " is-sorted" : ""}`}
+      style={{ textAlign: align }}
+      onClick={() => toggle(sortKey)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(sortKey); } }}
+      aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+      title={`Sort by ${label}`}
+    >
+      {label}
+      <span className="br-th-caret">{active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+    </th>
+  );
+}
+
 // Give every row the keys this page reads, before the page reads them.
 //
 // The front end and the API deploy separately, so a browser can be running
@@ -249,6 +316,18 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
     })();
     return () => { alive = false; };
   }, [own.from, own.to, marketKey, buyer]);
+
+  // Sorting state for every table. Declared before the early returns below —
+  // a hook that only runs on some renders is a hook that breaks React, and
+  // putting these after `if (loading) return` is exactly that mistake.
+  const rep = state.report && !state.report.needsBuyer ? state.report : null;
+  const campaignSort = useSorted(rep?.campaigns, "revenue");
+  const creativeSort = useSorted(rep?.creatives, "revenue");
+  const offerSort = useSorted(rep?.games, "revenue");
+  const marketSort = useSorted((rep?.countries || []).filter((c) => c.clicks > 0), "revenue");
+  const brandSort = useSorted(rep?.brands, "revenue");
+  const toolSort = useSorted(rep?.tools, "revenue");
+  const deviceSort = useSorted((rep?.devices || []).filter((d) => d.clicks > 0), "revenue");
 
   if (state.loading) return <div className="br-msg">Building your report…</div>;
   if (state.error) return <div className="br-msg is-error">{state.error}</div>;
@@ -581,12 +660,17 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           <table className="br-table">
             <thead>
               <tr>
-                <th>Campaign</th><th>Clicks</th><th>Regs</th><th>FTDs</th>
-                <th>vs last period</th><th>Reg→Dep</th><th>Revenue</th>
+                <Th label="Campaign" sortKey="campaign" sort={campaignSort.sort} toggle={campaignSort.toggle} align="left" />
+                <Th label="Clicks" sortKey="clicks" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                <Th label="Regs" sortKey="registers" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                <Th label="FTDs" sortKey="ftds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                <Th label="vs last period" sortKey="deltaFtds" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                <Th label="Reg→Dep" sortKey="reg2dep" sort={campaignSort.sort} toggle={campaignSort.toggle} />
+                <Th label="Revenue" sortKey="revenue" sort={campaignSort.sort} toggle={campaignSort.toggle} />
               </tr>
             </thead>
             <tbody>
-              {campaigns.map((c) => {
+              {campaignSort.rows.map((c) => {
                 // Only rates built on a real sample are coloured; a 100% on two
                 // registrations is noise and colouring it invites a bad call.
                 const rated = !c.thin && c.reg2dep !== null && benchmark.reg2dep !== null;
@@ -644,9 +728,15 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                 Ad level, with the adset it ran in — the deepest thing you control, and the fastest to change.
               </p>
               <table className="br-table">
-                <thead><tr><th>Ad</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
+                <thead><tr>
+                  <Th label="Ad" sortKey="ad" sort={creativeSort.sort} toggle={creativeSort.toggle} align="left" />
+                  <Th label="Clicks" sortKey="clicks" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                  <Th label="FTDs" sortKey="ftds" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={creativeSort.sort} toggle={creativeSort.toggle} />
+                </tr></thead>
                 <tbody>
-                  {r.creatives.map((c) => (
+                  {creativeSort.rows.map((c) => (
                     <tr key={`${c.ad}-${c.adset}`}>
                       <td className="br-strong">
                         {c.ad}
@@ -671,9 +761,16 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               <h2 className="br-h2">Your offers</h2>
               <p className="br-note">Which game the traffic was sent to, and what each one returned per depositor.</p>
               <table className="br-table">
-                <thead><tr><th>Offer</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Per FTD</th><th>Revenue</th></tr></thead>
+                <thead><tr>
+                  <Th label="Offer" sortKey="game" sort={offerSort.sort} toggle={offerSort.toggle} align="left" />
+                  <Th label="Clicks" sortKey="clicks" sort={offerSort.sort} toggle={offerSort.toggle} />
+                  <Th label="FTDs" sortKey="ftds" sort={offerSort.sort} toggle={offerSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={offerSort.sort} toggle={offerSort.toggle} />
+                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={offerSort.sort} toggle={offerSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={offerSort.sort} toggle={offerSort.toggle} />
+                </tr></thead>
                 <tbody>
-                  {r.games.map((g) => (
+                  {offerSort.rows.map((g) => (
                     <tr key={g.game}>
                       <td className="br-strong">{g.game}</td>
                       <td>{int(g.clicks)}</td>
@@ -703,9 +800,19 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
               {worthTotal > 0 ? ` — ${formatCurrencyWhole(worthTotal)} across the markets with a rate on file.` : "."}
             </p>
             <table className="br-table">
-              <thead><tr><th>Market</th><th>FTDs</th><th>Reg→Dep</th><th>Repeat</th><th>CPA</th><th>Worth</th></tr></thead>
+              <thead><tr>
+                  <Th label="Market" sortKey="country" sort={marketSort.sort} toggle={marketSort.toggle} align="left" />
+                  <Th label="FTDs" sortKey="ftds" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Repeat" sortKey="repeatPerFtd" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="CPA" sortKey="cpa" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  <Th label="Worth" sortKey="worth" sort={marketSort.sort} toggle={marketSort.toggle} />
+                  {/* The table was ordered by revenue while not showing it,
+                      which is indistinguishable from no order at all. */}
+                  <Th label="Revenue" sortKey="revenue" sort={marketSort.sort} toggle={marketSort.toggle} />
+                </tr></thead>
               <tbody>
-                {countries.filter((c) => c.clicks > 0).map((c) => (
+                {marketSort.rows.map((c) => (
                   <tr key={c.country}>
                     <td className="br-strong"><span className="br-cell-mark"><CountryFlag value={c.country} />{c.country}</span></td>
                     <td>{int(c.ftds)}</td>
@@ -717,7 +824,8 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
                         where money compounds without more spend. */}
                     <td>{c.repeatPerFtd == null ? "—" : `×${c.repeatPerFtd.toFixed(2)}`}</td>
                     <td>{c.cpa ? `$${c.cpa}` : <span className="br-dim">no rate</span>}</td>
-                    <td className="br-strong">{c.worth === null ? "—" : formatCurrencyWhole(c.worth)}</td>
+                    <td>{c.worth == null ? "—" : formatCurrencyWhole(c.worth)}</td>
+                    <td className="br-strong">{formatCurrencyWhole(c.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -734,9 +842,15 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             </p>
             {r.brands?.length ? (
               <table className="br-table">
-                <thead><tr><th>Brand</th><th>FTDs</th><th>Reg→Dep</th><th>Per FTD</th><th>Revenue</th></tr></thead>
+                <thead><tr>
+                  <Th label="Brand" sortKey="brand" sort={brandSort.sort} toggle={brandSort.toggle} align="left" />
+                  <Th label="FTDs" sortKey="ftds" sort={brandSort.sort} toggle={brandSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={brandSort.sort} toggle={brandSort.toggle} />
+                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={brandSort.sort} toggle={brandSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={brandSort.sort} toggle={brandSort.toggle} />
+                </tr></thead>
                 <tbody>
-                  {r.brands.map((x) => (
+                  {brandSort.rows.map((x) => (
                     <tr key={x.brand}>
                       <td className="br-strong">{x.brand}</td>
                       <td>{int(x.ftds)}</td>
@@ -750,9 +864,15 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             ) : null}
             {r.tools?.length ? (
               <table className="br-table br-table-tight">
-                <thead><tr><th>Tool</th><th>Clicks</th><th>FTDs</th><th>Reg→Dep</th><th>Revenue</th></tr></thead>
+                <thead><tr>
+                  <Th label="Tool" sortKey="tool" sort={toolSort.sort} toggle={toolSort.toggle} align="left" />
+                  <Th label="Clicks" sortKey="clicks" sort={toolSort.sort} toggle={toolSort.toggle} />
+                  <Th label="FTDs" sortKey="ftds" sort={toolSort.sort} toggle={toolSort.toggle} />
+                  <Th label="Reg→Dep" sortKey="reg2dep" sort={toolSort.sort} toggle={toolSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={toolSort.sort} toggle={toolSort.toggle} />
+                </tr></thead>
                 <tbody>
-                  {r.tools.map((x) => (
+                  {toolSort.rows.map((x) => (
                     <tr key={x.tool}>
                       <td className="br-strong">{x.tool}</td>
                       <td>{int(x.clicks)}</td>
@@ -785,9 +905,14 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
           ) : null}
           {devices?.length ? (
             <table className="br-table br-table-tight">
-              <thead><tr><th>Device</th><th>FTDs</th><th>Per FTD</th><th>Revenue</th></tr></thead>
+              <thead><tr>
+                  <Th label="Device" sortKey="device" sort={deviceSort.sort} toggle={deviceSort.toggle} align="left" />
+                  <Th label="FTDs" sortKey="ftds" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                  <Th label="Per FTD" sortKey="revenuePerFtd" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                  <Th label="Revenue" sortKey="revenue" sort={deviceSort.sort} toggle={deviceSort.toggle} />
+                </tr></thead>
               <tbody>
-                {devices.filter((d) => d.clicks > 0).map((d) => (
+                {deviceSort.rows.map((d) => (
                   <tr key={`${d.device}-${d.os}`}>
                     <td className="br-strong">{d.device} · {d.os}</td>
                     <td>{int(d.ftds)}</td>
