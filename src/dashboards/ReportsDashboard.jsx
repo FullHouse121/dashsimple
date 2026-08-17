@@ -588,9 +588,11 @@ export default function ReportsDashboard({ authUser }) {
   // that simply is not there reads as something missing.
   const canSeeExecutive = isLeadershipRole(authUser?.role);
   // The buyer report is the drill-down from the executive one, so it sits
-  // after it and behind the same gate. A buyer reaching their OWN report does
-  // it from "My Report" in Overview; this tab exists so a team leader can open
-  // anyone's before a one-to-one, which is a different job.
+  // after it. Unlike the executive report it is open to everyone, because it
+  // means something different depending on who opens it: a buyer sees their
+  // own numbers, leadership picks whose to read. The server decides which —
+  // it resolves the buyer from the session and only honours a named one for
+  // leadership — so this is one tab, not a tab and a permission.
   const [pickedBuyer, setPickedBuyer] = React.useState("");
 
   const [catalog, setCatalog] = React.useState(null);
@@ -1122,13 +1124,11 @@ export default function ReportsDashboard({ authUser }) {
           drill-down — the whole team, then one person in it. */}
       <button
         type="button"
-        className={`offers-tab${mode === "buyer" ? " is-active" : ""}${canSeeExecutive ? "" : " is-locked"}`}
-        onClick={() => canSeeExecutive && setMode("buyer")}
-        disabled={!canSeeExecutive}
-        aria-disabled={!canSeeExecutive}
-        title={canSeeExecutive ? undefined : t("Leadership only — a buyer's own report is under My Report.")}
+        className={`offers-tab${mode === "buyer" ? " is-active" : ""}`}
+        onClick={() => setMode("buyer")}
+        title={canSeeExecutive ? t("Open any buyer's report.") : t("Your own numbers, and what to do about them.")}
       >
-        {canSeeExecutive ? <AwardIcon size={14} /> : <Lock size={13} />}
+        <AwardIcon size={14} />
         <span>{t("Buyer report")}</span>
       </button>
     </div>
@@ -1141,8 +1141,8 @@ export default function ReportsDashboard({ authUser }) {
           {modeSwitch}
           <BuyerReport
             range={range}
-            buyer={pickedBuyer || null}
-            onPickBuyer={setPickedBuyer}
+            buyer={canSeeExecutive ? pickedBuyer || null : null}
+            onPickBuyer={canSeeExecutive ? setPickedBuyer : null}
           />
         </div>
       </section>

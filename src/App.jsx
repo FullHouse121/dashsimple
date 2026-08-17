@@ -112,7 +112,6 @@ const CommandPalette = lazyWithReload("palette", () => import("./components/Comm
 const LiveClicksDashboard = lazyWithReload("live-clicks", () => import("./dashboards/LiveClicksDashboard.jsx"));
 const ConversionsDashboard = lazyWithReload("conversions", () => import("./dashboards/ConversionsDashboard.jsx"));
 const ReportsDashboard = lazyWithReload("reports", () => import("./dashboards/ReportsDashboard.jsx"));
-const BuyerReport = lazyWithReload("buyer_report", () => import("./components/BuyerReport.jsx"));
 import { CountryFlag, OsGlyph, osHasGlyph } from "./components/flags.jsx";
 import { CountryDropdownPicker, Select, DeusDatePicker } from "./components/Select.jsx";
 import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
@@ -124,7 +123,7 @@ import {
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
   LinkIcon, UtmIcon, DomainIcon, PixelIcon, AccountIcon, HealthIcon,
   RolesIcon, LogIcon, ProfileIcon, CostIcon, ApiIcon, ImportIcon,
-  AwardIcon, TriggerIcon, SavedIcon,
+  AwardIcon, TriggerIcon,
 } from "./components/icons.jsx";
 import { REGIONS, regionForCountry, resolveCpa } from "../shared/regions.js";
 import {
@@ -288,7 +287,6 @@ const navItems = [
   { key: "home", label: "Dashboard", icon: DashIcon },
   { key: "geos", label: "GEOS", icon: GeoIcon },
   { key: "streams", label: "Goals", icon: GoalIcon },
-  { key: "buyer_report", label: "My Report", icon: SavedIcon },
   { key: "utm", label: "UTM Builder", icon: UtmIcon },
   { key: "tracking", label: "Tracking Links", icon: LinkIcon },
   { key: "flows", label: "My Flows", icon: FlowsIcon },
@@ -312,7 +310,7 @@ const navItems = [
 ];
 
 const navSections = [
-  { title: "Overview", items: ["home", "geos", "streams", "buyer_report"] },
+  { title: "Overview", items: ["home", "geos", "streams"] },
   { title: "Performance", items: ["statistics", "live_clicks", "conversions", "campaigns", "placements", "user_behavior", "devices", "reports"] },
   { title: "Operations", items: ["flows", "tracking", "utm", "domains", "pixels", "accounts", "health"] },
   { title: "Administration", items: ["roles", "logs"] },
@@ -25499,13 +25497,6 @@ export default function App() {
   const isDocs = activeView === "docs";
   const isDevices = activeView === "devices";
   const isReports = activeView === "reports";
-  const isBuyerReport = activeView === "buyer_report";
-  // The buyer report follows the global period selector like every other
-  // view, rather than owning a second control that can disagree with it.
-  const buyerReportRange = React.useMemo(
-    () => getPeriodDateRange(period, customRange),
-    [period, customRange]
-  );
   const isProfile = activeView === "profile";
   const isLeadership = isLeadershipRole(authUser?.role);
   const canManageExpenses = isLeadershipRole(authUser?.role);
@@ -25694,7 +25685,6 @@ export default function App() {
       home: "dashboard",
       geos: "geos",
       streams: "goals",
-      buyer_report: "dashboard",
       utm: "utm",
       tracking: "tracking_links",
       flows: "tracking_links",
@@ -26806,10 +26796,6 @@ export default function App() {
         ) : isReports ? (
           <React.Suspense fallback={<div className="empty-state">Loading…</div>}>
             <ReportsDashboard authUser={authUser} />
-          </React.Suspense>
-        ) : isBuyerReport ? (
-          <React.Suspense fallback={<div className="empty-state">Loading…</div>}>
-            <BuyerReport range={buyerReportRange} />
           </React.Suspense>
         ) : isCampaigns ? (
           <CampaignsDashboard

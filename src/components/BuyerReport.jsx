@@ -102,17 +102,6 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
 
   // Leadership has not chosen yet. Only buyers with traffic in the window are
   // offered — a name that would render an empty report is worse than no name.
-  if (r.needsBuyer && !onPickBuyer) {
-    return (
-      <div className="br">
-        <p className="br-msg">
-          This page shows a buyer their own numbers, and no buyer is linked to your account. To read someone
-          else's, open <strong>Reports → Buyer report</strong>.
-        </p>
-      </div>
-    );
-  }
-
   if (r.needsBuyer) {
     return (
       <div className="br">
