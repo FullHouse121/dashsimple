@@ -609,11 +609,12 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
           ) : deepActive && deep.error ? (
             <div className="empty-state error">{deep.error}</div>
           ) : deepActive && deep.rows && deep.rows.length === 0 ? (
-            <div className="empty-state">
-              No click matching “{deep.term}” in the last {liveClicksLookupDays(windowMinutes, customRange)} days.
+            <div className="empty-state live-clicks-empty">
+              No click matching “{deep.term}” in the last{" "}
+              {liveClicksLookupDays(windowMinutes, customRange)} days
               {liveClicksLookupDays(windowMinutes, customRange) >= 90
-                ? " That is as far back as the tracker will search."
-                : " Widen the window to search further back."}
+                ? " — as far back as the tracker will search."
+                : ". Widen the window to look further back."}
             </div>
           ) : (
             <>

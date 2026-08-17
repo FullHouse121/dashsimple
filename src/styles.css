@@ -18775,7 +18775,36 @@ select option,
   .live-indicator i { animation: none; }
 }
 
-.live-clicks-issues-toggle { white-space: nowrap; }
+/* A toggle, not a select — but it sat under a "Filter" label beside three
+   dropdowns, stretched across a full grid track, and showed no state when
+   off. It read as a select that had failed to render. A box that fills when
+   the filter is on says what it is, and sizing to content stops it
+   impersonating the fields around it. */
+.live-clicks-issues-field { justify-self: start; }
+.live-clicks-issues-toggle {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: auto;
+}
+.live-clicks-issues-toggle::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.live-clicks-issues-toggle.is-active::before {
+  border-color: var(--yellow);
+  background:
+    linear-gradient(var(--yellow), var(--yellow)) center / 8px 8px no-repeat,
+    rgba(247, 198, 37, 0.16);
+  border-radius: 4px;
+}
 .live-clicks-issues-toggle.is-active {
   color: var(--yellow);
   border-color: rgba(247, 198, 37, 0.4);
@@ -19048,14 +19077,49 @@ select option,
   outline: none;
 }
 
+/* ── Live Clicks toolbar corrections ──────────────────────────────────
+   Three faults, all visible the moment the custom range is opened. */
+
+/* 1. The calendar was being cut in half. `.panel` clips its overflow so the
+      card's rounded corners hold, and an absolutely positioned popover inside
+      it is clipped with everything else — z-index cannot escape an
+      overflow:hidden ancestor. Lifting the clip only while a picker is open
+      keeps the corners intact the rest of the time. */
+.panel:has(.deus-date-picker[open]),
+.panel:has(.deus-date-picker[open]) .pixel-table-toolbar,
+.panel:has(.deus-date-picker[open]) .live-custom-range,
+.panel:has(.deus-date-picker[open]) .live-custom-range-inputs {
+  overflow: visible;
+}
+
+/* 2. "Aug 17, 2026" did not fit the trigger, so every date read "Aug 17, …".
+      Two pickers shared a 250px track; the track widens and the trigger gives
+      its padding back to the text. A date control that cannot show a date is
+      not a small problem — it is the one thing it has to do. */
+.live-custom-range-inputs { gap: 8px; }
+.live-custom-range-inputs .deus-date-trigger { padding-inline: 9px; gap: 6px; }
+.live-custom-range-inputs .deus-date-trigger-value { font-size: 12px; }
+
+/* 3. The empty state ran off the edge as one unbroken line. It carries a
+      sentence now, so it has to wrap and stay clear of an open popover. */
+.live-clicks-empty {
+  max-width: 62ch;
+  margin-inline: auto;
+  text-wrap: pretty;
+  line-height: 1.6;
+}
+
 /* Live Clicks toolbar: search breathes, controls stay compact on wide screens */
 @media (min-width: 1100px) {
   .live-clicks-toolbar {
     grid-template-columns: minmax(280px, 1fr) 210px 210px 180px;
   }
-  /* Custom range visible: dates get their own wide track */
+  /* Custom range visible: dates get their own wide track.
+     250px split two ways left 121px per trigger, and "Aug 17, 2026" needs
+     133 — so every date read "Aug 17, …". A date control that cannot show a
+     date has failed at the only job it has. */
   .live-clicks-toolbar.has-custom-range {
-    grid-template-columns: minmax(200px, 1fr) 180px 250px 210px 180px;
+    grid-template-columns: minmax(200px, 1fr) 170px 300px 200px 170px;
   }
 }
 
