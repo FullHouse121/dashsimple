@@ -66,7 +66,7 @@ function Benchmarked({ label, value, median, format, better = "higher" }) {
   );
 }
 
-export default function BuyerReport({ range }) {
+export default function BuyerReport({ range, buyer = null, onPickBuyer = null }) {
   const [state, setState] = React.useState({ loading: true, error: null, report: null });
 
   React.useEffect(() => {
@@ -77,6 +77,9 @@ export default function BuyerReport({ range }) {
         const qs = new URLSearchParams();
         if (range?.from) qs.set("from", range.from);
         if (range?.to) qs.set("to", range.to);
+        // Only leadership may name a buyer; for everyone else the server
+        // resolves it from the session and ignores this entirely.
+        if (buyer) qs.set("buyer", buyer);
         // apiFetch resolves with the Response, not the parsed body — it
         // handles retries and the 401 broadcast, and leaves parsing to the
         // caller like every other consumer in the app.
@@ -89,13 +92,55 @@ export default function BuyerReport({ range }) {
       }
     })();
     return () => { alive = false; };
-  }, [range?.from, range?.to]);
+  }, [range?.from, range?.to, buyer]);
 
   if (state.loading) return <div className="br-msg">Building your report…</div>;
   if (state.error) return <div className="br-msg is-error">{state.error}</div>;
 
   const r = state.report;
   if (!r) return null;
+
+  // Leadership has not chosen yet. Only buyers with traffic in the window are
+  // offered — a name that would render an empty report is worse than no name.
+  if (r.needsBuyer && !onPickBuyer) {
+    return (
+      <div className="br">
+        <p className="br-msg">
+          This page shows a buyer their own numbers, and no buyer is linked to your account. To read someone
+          else's, open <strong>Reports → Buyer report</strong>.
+        </p>
+      </div>
+    );
+  }
+
+  if (r.needsBuyer) {
+    return (
+      <div className="br">
+        <header className="br-head">
+          <div>
+            <h1 className="br-title">Buyer report</h1>
+            <p className="br-sub">Choose whose report to open. {r.period?.from} → {r.period?.to}</p>
+          </div>
+        </header>
+        {r.buyers?.length ? (
+          <ul className="br-picker">
+            {r.buyers.map((b) => (
+              <li key={b.buyer}>
+                <button type="button" onClick={() => onPickBuyer && onPickBuyer(b.buyer)}>
+                  <span className="br-picker-name">{b.buyer}</span>
+                  <span className="br-picker-meta">
+                    {int(b.ftds)} FTD{b.ftds === 1 ? "" : "s"} · {formatCurrencyWhole(b.revenue)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="br-msg">No buyer had traffic in this window.</p>
+        )}
+      </div>
+    );
+  }
   const {
     summary: me = {},
     benchmark = {},
@@ -123,7 +168,16 @@ export default function BuyerReport({ range }) {
             </p>
           ) : null}
         </div>
-        <span className="br-stamp">Your traffic only · cost figures omitted while the ad-platform link is down</span>
+        <span className="br-stamp">
+          {onPickBuyer ? (
+            <button type="button" className="br-back" onClick={() => onPickBuyer("")}>
+              ← Choose another buyer
+            </button>
+          ) : null}
+          {onPickBuyer ? <br /> : null}
+          {onPickBuyer ? "This buyer's traffic only" : "Your traffic only"} · cost figures omitted while the
+          ad-platform link is down
+        </span>
       </header>
 
       {/* The answer first. A buyer handed nine things to do does none of them,

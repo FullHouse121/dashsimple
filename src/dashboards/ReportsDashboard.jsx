@@ -6,11 +6,12 @@ import {
   MousePointerClick, CreditCard, Database, RefreshCw,
 } from "lucide-react";
 import {
-  ReportIcon, ColumnsIcon, GroupIcon, MetricIcon, FilterIcon, SavedIcon, AlertIcon,
+  ReportIcon, ColumnsIcon, GroupIcon, MetricIcon, FilterIcon, SavedIcon, AlertIcon, AwardIcon,
 } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
 import ExecutiveReportPanel from "../components/ExecutiveReportPanel.jsx";
 import { isLeadershipRole } from "../lib/permissions.js";
+import BuyerReport from "../components/BuyerReport.jsx";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { Select } from "../components/Select.jsx";
 import { formatCurrency } from "../lib/format.js";
@@ -586,6 +587,11 @@ export default function ReportsDashboard({ authUser }) {
   // A buyer opening Reports still sees the tab — locked — because a section
   // that simply is not there reads as something missing.
   const canSeeExecutive = isLeadershipRole(authUser?.role);
+  // The buyer report is the drill-down from the executive one, so it sits
+  // after it and behind the same gate. A buyer reaching their OWN report does
+  // it from "My Report" in Overview; this tab exists so a team leader can open
+  // anyone's before a one-to-one, which is a different job.
+  const [pickedBuyer, setPickedBuyer] = React.useState("");
 
   const [catalog, setCatalog] = React.useState(null);
   const [catalogError, setCatalogError] = React.useState(null);
@@ -1112,8 +1118,36 @@ export default function ReportsDashboard({ authUser }) {
         {canSeeExecutive ? <ReportIcon size={14} /> : <Lock size={13} />}
         <span>{t("Executive report")}</span>
       </button>
+      {/* After the executive report, not before: the order follows the
+          drill-down — the whole team, then one person in it. */}
+      <button
+        type="button"
+        className={`offers-tab${mode === "buyer" ? " is-active" : ""}${canSeeExecutive ? "" : " is-locked"}`}
+        onClick={() => canSeeExecutive && setMode("buyer")}
+        disabled={!canSeeExecutive}
+        aria-disabled={!canSeeExecutive}
+        title={canSeeExecutive ? undefined : t("Leadership only — a buyer's own report is under My Report.")}
+      >
+        {canSeeExecutive ? <AwardIcon size={14} /> : <Lock size={13} />}
+        <span>{t("Buyer report")}</span>
+      </button>
     </div>
   );
+
+  if (mode === "buyer") {
+    return (
+      <section className="panels panels-single">
+        <div className="panel">
+          {modeSwitch}
+          <BuyerReport
+            range={range}
+            buyer={pickedBuyer || null}
+            onPickBuyer={setPickedBuyer}
+          />
+        </div>
+      </section>
+    );
+  }
 
   if (mode === "executive") {
     return (

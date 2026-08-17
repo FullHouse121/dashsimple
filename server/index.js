@@ -16270,10 +16270,29 @@ app.get("/api/reports/buyer", async (req, res) => {
   const buyer = own || (isLeadership(req.user) && requested ? requested : "");
 
   if (!buyer) {
-    return res.status(400).json({
-      error: isLeadership(req.user)
-        ? "Name a buyer to see their report."
-        : "No buyer is linked to this account yet. Ask an admin to set your Keitaro name in Roles.",
+    // A buyer with no link is an account-setup problem and says so. Leadership
+    // simply has not chosen yet, so they get the list to choose from — only
+    // buyers with traffic in the window, because offering a name that will
+    // render an empty report is worse than not offering it.
+    if (!isLeadership(req.user)) {
+      return res.status(400).json({
+        error: "No buyer is linked to this account yet. Ask an admin to set your Keitaro name in Roles.",
+      });
+    }
+    const rows = await getRows(
+      `SELECT buyer,
+              COALESCE(SUM(ftds),0)::int AS ftds,
+              COALESCE(SUM(revenue),0)::float8 AS revenue
+         FROM media_stats
+        WHERE date >= $1 AND date <= $2 AND COALESCE(TRIM(buyer),'') <> ''
+        GROUP BY buyer HAVING COALESCE(SUM(clicks),0) > 0
+        ORDER BY COALESCE(SUM(revenue),0) DESC, buyer ASC LIMIT 50`,
+      [from, to]
+    ).catch(() => []);
+    return res.json({
+      needsBuyer: true,
+      period: { from, to },
+      buyers: rows.map((r) => ({ buyer: r.buyer, ftds: Number(r.ftds) || 0, revenue: Number(r.revenue) || 0 })),
     });
   }
 

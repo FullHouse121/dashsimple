@@ -22539,3 +22539,38 @@ select option,
   .br-stamp { text-align: left; }
   .br-action { grid-template-columns: 26px 1fr; padding: 14px; }
 }
+
+/* The buyer picker leadership sees before choosing whose report to open.
+   Each row carries the volume behind the name, so the choice is informed
+   rather than alphabetical. */
+.br-picker { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.br-picker button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 15px 17px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.016);
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+.br-picker button:hover {
+  border-color: rgba(54, 208, 124, 0.4);
+  background: rgba(54, 208, 124, 0.06);
+  transform: translateY(-1px);
+}
+.br-picker-name { font-size: 14.5px; font-weight: 650; color: var(--text); }
+.br-picker-meta { font-size: 11.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+.br-back {
+  background: none;
+  border: none;
+  padding: 0 0 4px;
+  color: var(--green);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.br-back:hover { text-decoration: underline; }
