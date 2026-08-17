@@ -15450,7 +15450,8 @@ const buildExecutiveReport = async ({ from, to, title }) => {
     // The delivery tool (PWA.GROUP, ZMAPPS, LINKI.GROUP…) each brand ran on.
     // Managers ask which tool converts, not only which brand pays.
     getRows(
-      `SELECT UPPER(TRIM(tool)) AS tool,
+      `SELECT CASE WHEN UPPER(TRIM(tool)) IN ('PWA','PWA.GROUP','PWAGROUP') THEN 'PWA.GROUP'
+                     ELSE UPPER(TRIM(tool)) END AS tool,
               COALESCE(SUM(clicks),0)::int AS clicks,
               COALESCE(SUM(registers),0)::int AS registers,
               COALESCE(SUM(ftds),0)::int AS ftds,
@@ -15884,8 +15885,10 @@ const buildExecutiveReport = async ({ from, to, title }) => {
 //               beside it — the MEDIAN, never a colleague's name or revenue.
 //               A report that publishes everyone's numbers to everyone is a
 //               league table, and that is a different decision.
-//   derived     the actions are computed from the same figures printed
-//               underneath them, so advice can never contradict its evidence.
+//   evidence    no summary, no advice — the sections state what happened and
+//               the reader draws the conclusion. A derived "what to do next"
+//               lived here for a day and was removed on request; the findings
+//               it drew on are all still on the page.
 //
 // Cost is absent throughout, deliberately: with the Meta pipeline down, a
 // buyer-facing CPA or ROI would be a fiction the reader cannot check.
@@ -16072,7 +16075,8 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
          HAVING COALESCE(SUM(ftds),0) > 0 OR COALESCE(SUM(revenue),0) > 0
           ORDER BY COALESCE(SUM(revenue),0) DESC LIMIT 10`, [from, to, ...s2.params]).catch(() => []),
       getRows(
-        `SELECT UPPER(TRIM(tool)) AS tool,
+        `SELECT CASE WHEN UPPER(TRIM(tool)) IN ('PWA','PWA.GROUP','PWAGROUP') THEN 'PWA.GROUP'
+                     ELSE UPPER(TRIM(tool)) END AS tool,
                 COALESCE(SUM(clicks),0)::int AS clicks,
                 COALESCE(SUM(registers),0)::int AS registers,
                 COALESCE(SUM(ftds),0)::int AS ftds,
@@ -16308,97 +16312,6 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     revenuePerFtd: num(r.ftds) > 0 ? num(r.revenue) / num(r.ftds) : null,
   }));
 
-  // ── What to do ────────────────────────────────────────────────────────
-  // Ranked, capped, and each one derived from a figure printed below it. A
-  // buyer who is handed nine actions does none of them, so the list stops at
-  // four and leads with the biggest gap.
-  const actions = [];
-
-  const shortRow = (target?.rows || [])
-    .filter((r) => r.short > 0)
-    .sort((a, b) => b.short / Math.max(b.target, 1) - a.short / Math.max(a.target, 1))[0];
-  if (shortRow) {
-    const perDay = target.daysLeft > 0 ? shortRow.short / target.daysLeft : null;
-    actions.push({
-      tone: "warn",
-      title: `${Math.round(shortRow.short).toLocaleString()} ${shortRow.label.toLowerCase()} short of target`,
-      body:
-        target.daysLeft > 0
-          ? `You are at ${Math.round(shortRow.progress)}% of ${Math.round(shortRow.target).toLocaleString()} with ${target.daysLeft} day${target.daysLeft === 1 ? "" : "s"} left — about ${Math.ceil(perDay).toLocaleString()} a day from here.`
-          : `The window closed at ${Math.round(shortRow.progress)}% of ${Math.round(shortRow.target).toLocaleString()}.`,
-    });
-  }
-
-  if (mine.reg2dep !== null && benchmark.reg2dep !== null && mine.registers >= 50) {
-    const gap = benchmark.reg2dep - mine.reg2dep;
-    if (gap > 1) {
-      // The deposits sitting in the gap are the clearest number in the report:
-      // same traffic, team-median conversion.
-      const wouldBe = Math.round((benchmark.reg2dep / 100) * mine.registers) - mine.ftds;
-      actions.push({
-        tone: "bad",
-        title: "Your signups convert below the team",
-        body: `${mine.reg2dep.toFixed(1)}% against a team median of ${benchmark.reg2dep.toFixed(1)}%. At the median, the ${mine.registers.toLocaleString()} registrations you already have would be ${wouldBe.toLocaleString()} more deposits. The traffic is arriving; it stops after the signup.`,
-      });
-    } else if (gap < -1) {
-      actions.push({
-        tone: "good",
-        title: "Your signups convert above the team",
-        body: `${mine.reg2dep.toFixed(1)}% against a team median of ${benchmark.reg2dep.toFixed(1)}%. Whatever is different about your funnel is worth writing down and repeating.`,
-      });
-    }
-  }
-
-  const rated = campaigns.filter((c) => c.registers >= 30 && c.reg2dep !== null);
-  if (rated.length >= 2) {
-    const best = rated.reduce((a, b) => (b.reg2dep > a.reg2dep ? b : a));
-    const worst = rated.reduce((a, b) => (b.reg2dep < a.reg2dep ? b : a));
-    if (best.campaign !== worst.campaign && best.reg2dep - worst.reg2dep > 3) {
-      actions.push({
-        tone: "info",
-        title: "Your own campaigns disagree by a wide margin",
-        body: `${best.reg2dep.toFixed(1)}% on your best against ${worst.reg2dep.toFixed(1)}% on your weakest, on ${worst.registers.toLocaleString()} registrations. The gap is inside your own account, which makes it the cheapest thing to fix.`,
-      });
-    }
-  }
-
-  const topPlacement = placements[0];
-  if (topPlacement && topPlacement.share !== null && topPlacement.share >= 45) {
-    actions.push({
-      tone: "warn",
-      title: `${Math.round(topPlacement.share)}% of your traffic is on one placement`,
-      body: `${topPlacement.placement} carries most of your volume. Meta can change delivery without warning, and a single placement is a single point of failure.`,
-    });
-  }
-
-  const srcNew = num(split.from_new);
-  const srcOld = num(split.from_returning);
-  if (srcNew + srcOld > 0) {
-    const share = (srcOld / (srcNew + srcOld)) * 100;
-    if (share >= 55) {
-      actions.push({
-        tone: "warn",
-        title: `${share.toFixed(0)}% of your revenue came from players you already had`,
-        body: `$${srcOld.toFixed(0)} from returning depositors against $${srcNew.toFixed(0)} from new ones. The base is carrying the number — if acquisition stays where it is, next period starts lower.`,
-      });
-    } else if (share <= 25) {
-      actions.push({
-        tone: "good",
-        title: `${(100 - share).toFixed(0)}% of your revenue came from new depositors`,
-        body: `$${srcNew.toFixed(0)} from players won this period. Acquisition is doing the work; the repeat value should follow it.`,
-      });
-    }
-  }
-
-  const bestMarket = countries.filter((c) => c.worth !== null).sort((a, b) => b.worth - a.worth)[0];
-  if (bestMarket && bestMarket.ftds > 0) {
-    actions.push({
-      tone: "good",
-      title: `${bestMarket.country} is your most valuable market`,
-      body: `${bestMarket.ftds.toLocaleString()} deposits at $${bestMarket.cpa} on the rate card — worth $${Math.round(bestMarket.worth).toLocaleString()}. Protect this budget before moving anything else.`,
-    });
-  }
-
   return {
     kind: "buyer",
     buyer,
@@ -16517,7 +16430,6 @@ const buildBuyerReport = async ({ from, to, buyer, countries: countryFilter = []
     // What this report was narrowed to, carried on the payload so an export
     // can say so on its own face instead of relying on memory.
     filters: { countries: picked },
-    actions: actions.slice(0, 4),
     // Cost is deliberately absent: with the ad-platform pipeline down, a
     // buyer-facing CPA or ROI would be a number the reader cannot check and
     // cannot act on.

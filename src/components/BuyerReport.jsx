@@ -3,9 +3,9 @@
 // Deliberately not a smaller executive report. That document asks how the
 // business did and opens with a verdict; this one asks what the person
 // reading it should change this week, and opens with the answer. Everything
-// below the actions is the evidence for them, in the order a buyer would
-// check it: am I on target, how do I convert against the team, which of my
-// own campaigns disagree, where is the money.
+// it reads in the order a buyer checks: am I on target, how do I convert
+// against the team, where did the money come from, which of my own campaigns
+// disagree, and where is it running.
 //
 // Three rules, enforced by the endpoint rather than here:
 //   · scoped      — the buyer is resolved from the session, never the URL
@@ -207,7 +207,6 @@ const normalise = (r) => {
     funnel: Array.isArray(r.funnel) ? r.funnel : [],
     revenueSource: r.revenueSource || null,
     trend: Array.isArray(r.trend) ? r.trend : [],
-    actions: Array.isArray(r.actions) ? r.actions : [],
     availableCountries: Array.isArray(r.availableCountries) ? r.availableCountries : [],
   };
 };
@@ -317,7 +316,6 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
     summary: me = {},
     benchmark = {},
     target = null,
-    actions = [],
     campaigns = [],
     countries = [],
     placements = [],
@@ -387,32 +385,6 @@ export default function BuyerReport({ range, buyer = null, onPickBuyer = null })
             </div>
           </div>
         </div>
-
-      {/* The answer first. A buyer handed nine things to do does none of them,
-          so the endpoint caps this at four and leads with the biggest gap. */}
-      {actions?.length ? (
-        <section className="br-actions">
-          <h2 className="br-h2"><AwardIcon size={13} /> What to do next</h2>
-          <ol className="br-action-list">
-            {actions.map((a, i) => (
-              <li key={a.title} className={`br-action is-${a.tone}`}>
-                <span className="br-action-n">{String(i + 1).padStart(2, "0")}</span>
-                <div>
-                  <strong>{a.title}</strong>
-                  <p>{a.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : (
-        <section className="br-actions">
-          <p className="br-msg">
-            Nothing stands out this period — no target shortfall, no campaign far off your own average, no single
-            placement carrying the account.
-          </p>
-        </section>
-      )}
 
       {/* Target vs actual, when a goal has been set for this buyer. */}
       {target?.rows?.length ? (

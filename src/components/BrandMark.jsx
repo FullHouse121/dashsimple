@@ -17,6 +17,8 @@ import pwaPartnersLogo from "../assets/brands/pwa-partners-white.svg";
 // a-z0-9), so "PWA Group" / "PWA.GROUP" / "pwagroup" all resolve to one entry.
 export const BRAND_LOGOS = {
   pwagroup: { src: pwaGroupLogo, label: "PWA Group" },
+  // Typed both ways in the tracker; one product, one mark.
+  pwa: { src: pwaGroupLogo, label: "PWA Group" },
   zmapps: { src: zmAppsLogo, label: "ZM Apps" },
   zmap: { src: zmAppsLogo, label: "ZM Apps" },
   linkigroup: { src: linkiLogo, label: "Linki Group" },
