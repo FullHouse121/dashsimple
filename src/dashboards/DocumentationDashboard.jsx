@@ -22,6 +22,14 @@ const FlowsIcon = ({ size = 18 }) => (
   </svg>
 );
 
+
+// One accent per group, from the dashboard's own ramp, in sidebar order.
+// Passed down as a CSS variable so the icon tile, the rail, the bullets and
+// the contents entry all read from a single source — a colour that means
+// "Operations" in the list and something else in the body would be worse than
+// no colour at all.
+const GROUP_ACCENTS = ["#36d07c", "#64b8ff", "#a15bff", "#f7c625", "#ff9357", "#49e0c4"];
+
 // Docs are structured as groups → articles, mirroring the sidebar order so
 // readers can map documentation to navigation 1:1. Each article can carry
 // bullets, a small reference table, and a highlighted tip.
@@ -483,7 +491,11 @@ export default function DocumentationDashboard({ t }) {
           </div>
           <nav>
             {visibleGroups.map((group) => (
-              <div className="docs-toc-group" key={group.title}>
+              <div
+                className="docs-toc-group"
+                key={group.title}
+                style={{ "--doc-accent": GROUP_ACCENTS[groups.findIndex((g) => g.title === group.title) % GROUP_ACCENTS.length] }}
+              >
                 <p className="docs-kicker">{group.title}</p>
                 {group.articles.map((article) => {
                   const Icon = article.icon;
@@ -507,8 +519,16 @@ export default function DocumentationDashboard({ t }) {
 
         <div className="docs-body">
           {visibleGroups.map((group) => (
-            <React.Fragment key={group.title}>
-              <p className="docs-kicker docs-body-kicker">{group.title}</p>
+            <div
+              className="docs-group"
+              key={group.title}
+              style={{ "--doc-accent": GROUP_ACCENTS[groups.findIndex((g) => g.title === group.title) % GROUP_ACCENTS.length] }}
+            >
+              <p className="docs-body-kicker">
+                <span className="docs-body-bar" />
+                {group.title}
+                <em>{group.articles.length}</em>
+              </p>
               {group.articles.map((article) => {
                 const Icon = article.icon;
                 return (
@@ -567,7 +587,7 @@ export default function DocumentationDashboard({ t }) {
                   </motion.article>
                 );
               })}
-            </React.Fragment>
+            </div>
           ))}
           {!visibleGroups.length && (
             <div className="docs-article docs-empty-state">

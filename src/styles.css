@@ -920,22 +920,37 @@ select {
   flex-wrap: wrap;
 }
 
+/* The meta strip read as four grey boxes. Given the dashboard's own KPI
+   treatment — label above, figure below at weight — it says the same things
+   in the language the rest of the product uses. */
 .docs-meta-card {
-  min-width: 140px;
-  padding: 10px 12px;
+  min-width: 150px;
+  padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(12, 14, 18, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255, 255, 255, 0.035), transparent 60%),
+    rgba(12, 14, 18, 0.8);
   display: grid;
-  gap: 6px;
-  color: var(--text);
-  font-size: 12px;
+  gap: 5px;
 }
-
+.docs-meta-card span {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
 .docs-meta-card strong {
-  font-size: 15px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
+.docs-meta-card:first-child strong { color: var(--green); }
+
+.docs-title { font-size: 27px; letter-spacing: -0.02em; }
 
 .docs-grid {
   display: grid;
@@ -983,16 +998,21 @@ select {
   max-width: 92ch;
 }
 
+/* The tile was a heavy green block with a coloured shadow under it, repeated
+   twenty-five times down the page — the loudest thing on a reference page,
+   and identical on every entry. It takes the group's colour, and stops
+   shouting: no drop shadow, a hairline instead of a full border, and the
+   glyph itself carrying the hue. */
 .doc-icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
   display: grid;
   place-items: center;
-  background: rgba(54, 208, 124, 0.12);
-  border: 1px solid rgba(54, 208, 124, 0.4);
-  color: #d7ffe9;
-  box-shadow: 0 10px 20px rgba(54, 208, 124, 0.2);
+  flex: none;
+  background: color-mix(in srgb, var(--doc-accent, #36d07c) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--doc-accent, #36d07c) 28%, transparent);
+  color: var(--doc-accent, var(--green));
 }
 
 .doc-list {
@@ -1011,15 +1031,17 @@ select {
   line-height: 1.5;
 }
 
+/* A haloed green dot on every line of every article is a lot of ink for a
+   list marker. A short rule in the group's colour reads as punctuation. */
 .doc-list li::before {
   content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  margin-top: 6px;
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--doc-accent, var(--green));
+  opacity: 0.75;
+  margin-top: 9px;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.15);
 }
 
 .docs-callout {
@@ -17720,22 +17742,104 @@ select option,
 
 .docs-toc-link svg { flex: none; opacity: 0.7; }
 .docs-toc-link:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
-.docs-toc-link.is-active { background: rgba(54, 208, 124, 0.12); color: var(--green); }
-.docs-toc-link.is-active svg { opacity: 1; }
+
+/* Active state as a rail in the group's colour rather than a green pill on
+   every section, so the contents list says which part of the product you are
+   reading as well as which page. */
+.docs-toc-link {
+  position: relative;
+  padding-left: 14px;
+}
+.docs-toc-link::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 0;
+  border-radius: 999px;
+  background: var(--doc-accent, var(--green));
+  transition: height 0.18s var(--ease-smooth);
+}
+.docs-toc-link.is-active {
+  background: color-mix(in srgb, var(--doc-accent, #36d07c) 10%, transparent);
+  color: var(--text);
+}
+.docs-toc-link.is-active::before { height: 16px; }
+.docs-toc-link.is-active svg { opacity: 1; color: var(--doc-accent, var(--green)); }
+.docs-toc-group .docs-kicker { color: var(--faint); }
 
 .docs-body { display: grid; gap: 22px; min-width: 0; }
 /* A group heading needs more air above it than the gap between the
    articles it introduces, or the grouping does not read. */
-.docs-body-kicker { margin: 22px 0 2px 4px; }
-.docs-body-kicker:first-child { margin-top: 0; }
+/* A group heading was a grey kicker floating above its cards, indistinguish-
+   able from the one on the hero. It carries the group's colour, its count, and
+   a rule that runs to the edge — so a boundary between six sections is a
+   boundary, not a change of text. */
+.docs-body-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-strong);
+}
+.docs-body-bar {
+  width: 14px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--doc-accent, var(--green));
+  flex: none;
+}
+.docs-body-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent);
+}
+.docs-body-kicker em {
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.docs-body { gap: 34px; }
 
+.docs-group { display: grid; gap: 22px; }
+
+/* The group's colour, carried on a rail down the left edge. Twenty-five
+   identical slabs give a reader nothing to navigate by; a rail that changes
+   at each group boundary makes the shape of the document visible while
+   scrolling, and costs one pseudo-element. */
 .docs-article {
-  background: linear-gradient(160deg, rgba(30, 32, 37, 0.98), rgba(18, 20, 24, 0.98));
+  position: relative;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--doc-accent, #36d07c) 5%, transparent), transparent 58%),
+    linear-gradient(160deg, rgba(30, 32, 37, 0.98), rgba(18, 20, 24, 0.98));
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 22px 24px 24px;
+  padding: 22px 24px 24px 26px;
   scroll-margin-top: 24px;
+  overflow: hidden;
+  transition: border-color 0.18s var(--ease-smooth);
 }
+.docs-article::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--doc-accent, var(--green));
+  opacity: 0.55;
+}
+.docs-article:hover { border-color: color-mix(in srgb, var(--doc-accent, #36d07c) 26%, transparent); }
+.docs-article:hover::before { opacity: 1; }
 
 /* The head and the bullets ran together. A rule between them, and room on
    both sides of it, so an article reads as a claim followed by its detail
