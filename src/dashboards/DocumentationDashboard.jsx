@@ -1,27 +1,26 @@
 import React from "react";
 import { motion } from "framer-motion";
+import { Search } from "lucide-react";
 import {
-  Home,
-  Map,
-  Target,
-  BarChart3,
-  Megaphone,
-  MousePointerClick,
-  Users,
-  Smartphone,
-  Workflow,
-  Link2,
-  Globe,
-  Zap,
-  UserPlus,
-  ShieldCheck,
-  User,
-  CreditCard,
-  Plug,
-  Search,
-  BookOpenText,
-  Lightbulb,
-} from "lucide-react";
+  DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
+  CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
+  LinkIcon, UtmIcon, DomainIcon, PixelIcon, AccountIcon, HealthIcon,
+  RolesIcon, LogIcon, ProfileIcon, CostIcon, ApiIcon, GroupIcon, AwardIcon,
+  SavedIcon,
+} from "../components/icons.jsx";
+
+// "My Flows" has no entry in the shared set — the nav draws it inline — so it
+// is redrawn here in the same grammar rather than borrowed from elsewhere.
+const FlowsIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="5" cy="12" r="2.4" />
+    <circle cx="18.5" cy="6" r="2.2" />
+    <circle cx="18.5" cy="18" r="2.2" />
+    <path d="M7.4 12h3.2a2 2 0 002-2V8.2a2 2 0 012-2h1.7" />
+    <path d="M7.4 12h3.2a2 2 0 012 2v1.8a2 2 0 002 2h1.7" />
+  </svg>
+);
 
 // Docs are structured as groups → articles, mirroring the sidebar order so
 // readers can map documentation to navigation 1:1. Each article can carry
@@ -33,7 +32,7 @@ export default function DocumentationDashboard({ t }) {
       articles: [
         {
           id: "dashboard",
-          icon: Home,
+          icon: DashIcon,
           title: t("Dashboard"),
           description: t(
             "Daily operations overview: clicks, installs, registers, FTDs and conversion rates at a glance."
@@ -46,7 +45,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "geos",
-          icon: Map,
+          icon: GeoIcon,
           title: t("GEOS"),
           description: t("Country-level performance: where the traffic comes from and where deposits happen."),
           bullets: [
@@ -57,7 +56,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "goals",
-          icon: Target,
+          icon: GoalIcon,
           title: t("Goals"),
           description: t("Set FTD and Reg2Dep targets per media buyer, country and period."),
           bullets: [
@@ -73,7 +72,7 @@ export default function DocumentationDashboard({ t }) {
       articles: [
         {
           id: "statistics",
-          icon: BarChart3,
+          icon: StatsIcon,
           title: t("Statistics"),
           description: t(
             "Daily performance per media buyer and country; the system derives every funnel and cost metric."
@@ -93,8 +92,45 @@ export default function DocumentationDashboard({ t }) {
           },
         },
         {
+          id: "live-clicks",
+          icon: ClicksIcon,
+          title: t("Live Clicks"),
+          description: t("The raw click stream from Keitaro, as it arrives, with every sub parameter attached."),
+          bullets: [
+            t("Windows run from the last 15 minutes to a custom range; the feed loads newest first."),
+            t("Search accepts a click id or external id. If it is not in the loaded window, the tracker is queried directly over the span the window covers."),
+            t("The SUB 1–11 columns carry the team's macro set; unfilled or literal {macro} values are flagged so a broken link is visible before it costs a day."),
+            t("Buyers see only their own clicks; the scope is applied in SQL, not after loading."),
+          ],
+          tip: t("A click that converted days later will not be in the live window — search its id and the deep lookup will find it."),
+        },
+        {
+          id: "conversions",
+          icon: ConversionIcon,
+          title: t("Conversions"),
+          description: t("Registrations, first deposits and redeposits as individual events, with the click each came from."),
+          bullets: [
+            t("FTD is Keitaro's custom conversion 8 and redeposit is 7 — instance-specific, so do not assume the same numbering on another tracker."),
+            t("Status and payout arrive by postback, not by API: the dashboard reads what the tracker was told."),
+            t("Registration and deposit frequently land on different clicks, so a player's first deposit may show no registration against it."),
+          ],
+        },
+        {
+          id: "reports",
+          icon: ReportIcon,
+          title: t("Reports"),
+          description: t("Three ways to read the same data: build your own, read the team's, or read one buyer's."),
+          bullets: [
+            t("Query builder — pick a source, dimensions and measures, and export the result."),
+            t("Buyer report — one buyer's traffic with team medians beside it. A buyer sees their own; leadership picks whose to open."),
+            t("Executive report — the whole operation in one view, with a share link anyone can open without an account."),
+            t("Share links carry an expiry, can be revoked, and never expose tokens, credentials or player identifiers."),
+          ],
+          tip: t("Cost figures are omitted from the buyer report while the ad-platform link is down — a number nobody can check is worse than none."),
+        },
+        {
           id: "campaigns",
-          icon: Megaphone,
+          icon: CampaignIcon,
           title: t("Campaigns"),
           description: t("Per-campaign results, with the campaign name decoded into its segments."),
           bullets: [
@@ -105,7 +141,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "placement",
-          icon: MousePointerClick,
+          icon: PlacementIcon,
           title: t("Placement"),
           description: t("Performance grouped by ad placement (feed, stories, reels, …)."),
           bullets: [
@@ -116,7 +152,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "user-behavior",
-          icon: Users,
+          icon: BehaviorIcon,
           title: t("User Behavior"),
           description: t("Player-level view keyed by external_id — from first click to redeposits."),
           bullets: [
@@ -129,7 +165,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "devices",
-          icon: Smartphone,
+          icon: DeviceIcon,
           title: t("Devices"),
           description: t("Device, OS and model breakdown for clicks, installs, revenue and CR."),
           bullets: [
@@ -145,7 +181,7 @@ export default function DocumentationDashboard({ t }) {
       articles: [
         {
           id: "my-flows",
-          icon: Workflow,
+          icon: FlowsIcon,
           title: t("My Flows"),
           description: t("Each tracking link as a flow card: segments, domains and pixels in one place."),
           bullets: [
@@ -156,7 +192,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "tracking-links",
-          icon: MousePointerClick,
+          icon: LinkIcon,
           title: t("Tracking Links"),
           description: t(
             "Compose Keitaro campaigns without leaving the dashboard — naming, params and push in one form."
@@ -185,7 +221,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "utm-builder",
-          icon: Link2,
+          icon: UtmIcon,
           title: t("UTM Builder"),
           description: t("Generate ad-side URLs with the pixel and sub1–sub15 parameters per tool."),
           bullets: [
@@ -208,7 +244,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "domains",
-          icon: Globe,
+          icon: DomainIcon,
           title: t("Domains"),
           description: t("Registry of landing domains with status, notes and health tooling."),
           bullets: [
@@ -219,7 +255,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "pixels",
-          icon: Zap,
+          icon: PixelIcon,
           title: t("Pixels"),
           description: t("Meta pixel registry: IDs, tokens, owners and where each pixel is used."),
           bullets: [
@@ -230,7 +266,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "accounts",
-          icon: UserPlus,
+          icon: AccountIcon,
           title: t("Accounts"),
           description: t("Ad-account registry with statuses, search and per-buyer filters."),
           bullets: [
@@ -244,8 +280,29 @@ export default function DocumentationDashboard({ t }) {
       title: t("Administration & Account"),
       articles: [
         {
+          id: "health",
+          icon: HealthIcon,
+          title: t("Health"),
+          description: t("Whether the pieces this dashboard depends on are actually working."),
+          bullets: [
+            t("Database, tracker and ad-platform tokens are checked independently, so a red light names the thing that is down."),
+            t("Ad-account tokens report the reason they failed — expired, missing a permission, or an app that no longer exists."),
+            t("Check here first when a number looks wrong; a stale sync explains more outages than a bug does."),
+          ],
+        },
+        {
+          id: "logs",
+          icon: LogIcon,
+          title: t("Logs"),
+          description: t("Who changed what, and when. Leadership only, and not grantable through role permissions."),
+          bullets: [
+            t("Every write is recorded automatically — creating a campaign, editing a goal, revoking a share link."),
+            t("Reads are not logged, so the trail stays about actions rather than curiosity."),
+          ],
+        },
+        {
           id: "roles",
-          icon: ShieldCheck,
+          icon: RolesIcon,
           title: t("Roles & Users"),
           description: t("Role-based access: what each user can see and edit."),
           bullets: [
@@ -256,7 +313,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "profile",
-          icon: User,
+          icon: ProfileIcon,
           title: t("Profile"),
           description: t("Your own account: credentials and preferences."),
           bullets: [
@@ -271,7 +328,7 @@ export default function DocumentationDashboard({ t }) {
       articles: [
         {
           id: "meta-token",
-          icon: CreditCard,
+          icon: CostIcon,
           title: t("Meta Token $"),
           description: t("Meta access tokens per ad account, with costs and notes."),
           bullets: [
@@ -281,7 +338,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "api-keitaro",
-          icon: Plug,
+          icon: ApiIcon,
           title: t("API (Keitaro)"),
           description: t("The Keitaro connection that feeds Statistics, Devices and User Behavior."),
           bullets: [
@@ -306,7 +363,7 @@ export default function DocumentationDashboard({ t }) {
       articles: [
         {
           id: "conventions",
-          icon: BookOpenText,
+          icon: GroupIcon,
           title: t("Naming Conventions"),
           description: t(
             "Reports attribute by parsing campaign names, so spelling is data — not cosmetics."
@@ -320,7 +377,7 @@ export default function DocumentationDashboard({ t }) {
         },
         {
           id: "best-practices",
-          icon: Lightbulb,
+          icon: AwardIcon,
           title: t("Best Practices"),
           description: t("Small habits that keep attribution and reporting trustworthy."),
           bullets: [
@@ -504,7 +561,7 @@ export default function DocumentationDashboard({ t }) {
                     )}
                     {article.tip && (
                       <p className="docs-tip">
-                        <Lightbulb size={13} /> {article.tip}
+                        <AwardIcon size={13} /> {article.tip}
                       </p>
                     )}
                   </motion.article>
