@@ -50,6 +50,36 @@ export default function DocumentationDashboard({ t }) {
             t("The period selector supports presets (today, 7/30 days, month) and custom ranges."),
             t("Global buyer and GEO filters in the top bar scope every widget on the page."),
           ],
+          sections: [
+            {
+              label: t("How to read it"),
+              items: [
+                t(
+                  "The KPI row is the funnel in order: clicks, installs, registers, first deposits, redeposits. Each card shows the period total and the change against the equivalent stretch before it, so a number is never shown without its direction."
+                ),
+                t(
+                  "Rates below the cards are derived, not stored: Click2Register is registers over clicks, Reg2Dep is first deposits over registers. If a rate looks wrong, check the two counts it divides before assuming the rate is broken."
+                ),
+                t(
+                  "Cost figures come from the ad platforms. While a token is failing, spend is understated and everything derived from it — CPC, CPI, CPR, ROI — is understated with it. The Health page names which accounts are failing."
+                ),
+              ],
+            },
+            {
+              label: t("Scope and filters"),
+              items: [
+                t(
+                  "Buyer and GEO filters in the top bar apply to every widget on the page at once; they are applied in the database query, not after loading, so a filtered view is not a subset of a partial load."
+                ),
+                t(
+                  "A media buyer sees only their own traffic here regardless of the filter. Leadership sees everyone and can narrow with the buyer filter."
+                ),
+                t(
+                  "The period selector offers today, yesterday, 7 and 30 days, this and previous month, and a custom range. The comparison period is always the same length immediately before the one selected."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "geos",
@@ -61,6 +91,30 @@ export default function DocumentationDashboard({ t }) {
             t("Charts handle sparse data gracefully — days without traffic stay visible in tooltips."),
             t("Respects the global filters and your role's buyer scope."),
           ],
+          sections: [
+            {
+              label: t("What the map shows"),
+              items: [
+                t(
+                  "Colour intensity is deposits, not clicks. A country can be bright on traffic and dark here, and that difference is the point of the page."
+                ),
+                t(
+                  "The table beside it carries the full funnel per country plus revenue, so a market that converts well on a small sample is visible next to one that converts poorly on a large one."
+                ),
+              ],
+            },
+            {
+              label: t("Watch out for"),
+              items: [
+                t(
+                  "Country comes from the tracker's IP resolution, not from the campaign's target geo. Traffic bought for Brazil that shows up under Portugal usually means a proxy or a VPN, not a mistargeted campaign."
+                ),
+                t(
+                  "A country with clicks and no deposits is worth a look before it is worth a cut: it may be a landing page in the wrong language rather than bad traffic."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "goals",
@@ -71,6 +125,36 @@ export default function DocumentationDashboard({ t }) {
             t("Choose a preset period or a custom date range per goal."),
             t("The overview banner summarizes progress across all active goals."),
             t("Statuses: achieved, on track, or behind — computed from live synced data."),
+          ],
+          sections: [
+            {
+              label: t("Setting one that works"),
+              items: [
+                t(
+                  "A goal is scoped to a buyer, a country and a period. Leaving the buyer global sets the bar for everyone, which is rarely what you want once the team is more than two people."
+                ),
+                t(
+                  "Set the measure you actually manage. First deposits is the usual choice; a registration target rewards volume that may never fund, and a revenue target moves with brand payouts a buyer does not control."
+                ),
+                t(
+                  "The Reg2Dep target is the one to use when a buyer's problem is conversion rather than volume — it holds them to quality without asking for more traffic."
+                ),
+              ],
+            },
+            {
+              label: t("How progress is judged"),
+              items: [
+                t(
+                  "Actuals come from the same synced data as the rest of the dashboard, so a goal and the Statistics page can never disagree."
+                ),
+                t(
+                  "Status is computed against elapsed time, not against the period end: a buyer halfway through the month at half the target is on track, not behind."
+                ),
+                t(
+                  "Until a goal exists for a buyer, their report can only compare them to the team. That comparison is useful, but it is not the same as being measured against what was agreed."
+                ),
+              ],
+            },
           ],
         },
       ],
@@ -98,6 +182,22 @@ export default function DocumentationDashboard({ t }) {
               ["CPC / CPI / CPR / CPP", t("spend divided by clicks / installs / registers / FTDs")],
             ],
           },
+          sections: [
+            {
+              label: t("Where the numbers come from"),
+              items: [
+                t(
+                  "Rows are synced from Keitaro on a schedule and stored, rather than queried live, so the page is fast and stays consistent while you read it. A sync that has not run yet shows as missing recent days, not as zeroes."
+                ),
+                t(
+                  "The campaign name is parsed into buyer, tool, game, geo and brand columns on the way in. That parsing is what makes every other breakdown in the dashboard possible, and it is why the naming convention matters."
+                ),
+                t(
+                  "Manual entry exists for corrections. Use it when the tracker missed something you can prove, not to make a period look better."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "live-clicks",
@@ -111,6 +211,33 @@ export default function DocumentationDashboard({ t }) {
             t("Buyers see only their own clicks; the scope is applied in SQL, not after loading."),
           ],
           tip: t("A click that converted days later will not be in the live window — search its id and the deep lookup will find it."),
+          sections: [
+            {
+              label: t("The sub parameters"),
+              items: [
+                t(
+                  "Sub 1 is placement, 2 the buyer tag, 3 the campaign name, 4 the adset name, 5 the ad name, 6 the adset id, 7 and 8 the approach and its name, 9 the geo, 10 the ad account and 11 the source."
+                ),
+                t(
+                  "A value shown in braces — {{placement}} — means the macro was never replaced, so the link is wrong at the source and every click through it is unattributable. Fix the link, not the report."
+                ),
+                t(
+                  "An empty sub is not always a fault: some sources do not populate every macro. An empty sub 1 on a source with no placement concept is expected; an empty sub 1 on Facebook is not."
+                ),
+              ],
+            },
+            {
+              label: t("Reading the feed"),
+              items: [
+                t(
+                  "Bot and proxy flags come from the tracker's own detection. A high bot share on one placement is worth acting on; a high share across everything usually means the traffic source, not the placement."
+                ),
+                t(
+                  "The window and the search are independent: the window decides what is loaded, the search decides what is shown from it. When a search finds nothing in the window, the tracker is queried directly over the span the window covers."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "conversions",
@@ -121,6 +248,33 @@ export default function DocumentationDashboard({ t }) {
             t("FTD is Keitaro's custom conversion 8 and redeposit is 7 — instance-specific, so do not assume the same numbering on another tracker."),
             t("Status and payout arrive by postback, not by API: the dashboard reads what the tracker was told."),
             t("Registration and deposit frequently land on different clicks, so a player's first deposit may show no registration against it."),
+          ],
+          sections: [
+            {
+              label: t("What each event means"),
+              items: [
+                t(
+                  "A registration is an account created. A first deposit is the first time that account funded, mapped to Keitaro's custom conversion 8 on this tracker. A redeposit is any subsequent funding, custom conversion 7."
+                ),
+                t(
+                  "Those numbers are specific to this Keitaro instance. Another tracker will use different slots, so do not carry the mapping across without checking."
+                ),
+                t(
+                  "Revenue on a conversion is what the brand reported through the postback. If a brand is slow to post back, the deposit appears before its value does."
+                ),
+              ],
+            },
+            {
+              label: t("Why a deposit may show no registration"),
+              items: [
+                t(
+                  "Registration and deposit frequently arrive on different clicks — the player registers from one visit and funds from another — so the two events carry different click ids and cannot be joined on that alone."
+                ),
+                t(
+                  "This is a property of how the tracking works, not a fault in the data. Per-player registration counts will look low against deposits for that reason."
+                ),
+              ],
+            },
           ],
         },
         {
@@ -135,6 +289,47 @@ export default function DocumentationDashboard({ t }) {
             t("Share links carry an expiry, can be revoked, and never expose tokens, credentials or player identifiers."),
           ],
           tip: t("Cost figures are omitted from the buyer report while the ad-platform link is down — a number nobody can check is worse than none."),
+          sections: [
+            {
+              label: t("Which report to open"),
+              items: [
+                t(
+                  "Query builder, when you want a specific cut and an export: choose a source, the dimensions to group by and the measures to show."
+                ),
+                t(
+                  "Buyer report, when the question is about one person's traffic. A media buyer opens it and lands on their own; leadership picks whose to read."
+                ),
+                t(
+                  "Executive report, when the question is about the whole operation, and when someone outside the dashboard needs to see it."
+                ),
+              ],
+            },
+            {
+              label: t("What the buyer report compares against"),
+              items: [
+                t(
+                  "Every headline rate is shown beside the team median, taken across buyers with enough registrations that period to carry a rate. Medians only — never a colleague's own figures."
+                ),
+                t(
+                  "A conversion rate built on a small sample is marked. The number is still true; it just cannot carry a decision on its own, and a hundred percent on two signups looks identical to a real rate without the mark."
+                ),
+                t(
+                  "Campaigns are shown against the same campaign in the previous period, because a rate alone cannot tell you whether to feed a campaign or kill it."
+                ),
+              ],
+            },
+            {
+              label: t("Share links"),
+              items: [
+                t(
+                  "A link is a bearer credential: whoever holds it sees the report without signing in. It carries a mandatory expiry, can be revoked at any moment, and returns only report figures — never tokens, credentials or player identifiers."
+                ),
+                t(
+                  "Opens are counted, so you can tell whether a link went further than intended."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "campaigns",
@@ -146,6 +341,30 @@ export default function DocumentationDashboard({ t }) {
             t("Columns include installs, registers, FTDs, redeposits, ARPPU, LTV, C2R, C2F, R2D."),
             t("Known tools and brands render with their logos automatically."),
           ],
+          sections: [
+            {
+              label: t("Naming is the schema"),
+              items: [
+                t(
+                  "The campaign name is parsed into buyer, tool, game, geo and brand. Those five fields drive every breakdown in the product, so a mistyped name does not merely look untidy — it lands the traffic in the wrong buyer's report."
+                ),
+                t(
+                  "Keep the separator and the order. A campaign that does not parse still records clicks and deposits, but it will not appear under any buyer, tool or brand."
+                ),
+              ],
+            },
+            {
+              label: t("Groups"),
+              items: [
+                t(
+                  "Campaigns live in Keitaro groups, and the dashboard uses those groups to decide what is the team's traffic and what is not. Campaigns in the excluded group are filtered out of every tracker-backed view."
+                ),
+                t(
+                  "That exclusion is by group, so the team controls it from inside Keitaro without a code change. Moving a campaign between groups changes what the dashboard shows about it."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "placement",
@@ -156,6 +375,22 @@ export default function DocumentationDashboard({ t }) {
             t("Placement is read from Keitaro sub_id_1 — make sure your links pass it."),
             t("Filter down to a single placement to compare creatives fairly."),
             t("Same funnel measures as Statistics, sliced by placement."),
+          ],
+          sections: [
+            {
+              label: t("What to do with it"),
+              items: [
+                t(
+                  "Concentration is the finding. One placement carrying most of the volume is a single point of failure: the platform can change delivery without warning and take the account's performance with it."
+                ),
+                t(
+                  "Compare conversion by placement before moving budget. Feed and Reels frequently differ enough that one is worth twice the other per deposit."
+                ),
+                t(
+                  "Placement arrives in sub 1. If it is empty or shows a literal macro, the tracking link is wrong and the placement column cannot be trusted for those clicks."
+                ),
+              ],
+            },
           ],
         },
         {
@@ -170,6 +405,19 @@ export default function DocumentationDashboard({ t }) {
           tip: t(
             "This report only works when the tool sends its click/user ID. The Tracking Links builder wires the right external_id macro automatically."
           ),
+          sections: [
+            {
+              label: t("Reading a player"),
+              items: [
+                t(
+                  "The value of a period is rarely evenly earned. One player can carry a large share of revenue, and a total that looks healthy can rest on a single depositor who will not repeat."
+                ),
+                t(
+                  "Redeposits per depositor is the number that says whether a market compounds. Where players come back, the money grows without more spend."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "devices",
@@ -180,6 +428,19 @@ export default function DocumentationDashboard({ t }) {
             t("Synced from the Keitaro device report (separate payload from the main sync)."),
             t("Installs arrive through the postback receiver, not the report."),
             t("Compare conversion rates and revenue per device class before scaling a creative."),
+          ],
+          sections: [
+            {
+              label: t("Why platforms differ"),
+              items: [
+                t(
+                  "Two platforms can convert at the same rate and be worth very different amounts per depositor. Revenue per deposit is the column that decides budget, not the conversion rate."
+                ),
+                t(
+                  "Device data only covers the traffic the tracker could fingerprint — roughly two thirds of clicks — so its totals sit below the ones elsewhere in the dashboard by design."
+                ),
+              ],
+            },
           ],
         },
       ],
@@ -281,6 +542,19 @@ export default function DocumentationDashboard({ t }) {
             t("Track account state over its lifecycle (active → paused/blocked)."),
             t("Search and filters mirror the pixels view for consistency."),
           ],
+          sections: [
+            {
+              label: t("Credentials"),
+              items: [
+                t(
+                  "Stored passwords and 2FA secrets are encrypted with their own key, separate from the one that signs login tokens, so rotating sessions never costs the team its stored credentials."
+                ),
+                t(
+                  "If that key is not configured the registry still works — the credential fields simply stay unavailable rather than storing anything in the clear."
+                ),
+              ],
+            },
+          ],
         },
       ],
     },
@@ -296,6 +570,19 @@ export default function DocumentationDashboard({ t }) {
             t("Database, tracker and ad-platform tokens are checked independently, so a red light names the thing that is down."),
             t("Ad-account tokens report the reason they failed — expired, missing a permission, or an app that no longer exists."),
             t("Check here first when a number looks wrong; a stale sync explains more outages than a bug does."),
+          ],
+          sections: [
+            {
+              label: t("Reading a failure"),
+              items: [
+                t(
+                  "An ad-account token reports why it failed, not merely that it did. An expired token, a missing permission and an application that no longer exists are three different problems with three different fixes."
+                ),
+                t(
+                  "When spend is missing, every cost-derived figure in the product is a floor rather than a number. The dashboard says so where it shows them, and this page tells you how many accounts are involved."
+                ),
+              ],
+            },
           ],
         },
         {
@@ -382,6 +669,22 @@ export default function DocumentationDashboard({ t }) {
             t("Tool names are counted verbatim: “PWA” and “PWA PARTNERS” are two different tools in every report."),
             t("Buyer short names resolve through aliases (e.g. “Leo” → “Leomarketing”), so both spellings roll up to one buyer."),
           ],
+          sections: [
+            {
+              label: t("The five fields"),
+              items: [
+                t(
+                  "Buyer, tool, game, geo, brand — in that order, separated consistently. The parser reads position, so a missing field shifts everything after it."
+                ),
+                t(
+                  "Use the buyer's login name as the buyer field. That is what links a campaign to the person, and what scopes their reports; a nickname that differs from the login silently detaches the two."
+                ),
+                t(
+                  "Keep the brand spelling identical across campaigns. Two spellings become two brands in every table that groups by it."
+                ),
+              ],
+            },
+          ],
         },
         {
           id: "best-practices",
@@ -394,6 +697,22 @@ export default function DocumentationDashboard({ t }) {
             t("Review goals weekly and adjust caps to the current FTD pace."),
             t("Keep domain statuses current and run the Meta debugger check before scaling traffic to a domain."),
             t("After a big campaign push, open API and confirm the last sync succeeded for every target."),
+          ],
+          sections: [
+            {
+              label: t("Before you trust a number"),
+              items: [
+                t(
+                  "Check the Health page first when something looks wrong. A stale sync or a failed token explains more surprises than a bug does."
+                ),
+                t(
+                  "Check the sample before acting on a rate. Conversion rates on a handful of registrations move wildly and are marked in the reports for that reason."
+                ),
+                t(
+                  "Check which click count a figure divides by. Tracked, unique and total clicks are three different measurements, and quoting the wrong one changes the answer by a factor of three."
+                ),
+              ],
+            },
           ],
         },
       ],
@@ -557,6 +876,16 @@ export default function DocumentationDashboard({ t }) {
                         ))}
                       </ul>
                     )}
+                    {article.sections?.map((section) => (
+                      <section className="docs-section" key={section.label}>
+                        <h4 className="docs-section-label">{section.label}</h4>
+                        <ul className="doc-list">
+                          {section.items.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </section>
+                    ))}
                     {article.table && (
                       <div className="docs-table-wrap">
                         <table className={`docs-table${article.table.mono ? " is-mono" : ""}`}>

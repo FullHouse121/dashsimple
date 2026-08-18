@@ -982,20 +982,21 @@ select {
    used elsewhere. */
 .doc-card h3,
 .docs-article h3 {
-  margin: 0 0 7px;
-  font-size: 16px;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
   color: var(--text);
 }
 
 .doc-card p,
 .docs-article .doc-card-head p {
   margin: 0;
-  font-size: 12.5px;
-  color: var(--muted);
-  line-height: 1.6;
-  max-width: 92ch;
+  font-size: 14px;
+  color: var(--muted-strong);
+  line-height: 1.65;
+  max-width: 88ch;
 }
 
 /* The tile was a heavy green block with a coloured shadow under it, repeated
@@ -17721,7 +17722,7 @@ select option,
 .docs-search input::placeholder { color: var(--faint); }
 
 .docs-toc-group { display: grid; gap: 2px; margin-top: 6px; }
-.docs-toc-group .docs-kicker { margin: 0 0 4px 8px; font-size: 10px; }
+.docs-toc-group .docs-kicker { margin: 0 0 6px 8px; font-size: 10.5px; letter-spacing: 0.18em; }
 
 .docs-toc-link {
   display: flex;
@@ -17734,7 +17735,7 @@ select option,
   background: transparent;
   color: var(--muted-strong);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13.5px;
   text-align: left;
   cursor: pointer;
   transition: background 0.15s var(--ease-smooth), color 0.15s var(--ease-smooth);
@@ -17782,7 +17783,7 @@ select option,
   align-items: center;
   gap: 10px;
   margin: 0 0 2px;
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -17849,10 +17850,39 @@ select option,
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  gap: 10px;
-  font-size: 12.5px;
+  gap: 11px;
+  font-size: 13.5px;
 }
-.docs-article .doc-list li { line-height: 1.6; }
+.docs-article .doc-list li { line-height: 1.65; }
+.docs-article .doc-list li::before { margin-top: 10px; }
+
+/* A labelled block inside an article. Each one takes the page from a
+   different angle, so the label has to be legible as a heading in its own
+   right without competing with the article title above it. */
+.docs-section { margin-top: 20px; }
+.docs-section + .docs-section { margin-top: 18px; }
+.docs-section-label {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--doc-accent, var(--green));
+}
+.docs-section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--doc-accent, #36d07c) 22%, transparent), transparent);
+}
+.docs-section .doc-list {
+  margin-top: 11px;
+  padding-top: 0;
+  border-top: none;
+}
 .docs-article .docs-tip { margin-top: 16px; }
 
 .docs-table-wrap { margin-top: 12px; overflow-x: auto; }
