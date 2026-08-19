@@ -13447,10 +13447,11 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
               <h3 className="panel-title">{t("User Behavior")}</h3>
               <p className="panel-subtitle">
                 {t("External ID performance and campaign attribution.")}{" "}
-                {/* Says once, where it is read, what the dash in the Registers
-                    column means — so nobody has to hover to find out. */}
+                {/* Says once, where it is read, why a depositor's Registers
+                    cell is usually a dash — and that the column is real data
+                    reachable by sorting, not a column that is always empty. */}
                 <span className="offer-muted">
-                  {t("Registrations arrive on the click before the deposit, so they cannot be tied to a single player here — see Statistics for registration totals.")}
+                  {t("A click ID ties a player's first deposit to their redeposits. Registrations usually arrive on an earlier click, so depositors rarely show one here — sort by Registers to see the players who do.")}
                 </span>
               </p>
             </div>
