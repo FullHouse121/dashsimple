@@ -1575,6 +1575,69 @@ const refreshUserBehaviorRollup = async ({ days = USER_BEHAVIOR_ROLLUP_DAYS } = 
   return { days, written, ms: Date.now() - started };
 };
 
+// Re-rolling only the last N days assumes history never changes. It does: the
+// raw table has been corrected in bulk before, and every day older than the
+// window kept whatever it held at the time — so the rollup served 197,165
+// clicks for a day the raw table records 7,941, and nothing noticed, because
+// the only check asked whether the rollup COVERED the range, never whether it
+// AGREED with it.
+//
+// This compares the two per day across a wider horizon and re-rolls only the
+// days that disagree. One aggregate query per table, not one per day, and it
+// runs behind the cron rather than on a request. A rollup that can silently
+// diverge from its source forever is a cache with no invalidation.
+const USER_BEHAVIOR_VERIFY_DAYS = Number.parseInt(process.env.USER_BEHAVIOR_VERIFY_DAYS || "120", 10) || 120;
+
+const verifyUserBehaviorRollup = async ({ days = USER_BEHAVIOR_VERIFY_DAYS } = {}) => {
+  const started = Date.now();
+  const from = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const to = new Date().toISOString().slice(0, 10);
+  const drifted = await getRows(
+    `WITH raw AS (
+       SELECT date, COALESCE(SUM(clicks),0)::bigint c, COALESCE(SUM(ftds),0)::bigint f
+         FROM user_behavior WHERE date >= $1 AND date <= $2 GROUP BY date),
+     roll AS (
+       SELECT date, COALESCE(SUM(clicks),0)::bigint c, COALESCE(SUM(ftds),0)::bigint f
+         FROM user_behavior_daily WHERE date >= $1 AND date <= $2 GROUP BY date)
+     SELECT COALESCE(raw.date, roll.date) AS date
+       FROM raw FULL OUTER JOIN roll ON raw.date = roll.date
+      WHERE COALESCE(raw.c,0) <> COALESCE(roll.c,0) OR COALESCE(raw.f,0) <> COALESCE(roll.f,0)
+      ORDER BY 1`,
+    [from, to]
+  ).catch(() => []);
+
+  let repaired = 0;
+  for (const row of drifted) {
+    const day = String(row.date).slice(0, 10);
+    try {
+      await query(`DELETE FROM user_behavior_daily WHERE date = $1`, [day]);
+      const res = await query(
+        `INSERT INTO user_behavior_daily
+           (date, external_id, buyer, campaign, country,
+            clicks, registers, ftds, redeposits, revenue, ftd_revenue, redeposit_revenue)
+         SELECT date, external_id, buyer, campaign, country,
+                COALESCE(SUM(clicks),0)::int,
+                COALESCE(SUM(registers),0)::int,
+                COALESCE(SUM(ftds),0)::int,
+                COALESCE(SUM(redeposits),0)::int,
+                COALESCE(SUM(revenue::float8),0),
+                COALESCE(SUM(ftd_revenue::float8),0),
+                COALESCE(SUM(redeposit_revenue::float8),0)
+           FROM user_behavior
+          WHERE date = $1
+          GROUP BY date, external_id, buyer, campaign, country
+         ON CONFLICT DO NOTHING`,
+        [day]
+      );
+      repaired += 1;
+      console.log(`[rollup] repaired ${day} (${res.rowCount || 0} rows)`);
+    } catch (error) {
+      console.warn(`[rollup] repair ${day} failed:`, error?.message || error);
+    }
+  }
+  return { checked: days, drifted: drifted.length, repaired, ms: Date.now() - started };
+};
+
 const selectUserBehaviorFromRollup = async (from, to, limit) =>
   getRows(
     `SELECT external_id, buyer, country, campaign,
@@ -14255,6 +14318,8 @@ const runKeitaroSync = async ({
   if (syncTarget === "user_behavior") {
     try {
       rollup = await refreshUserBehaviorRollup();
+      // Then heal any older day that has drifted from the raw table.
+      rollup.verify = await verifyUserBehaviorRollup();
       console.log(`[rollup] refreshed ${rollup.days} days, ${rollup.written} rows in ${rollup.ms}ms`);
     } catch (error) {
       // A stale rollup is survivable — the reader falls back to raw.
