@@ -496,50 +496,136 @@ const languageOptions = [
   { code: "TR", label: "Türkçe", Flag: FlagTR },
 ];
 
-// Styled language switcher (replaces the native <select>, whose dropdown was
-// unstyleable OS chrome). Opens upward — it sits in the sidebar footer.
+// The language switcher, which is the sidebar's only select.
+//
+// Two things were wrong with it. `.lang-option` styled colour and padding but
+// never background or border, so every option that was not hovered fell back
+// to the browser's default button chrome — the light grey box against a dark
+// sidebar. And the menu appeared and vanished on a state flip with nothing in
+// between, which is what "not smooth" was.
+//
+// It now opens and closes on the same easing as the rest of the app, and takes
+// arrow keys, Enter, Home/End and Escape like a listbox should.
 function LanguageSwitcher({ language, setLanguage }) {
   const [open, setOpen] = React.useState(false);
+  const [activeIndex, setActiveIndex] = React.useState(0);
   const ref = React.useRef(null);
+  const currentIndex = Math.max(
+    0,
+    languageOptions.findIndex((item) => item.code === language)
+  );
+
+  // Opening always starts from the selected language, so the first arrow press
+  // moves relative to where you are rather than to wherever it was left.
+  React.useEffect(() => {
+    if (open) setActiveIndex(currentIndex);
+  }, [open, currentIndex]);
+
   React.useEffect(() => {
     if (!open) return;
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+    return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
-  const current = languageOptions.find((i) => i.code === language) || languageOptions[0];
+
+  const choose = (code) => {
+    setLanguage(code);
+    setOpen(false);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open) {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      choose(languageOptions[activeIndex].code);
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((i) => (i + step + languageOptions.length) % languageOptions.length);
+      return;
+    }
+    if (e.key === "Home") {
+      e.preventDefault();
+      setActiveIndex(0);
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      setActiveIndex(languageOptions.length - 1);
+    }
+  };
+
+  const current = languageOptions[currentIndex];
   const CurFlag = current.Flag;
   return (
-    <div className={`lang-switch${open ? " is-open" : ""}`} ref={ref}>
-      <button type="button" className="lang-trigger" onClick={() => setOpen((v) => !v)} aria-haspopup="listbox" aria-expanded={open}>
+    <div className={`lang-switch${open ? " is-open" : ""}`} ref={ref} onKeyDown={onKeyDown}>
+      <button
+        type="button"
+        className="lang-trigger"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
         <span className="lang-flag">{CurFlag ? <CurFlag /> : current.code}</span>
-        <span className="lang-cur"><strong>{current.code}</strong><span className="lang-cur-label">{current.label}</span></span>
-        <ChevronDown size={15} className="lang-caret" />
+        <span className="lang-cur">
+          <strong>{current.code}</strong>
+          <span className="lang-cur-label">{current.label}</span>
+        </span>
+        <ChevronDown size={15} className="lang-caret" aria-hidden="true" />
       </button>
-      {open ? (
-        <div className="lang-menu" role="listbox">
-          {languageOptions.map((lang) => {
-            const LFlag = lang.Flag;
-            const active = lang.code === language;
-            return (
-              <button
-                key={lang.code}
-                type="button"
-                role="option"
-                aria-selected={active}
-                className={`lang-option${active ? " is-active" : ""}`}
-                onClick={() => { setLanguage(lang.code); setOpen(false); }}
-              >
-                <span className="lang-flag">{LFlag ? <LFlag /> : lang.code}</span>
-                <span className="lang-option-text"><strong>{lang.code}</strong> · {lang.label}</span>
-                {active ? <Check size={15} className="lang-check" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            className="lang-menu"
+            role="listbox"
+            aria-activedescendant={`lang-opt-${languageOptions[activeIndex].code}`}
+            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {languageOptions.map((lang, index) => {
+              const LFlag = lang.Flag;
+              const selected = lang.code === language;
+              return (
+                <button
+                  key={lang.code}
+                  id={`lang-opt-${lang.code}`}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`lang-option${selected ? " is-active" : ""}${
+                    index === activeIndex ? " is-cursor" : ""
+                  }`}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => choose(lang.code)}
+                >
+                  <span className="lang-flag">{LFlag ? <LFlag /> : lang.code}</span>
+                  <span className="lang-option-text">
+                    <strong>{lang.code}</strong>
+                    <span className="lang-option-label">{lang.label}</span>
+                  </span>
+                  {selected ? <Check size={14} className="lang-check" aria-hidden="true" /> : null}
+                </button>
+              );
+            })}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

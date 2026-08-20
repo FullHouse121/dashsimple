@@ -16999,53 +16999,88 @@ select option,
 
 /* ═══ Styled language switcher (replaces native <select>) ═══════════ */
 .lang-switch { position: relative; width: 100%; }
+
+/* Matches the app's own select — same surface, border and radius as
+   .country-select-trigger — rather than being tinted green. Picking a language
+   is not a primary action. */
 .lang-trigger {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 9px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
   color: var(--text);
   cursor: pointer;
   transition: border-color 0.16s ease, background 0.16s ease;
 }
-.lang-trigger:hover { border-color: rgba(54, 208, 124, 0.35); background: rgba(54, 208, 124, 0.05); }
-.lang-switch.is-open .lang-trigger {
-  border-color: rgba(54, 208, 124, 0.5);
-  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.12);
+
+.lang-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.045);
 }
+
+.lang-switch.is-open .lang-trigger {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .lang-flag {
   display: inline-grid;
   place-items: center;
-  width: 24px; height: 18px;
-  border-radius: 4px;
+  width: 22px;
+  height: 16px;
+  border-radius: 3px;
   overflow: hidden;
   flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
-.lang-flag svg, .lang-flag img { width: 100%; height: 100%; object-fit: cover; }
-.lang-cur { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-.lang-cur strong { font-size: 13px; font-weight: 700; color: var(--text); }
-.lang-cur-label { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lang-caret { margin-left: auto; color: var(--muted); transition: transform 0.2s var(--ease-smooth, ease); flex-shrink: 0; }
-.lang-switch.is-open .lang-caret { transform: rotate(180deg); color: var(--green); }
+
+.lang-flag svg,
+.lang-flag img { width: 100%; height: 100%; object-fit: cover; }
+
+.lang-cur { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.lang-cur strong { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--text); }
+.lang-cur-label {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lang-caret {
+  margin-left: auto;
+  color: var(--muted);
+  transition: transform 0.22s var(--ease-smooth, ease);
+  flex-shrink: 0;
+}
+
+.lang-switch.is-open .lang-caret { transform: rotate(180deg); }
+
 .lang-menu {
   position: absolute;
   bottom: calc(100% + 8px);
-  left: 0; right: 0;
+  left: 0;
+  right: 0;
   z-index: 60;
-  padding: 6px;
+  padding: 5px;
   display: grid;
-  gap: 3px;
+  gap: 2px;
   border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: linear-gradient(160deg, rgba(30, 33, 38, 0.98), rgba(21, 24, 28, 0.98));
-  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  /* Opaque. A menu paints over content; the 2% a 0.98 lets through is enough
+     to read the page beneath it on a dark ground. */
+  background: #171a1f;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform-origin: bottom center;
 }
+
+/* background and border were never declared, so every option that was not
+   hovered rendered with the browser's default button chrome — a light grey
+   box in a dark sidebar. */
 .lang-option {
   display: flex;
   align-items: center;
@@ -17053,16 +17088,34 @@ select option,
   width: 100%;
   padding: 9px 10px;
   border-radius: 9px;
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--muted);
   cursor: pointer;
   transition: background 0.14s ease, color 0.14s ease;
 }
-.lang-option-text { font-size: 13px; }
-.lang-option-text strong { color: var(--text); font-weight: 700; }
-.lang-option:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
-.lang-option.is-active { color: var(--green); background: rgba(54, 208, 124, 0.08); }
-.lang-option.is-active .lang-option-text strong { color: #9cf0c3; }
-.lang-check { margin-left: auto; color: var(--green); }
+
+.lang-option-text { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.lang-option-text strong { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; color: var(--text); }
+.lang-option-label {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One highlight, driven by the keyboard cursor as well as the mouse, so
+   arrowing through looks the same as hovering. */
+.lang-option.is-cursor {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.lang-option.is-active { color: var(--green); }
+.lang-option.is-active .lang-option-text strong { color: var(--green); }
+.lang-option.is-active.is-cursor { background: rgba(54, 208, 124, 0.1); }
+
+.lang-check { margin-left: auto; color: var(--green); flex-shrink: 0; }
 
 /* ═══ App-wide confirm dialog (replaces native window.confirm) ══════ */
 .confirm-overlay {
