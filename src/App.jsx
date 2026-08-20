@@ -26705,6 +26705,9 @@ export default function App() {
   const profileRoleColor = roleIdentColor(profileRole);
   // The token carries its own expiry and nothing ever showed it, so a session
   // ending was something you discovered by being logged out mid-task.
+  // The row is a toggle, so it advertises where it takes you, not where you are.
+  const nextLanguage =
+    languageOptions.find((item) => item.code !== language) || languageOptions[0];
   const sessionExpiryLabel = React.useMemo(() => {
     const exp = Number(authUser?.exp);
     if (!Number.isFinite(exp) || exp <= 0) return null;
@@ -27235,14 +27238,22 @@ export default function App() {
                     </button>
                     {/* Both of these live at the very bottom of a 3,700px
                         sidebar — 2,750px below the fold on a 900px screen. */}
+                    {/* The trailing chip shows the language this row switches
+                        TO, so the flag has to be that language's flag — a bare
+                        two-letter code made you translate the code yourself. */}
                     <button
                       className="profile-menu-item"
                       type="button"
-                      onClick={() => setLanguage(language === "EN" ? "TR" : "EN")}
+                      onClick={() => setLanguage(nextLanguage.code)}
                     >
                       <Globe size={14} />
                       {t("Language")}
-                      <span className="pm-trailing">{language === "EN" ? "TR" : "EN"}</span>
+                      <span className="pm-trailing pm-trailing-lang">
+                        <span className="lang-flag" aria-hidden="true">
+                          {nextLanguage.Flag ? <nextLanguage.Flag /> : nextLanguage.code}
+                        </span>
+                        {nextLanguage.code}
+                      </span>
                     </button>
                     <button
                       className="profile-menu-item"

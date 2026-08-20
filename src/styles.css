@@ -1164,7 +1164,13 @@ select {
   flex-direction: column;
   gap: 0;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
-  z-index: 5;
+  /* Above page chrome, not level with it.
+     At z-index 5 this sat on exactly the same layer as .pixel-table-toolbar,
+     so the page's own filter controls — a domain select and its chevron —
+     painted straight through an opaque menu, simply by being later in the
+     document. This tier clears the select menus (1501) and the table wrappers
+     that lift for them (1600), and stays under dialogs (9000). */
+  z-index: 1700;
   overflow: hidden;
 }
 
@@ -23672,4 +23678,19 @@ select option,
   border-color: rgba(255, 107, 107, 0.45);
   background: rgba(255, 107, 107, 0.1);
   color: #ff8f8f;
+}
+
+/* The language row's chip carries the flag of the language it switches to.
+   The flag is the faster read; the code is there for the two-letter habit. */
+.pm-trailing-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 3px;
+}
+
+.pm-trailing-lang .lang-flag {
+  width: 18px;
+  height: 13px;
+  border-radius: 2px;
 }
