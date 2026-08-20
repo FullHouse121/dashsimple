@@ -24,6 +24,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const app = read("src/App.jsx");
 const css = read("src/styles.css");
 const colors = read("src/lib/metricColors.js");
+const geoMap = read("src/components/GeoValueMap.jsx");
 
 // The home dashboard only — App.jsx holds several dashboards, and a check that
 // scanned all of them would pass or fail for the wrong reasons.
@@ -127,12 +128,38 @@ check(
   "the sample floor is stated in the UI, not applied silently",
   /Ranked by rate, with at least/.test(app)
 );
-check(3, "the map plots every producing GEO", /const geoPlotted = React\.useMemo\(/.test(app));
+// The map was rebuilt as its own component; these two checks previously
+// asserted the centroid-dot implementation it replaced, and now assert the
+// property that mattered underneath it — every producing country is drawn,
+// and the encoding is the projection's own rather than a tuned constant.
 check(
   3,
-  "map dots scale by area, not radius",
-  /Math\.sqrt\(\(Number\(geo\[geoMetric\]\) \|\| 0\) \/ max\)/.test(app),
-  "radius-scaling makes an 8x value look 64x bigger"
+  "the map is given every producing GEO",
+  /const geoMapRows = React\.useMemo\(/.test(app) &&
+    /\.filter\(\(geo\) => \(Number\(geo\[geoMetric\]\) \|\| 0\) > 0\)/.test(app)
+);
+check(
+  3,
+  "the projection fits itself to the data",
+  /\.fitExtent\(/.test(geoMap),
+  "a hand-tuned scale and centre clipped coastlines whenever the data moved"
+);
+check(
+  3,
+  "no hand-tuned projection constants remain",
+  !/MAP_FRAME_W|MAP_WORLD_SCALE|MAP_COUNTRY_EXTENT_PAD/.test(app)
+);
+check(
+  3,
+  "countries are matched on a property the atlas actually carries",
+  !/properties\.ISO_A3/.test(app) && !/properties\.ISO_A3/.test(geoMap),
+  "world-atlas@2 exposes only `name`, so ISO_A3 was always undefined"
+);
+check(
+  3,
+  "map and table share one value ramp",
+  /export const rampColor/.test(geoMap) && /rampColor\(geoWeightByIso\.get/.test(app),
+  "a colour-per-country palette gave Colombia and Mexico the same purple"
 );
 
 // ── 4. Visual hierarchy ──────────────────────────────────────────────────

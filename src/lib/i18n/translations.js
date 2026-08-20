@@ -514,6 +514,10 @@ export const translations = {
     FTD: "FTD",
     // Revenue the tracker attributes to neither an FTD nor a redeposit.
     Other: "Diğer",
+    "No countries in range": "Aralıkta ülke yok",
+    "Loading map…": "Harita yükleniyor…",
+    "Less": "Az",
+    "More": "Çok",
     "Unique": "Tekil",
     "Regs": "Kayıt",
     "Reg→Dep": "Kayıt→Yatırım",
