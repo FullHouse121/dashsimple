@@ -6703,11 +6703,11 @@ select option,
 
 .role-row-summary {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 90px 130px 120px;
+  grid-template-columns: 14px minmax(0, 1fr) 78px 152px 170px;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   width: 100%;
-  padding: 14px 16px;
+  padding: 15px 18px;
   background: transparent;
   border: none;
   color: var(--text);
@@ -23756,4 +23756,152 @@ select option,
   color: var(--role-color, var(--green));
   border-color: color-mix(in srgb, var(--role-color, var(--green)) 30%, transparent);
   background: color-mix(in srgb, var(--role-color, var(--green)) 8%, transparent);
+}
+
+/* ── Roles: styled like the rest of this dashboard ────────────────────────
+   What was here was an admin-panel accordion: flat rows, a generic progress
+   bar, and permissions as pills that wrapped into ragged lines. The pieces
+   below give it the same treatment the data panels got — a rail that names
+   the row, magnitude shown as countable marks, and a grid where there were
+   loose chips. */
+
+/* The role's colour as a rail, always — not only when the row is open. */
+.role-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.role-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--role-color, var(--green));
+  opacity: 0.5;
+  transition: opacity 0.18s ease, width 0.18s ease;
+}
+
+.role-row:hover::before { opacity: 0.8; }
+.role-row.is-open::before { opacity: 1; width: 3px; }
+
+/* Nineteen ticks, lit to the count. Reads as a quantity you can count rather
+   than a percentage you have to estimate. */
+.role-row-ticks {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+
+.role-tick {
+  flex: 1 1 auto;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 1.5px;
+  background: rgba(255, 255, 255, 0.07);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.role-tick.is-on {
+  background: var(--role-color, var(--green));
+}
+
+/* Lit ticks lift together on hover, so the strip reads as one measure. */
+.role-row-summary:hover .role-tick.is-on {
+  transform: scaleY(1.25);
+}
+
+.role-row-name {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+.role-row-stat {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A group is a labelled block, not a paragraph with chips under it. */
+.role-perm-group {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.role-permission-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.role-perm-group-head {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.role-perm-group-bulk {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 3px 8px;
+  transition: color 0.14s ease, border-color 0.14s ease;
+}
+
+.role-perm-group-bulk:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* A grid, so labels align down columns instead of wrapping into ragged rows
+   whose length depends on how long the words happen to be. */
+.role-permissions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 6px;
+}
+
+.perm-item {
+  width: 100%;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+}
+
+.roles-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.roles-toolbar .registry-search-field { flex: 1 1 auto; }
+
+@media (max-width: 900px) {
+  .role-row-summary {
+    grid-template-columns: 14px minmax(0, 1fr) auto;
+    row-gap: 10px;
+  }
+  .role-row-stat-perms { grid-column: 2 / -1; }
+  .role-row-ticks { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-tick,
+  .role-row::before {
+    transition: none;
+  }
+  .role-row-summary:hover .role-tick.is-on { transform: none; }
 }

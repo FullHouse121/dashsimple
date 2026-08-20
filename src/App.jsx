@@ -23109,9 +23109,8 @@ function RolesDashboard({ authUser }) {
             <div className="empty-state">{t("No roles found.")}</div>
           ) : (
             <>
-              <div className="pixel-table-toolbar roles-toolbar">
+              <div className="roles-toolbar">
                 <div className="field registry-search-field">
-                  <label>{t("Search")}</label>
                   <div className="registry-search">
                     <Search size={14} aria-hidden="true" />
                     <input
@@ -23180,11 +23179,23 @@ function RolesDashboard({ authUser }) {
                             <span className="role-row-of">/{permissionOptions.length}</span>
                             <span className="role-row-perms-label">{t("permissions")}</span>
                           </span>
-                          <span className="role-row-progress">
-                            <span
-                              className="role-row-progress-fill"
-                              style={{ width: `${Math.round((effectivePermissions.length / permissionOptions.length) * 100)}%` }}
-                            />
+                          {/* One tick per permission rather than a filled bar.
+                              A bar at 58% tells you a proportion; nineteen
+                              ticks with eleven lit tell you the count, which
+                              is what the number beside it is counting. */}
+                          <span
+                            className="role-row-ticks"
+                            role="img"
+                            aria-label={`${effectivePermissions.length} ${t("of")} ${permissionOptions.length} ${t("permissions")}`}
+                          >
+                            {permissionOptions.map((perm) => (
+                              <span
+                                key={perm.key}
+                                className={`role-tick${
+                                  effectivePermissions.includes(perm.key) ? " is-on" : ""
+                                }`}
+                              />
+                            ))}
                           </span>
                         </button>
                         {expanded ? (
