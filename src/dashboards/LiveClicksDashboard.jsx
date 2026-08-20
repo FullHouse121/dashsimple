@@ -370,7 +370,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Clicks Timeline</h3>
+              <h2 className="panel-title">Clicks Timeline</h2>
               <p className="panel-subtitle">
                 {windowMinutes === "custom"
                   ? `${customRange.from} → ${customRange.to}`
@@ -460,7 +460,7 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                 <ClicksIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
-                <h3 className="panel-title">Live Clicks</h3>
+                <h2 className="panel-title">Live Clicks</h2>
               </div>
             </div>
             <div className="campaign-table-actions">

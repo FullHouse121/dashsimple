@@ -415,7 +415,7 @@ function ExportDialog({ open, onClose, format, setFormat, preview, loading, erro
       >
         <div className="report-modal-head">
           <div>
-            <h3 className="panel-title">{t("Export")}</h3>
+            <h2 className="panel-title">{t("Export")}</h2>
             <p className="panel-subtitle">{t("Check the file before you download it.")}</p>
           </div>
           <button type="button" className="icon-btn" onClick={onClose} aria-label={t("Close")}>
@@ -1051,7 +1051,7 @@ export default function ReportsDashboard({ authUser }) {
                 <AlertIcon size={15} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Reports")}</h3>
+                <h2 className="panel-title">{t("Reports")}</h2>
                 <p className="panel-subtitle">{t(catalogError)}</p>
               </div>
             </div>
@@ -1199,7 +1199,7 @@ export default function ReportsDashboard({ authUser }) {
                 <ReportIcon size={15} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Reports")}</h3>
+                <h2 className="panel-title">{t("Reports")}</h2>
                 <p className="panel-subtitle">
                   {t("Pick a source, choose your columns and filters, then export the result.")}
                 </p>
@@ -1321,7 +1321,7 @@ export default function ReportsDashboard({ authUser }) {
                 <ColumnsIcon size={15} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Columns")}</h3>
+                <h2 className="panel-title">{t("Columns")}</h2>
                 <p className="panel-subtitle">
                   {isAggregated
                     ? t("Group by decides the rows. Metrics decide what is measured for each row.")
@@ -1445,7 +1445,7 @@ export default function ReportsDashboard({ authUser }) {
                 <FilterIcon size={15} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Filters")}</h3>
+                <h2 className="panel-title">{t("Filters")}</h2>
                 <p className="panel-subtitle">
                   {t("Every condition must be true. Filters run inside the tracker, so they apply to the whole report — not just the rows on screen.")}
                 </p>
@@ -1507,7 +1507,7 @@ export default function ReportsDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Result")}</h3>
+              <h2 className="panel-title">{t("Result")}</h2>
               <p className="panel-subtitle">
                 {result
                   ? t("Rows {from}–{to} of {total}", {
@@ -1670,7 +1670,7 @@ export default function ReportsDashboard({ authUser }) {
                 <SavedIcon size={15} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Saved reports")}</h3>
+                <h2 className="panel-title">{t("Saved reports")}</h2>
                 <p className="panel-subtitle">
                   {t("Save this setup and run it again later. Share one and your team can run it too.")}
                 </p>

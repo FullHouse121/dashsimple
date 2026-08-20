@@ -1453,39 +1453,22 @@ function HomeDashboard({
     : t("cost data incomplete");
   const costValue = (rendered) => (costBlind ? "—" : rendered);
 
+  // Outcomes lead, inputs and costs support.
+  //
+  // The rail was eight cards of equal width in two rows of four, separated
+  // only by 30px against 22px type, with revenue and cost interleaved. Nothing
+  // said what to read first. Revenue is what the page is for, so it is the
+  // hero; FTDs and ROI are the result beside it; volume and unit costs sit
+  // below at a size that matches how often they decide anything.
+  // Outcomes lead, inputs and costs support.
+  //
+  // The rail was eight cards of equal width in two rows of four, separated
+  // only by 30px against 22px type, with revenue and cost interleaved.
+  // Nothing said what to read first. Revenue is what the page is for, so it
+  // takes double width and the largest figure; FTDs and ROI are the result
+  // beside it; volume and unit costs sit below at a size matching how often
+  // they decide anything.
   const homePrimaryStats = [
-    {
-      label: "Clicks",
-      value: fmtCount(totals.clicks),
-      icon: MousePointerClick,
-      meta: periodLabel,
-      sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
-      delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
-    },
-    { label: "CPC", value: costValue(cpc === null ? "—" : formatCurrency(cpc)), icon: Wallet, meta: "Cost per click", untrustedLabel: spendCoverageNote, delta: mkDelta(cpc, prevCpc, false), untrusted: costUntrusted },
-    { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel, delta: mkDelta(totals.registers, prevTotals?.registers, true) },
-    {
-      label: "Cost per Register",
-      value: costValue(costPerRegister === null ? "—" : formatCurrency(costPerRegister)),
-      icon: Wallet,
-      meta: "Cost per register",
-      untrustedLabel: spendCoverageNote,
-      delta: mkDelta(costPerRegister, prevCostPerRegister, false),
-      untrusted: costUntrusted,
-    },
-  ];
-
-  const homeSecondaryStats = [
-    { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel, delta: mkDelta(totals.ftds, prevTotals?.ftds, true) },
-    {
-      label: "Cost per FTD",
-      value: costValue(costPerFtd === null ? "—" : formatCurrency(costPerFtd)),
-      icon: Wallet,
-      meta: "Cost per FTD",
-      untrustedLabel: spendCoverageNote,
-      delta: mkDelta(costPerFtd, prevCostPerFtd, false),
-      untrusted: costUntrusted,
-    },
     {
       label: "Total Revenue",
       value: formatCurrency(totalRevenue),
@@ -1499,12 +1482,64 @@ function HomeDashboard({
       delta: mkDelta(totalRevenue, prevTotals?.revenue, true),
     },
     {
+      label: "FTD",
+      value: fmtCount(totals.ftds),
+      icon: CreditCard,
+      meta: periodLabel,
+      delta: mkDelta(totals.ftds, prevTotals?.ftds, true),
+    },
+    {
       label: "ROI",
       value: costValue(fmtPercent(roi)),
       icon: BarChart3,
       meta: "Revenue vs Spend",
       untrustedLabel: spendCoverageNote,
       delta: mkDelta(roi, prevRoi, true),
+      untrusted: costUntrusted,
+    },
+  ];
+
+  const homeSecondaryStats = [
+    {
+      label: "Clicks",
+      value: fmtCount(totals.clicks),
+      icon: MousePointerClick,
+      meta: periodLabel,
+      sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
+      delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
+    },
+    {
+      label: "Register",
+      value: fmtCount(totals.registers),
+      icon: UserPlus,
+      meta: periodLabel,
+      delta: mkDelta(totals.registers, prevTotals?.registers, true),
+    },
+    {
+      label: "CPC",
+      value: costValue(cpc === null ? "—" : formatCurrency(cpc)),
+      icon: Wallet,
+      meta: "Cost per click",
+      untrustedLabel: spendCoverageNote,
+      delta: mkDelta(cpc, prevCpc, false),
+      untrusted: costUntrusted,
+    },
+    {
+      label: "Cost per Register",
+      value: costValue(costPerRegister === null ? "—" : formatCurrency(costPerRegister)),
+      icon: Wallet,
+      meta: "Cost per register",
+      untrustedLabel: spendCoverageNote,
+      delta: mkDelta(costPerRegister, prevCostPerRegister, false),
+      untrusted: costUntrusted,
+    },
+    {
+      label: "Cost per FTD",
+      value: costValue(costPerFtd === null ? "—" : formatCurrency(costPerFtd)),
+      icon: Wallet,
+      meta: "Cost per FTD",
+      untrustedLabel: spendCoverageNote,
+      delta: mkDelta(costPerFtd, prevCostPerFtd, false),
       untrusted: costUntrusted,
     },
   ];
@@ -2037,7 +2072,7 @@ function HomeDashboard({
           </button>
         </div>
       ) : null}
-      <section className="cards">
+      <section className="cards hero">
         {homePrimaryStats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -2129,7 +2164,7 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Overview")}</h3>
+              <h2 className="panel-title">{t("Overview")}</h2>
               <p className="panel-subtitle">
                 {isSingleDayRange ? t("Performance by hour") : t("Performance by date")}
               </p>
@@ -2284,7 +2319,7 @@ function HomeDashboard({
                 <ClicksIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
-                <h3 className="panel-title">{t("Last Clicks")}</h3>
+                <h2 className="panel-title">{t("Last Clicks")}</h2>
                 <p className="panel-subtitle">{t("Newest clicks from the tracker — live.")}</p>
               </div>
             </div>
@@ -2376,7 +2411,7 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Statistics")}</h3>
+              <h2 className="panel-title">{t("Statistics")}</h2>
               <p className="panel-subtitle">{t("Daily conversion rates")}</p>
             </div>
             <PeriodSelect
@@ -2484,7 +2519,7 @@ function HomeDashboard({
             <div className="revenue-blocks">
               <div className="revenue-head">
                 <div>
-                  <h4>{t("Revenue by date")}</h4>
+                  <h3>{t("Revenue by date")}</h3>
                   <p>{t("Daily revenue trend for the selected period.")}</p>
                 </div>
                 <div className="revenue-total">
@@ -2561,7 +2596,7 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Top GEO")}</h3>
+              <h2 className="panel-title">{t("Top GEO")}</h2>
               <p className="panel-subtitle">
                 {geoIsRateMetric
                   ? `${t("Ranked by rate, with at least")} ${geoSampleFloor.toLocaleString()} ${t("registrations")}`
@@ -2791,7 +2826,7 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Conversion Funnel")}</h3>
+              <h2 className="panel-title">{t("Conversion Funnel")}</h2>
               <p className="panel-subtitle">{t("Stage counts and drop-off for the selected period")}</p>
             </div>
           </div>
@@ -2849,7 +2884,7 @@ function HomeDashboard({
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Conversion Rates")}</h3>
+              <h2 className="panel-title">{t("Conversion Rates")}</h2>
               <p className="panel-subtitle">{t("Each handoff, and how it moved")}</p>
             </div>
           </div>
@@ -3530,7 +3565,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             >
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("Top GEOs by Revenue")}</h3>
+                  <h2 className="panel-title">{t("Top GEOs by Revenue")}</h2>
                   <p className="panel-subtitle">{t("Best performing GEOs by total revenue.")}</p>
                 </div>
               </div>
@@ -3600,7 +3635,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             >
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("ARPPU by GEO")}</h3>
+                  <h2 className="panel-title">{t("ARPPU by GEO")}</h2>
                   <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
                 </div>
               </div>
@@ -3670,7 +3705,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             >
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("LTV (2+ Deposits) by GEO")}</h3>
+                  <h2 className="panel-title">{t("LTV (2+ Deposits) by GEO")}</h2>
                   <p className="panel-subtitle">{t("Approximate: Revenue / Redeposits.")}</p>
                 </div>
               </div>
@@ -3732,7 +3767,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             >
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("LTV Growth Timeline")}</h3>
+                  <h2 className="panel-title">{t("LTV Growth Timeline")}</h2>
                   <p className="panel-subtitle">
                     {t("Daily LTV trend for the top GEOs (2+ deposits).")}
                   </p>
@@ -3813,7 +3848,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             >
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("ARPPU Growth Timeline")}</h3>
+                  <h2 className="panel-title">{t("ARPPU Growth Timeline")}</h2>
                   <p className="panel-subtitle">
                     {t("Daily ARPPU trend for the top GEOs (Revenue / FTDs).")}
                   </p>
@@ -3901,7 +3936,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("Top Regions by Revenue")}</h3>
+                <h2 className="panel-title">{t("Top Regions by Revenue")}</h2>
                 <p className="panel-subtitle">{t("Best performing regions by total revenue.")}</p>
               </div>
             </div>
@@ -3965,7 +4000,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("LTV (2+ Deposits) by Region")}</h3>
+                <h2 className="panel-title">{t("LTV (2+ Deposits) by Region")}</h2>
                 <p className="panel-subtitle">{t("Approximate: Revenue / Redeposits.")}</p>
               </div>
             </div>
@@ -4015,7 +4050,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
           >
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("ARPPU by Region")}</h3>
+                <h2 className="panel-title">{t("ARPPU by Region")}</h2>
                 <p className="panel-subtitle">{t("Average revenue per paying user (Revenue / FTDs).")}</p>
               </div>
             </div>
@@ -4072,7 +4107,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("GEO Report")}</h3>
+              <h2 className="panel-title">{t("GEO Report")}</h2>
               <p className="panel-subtitle">
                 {t("Performance by country for the selected filters.")}
               </p>
@@ -5141,7 +5176,7 @@ function TrackingLinksDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><LinkIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Tracking Links")}</h3>
+              <h2 className="panel-title">{t("Tracking Links")}</h2>
               <p className="panel-subtitle">
                 {t("Compose Keitaro campaigns with the standard naming and generate ready-to-use tracking links.")}
               </p>
@@ -6041,7 +6076,7 @@ function HealthDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><HealthIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Health")}</h3>
+              <h2 className="panel-title">{t("Health")}</h2>
               <p className="panel-subtitle">{t("Everything that needs doing, in the order it costs you money.")}</p>
             </div>
           </div>
@@ -7729,7 +7764,7 @@ function MyFlowsDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><FlowsIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("My Flows")}</h3>
+              <h2 className="panel-title">{t("My Flows")}</h2>
               <p className="panel-subtitle">
                 {t("Tracking link → PWA domains → pixels. Bind your domains to a link, then attach pixels to each domain.")}
               </p>
@@ -8595,7 +8630,7 @@ function UtmBuilder() {
             <div className="panel-head-title">
               <span className="panel-icon-badge"><UtmIcon size={20} /></span>
               <div>
-                <h3 className="panel-title">UTM Builder</h3>
+                <h2 className="panel-title">UTM Builder</h2>
                 <p className="panel-subtitle">
                   Generate clean tracking links for campaigns and media buyers.
                 </p>
@@ -10022,7 +10057,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Overview</h3>
+              <h2 className="panel-title">Overview</h2>
               <p className="panel-subtitle">
                 {isStatsSingleDayRange ? "Performance by hour" : "Performance by date"}
               </p>
@@ -10173,7 +10208,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
                 <StatsIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
-                <h3 className="panel-title">Conversion Funnel</h3>
+                <h2 className="panel-title">Conversion Funnel</h2>
                 <p className="panel-subtitle">Stage-to-stage conversion for the filtered view.</p>
               </div>
             </div>
@@ -10214,7 +10249,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
                 <AwardIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
-                <h3 className="panel-title">Buyer Leaderboard</h3>
+                <h2 className="panel-title">Buyer Leaderboard</h2>
                 <p className="panel-subtitle">Ranked by FTDs in the filtered view.</p>
               </div>
             </div>
@@ -10283,7 +10318,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Media Buyer Funnel Log</h3>
+              <h2 className="panel-title">Media Buyer Funnel Log</h2>
               <p className="panel-subtitle">Calculated funnel metrics per entry.</p>
             </div>
             <div className="campaign-table-actions">
@@ -10383,7 +10418,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Volume Trend</h3>
+              <h2 className="panel-title">Volume Trend</h2>
               <p className="panel-subtitle">Clicks, registers, and FTDs over time.</p>
             </div>
           </div>
@@ -10467,7 +10502,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Funnel Rates</h3>
+              <h2 className="panel-title">Funnel Rates</h2>
               <p className="panel-subtitle">Conversion rates per day.</p>
             </div>
           </div>
@@ -10561,9 +10596,9 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">
+              <h2 className="panel-title">
                 {resolvedCostMode === "cost" ? "Cost Metrics" : "Revenue & EPC"}
-              </h3>
+              </h2>
               <p className="panel-subtitle">
                 {resolvedCostMode === "cost"
                   ? "Cost per click, register, and FTD."
@@ -11108,7 +11143,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Volume vs Efficiency")}</h3>
+              <h2 className="panel-title">{t("Volume vs Efficiency")}</h2>
               <p className="panel-subtitle">
                 {t("Where size and earnings disagree. Right of centre is big, above the line earns more per click than average.")}
               </p>
@@ -11152,7 +11187,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Revenue by Placement")}</h3>
+              <h2 className="panel-title">{t("Revenue by Placement")}</h2>
               <p className="panel-subtitle">{t("Revenue contribution by top placements.")}</p>
             </div>
           </div>
@@ -11171,7 +11206,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Conversion by Placement")}</h3>
+              <h2 className="panel-title">{t("Conversion by Placement")}</h2>
               <p className="panel-subtitle">
                 {t("Ranked, one stage at a time. Placements under 10 clicks are excluded — their rates are noise.")}
               </p>
@@ -11209,7 +11244,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Placement Breakdown")}</h3>
+              <h2 className="panel-title">{t("Placement Breakdown")}</h2>
               <p className="panel-subtitle">{t("Detailed performance by placement (sub_id_1).")}</p>
             </div>
             <div className="summary-inline">
@@ -12228,7 +12263,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("Campaigns")}</h3>
+                <h2 className="panel-title">{t("Campaigns")}</h2>
                 <p className="panel-subtitle">
                   {t("Performance is what Keitaro pays; Market ROI values every FTD at your per-country market CPA.")}
                 </p>
@@ -12272,7 +12307,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
           <motion.div className="panel form-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
             <div className="panel-head">
               <div>
-                <h3 className="panel-title">{t("Market CPA rates")}</h3>
+                <h2 className="panel-title">{t("Market CPA rates")}</h2>
                 <p className="panel-subtitle">
                   {t("What one FTD is worth on the market, per country, in USD. Market ROI values every deposit at these prices.")}
                 </p>
@@ -12489,7 +12524,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
             <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.05 }}>
               <div className="panel-head">
                 <div>
-                  <h3 className="panel-title">{t("Market ROI by campaign")}</h3>
+                  <h2 className="panel-title">{t("Market ROI by campaign")}</h2>
                   <p className="panel-subtitle">{t("Sorted by market profit. Rated FTDs are the ones covered by your rate card.")}</p>
                 </div>
                 <span className="roles-count">{marketRows.length} {t("campaigns")}</span>
@@ -12626,7 +12661,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Daily Traffic")}</h3>
+              <h2 className="panel-title">{t("Daily Traffic")}</h2>
               <p className="panel-subtitle">{t("Unique clicks per day across the selected campaigns.")}</p>
             </div>
             <div className="panel-actions">
@@ -12663,7 +12698,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.04 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Daily Conversions")}</h3>
+              <h2 className="panel-title">{t("Daily Conversions")}</h2>
               <p className="panel-subtitle">{t("Registrations, FTDs and redeposits per day — one shared axis.")}</p>
             </div>
           </div>
@@ -12692,7 +12727,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.08 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Top Campaigns by FTD")}</h3>
+              <h2 className="panel-title">{t("Top Campaigns by FTD")}</h2>
               <p className="panel-subtitle">{t("Where the deposits actually come from — scale these.")}</p>
             </div>
           </div>
@@ -12718,7 +12753,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.12 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Revenue Composition")}</h3>
+              <h2 className="panel-title">{t("Revenue Composition")}</h2>
               <p className="panel-subtitle">{t("FTD vs redeposit revenue — a big yellow share means players stay and redeposit.")}</p>
             </div>
           </div>
@@ -12744,7 +12779,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel span-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.16 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Efficiency Map")}</h3>
+              <h2 className="panel-title">{t("Efficiency Map")}</h2>
               <p className="panel-subtitle">
                 {t("Each dot is a campaign (≥50 uniques); size = traffic. Right of the line: clicks convert to regs. Above it: regs deposit. Top-right = scale · bottom-right = fix offer · top-left = fix creatives · bottom-left = cut.")}
               </p>
@@ -12817,7 +12852,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         <motion.div className="panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Keitaro Campaigns")}</h3>
+              <h2 className="panel-title">{t("Keitaro Campaigns")}</h2>
               <p className="panel-subtitle">{t("One row per campaign in the tracker — expand a row for its GEO breakdown.")}</p>
             </div>
             <div className="campaign-table-actions">
@@ -13627,7 +13662,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Player Mix & Economics")}</h3>
+              <h2 className="panel-title">{t("Player Mix & Economics")}</h2>
               <p className="panel-subtitle">
                 {t("What a player is worth and how far they got. Brand narrows the whole section; a tier narrows everything below.")}
               </p>
@@ -13676,7 +13711,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Top Players")}</h3>
+              <h2 className="panel-title">{t("Top Players")}</h2>
               <p className="panel-subtitle">{t("Highest revenue first. Select one to open its detail.")}</p>
             </div>
             <div className="panel-actions">
@@ -13726,7 +13761,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Revenue Concentration")}</h3>
+              <h2 className="panel-title">{t("Revenue Concentration")}</h2>
               <p className="panel-subtitle">{t("How much of the revenue rests on how few players.")}</p>
             </div>
           </div>
@@ -13747,7 +13782,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("User Behavior")}</h3>
+              <h2 className="panel-title">{t("User Behavior")}</h2>
               <p className="panel-subtitle">
                 {t("External ID performance and campaign attribution.")}{" "}
                 {/* Says once, where it is read, why a depositor's Registers
@@ -14252,7 +14287,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Platform Mix")}</h3>
+              <h2 className="panel-title">{t("Platform Mix")}</h2>
               <p className="panel-subtitle">
                 {t("Share of clicks against share of revenue. A platform that takes traffic and returns none is an exclusion waiting to be made.")}
               </p>
@@ -14288,7 +14323,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Operating Systems")}</h3>
+              <h2 className="panel-title">{t("Operating Systems")}</h2>
               <p className="panel-subtitle">{t("Ranked. Orange means clicks without revenue.")}</p>
             </div>
             <div className="panel-actions">
@@ -14318,7 +14353,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("OS Versions")}</h3>
+              <h2 className="panel-title">{t("OS Versions")}</h2>
               <p className="panel-subtitle">
                 {t("Where the traffic actually sits — decides whether a version cutoff is safe.")}
               </p>
@@ -14337,7 +14372,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Device Breakdown")}</h3>
+              <h2 className="panel-title">{t("Device Breakdown")}</h2>
               <p className="panel-subtitle">{t("Clicks, installs, revenue, and CR by device.")}</p>
             </div>
           </div>
@@ -15106,7 +15141,7 @@ function GoalsDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Goals")}</h3>
+              <h2 className="panel-title">{t("Goals")}</h2>
               <p className="panel-subtitle">
                 {goalTab === "setup"
                   ? t("Define the target outcomes your media buyers must reach.")
@@ -16418,7 +16453,7 @@ function DomainsDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><DomainIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Domains Registry")}</h3>
+              <h2 className="panel-title">{t("Domains Registry")}</h2>
               <p className="panel-subtitle">{t("Track every domain in use and keep its status updated.")}</p>
             </div>
           </div>
@@ -18288,7 +18323,7 @@ function PixelsDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><MetaGlyph size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Pixels Registry")}</h3>
+              <h2 className="panel-title">{t("Pixels Registry")}</h2>
               <p className="panel-subtitle">{t("Manage FB pixels and tokens tied to your flows.")}</p>
             </div>
           </div>
@@ -20225,7 +20260,7 @@ function AccountsDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><AccountIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Accounts Registry")}</h3>
+              <h2 className="panel-title">{t("Accounts Registry")}</h2>
               <p className="panel-subtitle">
                 {t("Register account numbers with a nickname, owner, and status in one clean view.")}
               </p>
@@ -20807,9 +20842,9 @@ function LogsDashboard({ authUser }) {
     <section className="panel logs-panel">
       <div className="logs-head">
         <div>
-          <h3 className="panel-title">
+          <h2 className="panel-title">
             <ScrollText size={16} /> {t("Audit Logs")}
-          </h3>
+          </h2>
           <p className="logs-sub">
             {t("Every action in the dashboard — who did it, what changed, and how it ended.")}
           </p>
@@ -21761,7 +21796,7 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
       >
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">Bindings</h3>
+            <h2 className="panel-title">Bindings</h2>
             <p className="panel-subtitle">Integration turns green when Keitaro cost is being received for the assigned buyer.</p>
           </div>
         </div>
@@ -22017,7 +22052,7 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
       >
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">Meta Token $</h3>
+            <h2 className="panel-title">Meta Token $</h2>
             <p className="panel-subtitle">Save Meta token per account and assign each integration to one buyer.</p>
           </div>
           {copyFeedback ? <span className="api-status success">{copyFeedback}</span> : null}
@@ -22931,7 +22966,7 @@ function RolesDashboard({ authUser }) {
         <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Access Control")}</h3>
+              <h2 className="panel-title">{t("Access Control")}</h2>
               <p className="panel-subtitle">
                 {t("Roles define what each member can see. Users link a login to a role. Team holds buyer profiles.")}
               </p>
@@ -22963,7 +22998,7 @@ function RolesDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Roles")}</h3>
+              <h2 className="panel-title">{t("Roles")}</h2>
               <p className="panel-subtitle">{t("Click a role to expand and edit its permissions.")}</p>
             </div>
             <span className="roles-count">{roles.length} {t("roles")} · {users.length} {t("users")}</span>
@@ -23127,7 +23162,7 @@ function RolesDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Users")}</h3>
+              <h2 className="panel-title">{t("Users")}</h2>
               <p className="panel-subtitle">{t("Logins that map to a role and optionally to a media buyer.")}</p>
             </div>
             {isLeadership ? (
@@ -23338,7 +23373,7 @@ function RolesDashboard({ authUser }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Media Buyers")}</h3>
+              <h2 className="panel-title">{t("Media Buyers")}</h2>
               <p className="panel-subtitle">
                 {t("Buyer profiles with country, channel, contact, and status.")}
               </p>
@@ -24103,7 +24138,7 @@ function ProfileDashboard({ authUser }) {
           <div className="panel-head-title">
             <span className="panel-icon-badge"><AwardIcon size={20} /></span>
             <div>
-              <h3 className="panel-title">{t("Achievements")}</h3>
+              <h2 className="panel-title">{t("Achievements")}</h2>
               <p className="panel-subtitle">{t("Badges unlock on your all-time results across every link.")}</p>
             </div>
           </div>
@@ -24138,7 +24173,7 @@ function ProfileDashboard({ authUser }) {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("My Recent Activity")}</h3>
+              <h2 className="panel-title">{t("My Recent Activity")}</h2>
               <p className="panel-subtitle">{t("Your last actions in the dashboard — links, edits, logins.")}</p>
             </div>
           </div>
@@ -24173,7 +24208,7 @@ function ProfileDashboard({ authUser }) {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Change Password")}</h3>
+              <h2 className="panel-title">{t("Change Password")}</h2>
               <p className="panel-subtitle">{t("Secure login")}</p>
             </div>
           </div>
@@ -24265,7 +24300,7 @@ function ProfileDashboard({ authUser }) {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Role Permissions")}</h3>
+              <h2 className="panel-title">{t("Role Permissions")}</h2>
               <p className="panel-subtitle">{t("Permissions granted by your role.")}</p>
             </div>
           </div>
@@ -24287,7 +24322,7 @@ function ProfileDashboard({ authUser }) {
         <div className="panel">
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Usage")}</h3>
+              <h2 className="panel-title">{t("Usage")}</h2>
               <p className="panel-subtitle">{t("Where and how this account is used.")}</p>
             </div>
           </div>
@@ -24859,7 +24894,7 @@ function KeitaroApiView() {
         <motion.div className="panel" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Keitaro API")}</h3>
+              <h2 className="panel-title">{t("Keitaro API")}</h2>
               <p className="panel-subtitle">
                 {t("Connect the tracker, receive postbacks, sync reports, and link campaigns.")}
               </p>
@@ -24891,7 +24926,7 @@ function KeitaroApiView() {
         >
           <div className="panel-head api-head">
             <div>
-              <h3 className="panel-title">{t("Keitaro Connection")}</h3>
+              <h2 className="panel-title">{t("Keitaro Connection")}</h2>
               <p className="panel-subtitle">{t("Connect your tracker and validate the Admin API key.")}</p>
             </div>
           </div>
@@ -25031,7 +25066,7 @@ function KeitaroApiView() {
         >
           <div className="panel-head api-head">
             <div>
-              <h3 className="panel-title">{t("Postback Receivers")}</h3>
+              <h2 className="panel-title">{t("Postback Receivers")}</h2>
               <p className="panel-subtitle">
                 {t("Use these endpoints to attach events to Keitaro campaigns.")}
               </p>
@@ -25144,7 +25179,7 @@ function KeitaroApiView() {
         >
           <div className="panel-head api-head">
             <div>
-              <h3 className="panel-title">{t("Report Sync")}</h3>
+              <h2 className="panel-title">{t("Report Sync")}</h2>
               <p className="panel-subtitle">
                 {t("Paste a Keitaro report payload and map fields into your statistics table.")}
               </p>
@@ -25427,7 +25462,7 @@ function KeitaroApiView() {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">{t("Campaign Mapping")}</h3>
+              <h2 className="panel-title">{t("Campaign Mapping")}</h2>
               <p className="panel-subtitle">
                 {t("Map Keitaro campaign IDs to media buyers for install attribution.")}
               </p>
@@ -26659,6 +26694,14 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {/* The page had no h1 at all, so assistive tech opened it with no
+            document heading and nothing to navigate by. It names the current
+            view and changes with it. Hidden visually because the view is
+            already obvious on screen — the sidebar item is highlighted — and
+            a second copy of "Dashboard" would be noise. */}
+        <h1 className="sr-only">
+          {t(navItemMap[activeView]?.label || "Dashboard")} — DeusMachine
+        </h1>
         <header className="topbar">
           <button
             className="mobile-nav-toggle"

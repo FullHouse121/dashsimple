@@ -12602,7 +12602,7 @@ select option,
   gap: 12px;
 }
 
-.revenue-head h4 {
+.revenue-head h3 {
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 4px;
@@ -23219,4 +23219,70 @@ select option,
   font-size: 10.5px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* Available to assistive tech, absent from the layout. Used for the document
+   heading, which names the current view without repeating it on screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── KPI rail hierarchy ───────────────────────────────────────────────────
+   Eight equal cards in two rows of four said everything mattered equally.
+   Revenue is what the page is for, so it takes double width and the largest
+   figure; FTDs and ROI sit beside it; volume and unit costs drop to a denser
+   row below. */
+.cards.hero {
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
+.cards.hero > *:first-child .card-value {
+  font-size: 38px;
+  letter-spacing: -0.02em;
+}
+
+.cards.secondary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.cards.secondary .card-value {
+  font-size: 20px;
+}
+
+@media (max-width: 1180px) {
+  .cards.hero {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cards.hero > *:first-child {
+    grid-column: 1 / -1;
+  }
+  .cards.secondary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .cards.hero,
+  .cards.secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cards.hero > *:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The narrower supporting cards broke the period label mid-token
+   ("2026-08-" / "20"). Break between the dates, never inside one. */
+.cards.secondary .card-meta {
+  font-size: 11px;
+  overflow-wrap: normal;
+  word-break: keep-all;
 }

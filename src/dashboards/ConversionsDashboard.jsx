@@ -395,7 +395,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
         >
           <div className="panel-head">
             <div>
-              <h3 className="panel-title">Conversions Timeline</h3>
+              <h2 className="panel-title">Conversions Timeline</h2>
               <p className="panel-subtitle">
                 {windowMinutes === "custom"
                   ? `${customRange.from} → ${customRange.to}`
@@ -494,7 +494,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                 <ConversionIcon size={15} strokeWidth={2.2} />
               </span>
               <div>
-                <h3 className="panel-title">Conversion Log</h3>
+                <h2 className="panel-title">Conversion Log</h2>
               </div>
             </div>
             <div className="campaign-table-actions">

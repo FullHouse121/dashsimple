@@ -80,7 +80,7 @@ export default function ExecutiveReportPanel({ t }) {
       <motion.div className="panel xr-noprint" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
         <div className="panel-head">
           <div>
-            <h3 className="panel-title">{t("Executive report")}</h3>
+            <h2 className="panel-title">{t("Executive report")}</h2>
             <p className="panel-subtitle">
               {t("The whole operation in one view, for whoever is deciding where money goes.")}
             </p>
