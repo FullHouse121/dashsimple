@@ -781,6 +781,7 @@ const geoReference = {
   Japan: { iso: "JPN", coordinates: [138.2529, 36.2048] },
   Morocco: { iso: "MAR", coordinates: [-7.0926, 31.7917] },
   "New Zealand": { iso: "NZL", coordinates: [174.8859, -40.9006] },
+  Mexico: { iso: "MEX", coordinates: [-102.5528, 23.6345] },
   Nigeria: { iso: "NGA", coordinates: [8.6753, 9.082] },
   Norway: { iso: "NOR", coordinates: [8.4689, 60.472] },
   Paraguay: { iso: "PRY", coordinates: [-58.4438, -23.4425] },
@@ -1045,7 +1046,9 @@ function HomeDashboard({
   const [hoverGeo, setHoverGeo] = React.useState(null);
   const [selectedGeo, setSelectedGeo] = React.useState(null);
   const [activeRateIndex, setActiveRateIndex] = React.useState(null);
-  const [geoMetric, setGeoMetric] = React.useState("combined");
+  // Revenue is the default lens: a GEO that converts well but earns little
+  // is not the top GEO, and the old default said it was.
+  const [geoMetric, setGeoMetric] = React.useState("revenue");
   const [homeRows, setHomeRows] = React.useState([]);
   const [homeState, setHomeState] = React.useState({ loading: true, error: null });
   const [overviewFilters, setOverviewFilters] = React.useState(["ftds"]);
@@ -1716,18 +1719,38 @@ function HomeDashboard({
   const donutLabel =
     activeRateIndex !== null ? t(conversionData[activeRateIndex].name) : t("Avg rate");
 
+  // Only draw the rates this business measures.
+  //
+  // homeChartSeries lists all four handoffs, but nothing here reports an app
+  // install, so Click2Install and Install2Reg are flat zero on every day of
+  // every range — two lines pinned to the axis, and two legend entries that
+  // toggle nothing. Same reason the funnel drops its Install stage.
+  const activeChartSeries = React.useMemo(
+    () =>
+      homeChartSeries.filter((series) =>
+        chartData.some((point) => {
+          const value = Number(point?.[series.key]);
+          return Number.isFinite(value) && value > 0;
+        })
+      ),
+    [chartData]
+  );
+
   const geoMetrics = React.useMemo(() => {
     const map = new Map();
     filteredRows.forEach((row) => {
       const country = String(row.country || "").trim();
       if (!country) return;
       if (!map.has(country)) {
-        map.set(country, { clicks: 0, registers: 0, ftds: 0 });
+        map.set(country, { clicks: 0, registers: 0, ftds: 0, revenue: 0 });
       }
       const current = map.get(country);
       current.clicks += sum(row.clicks);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
+      // The panel used to carry no money at all, which is how a GEO worth $56
+      // came to be presented as the best one on the page.
+      current.revenue += readTotalRevenue(row);
     });
     return Array.from(map.entries()).map(([country, stats], index) => {
       const ftdRate = toPercent(stats.ftds, stats.clicks) ?? 0;
@@ -1738,28 +1761,89 @@ function HomeDashboard({
         iso: ref.iso || country,
         coordinates: ref.coordinates || null,
         color: geoPalette[index % geoPalette.length],
-        ftdRate: Math.round(ftdRate),
-        reg2depRate: Math.round(reg2depRate),
+        clicks: stats.clicks,
+        registers: stats.registers,
+        ftds: stats.ftds,
+        revenue: stats.revenue,
+        // Revenue per click — the one efficiency measure that compares a GEO
+        // with 573 clicks against one with 9,912 without favouring either.
+        epc: stats.clicks > 0 ? stats.revenue / stats.clicks : 0,
+        // Kept at one decimal: rounding 1.9% to 2% and 17.2% to 17% threw away
+        // the difference between the GEOs being ranked.
+        ftdRate: Number(ftdRate.toFixed(1)),
+        reg2depRate: Number(reg2depRate.toFixed(1)),
       };
     });
   }, [filteredRows]);
 
-  const geoMetricKey = geoMetric === "combined" ? "combined" : geoMetric;
-  const geoMetricsWithCombined = React.useMemo(
-    () =>
-      geoMetrics.map((marker) => ({
-        ...marker,
-        combined: Math.round((marker.ftdRate + marker.reg2depRate) / 2),
-      })),
-    [geoMetrics]
-  );
-  const geoSorted = React.useMemo(
-    () => [...geoMetricsWithCombined].sort((a, b) => b[geoMetricKey] - a[geoMetricKey]),
-    [geoMetricsWithCombined, geoMetricKey]
-  );
+  // A rate needs a denominator big enough to mean something. Bolivia's 17.2%
+  // Reg→Dep came off 93 registrations and $56.02 of revenue, and it outranked
+  // Brazil, which converts at 14.3% on 676 registrations and $462.12. Ranking
+  // by rate with no floor promotes whichever GEO has the smallest sample.
+  //
+  // The floor is relative so it survives a one-day range as well as a quarter,
+  // and it is stated in the UI rather than applied silently.
+  // Dots are scaled by area, not radius: radius-scaling makes an 8x value look
+  // 64x bigger. Anything with a coordinate and a non-zero metric is drawn.
+  const geoPlotted = React.useMemo(() => {
+    const withCoords = geoMetrics.filter(
+      (geo) => Array.isArray(geo.coordinates) && Number(geo[geoMetric]) > 0
+    );
+    const max = withCoords.reduce((acc, geo) => Math.max(acc, Number(geo[geoMetric]) || 0), 0);
+    if (!max) return [];
+    return withCoords.map((geo) => ({
+      ...geo,
+      radius: 3 + Math.sqrt((Number(geo[geoMetric]) || 0) / max) * 7,
+    }));
+  }, [geoMetrics, geoMetric]);
+
+  const geoSampleFloor = React.useMemo(() => {
+    const totalRegisters = geoMetrics.reduce((acc, geo) => acc + geo.registers, 0);
+    // 5% of the period's registrations. At 2% the floor sat around 44, which
+    // still let Bolivia's 17.2% off 93 registrations lead the rate ranking —
+    // and that rate carries a 95% interval of roughly 9–25%, wide enough to
+    // overlap Brazil's 14.3% off 677 completely. A rate that cannot be
+    // distinguished from the one below it should not be sorted above it.
+    return Math.max(30, Math.round(totalRegisters * 0.05));
+  }, [geoMetrics]);
+
+  const geoMetricKey = geoMetric;
+  // "Combined" used to average an FTD rate (per click) with a Reg→Dep rate
+  // (per registration). Two different denominators do not average into
+  // anything, so the lens is gone and revenue takes its place as the default.
+  const geoMetricsWithCombined = geoMetrics;
+  const geoIsRateMetric = geoMetricKey === "ftdRate" || geoMetricKey === "reg2depRate";
+  const geoSorted = React.useMemo(() => {
+    const ranked = [...geoMetrics];
+    if (!geoIsRateMetric) {
+      return ranked.sort((a, b) => b[geoMetricKey] - a[geoMetricKey]);
+    }
+    // Under-sampled GEOs keep their place in the list but fall below the ones
+    // that clear the floor, rather than vanishing — hiding them would answer
+    // "where did Bolivia go" with silence.
+    const clears = (geo) => geo.registers >= geoSampleFloor;
+    return ranked.sort((a, b) => {
+      const ac = clears(a);
+      const bc = clears(b);
+      if (ac !== bc) return ac ? -1 : 1;
+      return b[geoMetricKey] - a[geoMetricKey];
+    });
+  }, [geoMetrics, geoMetricKey, geoIsRateMetric, geoSampleFloor]);
   const topGeoList = geoSorted.slice(0, 3);
   const metricValues = geoSorted.map((item) => item[geoMetricKey]);
   const metricMax = metricValues.length ? Math.max(...metricValues) : 0;
+  // One formatter, so the toggle, the headline and the list can never disagree
+  // about what a number means.
+  const formatGeoMetric = React.useCallback(
+    (value) => {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
+      const numeric = Number(value);
+      if (geoMetricKey === "revenue") return formatCurrency(numeric);
+      if (geoMetricKey === "epc") return formatCurrency(numeric);
+      return `${numeric.toFixed(1)}%`;
+    },
+    [geoMetricKey]
+  );
   const activeGeo = selectedGeo ?? hoverGeo;
   const activeGeoData = geoMetricsWithCombined.find((marker) => marker.iso === activeGeo) || null;
   const topGeo = geoSorted[0] || null;
@@ -1769,8 +1853,8 @@ function HomeDashboard({
   const mapColor = mapGeo?.color || "var(--green)";
 
   const geoMetricOptions = [
-    { value: "combined", label: t("Combined") },
-    { value: "ftdRate", label: t("FTD rate") },
+    { value: "revenue", label: t("Revenue") },
+    { value: "epc", label: t("Rev / click") },
     { value: "reg2depRate", label: t("Reg2Dep rate") },
   ];
 
@@ -2195,7 +2279,7 @@ function HomeDashboard({
             <ResponsiveContainer width="100%" height={250}>
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
-                  {homeChartSeries.map((series) => (
+                  {activeChartSeries.map((series) => (
                     <linearGradient
                       key={series.key}
                       id={`smooth-${toGradientId(series.key)}`}
@@ -2229,7 +2313,7 @@ function HomeDashboard({
                     <ChartTooltip {...props} visibleKeys={tooltipVisibleKeys} />
                   )}
                 />
-                {homeChartSeries.map((series) => {
+                {activeChartSeries.map((series) => {
                   const active = isSeriesActive(series.key);
                   const muted = isSeriesMuted(series.key);
                   return (
@@ -2259,7 +2343,7 @@ function HomeDashboard({
               </AreaChart>
             </ResponsiveContainer>
             <div className="legend">
-              {homeChartSeries.map((item) => {
+              {activeChartSeries.map((item) => {
                 const active = selectedSeries.length
                   ? selectedSeries.includes(item.key)
                   : hoverSeries === item.key;
@@ -2345,7 +2429,9 @@ function HomeDashboard({
             <div>
               <h3 className="panel-title">{t("Top GEO")}</h3>
               <p className="panel-subtitle">
-                {t("Highest FTD conversion rate and Reg2Dep conversion rate")}
+                {geoIsRateMetric
+                  ? `${t("Ranked by rate, with at least")} ${geoSampleFloor.toLocaleString()} ${t("registrations")}`
+                  : t("Where the money came from")}
               </p>
             </div>
             <PeriodSelect
@@ -2418,18 +2504,37 @@ function HomeDashboard({
                       })
                     }
                   </Geographies>
-                  {mapGeo?.coordinates ? (
-                    <Marker
-                      key={mapGeo.name}
-                      coordinates={mapGeo.coordinates}
-                      onMouseEnter={() => handleGeoEnter(mapGeo.iso)}
-                      onMouseLeave={() => handleGeoLeave()}
-                      onClick={() => handleGeoToggle(mapGeo.iso)}
-                    >
-                      <circle r={10} fill={mapGeo.color} opacity={0.2} />
-                      <circle r={6.5} fill={mapGeo.color} stroke="#0b0c0e" strokeWidth={1} />
-                    </Marker>
-                  ) : null}
+                  {/* Every GEO that produced something, sized by the active
+                      metric — not one dot for the leader. The map used to be a
+                      dark rectangle with a single point on it, which is a lot
+                      of the panel's width spent saying "Brazil". */}
+                  {geoPlotted.map((marker) => {
+                    const isFocus = mapGeo?.iso === marker.iso;
+                    return (
+                      <Marker
+                        key={marker.iso}
+                        coordinates={marker.coordinates}
+                        onMouseEnter={() => handleGeoEnter(marker.iso)}
+                        onMouseLeave={() => handleGeoLeave()}
+                        onClick={() => handleGeoToggle(marker.iso)}
+                        style={{ default: { cursor: "pointer" } }}
+                      >
+                        <circle
+                          r={marker.radius * 1.9}
+                          fill={marker.color}
+                          opacity={isFocus ? 0.28 : 0.14}
+                        />
+                        <circle
+                          r={marker.radius}
+                          fill={marker.color}
+                          stroke="#0b0c0e"
+                          strokeWidth={isFocus ? 1.2 : 0.7}
+                          opacity={isFocus ? 1 : 0.82}
+                        />
+                        <title>{`${marker.name} · ${formatGeoMetric(marker[geoMetricKey])}`}</title>
+                      </Marker>
+                    );
+                  })}
                 </ComposableMap>
                 <div className="legend geo">
                   {mapGeo ? (
@@ -2451,21 +2556,28 @@ function HomeDashboard({
                   <div className="map-info-main">
                     <div className="map-info-name">{activeGeoName || t("None")}</div>
                     <span className="map-info-score">
-                      {focusGeo ? `${focusGeo[geoMetricKey]}%` : "--"}
+                      {focusGeo ? formatGeoMetric(focusGeo[geoMetricKey]) : "--"}
                     </span>
                   </div>
+                  {/* Volume sits beside the rate on purpose: a Reg→Dep of 17%
+                      means one thing on 676 registrations and another on 93,
+                      and the panel used to show only the percentage. */}
                   <div className="map-info-metrics">
                     <div className="map-metric">
-                      <span>{t("FTD rate")}</span>
-                      <strong>{focusGeo ? `${focusGeo.ftdRate}%` : "--"}</strong>
+                      <span>{t("Revenue")}</span>
+                      <strong>{focusGeo ? formatCurrency(focusGeo.revenue) : "--"}</strong>
+                    </div>
+                    <div className="map-metric">
+                      <span>{t("Rev / click")}</span>
+                      <strong>{focusGeo ? formatCurrency(focusGeo.epc) : "--"}</strong>
                     </div>
                     <div className="map-metric">
                       <span>{t("Reg2Dep rate")}</span>
-                      <strong>{focusGeo ? `${focusGeo.reg2depRate}%` : "--"}</strong>
+                      <strong>{focusGeo ? `${focusGeo.reg2depRate.toFixed(1)}%` : "--"}</strong>
                     </div>
                     <div className="map-metric">
-                      <span>{t("Combined")}</span>
-                      <strong>{focusGeo ? `${focusGeo.combined}%` : "--"}</strong>
+                      <span>{t("Registrations")}</span>
+                      <strong>{focusGeo ? focusGeo.registers.toLocaleString() : "--"}</strong>
                     </div>
                   </div>
                 </div>
@@ -2492,10 +2604,29 @@ function HomeDashboard({
                           <div className="map-rank-row">
                             <span className="dot" style={{ background: marker.color }} />
                             <span className="map-rank-name">{marker.name}</span>
-                            <span className="map-rank-value">{value}%</span>
+                            <span className="map-rank-value">{formatGeoMetric(value)}</span>
                           </div>
                           <div className="map-rank-bar">
                             <span style={{ width: `${width}%`, background: marker.color }} />
+                          </div>
+                          <div className="map-rank-foot">
+                            {/* Never repeats the ranked value — it supplies the
+                                dimension the ranking does not show. */}
+                            <span>
+                              {geoMetricKey === "revenue"
+                                ? `${marker.clicks.toLocaleString()} ${t("clicks")} · ${formatCurrency(marker.epc)}/${t("click")}`
+                                : geoMetricKey === "epc"
+                                  ? `${marker.clicks.toLocaleString()} ${t("clicks")} · ${formatCurrency(marker.revenue)}`
+                                  : `${marker.registers.toLocaleString()} ${t("regs")} · ${formatCurrency(marker.revenue)}`}
+                            </span>
+                            {geoIsRateMetric && marker.registers < geoSampleFloor ? (
+                              <span
+                                className="map-rank-thin"
+                                title={t("Too few registrations for this rate to be reliable")}
+                              >
+                                {t("low sample")}
+                              </span>
+                            ) : null}
                           </div>
                         </button>
                       );

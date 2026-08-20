@@ -13271,6 +13271,9 @@ select option,
   padding: 12px;
   display: flex;
   flex-direction: column;
+  /* The map is shorter than the ranking column it sits beside, so it centres
+     in the leftover height instead of hanging from the top of a tall box. */
+  justify-content: center;
   gap: 12px;
 }
 
@@ -13338,7 +13341,9 @@ select option,
 
 .map-info-metrics {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Two up, not three. Four measures now, and at three per row "Reg2Dep rate"
+     had to wrap inside a box narrower than the words. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -23044,4 +23049,35 @@ select option,
   .funnel-fill {
     transition: none;
   }
+}
+
+/* ── Top GEO ranking rows ─────────────────────────────────────────────────
+   The ranked number alone hid its own sample size: a 17.2% Reg→Dep off 93
+   registrations sat above a 14.3% off 676, and $56 of revenue read as the
+   best GEO on the page. Every row now carries the volume and the money the
+   rate was computed from, and a rate resting on too small a sample says so. */
+.map-rank-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.map-rank-thin {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 198, 37, 0.28);
+  background: rgba(247, 198, 37, 0.1);
+  color: #f7c625;
+  font-weight: 600;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }

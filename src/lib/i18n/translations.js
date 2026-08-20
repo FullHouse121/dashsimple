@@ -514,6 +514,14 @@ export const translations = {
     FTD: "FTD",
     // Revenue the tracker attributes to neither an FTD nor a redeposit.
     Other: "Diğer",
+    click: "tıklama",
+    "per click": "tıklama başına",
+    "Rev / click": "Tıklama başına gelir",
+    "Where the money came from": "Para nereden geldi",
+    "Ranked by rate, with at least": "Orana göre sıralandı, en az",
+    "registrations": "kayıt",
+    "low sample": "az veri",
+    "Too few registrations for this rate to be reliable": "Bu oranın güvenilir olması için kayıt sayısı çok az",
     "Stage counts and drop-off for the selected period":
       "Seçilen dönem için aşama sayıları ve düşüş oranları",
     "of": "/",
