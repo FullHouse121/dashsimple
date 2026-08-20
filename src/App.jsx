@@ -802,7 +802,47 @@ const homeChartSeries = [
   { key: "r2d", label: "Reg2Dep", color: RATE_COLORS.r2d, width: 2 },
 ];
 
+// The map's own coordinate frame.
+//
+// ComposableMap defaults to 800x600 — landscape — and the column it sits in is
+// portrait, so the projection letterboxed into a short strip across the middle
+// and threw away roughly a third of the height. The frame now matches the box.
+const MAP_FRAME_W = 800;
+const MAP_FRAME_H = 900;
+const MAP_WORLD_SCALE = 120;
+// geoEqualEarth spans roughly 5.4x scale across 360 degrees of longitude and
+// 2.7x scale across 180 of latitude — which works out to the same ~0.015 x
+// scale pixels per degree on both axes. Deriving the zoom from that instead of
+// guessing is the difference between a 2.5x and an 6.5x fit.
+const MAP_PX_PER_DEGREE_AT_SCALE_1 = 0.015;
+// Leaves a margin so coastlines are not flush against the frame edge.
+const MAP_FIT_MARGIN = 0.82;
+// geoReference stores one coordinate per country, so the fitted box is a box
+// around centroids — and a centroid is not a country. Framing on those alone
+// cut Brazil's east coast and Argentina's south off the edge, because both
+// extend far past the point representing them. This pads the span by roughly
+// the reach of a large country on each side.
+const MAP_COUNTRY_EXTENT_PAD = 24;
+
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+// world-atlas@2 exposes only `properties.name`, so countries are matched by
+// name. These are the names where the tracker and the atlas disagree.
+const ATLAS_NAME_ALIASES = {
+  "United States": "United States of America",
+  "United Kingdom": "United Kingdom",
+  "Czech Republic": "Czechia",
+  "Dominican Republic": "Dominican Rep.",
+  "Bosnia and Herzegovina": "Bosnia and Herz.",
+  "Ivory Coast": "Côte d'Ivoire",
+  "South Korea": "South Korea",
+  "Democratic Republic of the Congo": "Dem. Rep. Congo",
+  "Central African Republic": "Central African Rep.",
+  "South Sudan": "S. Sudan",
+  "Equatorial Guinea": "Eq. Guinea",
+  "Solomon Islands": "Solomon Is.",
+};
+const atlasName = (name) => ATLAS_NAME_ALIASES[name] || name;
+
 const geoReference = {
   Argentina: { iso: "ARG", coordinates: [-63.6167, -38.4161] },
   Australia: { iso: "AUS", coordinates: [133.7751, -25.2744] },
@@ -1937,6 +1977,69 @@ function HomeDashboard({
     }));
   }, [geoMetrics, geoMetric]);
 
+  // Frame the map on the traffic, not on the planet.
+  //
+  // A world projection in a 290px column put every producing country inside
+  // about a fifth of the frame, so the dots clustered into an unreadable
+  // smudge over South America and the other four fifths drew ocean. The frame
+  // is fitted to the bounding box of what actually produced something, so it
+  // follows the traffic if it ever moves off Latin America.
+  const mapFrame = React.useMemo(() => {
+    const withCoords = geoPlotted.filter((geo) => Array.isArray(geo.coordinates));
+    if (!withCoords.length) return { scale: MAP_WORLD_SCALE, center: [0, 15] };
+    // Frame on where the value is, not on every country with a pixel of it.
+    //
+    // Fitting the box to all of them let Nigeria ($6.46) and the United States
+    // ($0.00) stretch it from Mexico to west Africa, which is mostly ocean and
+    // undoes the zoom. The countries making up the first 90% of the ranked
+    // metric set the frame; the rest are still drawn, they just do not get a
+    // vote on where to point the camera.
+    const ranked = [...withCoords].sort(
+      (a, b) => (Number(b[geoMetric]) || 0) - (Number(a[geoMetric]) || 0)
+    );
+    const total = ranked.reduce((acc, geo) => acc + (Number(geo[geoMetric]) || 0), 0);
+    const framing = [];
+    let running = 0;
+    for (const geo of ranked) {
+      framing.push(geo);
+      running += Number(geo[geoMetric]) || 0;
+      if (total > 0 && running / total >= 0.9) break;
+    }
+    const lons = framing.map((geo) => geo.coordinates[0]);
+    const lats = framing.map((geo) => geo.coordinates[1]);
+    const minLon = Math.min(...lons);
+    const maxLon = Math.max(...lons);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    // A floor on the span stops a single-country range zooming to street level.
+    const spanLon = Math.max(maxLon - minLon, 30) + MAP_COUNTRY_EXTENT_PAD;
+    const spanLat = Math.max(maxLat - minLat, 26) + MAP_COUNTRY_EXTENT_PAD;
+    // Whichever axis runs out of room first decides the zoom.
+    const byLon =
+      (MAP_FRAME_W * MAP_FIT_MARGIN) / (MAP_PX_PER_DEGREE_AT_SCALE_1 * spanLon);
+    const byLat =
+      (MAP_FRAME_H * MAP_FIT_MARGIN) / (MAP_PX_PER_DEGREE_AT_SCALE_1 * spanLat);
+    return {
+      scale: Math.max(MAP_WORLD_SCALE, Math.min(Math.min(byLon, byLat), 1400)),
+      center: [(minLon + maxLon) / 2, (minLat + maxLat) / 2],
+    };
+  }, [geoPlotted, geoMetric]);
+
+  // Countries carry their own colour, weighted by the active metric, so the
+  // shape says where the money is — a dot on a 290px world map could not.
+  const geoFillByName = React.useMemo(() => {
+    const map = new Map();
+    const max = geoPlotted.reduce((acc, geo) => Math.max(acc, Number(geo[geoMetric]) || 0), 0);
+    geoPlotted.forEach((geo) => {
+      map.set(atlasName(geo.name), {
+        color: geo.color,
+        weight: max > 0 ? (Number(geo[geoMetric]) || 0) / max : 0,
+        iso: geo.iso,
+      });
+    });
+    return map;
+  }, [geoPlotted, geoMetric]);
+
   const geoSampleFloor = React.useMemo(() => {
     const totalRegisters = geoMetrics.reduce((acc, geo) => acc + geo.registers, 0);
     // 5% of the period's registrations. At 2% the floor sat around 44, which
@@ -2634,49 +2737,53 @@ function HomeDashboard({
             </div>
             <div className="map-grid">
               <div className="map-visual">
-                <ComposableMap projectionConfig={{ scale: 120 }}>
-                  <defs>
-                    <radialGradient id="geo-heat" cx="50%" cy="40%" r="60%">
-                      <stop offset="0%" stopColor={mapColor} stopOpacity="0.95" />
-                      <stop offset="55%" stopColor={mapColor} stopOpacity="0.55" />
-                      <stop offset="100%" stopColor="#1b1d21" stopOpacity="0.15" />
-                    </radialGradient>
-                  </defs>
+                <ComposableMap
+                  width={MAP_FRAME_W}
+                  height={MAP_FRAME_H}
+                  projectionConfig={{ scale: mapFrame.scale, center: mapFrame.center }}
+                >
                   <Geographies geography={geoUrl}>
                     {({ geographies }) =>
                       geographies.map((geo) => {
-                        const iso = geo.properties.ISO_A3;
-                        const isHighlighted = mapIso && iso === mapIso;
-                        const fill = isHighlighted ? "url(#geo-heat)" : "#353840";
-                        const opacity = isHighlighted ? 0.95 : 0.28;
+                        const name = geo.properties.name;
+                        const producing = geoFillByName.get(name);
+                        const iso = producing?.iso || name;
+                        const isHighlighted = Boolean(producing) && mapIso === iso;
+                        // A country that produced nothing stays inert; one that
+                        // did is filled in its own colour, darkening toward the
+                        // leader so the ranking is legible from the shape alone.
+                        const fill = producing ? producing.color : "#2a2d33";
+                        const opacity = producing
+                          ? 0.3 + producing.weight * 0.65
+                          : 0.16;
                         return (
                           <Geography
                             key={geo.rsmKey}
                             geography={geo}
                             fill={fill}
-                            stroke={isHighlighted ? "#f5f5f7" : "#1e2126"}
-                            strokeWidth={isHighlighted ? 1.2 : 0.5}
+                            stroke={isHighlighted ? "#f5f5f7" : "#15171b"}
+                            strokeWidth={isHighlighted ? 1.1 : 0.4}
                             style={{
                               default: {
                                 outline: "none",
                                 opacity,
-                                cursor: isHighlighted ? "pointer" : "default",
+                                cursor: producing ? "pointer" : "default",
                                 filter: isHighlighted
-                                  ? "drop-shadow(0 0 12px rgba(54, 208, 124, 0.35))"
+                                  ? "drop-shadow(0 0 10px rgba(255, 255, 255, 0.28))"
                                   : "none",
                               },
                               hover: {
                                 outline: "none",
-                                opacity: isHighlighted ? 1 : opacity,
+                                opacity: producing ? 1 : opacity,
                               },
                               pressed: {
                                 outline: "none",
                                 opacity: 1,
                               },
                             }}
-                            onMouseEnter={() => isHighlighted && handleGeoEnter(iso)}
-                            onMouseLeave={() => isHighlighted && handleGeoLeave()}
-                            onClick={() => isHighlighted && handleGeoToggle(iso)}
+                            onMouseEnter={() => producing && handleGeoEnter(iso)}
+                            onMouseLeave={() => producing && handleGeoLeave()}
+                            onClick={() => producing && handleGeoToggle(iso)}
                           />
                         );
                       })
@@ -2686,8 +2793,8 @@ function HomeDashboard({
                       metric — not one dot for the leader. The map used to be a
                       dark rectangle with a single point on it, which is a lot
                       of the panel's width spent saying "Brazil". */}
-                  {geoPlotted.map((marker) => {
-                    const isFocus = mapGeo?.iso === marker.iso;
+                  {geoPlotted.filter((marker) => mapGeo?.iso === marker.iso).map((marker) => {
+                    const isFocus = true;
                     return (
                       <Marker
                         key={marker.iso}
