@@ -1324,8 +1324,22 @@ function HomeDashboard({
     [filteredRows]
   );
 
-  const c2i = toPercent(totals.installs, totals.clicks);
-  const c2r = toPercent(totals.registers, totals.clicks);
+  // Conversion rates divide by unique clicks, not raw clicks.
+  //
+  // Only 37% of clicks here are unique, so dividing by the raw count answered
+  // "what share of visits converted" when the question is "what share of
+  // visitors converted" — and it disagreed with the rest of the app, which
+  // already uses uniques. Click→Register read 7.77% on this page and 20.88%
+  // on Campaigns and Statistics, under the same name.
+  //
+  // The fallback matters: 202 rows report a click count with no uniques at
+  // all, which cannot be literally true, so a source that reports none falls
+  // back to raw clicks rather than dividing by zero. Those rows carry 718 of
+  // 28,438 clicks, so the fallback is a guard, not the usual path.
+  const uniqueClickBase = totals.uniqueClicks > 0 ? totals.uniqueClicks : totals.clicks;
+  const usingUniqueClicks = totals.uniqueClicks > 0;
+  const c2i = toPercent(totals.installs, uniqueClickBase);
+  const c2r = toPercent(totals.registers, uniqueClickBase);
   const i2r = toPercent(totals.registers, totals.installs);
   const r2d = toPercent(totals.ftds, totals.registers);
   const cpc = safeDivide(totals.spend, totals.clicks);
@@ -1603,6 +1617,7 @@ function HomeDashboard({
         map.set(key, {
           date: key,
           clicks: 0,
+          uniqueClicks: 0,
           installs: 0,
           registers: 0,
           ftds: 0,
@@ -1610,6 +1625,7 @@ function HomeDashboard({
       }
       const current = map.get(key);
       current.clicks += sum(row.clicks);
+      current.uniqueClicks += sum(row.unique_clicks);
       current.installs += sum(row.installs);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
@@ -1622,8 +1638,10 @@ function HomeDashboard({
         installs: row.installs,
         registers: row.registers,
         ftds: row.ftds,
-        c2i: toPercent(row.installs, row.clicks),
-        c2r: toPercent(row.registers, row.clicks),
+        // Same denominator as the period figure, per day. Without this the
+        // sparkline and the headline rate beside it describe different things.
+        c2i: toPercent(row.installs, row.uniqueClicks > 0 ? row.uniqueClicks : row.clicks),
+        c2r: toPercent(row.registers, row.uniqueClicks > 0 ? row.uniqueClicks : row.clicks),
         i2r: toPercent(row.registers, row.installs),
         r2d: toPercent(row.ftds, row.registers),
       }));
@@ -1710,7 +1728,14 @@ function HomeDashboard({
 
   const funnelData = React.useMemo(() => {
     const stages = [
-      { name: "Clicks", value: totals.clicks, color: STAGE_COLORS.Clicks },
+      // The funnel opens where the rates are measured. Opening on raw clicks
+      // while Click→Register divided by uniques made the first drop look 2.7x
+      // worse than it is. Statistics already opens on uniques for this reason.
+      {
+        name: usingUniqueClicks ? "Unique clicks" : "Clicks",
+        value: uniqueClickBase,
+        color: STAGE_COLORS.Clicks,
+      },
       { name: "Install", value: totals.installs, color: STAGE_COLORS.Install },
       { name: "Register", value: totals.registers, color: STAGE_COLORS.Register },
       { name: "FTD", value: totals.ftds, color: STAGE_COLORS.FTD },
@@ -1787,10 +1812,11 @@ function HomeDashboard({
       const country = String(row.country || "").trim();
       if (!country) return;
       if (!map.has(country)) {
-        map.set(country, { clicks: 0, registers: 0, ftds: 0, revenue: 0 });
+        map.set(country, { clicks: 0, uniqueClicks: 0, registers: 0, ftds: 0, revenue: 0 });
       }
       const current = map.get(country);
       current.clicks += sum(row.clicks);
+      current.uniqueClicks += sum(row.unique_clicks);
       current.registers += sum(row.registers);
       current.ftds += sum(row.ftds);
       // The panel used to carry no money at all, which is how a GEO worth $56
@@ -1798,7 +1824,11 @@ function HomeDashboard({
       current.revenue += readTotalRevenue(row);
     });
     return Array.from(map.entries()).map(([country, stats], index) => {
-      const ftdRate = toPercent(stats.ftds, stats.clicks) ?? 0;
+      // Per-visitor, not per-visit — the same basis as the funnel and the
+      // handoff rates, so a GEO's numbers mean the same thing wherever they
+      // are read.
+      const geoUniques = stats.uniqueClicks > 0 ? stats.uniqueClicks : stats.clicks;
+      const ftdRate = toPercent(stats.ftds, geoUniques) ?? 0;
       const reg2depRate = toPercent(stats.ftds, stats.registers) ?? 0;
       const ref = geoReference[country] || {};
       return {
@@ -1807,12 +1837,15 @@ function HomeDashboard({
         coordinates: ref.coordinates || null,
         color: geoPalette[index % geoPalette.length],
         clicks: stats.clicks,
+        uniqueClicks: geoUniques,
         registers: stats.registers,
         ftds: stats.ftds,
         revenue: stats.revenue,
-        // Revenue per click — the one efficiency measure that compares a GEO
-        // with 573 clicks against one with 9,912 without favouring either.
-        epc: stats.clicks > 0 ? stats.revenue / stats.clicks : 0,
+        // Revenue per unique click — the one efficiency measure that compares
+        // a GEO with 573 clicks against one with 9,912 without favouring
+        // either. On raw clicks this measured how often the same visitor
+        // returned as much as it measured what a visitor was worth.
+        epc: geoUniques > 0 ? stats.revenue / geoUniques : 0,
         // Kept at one decimal: rounding 1.9% to 2% and 17.2% to 17% threw away
         // the difference between the GEOs being ranked.
         ftdRate: Number(ftdRate.toFixed(1)),
@@ -1926,7 +1959,7 @@ function HomeDashboard({
 
   const geoMetricOptions = [
     { value: "revenue", label: t("Revenue") },
-    { value: "epc", label: t("Rev / click") },
+    { value: "epc", label: t("Rev / unique") },
     { value: "reg2depRate", label: t("Reg2Dep rate") },
   ];
 
@@ -2669,7 +2702,7 @@ function HomeDashboard({
                       <strong>{focusGeo ? formatCurrency(focusGeo.revenue) : "--"}</strong>
                     </div>
                     <div className="map-metric">
-                      <span>{t("Rev / click")}</span>
+                      <span>{t("Rev / unique")}</span>
                       <strong>{focusGeo ? formatCurrency(focusGeo.epc) : "--"}</strong>
                     </div>
                     <div className="map-metric">
@@ -2715,9 +2748,9 @@ function HomeDashboard({
                                 dimension the ranking does not show. */}
                             <span>
                               {geoMetricKey === "revenue"
-                                ? `${marker.clicks.toLocaleString()} ${t("clicks")} · ${formatCurrency(marker.epc)}/${t("click")}`
+                                ? `${marker.uniqueClicks.toLocaleString()} ${t("unique")} · ${formatCurrency(marker.epc)} ${t("each")}`
                                 : geoMetricKey === "epc"
-                                  ? `${marker.clicks.toLocaleString()} ${t("clicks")} · ${formatCurrency(marker.revenue)}`
+                                  ? `${marker.uniqueClicks.toLocaleString()} ${t("unique")} · ${formatCurrency(marker.revenue)}`
                                   : `${marker.registers.toLocaleString()} ${t("regs")} · ${formatCurrency(marker.revenue)}`}
                             </span>
                             {geoIsRateMetric && marker.registers < geoSampleFloor ? (

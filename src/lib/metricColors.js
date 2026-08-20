@@ -34,6 +34,7 @@ export const RATE_COLORS = {
 // Funnel stages, keyed by the stage name used in the chart data.
 export const STAGE_COLORS = {
   Clicks: METRIC_COLORS.clicks,
+  "Unique clicks": METRIC_COLORS.clicks,
   Install: METRIC_COLORS.install,
   Register: METRIC_COLORS.registration,
   FTD: METRIC_COLORS.ftd,
