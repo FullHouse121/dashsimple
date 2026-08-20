@@ -26609,7 +26609,13 @@ export default function App() {
 
   const profileName = authUser?.username || "DeusInsta";
   const profileRole = authUser?.role || "Media Buyer";
-  const profileInitials = profileName.slice(0, 2).toUpperCase();
+  // initialsOf handles two-word names ("Karen Farias" -> KF); slicing the first
+  // two characters gave "KA". The team tables have always used the former.
+  const profileInitials = initialsOf(profileName);
+  // The role's own colour, from the same map the Users and Team tables use.
+  // Both badges were hardcoded green, so a Boss and a Junior Media Buyer wore
+  // the Team Leader's colour and the role tint meant nothing outside Roles.
+  const profileRoleColor = roleIdentColor(profileRole);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
@@ -26642,16 +26648,21 @@ export default function App() {
           <img src={logo} alt="Deus Affiliates" />
         </div>
 
+        {/* One identity block instead of a caption above a pill that repeated
+            the name. The trophy said nothing about the role — a Junior Media
+            Buyer got the same cup as the Boss — so the role is now stated,
+            in its own colour. */}
         <div className="sidebar-section">
-          <p className="section-title">{t("Logged as {role}", { role: t(profileRole) })}</p>
-          <button className="team-pill" type="button">
-            <span className="team-pill-icon" aria-hidden="true">
-              <Trophy size={14} />
+          <div className="ident" style={{ "--ident-color": profileRoleColor }}>
+            <span className="ident-avatar" aria-hidden="true">{profileInitials}</span>
+            <span className="ident-text">
+              <span className="ident-name">{profileName}</span>
+              <span className="ident-role">
+                <span className="ident-role-dot" aria-hidden="true" />
+                {t(profileRole)}
+              </span>
             </span>
-            <span className="team-pill-content">
-              <span className="team-pill-name">{profileName}</span>
-            </span>
-          </button>
+          </div>
         </div>
 
         <nav className="nav">
@@ -27056,10 +27067,19 @@ export default function App() {
                 type="button"
                 onClick={() => setProfileMenuOpen((prev) => !prev)}
               >
-                <span className="avatar">{profileInitials}</span>
-                <div>
-                  <div className="profile-role">{t(profileRole)}</div>
+                <span className="avatar" style={{ "--ident-color": profileRoleColor }}>
+                  {profileInitials}
+                </span>
+                <div className="profile-text">
                   <div className="profile-name">{profileName}</div>
+                  <div className="profile-role">
+                    <span
+                      className="ident-role-dot"
+                      style={{ "--ident-color": profileRoleColor }}
+                      aria-hidden="true"
+                    />
+                    {t(profileRole)}
+                  </div>
                 </div>
               </button>
               {profileMenuOpen ? (

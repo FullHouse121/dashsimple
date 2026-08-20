@@ -736,58 +736,6 @@ select {
   letter-spacing: 0.3px;
 }
 
-.team-pill {
-  position: relative;
-  background: rgba(54, 208, 124, 0.1);
-  border: 1px solid rgba(54, 208, 124, 0.28);
-  color: var(--green);
-  padding: 8px 14px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: flex-start;
-  font-size: 13px;
-  width: auto;
-  max-width: 100%;
-  box-shadow: 0 0 12px rgba(54, 208, 124, 0.1);
-  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
-}
-
-.team-pill:hover {
-  background: rgba(54, 208, 124, 0.16);
-  border-color: rgba(54, 208, 124, 0.42);
-  box-shadow: 0 0 14px rgba(54, 208, 124, 0.18);
-}
-
-.team-pill-icon {
-  width: 16px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--green);
-}
-
-.team-pill-content {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-}
-
-.team-pill-name {
-  color: var(--green);
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: 0.005em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.team-pill .pill-icon {
-  font-size: 16px;
-}
 
 .chev {
   opacity: 0.6;
@@ -1155,15 +1103,21 @@ select {
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
-  background: var(--green);
-  color: #0f1211;
+  width: 34px;
+  height: 34px;
+  /* Tinted by role, not fixed green: a Boss, a Team Leader and a Junior Media
+     Buyer all wore the same colour, so the tint carried no information. The
+     wash + ring reads lighter than a solid disc at this size. */
+  background: color-mix(in srgb, var(--ident-color, var(--green)) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ident-color, var(--green)) 42%, transparent);
+  color: var(--ident-color, var(--green));
   border-radius: 50%;
-  font-weight: 600;
+  font-weight: 700;
   display: grid;
   place-items: center;
-  font-size: 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  flex: none;
 }
 
 .profile-name {
@@ -1172,8 +1126,23 @@ select {
 }
 
 .profile-role {
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+/* Name first, role under it. The role was on top at 11px with the name below,
+   which put the label above the thing it labels. */
+.profile-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .profile-menu-wrap {
@@ -19493,11 +19462,13 @@ select option,
   .sidebar.is-collapsed { padding: 32px 14px; }
   .sidebar.is-collapsed .brand { display: none; }
   .sidebar.is-collapsed .sidebar-section .section-title { display: none; }
-  .sidebar.is-collapsed .team-pill {
+  .sidebar.is-collapsed .ident {
     justify-content: center;
-    padding: 10px;
+    padding: 9px 0;
+    background: transparent;
+    border-color: transparent;
   }
-  .sidebar.is-collapsed .team-pill-content { display: none; }
+  .sidebar.is-collapsed .ident-text { display: none; }
   .sidebar.is-collapsed .nav-section-title {
     height: 1px;
     margin: 6px 8px;
@@ -23468,3 +23439,73 @@ select option,
     transition: none;
   }
 }
+
+/* ── Identity badge ───────────────────────────────────────────────────────
+   Who you are signed in as, in the sidebar.
+   It used to be a caption — "Logged as Team Leader" — above a pill that
+   repeated the name behind a trophy icon. The trophy was the same for every
+   role, the name was said once too often, and the green was fixed, so the
+   colour that identifies a role everywhere else in the app meant nothing
+   here. One block now: initials in the role's colour, the name, the role. */
+.ident {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ident-avatar {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ident-color, var(--green));
+  background: color-mix(in srgb, var(--ident-color, var(--green)) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ident-color, var(--green)) 42%, transparent);
+}
+
+.ident-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ident-name {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ident-role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* The dot is the whole role signal at this size, so it carries the colour. */
+.ident-role-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ident-color, var(--green));
+}
+
