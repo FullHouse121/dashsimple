@@ -514,6 +514,12 @@ export const translations = {
     FTD: "FTD",
     // Revenue the tracker attributes to neither an FTD nor a redeposit.
     Other: "Diğer",
+    "Buyers": "Alıcılar",
+    "Who produced it": "Kim üretti",
+    "No buyer data available.": "Alıcı verisi yok.",
+    "Share of revenue": "Gelir payı",
+    "Conversion": "Dönüşüm",
+    "Every stage, and the drop between them": "Her aşama ve aralarındaki düşüş",
     "No countries in range": "Aralıkta ülke yok",
     "Loading map…": "Harita yükleniyor…",
     "Less": "Az",

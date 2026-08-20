@@ -107,7 +107,27 @@ check(
   !/<Pie\b/.test(homeSlice),
   "a ring encodes parts of a whole; these are independent ratios over different denominators"
 );
-check(3, "each handoff shows its trend", /handoffRates\.map\(/.test(homeSlice) && /<Sparkline/.test(homeSlice));
+// The funnel and handoff panels merged, so the trend is now read per stage
+// rather than mapped over a separate list — same property, new shape.
+check(
+  3,
+  "each handoff shows its trend",
+  /handoffRates\[stageIndex - 1\]/.test(homeSlice) && /<Sparkline values=\{handoff\.daily\}/.test(homeSlice)
+);
+check(
+  3,
+  "stages and their drops live in one panel",
+  /<h2 className="panel-title">\{t\("Conversion"\)\}<\/h2>/.test(homeSlice) &&
+    !/t\("Conversion Funnel"\)/.test(homeSlice) &&
+    !/t\("Conversion Rates"\)/.test(homeSlice),
+  "three panels printed the same two rates"
+);
+check(
+  3,
+  "the page answers who produced the revenue",
+  /const buyerRows = React\.useMemo\(/.test(app) && /t\("Buyers"\)/.test(homeSlice),
+  "eight buyers run this traffic and the main page had no per-buyer view"
+);
 check(
   3,
   "the rate axis carries its unit",

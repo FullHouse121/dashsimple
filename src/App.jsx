@@ -1927,6 +1927,40 @@ function HomeDashboard({
     [conversionData, chartData]
   );
 
+  // Who produced it.
+  //
+  // Eight people run this traffic and the main dashboard had no per-buyer view
+  // at all — the question went to Campaigns or Reports. Same measures as the
+  // GEO table, on the same basis, so the two can be read against each other.
+  const buyerRows = React.useMemo(() => {
+    const map = new Map();
+    filteredRows.forEach((row) => {
+      const buyer = String(row.buyer || "").trim();
+      if (!buyer) return;
+      if (!map.has(buyer)) {
+        map.set(buyer, { buyer, clicks: 0, uniqueClicks: 0, registers: 0, ftds: 0, revenue: 0 });
+      }
+      const current = map.get(buyer);
+      current.clicks += sum(row.clicks);
+      current.uniqueClicks += sum(row.unique_clicks);
+      current.registers += sum(row.registers);
+      current.ftds += sum(row.ftds);
+      current.revenue += readTotalRevenue(row);
+    });
+    return Array.from(map.values())
+      .map((entry) => {
+        const uniques = entry.uniqueClicks > 0 ? entry.uniqueClicks : entry.clicks;
+        return {
+          ...entry,
+          uniques,
+          reg2dep: toPercent(entry.ftds, entry.registers) ?? 0,
+          epc: uniques > 0 ? entry.revenue / uniques : 0,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [filteredRows]);
+  const buyerRevenueMax = buyerRows.reduce((acc, row) => Math.max(acc, row.revenue), 0);
+
   const geoMapRows = React.useMemo(
     () =>
       geoMetrics
@@ -2744,108 +2778,156 @@ function HomeDashboard({
         </motion.div>
       </section>
 
-      <section className="panels extra">
+      {/* Who produced it, beside where it came from. */}
+      <section className="panels panels-single">
         <motion.div
-          className="panel stats"
+          className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
           <div className="panel-head">
             <div>
-              <h2 className="panel-title">{t("Conversion Funnel")}</h2>
-              <p className="panel-subtitle">{t("Stage counts and drop-off for the selected period")}</p>
+              <h2 className="panel-title">{t("Buyers")}</h2>
+              <p className="panel-subtitle">{t("Who produced it")}</p>
             </div>
           </div>
-          <div className="funnel-rows">
-            {funnelSteps.map((stage, stageIndex) => (
-              <div className="funnel-row" key={stage.name}>
-                <div className="funnel-row-head">
-                  <span className="funnel-stage">
-                    <span className="dot" style={{ background: stage.color }} />
-                    {t(stage.name)}
-                  </span>
-                  <span className="funnel-count">{Number(stage.value || 0).toLocaleString()}</span>
-                </div>
-                <div className="funnel-track">
-                  {/* A stage at 0.7% of the first still has to be visible, so
-                      the fill has a floor. It is a floor on the drawing only —
-                      the number beside it is never rounded up to meet it. */}
-                  <div
-                    className="funnel-fill"
-                    style={{
-                      width: `${Math.max(stage.ofFirst ?? 0, stage.value > 0 ? 1.5 : 0)}%`,
-                      background: stage.color,
-                    }}
-                  />
-                </div>
-                <div className="funnel-row-foot">
-                  <span className="funnel-of-first">
-                    {/* The first stage is trivially 100% of itself; printing
-                        that is noise, so it carries the period instead. */}
-                    {stageIndex === 0
-                      ? periodLabel
-                      : stage.ofFirst === null
-                        ? "—"
-                        : `${stage.ofFirst.toFixed(stage.ofFirst < 10 ? 2 : 1)}% ${t("of")} ${t(funnelSteps[0]?.name || "Clicks")}`}
-                  </span>
-                  {/* At the second stage "from the previous stage" and "of the
-                      first stage" are the same division, so only one of them
-                      is worth printing. */}
-                  {stage.fromPrev === null || stageIndex === 1 ? null : (
-                    <span className="funnel-step" title={t("Conversion from the previous stage")}>
-                      {stage.fromPrev.toFixed(stage.fromPrev < 10 ? 2 : 1)}% {t("from")} {t(stage.prevName)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          {buyerRows.length === 0 ? (
+            <div className="empty-state">{t("No buyer data available.")}</div>
+          ) : (
+            <div className="geo-table-wrap">
+              <table className="geo-table">
+                <thead>
+                  <tr>
+                    <th className="geo-col-rank" scope="col">#</th>
+                    <th scope="col">{t("Buyer")}</th>
+                    <th className="geo-num" scope="col" title={t("Unique clicks")}>{t("Unique")}</th>
+                    <th className="geo-num" scope="col" title={t("Registrations")}>{t("Regs")}</th>
+                    <th className="geo-num" scope="col">{t("FTD")}</th>
+                    <th className="geo-num" scope="col" title={t("Reg2Dep rate")}>{t("Reg→Dep")}</th>
+                    <th className="geo-num" scope="col" title={t("Rev / unique")}>{t("Rev/uniq")}</th>
+                    <th className="geo-num" scope="col">{t("Revenue")}</th>
+                    <th className="geo-col-share" scope="col">
+                      <span className="sr-only">{t("Share of revenue")}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {buyerRows.map((row, index) => (
+                    <tr key={row.buyer} className="geo-row">
+                      <td className="geo-col-rank">{index + 1}</td>
+                      <td>
+                        <span className="geo-name">
+                          <span className="dot geo-dot" />
+                          {row.buyer}
+                        </span>
+                      </td>
+                      <td className="geo-num">{row.uniques.toLocaleString()}</td>
+                      <td className="geo-num">{row.registers.toLocaleString()}</td>
+                      <td className="geo-num">{row.ftds.toLocaleString()}</td>
+                      <td className="geo-num">{row.reg2dep.toFixed(1)}%</td>
+                      <td className="geo-num">{formatCurrency(row.epc)}</td>
+                      <td className="geo-num geo-strong">{formatCurrency(row.revenue)}</td>
+                      <td className="geo-col-share">
+                        <span className="geo-bar">
+                          <span
+                            style={{
+                              width: `${buyerRevenueMax ? Math.round((row.revenue / buyerRevenueMax) * 100) : 0}%`,
+                              background: MAP_ACCENT,
+                            }}
+                          />
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </motion.div>
+      </section>
 
+      {/* One panel, not two.
+          The funnel printed 20.9% and 9.46%; the handoff panel printed 20.87%
+          and 9.46% beside it; the Statistics chart drew the same two rates
+          daily above them. Three panels, the same two numbers. The stages and
+          the rate between them belong in one place — the drop is the subject,
+          and it only means anything next to the counts it happened between. */}
+      <section className="panels panels-single">
         <motion.div
-          className="panel stats"
+          className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: 0.6 }}
         >
           <div className="panel-head">
             <div>
-              <h2 className="panel-title">{t("Conversion Rates")}</h2>
-              <p className="panel-subtitle">{t("Each handoff, and how it moved")}</p>
+              <h2 className="panel-title">{t("Conversion")}</h2>
+              <p className="panel-subtitle">
+                {t("Every stage, and the drop between them")}
+              </p>
             </div>
           </div>
-          <div className="handoff-list">
-            {handoffRates.map((item) => (
-              <div className="handoff" key={item.key}>
-                <div className="handoff-head">
-                  <span className="handoff-name">
-                    <span className="dot" style={{ background: item.color }} />
-                    {t(item.name)}
-                  </span>
-                  <span className="handoff-rate">
-                    {item.rate === null || item.rate === undefined ? "—" : `${item.rate.toFixed(2)}%`}
-                  </span>
-                </div>
-                <div className="handoff-body">
-                  {/* Each rate gets its own 0-to-its-own-peak track, because
-                      the two are not comparable on a shared scale. */}
-                  <Sparkline values={item.daily} color={item.color} />
-                  <div className="handoff-range">
-                    <span>
-                      {t("low")} {item.trough === null ? "—" : `${item.trough.toFixed(1)}%`}
-                    </span>
-                    <span>
-                      {t("peak")} {item.peak === null ? "—" : `${item.peak.toFixed(1)}%`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {handoffRates.length === 0 ? (
-              <div className="empty-state">{t("No conversion data available.")}</div>
-            ) : null}
-          </div>
+          {funnelSteps.length === 0 ? (
+            <div className="empty-state">{t("No conversion data available.")}</div>
+          ) : (
+            <div className="cvr">
+              {funnelSteps.map((stage, stageIndex) => {
+                // The handoff that produced this stage — its rate, and how
+                // that rate moved across the period.
+                const handoff = stageIndex === 0 ? null : handoffRates[stageIndex - 1] || null;
+                return (
+                  <React.Fragment key={stage.name}>
+                    {handoff ? (
+                      <div className="cvr-step">
+                        <div className="cvr-step-rate">
+                          <span className="cvr-step-value">
+                            {stage.fromPrev === null ? "—" : `${stage.fromPrev.toFixed(2)}%`}
+                          </span>
+                          <span className="cvr-step-label">{t(handoff.name)}</span>
+                        </div>
+                        <Sparkline values={handoff.daily} color={handoff.color} width={220} height={30} />
+                        <div className="cvr-step-range">
+                          <span>
+                            {t("low")}{" "}
+                            {handoff.trough === null ? "—" : `${handoff.trough.toFixed(1)}%`}
+                          </span>
+                          <span>
+                            {t("peak")}{" "}
+                            {handoff.peak === null ? "—" : `${handoff.peak.toFixed(1)}%`}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="cvr-stage">
+                      <span className="cvr-stage-name">
+                        <span className="dot" style={{ background: stage.color }} />
+                        {t(stage.name)}
+                      </span>
+                      <span className="cvr-stage-count">
+                        {Number(stage.value || 0).toLocaleString()}
+                      </span>
+                      <span className="cvr-stage-share">
+                        {stageIndex === 0
+                          ? periodLabel
+                          : stage.ofFirst === null
+                            ? "—"
+                            : `${stage.ofFirst.toFixed(stage.ofFirst < 10 ? 2 : 1)}% ${t("of")} ${t(funnelSteps[0]?.name || "Clicks")}`}
+                      </span>
+                      <span className="cvr-stage-bar">
+                        <span
+                          style={{
+                            width: `${Math.max(stage.ofFirst ?? 0, stage.value > 0 ? 1.5 : 0)}%`,
+                            background: stage.color,
+                          }}
+                        />
+                      </span>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
         </motion.div>
       </section>
 
