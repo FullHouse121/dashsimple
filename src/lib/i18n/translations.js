@@ -514,6 +514,12 @@ export const translations = {
     FTD: "FTD",
     // Revenue the tracker attributes to neither an FTD nor a redeposit.
     Other: "Diğer",
+    "Unique": "Tekil",
+    "Regs": "Kayıt",
+    "Reg→Dep": "Kayıt→Yatırım",
+    "Rev/uniq": "Gelir/tekil",
+    "countries": "ülke",
+    "Share of the ranked metric": "Sıralanan metriğin payı",
     "unique": "tekil",
     "Unique clicks": "Tekil tıklamalar",
     "Rev / unique": "Tekil başına gelir",

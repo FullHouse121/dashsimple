@@ -23286,3 +23286,140 @@ select option,
   overflow-wrap: normal;
   word-break: keep-all;
 }
+
+/* ── Top GEO, full width ──────────────────────────────────────────────────
+   Sharing a row with Statistics left the country column 268px wide, so the
+   panel showed three of 33 countries and had to push volume into a caption
+   under each name. At full width the map takes a fixed column and the rest
+   goes to a table that can show the numbers the ranking is made of. */
+.map-grid {
+  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  /* Stretch, not start: the table is ~150px taller than the map, and a short
+     card hanging from the top of a tall column reads as unfinished. The map
+     centres inside the full height instead (.map-visual justifies centre). */
+  align-items: stretch;
+}
+
+/* Taller now that it owns a full-height column rather than half the panel. */
+.map-wrap .map-visual svg {
+  height: 300px;
+}
+
+.geo-board {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.geo-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(12, 14, 18, 0.5);
+}
+
+.geo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.geo-table th {
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 9px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  white-space: nowrap;
+}
+
+.geo-table td {
+  padding: 9px 8px;
+  font-size: 12px;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  white-space: nowrap;
+}
+
+.geo-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.geo-table .geo-num {
+  text-align: right;
+}
+
+.geo-table .geo-strong {
+  font-weight: 700;
+}
+
+.geo-col-rank {
+  width: 34px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.geo-col-share {
+  width: 84px;
+}
+
+.geo-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.geo-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+}
+
+.geo-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 420ms var(--ease-smooth, ease);
+}
+
+.geo-row {
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.geo-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.geo-row.is-active {
+  background: rgba(54, 208, 124, 0.07);
+}
+
+.geo-table-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .geo-bar > span {
+    transition: none;
+  }
+}
+
+/* Below this the map stops earning a column of its own. */
+@media (max-width: 1080px) {
+  .map-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

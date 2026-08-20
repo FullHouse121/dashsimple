@@ -1970,6 +1970,9 @@ function HomeDashboard({
     });
   }, [geoMetrics, geoMetricKey, geoIsRateMetric, geoSampleFloor]);
   const topGeoList = geoSorted.slice(0, 3);
+  // Ten rows, not three. The panel is full width now, and 33 countries behind
+  // a "See more" button was mostly a consequence of the old 268px column.
+  const geoTableRows = geoSorted.slice(0, 10);
   const metricValues = geoSorted.map((item) => item[geoMetricKey]);
   const metricMax = metricValues.length ? Math.max(...metricValues) : 0;
   // One formatter, so the toggle, the headline and the list can never disagree
@@ -2402,7 +2405,7 @@ function HomeDashboard({
         </motion.div>
       </section>
 
-      <section className="panels">
+      <section className="panels panels-single">
         <motion.div
           className="panel stats"
           initial={{ opacity: 0, y: 20 }}
@@ -2587,6 +2590,12 @@ function HomeDashboard({
             </div>
           </div>
         </motion.div>
+      </section>
+
+      {/* Its own full-width row. Sharing a row with Statistics left the
+          country list 268px wide, which is why it showed three of 33 GEOs
+          with no room for the numbers behind them. */}
+      <section className="panels panels-single">
 
         <motion.div
           className="panel map"
@@ -2714,7 +2723,7 @@ function HomeDashboard({
                   ) : null}
                 </div>
               </div>
-              <div className="map-info">
+              <div className="geo-board">
                 <div className="map-info-card">
                   <div className="map-info-head">
                     <span>{t("Active GEO")}</span>
@@ -2728,88 +2737,81 @@ function HomeDashboard({
                       {focusGeo ? formatGeoMetric(focusGeo[geoMetricKey]) : "--"}
                     </span>
                   </div>
-                  {/* Volume sits beside the rate on purpose: a Reg→Dep of 17%
-                      means one thing on 676 registrations and another on 93,
-                      and the panel used to show only the percentage. */}
-                  <div className="map-info-metrics">
-                    <div className="map-metric">
-                      <span>{t("Revenue")}</span>
-                      <strong>{focusGeo ? formatCurrency(focusGeo.revenue) : "--"}</strong>
-                    </div>
-                    <div className="map-metric">
-                      <span>{t("Rev / unique")}</span>
-                      <strong>{focusGeo ? formatCurrency(focusGeo.epc) : "--"}</strong>
-                    </div>
-                    <div className="map-metric">
-                      <span>{t("Reg2Dep rate")}</span>
-                      <strong>{focusGeo ? `${focusGeo.reg2depRate.toFixed(1)}%` : "--"}</strong>
-                    </div>
-                    <div className="map-metric">
-                      <span>{t("Registrations")}</span>
-                      <strong>{focusGeo ? focusGeo.registers.toLocaleString() : "--"}</strong>
-                    </div>
-                  </div>
                 </div>
-                <div className="map-ranking">
-                  <div className="map-ranking-head">
-                    <span>{t("Top performers")}</span>
-                    <span className="map-ranking-metric">
-                      {geoMetricOptions.find((option) => option.value === geoMetric)?.label}
-                    </span>
-                  </div>
-                  <div className="map-ranking-list">
-                    {topGeoList.map((marker) => {
-                      const value = marker[geoMetricKey] || 0;
-                      const width = metricMax ? Math.round((value / metricMax) * 100) : 0;
-                      return (
-                        <button
-                          key={marker.iso}
-                          type="button"
-                          className={`map-rank${activeGeo === marker.iso ? " is-active" : ""}`}
-                          onMouseEnter={() => handleGeoEnter(marker.iso)}
-                          onMouseLeave={() => handleGeoLeave()}
-                          onClick={() => handleGeoToggle(marker.iso)}
-                        >
-                          <div className="map-rank-row">
-                            <span className="dot" style={{ background: marker.color }} />
-                            <span className="map-rank-name">{marker.name}</span>
-                            <span className="map-rank-value">{formatGeoMetric(value)}</span>
-                          </div>
-                          <div className="map-rank-bar">
-                            <span style={{ width: `${width}%`, background: marker.color }} />
-                          </div>
-                          <div className="map-rank-foot">
-                            {/* Never repeats the ranked value — it supplies the
-                                dimension the ranking does not show. */}
-                            <span>
-                              {geoMetricKey === "revenue"
-                                ? `${marker.uniqueClicks.toLocaleString()} ${t("unique")} · ${formatCurrency(marker.epc)} ${t("each")}`
-                                : geoMetricKey === "epc"
-                                  ? `${marker.uniqueClicks.toLocaleString()} ${t("unique")} · ${formatCurrency(marker.revenue)}`
-                                  : `${marker.registers.toLocaleString()} ${t("regs")} · ${formatCurrency(marker.revenue)}`}
-                            </span>
-                            {geoIsRateMetric && marker.registers < geoSampleFloor ? (
-                              <span
-                                className="map-rank-thin"
-                                title={t("Too few registrations for this rate to be reliable")}
-                              >
-                                {t("low sample")}
+                {/* A table, now that there is width for one. The ranked list
+                    showed three of 33 countries and had to hide volume in a
+                    caption; every column here was already computed. */}
+                <div className="geo-table-wrap">
+                  <table className="geo-table">
+                    <thead>
+                      <tr>
+                        <th className="geo-col-rank" scope="col">#</th>
+                        <th scope="col">{t("Country")}</th>
+                        <th className="geo-num" scope="col" title={t("Unique clicks")}>{t("Unique")}</th>
+                        <th className="geo-num" scope="col" title={t("Registrations")}>{t("Regs")}</th>
+                        <th className="geo-num" scope="col">{t("FTD")}</th>
+                        <th className="geo-num" scope="col" title={t("Reg2Dep rate")}>{t("Reg→Dep")}</th>
+                        <th className="geo-num" scope="col" title={t("Rev / unique")}>{t("Rev/uniq")}</th>
+                        <th className="geo-num" scope="col">{t("Revenue")}</th>
+                        <th className="geo-col-share" scope="col">
+                          <span className="sr-only">{t("Share of the ranked metric")}</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {geoTableRows.map((marker, index) => {
+                        const value = marker[geoMetricKey] || 0;
+                        const width = metricMax ? Math.round((value / metricMax) * 100) : 0;
+                        const thin = geoIsRateMetric && marker.registers < geoSampleFloor;
+                        return (
+                          <tr
+                            key={marker.iso}
+                            className={`geo-row${activeGeo === marker.iso ? " is-active" : ""}`}
+                            onMouseEnter={() => handleGeoEnter(marker.iso)}
+                            onMouseLeave={() => handleGeoLeave()}
+                            onClick={() => handleGeoToggle(marker.iso)}
+                          >
+                            <td className="geo-col-rank">{index + 1}</td>
+                            <td>
+                              <span className="geo-name">
+                                <span className="dot" style={{ background: marker.color }} />
+                                {marker.name}
+                                {thin ? (
+                                  <span
+                                    className="map-rank-thin"
+                                    title={t("Too few registrations for this rate to be reliable")}
+                                  >
+                                    {t("low sample")}
+                                  </span>
+                                ) : null}
                               </span>
-                            ) : null}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="map-ranking-footer">
-                    <button
-                      type="button"
-                      className="ghost map-see-more"
-                      onClick={() => onSeeGeos?.()}
-                    >
-                      {t("See more")}
-                    </button>
-                  </div>
+                            </td>
+                            <td className="geo-num">{marker.uniqueClicks.toLocaleString()}</td>
+                            <td className="geo-num">{marker.registers.toLocaleString()}</td>
+                            <td className="geo-num">{marker.ftds.toLocaleString()}</td>
+                            <td className="geo-num">{marker.reg2depRate.toFixed(1)}%</td>
+                            <td className="geo-num">{formatCurrency(marker.epc)}</td>
+                            <td className="geo-num geo-strong">{formatCurrency(marker.revenue)}</td>
+                            <td className="geo-col-share">
+                              <span className="geo-bar">
+                                <span style={{ width: `${width}%`, background: marker.color }} />
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="geo-table-foot">
+                  <span>
+                    {geoSorted.length > geoTableRows.length
+                      ? `${geoTableRows.length} ${t("of")} ${geoSorted.length} ${t("countries")}`
+                      : `${geoSorted.length} ${t("countries")}`}
+                  </span>
+                  <button type="button" className="ghost map-see-more" onClick={() => onSeeGeos?.()}>
+                    {t("See more")}
+                  </button>
                 </div>
               </div>
             </div>
