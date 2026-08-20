@@ -23416,9 +23416,12 @@ select option,
 }
 
 /* ── GEO value map ────────────────────────────────────────────────────────
-   One colour at varying depth, fitted by the projection itself. The palette
-   this replaced assigned a colour per country by index, so Colombia and
-   Mexico came out the same purple and the colour carried no meaning. */
+   Outlines and squares, not a choropleth.
+   The filled version read as a different kind of object from everything
+   around it — this page is tables, bars and sparklines, and a shaded landmass
+   sat outside that language however well it was drawn. The geography is a
+   hairline backdrop now; a square per country in the same green as the bars,
+   sized by area, carries the value. */
 .geo-map {
   display: block;
   width: 100%;
@@ -23435,55 +23438,65 @@ select option,
   background: rgba(12, 14, 18, 0.5);
 }
 
-/* Present, but never competing with the countries that carry data. */
 .geo-map-base path {
-  fill: rgba(255, 255, 255, 0.035);
-  stroke: rgba(255, 255, 255, 0.05);
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
   stroke-width: 0.5;
   vector-effect: non-scaling-stroke;
 }
 
-.geo-map-country {
-  stroke: rgba(8, 10, 12, 0.75);
-  stroke-width: 0.6;
-  vector-effect: non-scaling-stroke;
+/* A country that produced something gets a slightly firmer outline, so the
+   shape is legible under its marker without being filled in. */
+.geo-map-base path.is-producing {
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 0.7;
+}
+
+.geo-map-marker rect {
+  transition: transform 0.16s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.geo-map-marker {
   cursor: pointer;
-  transition: filter 0.18s ease, opacity 0.18s ease;
 }
 
-.geo-map-country:hover {
-  filter: brightness(1.18);
+.geo-map-marker:hover rect {
+  transform: scale(1.18);
 }
 
-.geo-map-country.is-active {
-  stroke: rgba(245, 246, 250, 0.9);
-  stroke-width: 1.1;
+.geo-map-marker.is-active rect {
+  stroke: #f2f2f4;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
 }
 
-/* paint-order puts the halo behind the glyph, so a name stays readable over
-   any fill depth without a plate behind it. */
+/* The same 10px uppercase the table headers and card labels use. */
 .geo-map-labels text {
   paint-order: stroke fill;
-  stroke: rgba(8, 10, 12, 0.85);
-  stroke-width: 2.6px;
+  stroke: rgba(10, 12, 15, 0.9);
+  stroke-width: 2.4px;
   stroke-linejoin: round;
   pointer-events: none;
 }
 
 .geo-map-label-name {
-  fill: #f2f2f4;
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  fill: rgba(242, 242, 244, 0.9);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .geo-map-label-value {
-  fill: rgba(242, 242, 244, 0.72);
-  font-size: 9px;
+  fill: var(--muted);
+  font-size: 9.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
+/* Size is the scale now, so the legend shows sizes rather than a gradient. */
 .geo-map-scale {
   display: flex;
   align-items: center;
@@ -23497,13 +23510,35 @@ select option,
 
 .geo-map-ramp {
   flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.geo-map-ramp::before,
+.geo-map-ramp::after {
+  content: "";
+  background: var(--green);
+  border-radius: 1.5px;
+}
+
+.geo-map-ramp::before {
+  width: 5px;
   height: 5px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgb(31, 46, 42), rgb(54, 208, 124));
+}
+
+.geo-map-ramp::after {
+  width: 13px;
+  height: 13px;
+}
+
+.geo-dot {
+  background: var(--green);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .geo-map-country {
+  .geo-map-marker rect {
     transition: none;
   }
 }

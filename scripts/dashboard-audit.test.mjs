@@ -155,11 +155,25 @@ check(
   !/properties\.ISO_A3/.test(app) && !/properties\.ISO_A3/.test(geoMap),
   "world-atlas@2 exposes only `name`, so ISO_A3 was always undefined"
 );
+// The panel moved from a colour ramp to one accent with size carrying the
+// value, so the assertion follows the property rather than the mechanism:
+// value must be encoded by magnitude, and hue must not be per-country.
 check(
   3,
-  "map and table share one value ramp",
-  /export const rampColor/.test(geoMap) && /rampColor\(geoWeightByIso\.get/.test(app),
+  "map and table share one accent",
+  /export const MAP_ACCENT/.test(geoMap) && /background: MAP_ACCENT/.test(app),
   "a colour-per-country palette gave Colombia and Mexico the same purple"
+);
+check(
+  3,
+  "map markers encode value by area, not by side",
+  /Math\.sqrt\(Math\.max\(0, Math\.min\(1, weight/.test(geoMap),
+  "sizing the side by value makes a 4x country look 16x bigger"
+);
+check(
+  3,
+  "no per-country palette feeds the GEO panel",
+  !/geoPalette\[index % geoPalette\.length\]/.test(app) || !/marker\.color/.test(app)
 );
 
 // ── 4. Visual hierarchy ──────────────────────────────────────────────────

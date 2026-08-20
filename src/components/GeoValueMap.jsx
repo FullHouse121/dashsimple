@@ -56,21 +56,22 @@ const NAME_ALIASES = {
 };
 export const toAtlasName = (name) => NAME_ALIASES[name] || name;
 
-// A single ramp instead of a colour per country.
+// One accent, and size carries the value.
 //
-// The palette this replaced assigned colours by index over 33 GEOs, so
-// Colombia and Mexico both came out purple and Brazil and Ecuador both green —
-// the colour carried no meaning and collided anyway. One ramp keyed to the
-// value means darker is smaller, everywhere, and the eye can rank the map
-// without consulting the table.
-const RAMP_LOW = [31, 46, 42];
-const RAMP_HIGH = [54, 208, 124];
-export const rampColor = (weight) => {
-  // sqrt so the long tail of small countries stays distinguishable from empty.
-  const t = Math.max(0, Math.min(1, Math.sqrt(weight || 0)));
-  const mix = RAMP_LOW.map((low, i) => Math.round(low + (RAMP_HIGH[i] - low) * t));
-  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
-};
+// Two things this is not. It is not a colour per country: the palette that
+// preceded it assigned colours by index over 33 GEOs, so Colombia and Mexico
+// both came out purple and the hue meant nothing. And it is not a ramp of
+// shades either — a dashboard built from tables and bars reads a filled
+// choropleth as a different kind of object, and it never sat right next to
+// them. A square per country in the same green the bars use, sized by value,
+// says the same thing in the page's own language.
+export const MAP_ACCENT = "#36d07c";
+const MARKER_MAX = 17;
+const MARKER_MIN = 4;
+// sqrt so the SQUARE'S AREA tracks the value. Sizing the side by the value
+// would make a 4x country look 16x bigger.
+export const markerSide = (weight) =>
+  MARKER_MIN + (MARKER_MAX - MARKER_MIN) * Math.sqrt(Math.max(0, Math.min(1, weight || 0)));
 
 export default function GeoValueMap({
   rows = [],
@@ -165,37 +166,59 @@ export default function GeoValueMap({
   const { path, producing } = view;
   const activeAtlas = activeName ? toAtlasName(activeName) : null;
 
-  // A label only helps if it fits inside the country it names. Anything
-  // narrower keeps its shape and its hover, and the table carries its name.
-  const labels = producing
+  const markers = producing
     .map((f) => {
       const entry = byName.get(f.properties.name);
-      const [[x0, y0], [x1, y1]] = path.bounds(f);
       const [cx, cy] = path.centroid(f);
       return {
         key: f.properties.name,
-        name: entry?.label || entry?.name || f.properties.name,
+        name: entry?.name || f.properties.name,
+        iso: entry?.iso,
         value: entry?.value,
+        side: markerSide(entry?.weight),
         cx,
         cy,
-        w: x1 - x0,
-        h: y1 - y0,
+        entry,
       };
     })
-    .filter((l) => Number.isFinite(l.cx) && l.w >= 46 && l.h >= 22)
-    // Biggest country first, so when two labels collide the one with room to
-    // hold it keeps it.
-    .sort((a, b) => b.w * b.h - a.w * a.h)
-    .reduce((kept, l) => {
-      // Narrow countries stacked along a coast — Peru against Colombia, Chile
-      // against Argentina — put their centroids within a few pixels of each
-      // other, and two names on the same spot are worse than one.
-      const clash = kept.some(
-        (other) => Math.abs(other.cx - l.cx) < 44 && Math.abs(other.cy - l.cy) < 24
+    .filter((m) => Number.isFinite(m.cx) && Number.isFinite(m.cy))
+    // Biggest first, so when two labels collide the larger country keeps its
+    // name — and so smaller squares draw over larger ones rather than under.
+    .sort((a, b) => b.side - a.side);
+
+  // A label needs room, and it must not land on somebody else's square.
+  //
+  // Coastal neighbours put centroids within a few pixels of each other —
+  // Colombia sits directly above Ecuador — and a two-line label is about 20px
+  // tall on top of the square it hangs from. Dropping a label on the first
+  // collision cost Colombia, second by revenue, its name while Peru at a
+  // seventh of the value kept one. So each label gets a second chance above
+  // its square before it is given up.
+  const LABEL_W = 62;
+  const LABEL_H = 32;
+  const placed = [];
+  markers.forEach((m) => {
+    const candidates = [
+      { anchor: m.cy + m.side / 2 + 11, dir: "below" },
+      { anchor: m.cy - m.side / 2 - 14, dir: "above" },
+    ];
+    const spot = candidates.find(({ anchor }) => {
+      const clashesLabel = placed.some(
+        (other) => Math.abs(other.cx - m.cx) < LABEL_W && Math.abs(other.anchor - anchor) < LABEL_H
       );
-      if (!clash) kept.push(l);
-      return kept;
-    }, []);
+      if (clashesLabel) return false;
+      // A name across another country's square buries the marker the map
+      // exists to show.
+      return !markers.some(
+        (other) =>
+          other.key !== m.key &&
+          Math.abs(other.cx - m.cx) < LABEL_W / 2 + other.side / 2 &&
+          Math.abs(other.cy - (anchor + 5)) < 14 + other.side / 2
+      );
+    });
+    if (spot) placed.push({ ...m, anchor: spot.anchor, dir: spot.dir });
+  });
+  const labelled = placed;
 
   return (
     <svg
@@ -206,72 +229,58 @@ export default function GeoValueMap({
       role="img"
       aria-label={
         producing.length
-          ? `${producing.length} countries with activity, shaded by value`
+          ? `${producing.length} countries with activity, marked by value`
           : emptyLabel
       }
       onMouseLeave={() => onHover?.(null)}
     >
-      <defs>
-        {/* Lifts the landmass off the panel without a hard edge. */}
-        <radialGradient id="geo-map-sea" cx="50%" cy="45%" r="70%">
-          <stop offset="0%" stopColor="rgba(90, 120, 140, 0.09)" />
-          <stop offset="100%" stopColor="rgba(90, 120, 140, 0)" />
-        </radialGradient>
-        <filter id="geo-map-glow" x="-30%" y="-30%" width="160%" height="160%">
-          <feGaussianBlur stdDeviation="3.4" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-      </defs>
-
-      <rect x="0" y="0" width={width} height={height} fill="url(#geo-map-sea)" />
-
-      {/* Context first: every other country, present but recessive. */}
+      {/* Outlines only. The landmass is context for the markers, not the
+          subject — a filled choropleth was the part that read as foreign. */}
       <g className="geo-map-base">
-        {view.features?.length === 0 ? null : null}
         {(features || []).map((f) => {
-          if (byName.has(f.properties.name)) return null;
           const d = path(f);
           if (!d) return null;
-          return <path key={f.properties.name} d={d} />;
-        })}
-      </g>
-
-      {/* Then the countries that produced something, shaded by how much. */}
-      <g className="geo-map-active">
-        {producing.map((f) => {
-          const entry = byName.get(f.properties.name);
-          const d = path(f);
-          if (!d) return null;
-          const isActive = activeAtlas === f.properties.name;
           return (
             <path
               key={f.properties.name}
               d={d}
-              fill={rampColor(entry.weight)}
-              className={`geo-map-country${isActive ? " is-active" : ""}`}
-              filter={isActive ? "url(#geo-map-glow)" : undefined}
-              onMouseEnter={() => onHover?.(entry)}
-              onClick={() => onSelect?.(entry)}
-            >
-              <title>{`${entry.name} · ${formatValue(entry.value)}`}</title>
-            </path>
+              className={byName.has(f.properties.name) ? "is-producing" : undefined}
+            />
           );
         })}
       </g>
 
-      {/* Names last, so nothing draws over them. */}
+      <g className="geo-map-markers">
+        {markers.map((m) => {
+          const isActive = activeAtlas === toAtlasName(m.name);
+          return (
+            <g
+              key={m.key}
+              className={`geo-map-marker${isActive ? " is-active" : ""}`}
+              onMouseEnter={() => onHover?.(m.entry)}
+              onClick={() => onSelect?.(m.entry)}
+            >
+              <rect
+                x={m.cx - m.side / 2}
+                y={m.cy - m.side / 2}
+                width={m.side}
+                height={m.side}
+                rx={1.5}
+                fill={MAP_ACCENT}
+              />
+              <title>{`${m.name} · ${formatValue(m.value)}`}</title>
+            </g>
+          );
+        })}
+      </g>
+
       <g className="geo-map-labels">
-        {labels.map((l) => (
-          <text key={l.key} x={l.cx} y={l.cy} textAnchor="middle">
-            <tspan className="geo-map-label-name">{l.name}</tspan>
-            {l.h >= 34 ? (
-              <tspan className="geo-map-label-value" x={l.cx} dy="11">
-                {formatValue(l.value)}
-              </tspan>
-            ) : null}
+        {labelled.map((m) => (
+          <text key={m.key} x={m.cx} y={m.anchor} textAnchor="middle">
+            <tspan className="geo-map-label-name">{m.name}</tspan>
+            <tspan className="geo-map-label-value" x={m.cx} dy="10">
+              {formatValue(m.value)}
+            </tspan>
           </text>
         ))}
       </g>

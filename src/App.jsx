@@ -118,7 +118,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
 import { METRIC_COLORS, RATE_COLORS, STAGE_COLORS } from "./lib/metricColors.js";
-import GeoValueMap, { rampColor } from "./components/GeoValueMap.jsx";
+import GeoValueMap, { MAP_ACCENT } from "./components/GeoValueMap.jsx";
 import {
   DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
@@ -1934,12 +1934,6 @@ function HomeDashboard({
         .map((geo) => ({ name: geo.name, iso: geo.iso, value: Number(geo[geoMetric]) || 0 })),
     [geoMetrics, geoMetric]
   );
-  // The table shares the map's ramp, so a row's depth of colour and its
-  // country's depth of colour are the same statement.
-  const geoWeightByIso = React.useMemo(() => {
-    const max = geoMapRows.reduce((acc, row) => Math.max(acc, row.value), 0);
-    return new Map(geoMapRows.map((row) => [row.iso, max > 0 ? row.value / max : 0]));
-  }, [geoMapRows]);
 
   const geoSampleFloor = React.useMemo(() => {
     const totalRegisters = geoMetrics.reduce((acc, geo) => acc + geo.registers, 0);
@@ -2705,10 +2699,7 @@ function HomeDashboard({
                             <td className="geo-col-rank">{index + 1}</td>
                             <td>
                               <span className="geo-name">
-                                <span
-                                  className="dot"
-                                  style={{ background: rampColor(geoWeightByIso.get(marker.iso) || 0) }}
-                                />
+                                <span className="dot geo-dot" />
                                 {marker.name}
                                 {thin ? (
                                   <span
@@ -2728,12 +2719,7 @@ function HomeDashboard({
                             <td className="geo-num geo-strong">{formatCurrency(marker.revenue)}</td>
                             <td className="geo-col-share">
                               <span className="geo-bar">
-                                <span
-                                  style={{
-                                    width: `${width}%`,
-                                    background: rampColor(geoWeightByIso.get(marker.iso) || 0),
-                                  }}
-                                />
+                                <span style={{ width: `${width}%`, background: MAP_ACCENT }} />
                               </span>
                             </td>
                           </tr>
