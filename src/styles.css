@@ -6542,9 +6542,9 @@ select option,
 }
 
 .perm-item.is-active::before {
-  background: var(--green);
-  border-color: var(--green);
-  box-shadow: 0 0 0 3px rgba(54, 208, 124, 0.18);
+  background: var(--role-color, var(--green));
+  border-color: var(--role-color, var(--green));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--role-color, var(--green)) 18%, transparent);
 }
 
 .perm-item.is-active::after {
@@ -6574,8 +6574,8 @@ select option,
 }
 
 .perm-item.is-active {
-  border-color: rgba(54, 208, 124, 0.35);
-  background: rgba(54, 208, 124, 0.06);
+  border-color: color-mix(in srgb, var(--role-color, var(--green)) 34%, transparent);
+  background: color-mix(in srgb, var(--role-color, var(--green)) 7%, transparent);
   color: var(--text);
 }
 
@@ -6765,7 +6765,7 @@ select option,
 .role-row-progress-fill {
   display: block;
   height: 100%;
-  background: var(--green);
+  background: var(--role-color, var(--green));
   border-radius: 999px;
   transition: width 0.2s ease;
 }
@@ -6773,6 +6773,9 @@ select option,
 .role-row-body {
   padding: 6px 16px 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
+  /* A rail in the role's colour: five roles can be open in turn and the panel
+     looked identical for every one of them. */
+  box-shadow: inset 3px 0 0 -1px color-mix(in srgb, var(--role-color, var(--green)) 55%, transparent);
 }
 
 .role-row-actions {
@@ -23693,4 +23696,64 @@ select option,
   width: 18px;
   height: 13px;
   border-radius: 2px;
+}
+
+/* ── Roles: the row's own identity ────────────────────────────────────────
+   Every role rendered in the brand green with a differently-coloured dot, so
+   the colour that identifies a role everywhere else in this app stopped at
+   6px. It now runs through the progress bar, the permission chips and the
+   open panel's rail. */
+.role-row-dot {
+  background: var(--role-color, var(--green));
+}
+
+/* Open rows are the ones being edited, so they read as raised rather than as
+   a plain expanded div. */
+.role-row.is-open {
+  background: rgba(255, 255, 255, 0.016);
+  border-color: color-mix(in srgb, var(--role-color, var(--green)) 26%, transparent);
+}
+
+/* The fraction is the number worth reading; the word is context. */
+.role-row-stat-perms {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.role-row-stat-perms strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.role-row-of {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.role-row-perms-label {
+  margin-left: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Group counts read as a fraction of a whole, matching the row above. */
+.role-perm-group-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A fully-granted group says so in the role's colour rather than in grey. */
+.role-perm-group:has(.perm-item:not(.is-active)) .role-perm-group-count {
+  color: var(--muted);
+}
+
+.role-perm-group:not(:has(.perm-item:not(.is-active))) .role-perm-group-count {
+  color: var(--role-color, var(--green));
+  border-color: color-mix(in srgb, var(--role-color, var(--green)) 30%, transparent);
+  background: color-mix(in srgb, var(--role-color, var(--green)) 8%, transparent);
 }

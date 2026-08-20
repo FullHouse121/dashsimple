@@ -23153,7 +23153,15 @@ function RolesDashboard({ authUser }) {
                     const userCount = usersByRole.get(role.name) || 0;
                     const expanded = expandedRoles.has(role.id);
                     return (
-                      <div key={role.id} className={`role-row${expanded ? " is-open" : ""}${isLocked ? " is-locked" : ""}`}>
+                      // The role's own colour, carried down the whole row.
+                      // The dot already used it while the progress bar, the
+                      // permission chips and the open panel were all green, so
+                      // five roles rendered as one colour with a different dot.
+                      <div
+                        key={role.id}
+                        className={`role-row${expanded ? " is-open" : ""}${isLocked ? " is-locked" : ""}`}
+                        style={{ "--role-color": roleIdentColor(role.name) }}
+                      >
                         <button
                           type="button"
                           className="role-row-summary"
@@ -23162,13 +23170,15 @@ function RolesDashboard({ authUser }) {
                         >
                           <span className="role-row-chevron">▸</span>
                           <span className="role-row-identity">
-                            <span className="role-chip-dot" style={{ background: roleIdentColor(role.name) }} />
+                            <span className="role-chip-dot role-row-dot" />
                             <span className="role-row-name">{t(role.name)}</span>
                             {isLocked ? <Lock size={11} className="role-row-lock" aria-label={t("Built-in")} /> : null}
                           </span>
                           <span className="role-row-stat">{userCount} {userCount === 1 ? t("user") : t("users")}</span>
                           <span className="role-row-stat role-row-stat-perms">
-                            {effectivePermissions.length} / {permissionOptions.length} {t("permissions")}
+                            <strong>{effectivePermissions.length}</strong>
+                            <span className="role-row-of">/{permissionOptions.length}</span>
+                            <span className="role-row-perms-label">{t("permissions")}</span>
                           </span>
                           <span className="role-row-progress">
                             <span
