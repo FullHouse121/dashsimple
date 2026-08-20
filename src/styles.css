@@ -1153,26 +1153,59 @@ select {
   position: absolute;
   right: 0;
   top: calc(100% + 10px);
-  background: rgba(18, 20, 24, 0.98);
+  background: #12141a;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  min-width: 160px;
+  border-radius: 14px;
+  /* Wide enough for a name and a fact beside its label, rather than the two
+     words it used to hold. */
+  min-width: 262px;
   padding: 6px;
-  display: grid;
-  gap: 6px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
   z-index: 5;
+  overflow: hidden;
 }
 
 .profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
   text-align: left;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
   font-size: 13px;
   color: var(--text);
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
+}
+
+.profile-menu-item svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.profile-menu-item:hover svg {
+  color: inherit;
+}
+
+/* Pushes the chevron or the value to the right edge. */
+.pm-chev,
+.pm-trailing {
+  margin-left: auto;
+}
+
+.pm-trailing {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 1px 6px;
 }
 
 .profile-menu-item:hover {
@@ -23509,3 +23542,81 @@ select option,
   background: var(--ident-color, var(--green));
 }
 
+
+/* ── Profile menu ─────────────────────────────────────────────────────────
+   It held two words. A profile menu is where you confirm who you are and
+   what you are acting as — particularly here, where every figure on every
+   page is filtered by buyer and nothing said which filter you were under. */
+.pm-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 12px;
+}
+
+.pm-head .ident-name {
+  font-size: 13.5px;
+}
+
+/* Facts, not actions: read-only context about this session. */
+.pm-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  margin: 0 2px 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pm-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pm-fact-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pm-fact-label svg {
+  color: var(--muted);
+}
+
+.pm-fact-value {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pm-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Signing out is not another navigation item, so it does not sit flush
+   against them. */
+.pm-group-last {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.profile-menu-item.is-danger:hover {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.1);
+  color: #ff8f8f;
+}

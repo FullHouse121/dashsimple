@@ -33,6 +33,7 @@ import {
   ChevronRight, ChevronDown, Check, ArrowRight, ArrowDownUp, TrendingUp, TrendingDown,
   DollarSign, Tag, Image as ImageIcon, AlertTriangle, Settings, ExternalLink, Minus,
   Maximize2, ScrollText, RefreshCw, Unlink, Star, Play, Pause,
+  LogOut,
 } from "lucide-react";
 import logo from "./assets/logo.png";
 import { BrandMark, resolveBrandLogo, BRAND_LOGOS, normalizeBrandKey } from "./components/BrandMark.jsx";
@@ -26616,6 +26617,19 @@ export default function App() {
   // Both badges were hardcoded green, so a Boss and a Junior Media Buyer wore
   // the Team Leader's colour and the role tint meant nothing outside Roles.
   const profileRoleColor = roleIdentColor(profileRole);
+  // The token carries its own expiry and nothing ever showed it, so a session
+  // ending was something you discovered by being logged out mid-task.
+  const sessionExpiryLabel = React.useMemo(() => {
+    const exp = Number(authUser?.exp);
+    if (!Number.isFinite(exp) || exp <= 0) return null;
+    const seconds = exp - Math.floor(Date.now() / 1000);
+    if (seconds <= 0) return t("expired");
+    const days = Math.floor(seconds / 86400);
+    if (days >= 1) return `${days}${t("d left")}`;
+    const hours = Math.floor(seconds / 3600);
+    if (hours >= 1) return `${hours}${t("h left")}`;
+    return `${Math.max(1, Math.floor(seconds / 60))}${t("m left")}`;
+  }, [authUser?.exp, t]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
@@ -27084,26 +27098,93 @@ export default function App() {
               </button>
               {profileMenuOpen ? (
                 <div className="profile-menu">
-                  <button
-                    className="profile-menu-item"
-                    type="button"
-                    onClick={() => {
-                      setActiveView("profile");
-                      setProfileMenuOpen(false);
-                    }}
-                  >
-                    {t("Profile")}
-                  </button>
-                  <button
-                    className="profile-menu-item"
-                    type="button"
-                    onClick={() => {
-                      setProfileMenuOpen(false);
-                      handleLogout();
-                    }}
-                  >
-                    {t("Logout")}
-                  </button>
+                  {/* Who you are, confirmed. The trigger truncates on a narrow
+                      topbar; this is where the full name lives. */}
+                  <div className="pm-head" style={{ "--ident-color": profileRoleColor }}>
+                    <span className="ident-avatar" aria-hidden="true">{profileInitials}</span>
+                    <span className="ident-text">
+                      <span className="ident-name">{profileName}</span>
+                      <span className="ident-role">
+                        <span className="ident-role-dot" aria-hidden="true" />
+                        {t(profileRole)}
+                      </span>
+                    </span>
+                  </div>
+
+                  {/* Every figure in this app is filtered by buyer, and until
+                      now nothing said which filter you were under. A buyer
+                      seeing "$462" and a leader seeing "$462" are not looking
+                      at the same thing. */}
+                  <div className="pm-facts">
+                    <div className="pm-fact">
+                      <span className="pm-fact-label">
+                        <Eye size={12} /> {t("Seeing")}
+                      </span>
+                      <span className="pm-fact-value">
+                        {isLeadership ? t("All buyers") : effectiveViewerBuyer || t("Your traffic")}
+                      </span>
+                    </div>
+                    {sessionExpiryLabel ? (
+                      <div className="pm-fact">
+                        <span className="pm-fact-label">
+                          <Clock size={12} /> {t("Session")}
+                        </span>
+                        <span className="pm-fact-value">{sessionExpiryLabel}</span>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="pm-group">
+                    <button
+                      className="profile-menu-item"
+                      type="button"
+                      onClick={() => {
+                        setActiveView("profile");
+                        setProfileMenuOpen(false);
+                      }}
+                    >
+                      <User size={14} />
+                      {t("Profile")}
+                      <ChevronRight size={13} className="pm-chev" />
+                    </button>
+                    {/* Both of these live at the very bottom of a 3,700px
+                        sidebar — 2,750px below the fold on a 900px screen. */}
+                    <button
+                      className="profile-menu-item"
+                      type="button"
+                      onClick={() => setLanguage(language === "EN" ? "TR" : "EN")}
+                    >
+                      <Globe size={14} />
+                      {t("Language")}
+                      <span className="pm-trailing">{language === "EN" ? "TR" : "EN"}</span>
+                    </button>
+                    <button
+                      className="profile-menu-item"
+                      type="button"
+                      onClick={() => {
+                        setActiveView("documentation");
+                        setProfileMenuOpen(false);
+                      }}
+                    >
+                      <BookOpen size={14} />
+                      {t("Documentation")}
+                      <ChevronRight size={13} className="pm-chev" />
+                    </button>
+                  </div>
+
+                  <div className="pm-group pm-group-last">
+                    <button
+                      className="profile-menu-item is-danger"
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        handleLogout();
+                      }}
+                    >
+                      <LogOut size={14} />
+                      {t("Logout")}
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
