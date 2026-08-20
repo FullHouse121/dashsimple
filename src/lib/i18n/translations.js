@@ -512,6 +512,15 @@ export const translations = {
     Install: "Kurulum",
     Register: "Kayıt",
     FTD: "FTD",
+    // Revenue the tracker attributes to neither an FTD nor a redeposit.
+    Other: "Diğer",
+    "Stage counts and drop-off for the selected period":
+      "Seçilen dönem için aşama sayıları ve düşüş oranları",
+    "of": "/",
+    "from": "önceki",
+    "Conversion from the previous stage": "Önceki aşamadan dönüşüm",
+    // Shown in place of CPC/ROI when the Meta spend pipeline is not delivering.
+    "ad accounts reporting spend": "reklam hesabı harcama bildiriyor",
     Click2Install: "Tıklama→Kurulum",
     Click2Register: "Tıklama→Kayıt",
     Install2Reg: "Kurulum→Kayıt",

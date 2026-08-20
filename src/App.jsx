@@ -1283,10 +1283,33 @@ function HomeDashboard({
   const cpc = safeDivide(totals.spend, totals.clicks);
   const costPerRegister = safeDivide(totals.spend, totals.registers);
   const costPerFtd = safeDivide(totals.spend, totals.ftds);
-  const totalRevenue = React.useMemo(
-    () => filteredRows.reduce((acc, row) => acc + readFtdRevenue(row) + readRedepositRevenue(row), 0),
+  // One definition of revenue for the whole page.
+  //
+  // The KPI card used to sum ftd_revenue + redeposit_revenue while the
+  // Statistics panel used readTotalRevenue (which prefers the tracker's own
+  // `revenue`). Both were labelled "Total Revenue" and they disagreed by
+  // $229.98 over 2026-08-01..20 — 15 rows carry revenue with no FTD and no
+  // redeposit attached to them. That money is real, so the total includes it
+  // and the split below names it rather than hiding it.
+  // One pass, so the parts and the whole can never be computed off different
+  // row sets. (`ftdRevenueTotal` further down is the Statistics panel's own
+  // copy of the same figure, derived from revenueTotals.)
+  const revenueSplit = React.useMemo(
+    () =>
+      filteredRows.reduce(
+        (acc, row) => ({
+          total: acc.total + readTotalRevenue(row),
+          ftd: acc.ftd + readFtdRevenue(row),
+          redeposit: acc.redeposit + readRedepositRevenue(row),
+        }),
+        { total: 0, ftd: 0, redeposit: 0 }
+      ),
     [filteredRows]
   );
+  const totalRevenue = revenueSplit.total;
+  // Revenue the tracker reports that is attributed to neither conversion type.
+  // Shown only when it exists, because a permanent "Other $0.00" is noise.
+  const otherRevenueTotal = revenueSplit.total - revenueSplit.ftd - revenueSplit.redeposit;
   const roi = totals.spend > 0 ? ((totalRevenue - totals.spend) / totals.spend) * 100 : null;
   const periodLabel =
     effectiveRange.from && effectiveRange.to
@@ -1319,7 +1342,7 @@ function HomeDashboard({
           clicks: acc.clicks + sum(row.clicks),
           registers: acc.registers + sum(row.registers),
           ftds: acc.ftds + sum(row.ftds),
-          revenue: acc.revenue + readFtdRevenue(row) + readRedepositRevenue(row),
+          revenue: acc.revenue + readTotalRevenue(row),
         }),
         { spend: 0, clicks: 0, registers: 0, ftds: 0, revenue: 0 }
       );
@@ -1352,6 +1375,21 @@ function HomeDashboard({
   // fine, whereas a struck-through one with a reason is unmistakable.
   const costIntegrity = useCostIntegrity();
   const costUntrusted = totals.clicks > 0 && costIntegrity && !costIntegrity.trustworthy;
+  // When NO account is delivering spend, a cost-derived figure is not merely
+  // uncertain — it is arithmetic on a number we know to be wrong. $114 of
+  // spend against 28,430 clicks printed "CPC $0.00" and "ROI 846.20%", and a
+  // caption under a headline does not undo a headline. So the value is
+  // withheld and the reason takes its place: a blank that explains itself
+  // beats a confident wrong number.
+  const spendAccounts = Number(costIntegrity?.accounts ?? 0);
+  const spendDelivering = Number(costIntegrity?.delivering ?? 0);
+  const costBlind = Boolean(costUntrusted) && spendAccounts > 0 && spendDelivering === 0;
+  // Same sentence for every cost card, so the failure is stated once and reads
+  // the same wherever it appears.
+  const spendCoverageNote = spendAccounts > 0
+    ? `${spendDelivering}/${spendAccounts} ${t("ad accounts reporting spend")}`
+    : t("cost data incomplete");
+  const costValue = (rendered) => (costBlind ? "—" : rendered);
 
   const homePrimaryStats = [
     {
@@ -1362,13 +1400,14 @@ function HomeDashboard({
       sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
       delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
     },
-    { label: "CPC", value: cpc === null ? "—" : formatCurrency(cpc), icon: Wallet, meta: "Cost per click", delta: mkDelta(cpc, prevCpc, false), untrusted: costUntrusted },
+    { label: "CPC", value: costValue(cpc === null ? "—" : formatCurrency(cpc)), icon: Wallet, meta: "Cost per click", untrustedLabel: spendCoverageNote, delta: mkDelta(cpc, prevCpc, false), untrusted: costUntrusted },
     { label: "Register", value: fmtCount(totals.registers), icon: UserPlus, meta: periodLabel, delta: mkDelta(totals.registers, prevTotals?.registers, true) },
     {
       label: "Cost per Register",
-      value: costPerRegister === null ? "—" : formatCurrency(costPerRegister),
+      value: costValue(costPerRegister === null ? "—" : formatCurrency(costPerRegister)),
       icon: Wallet,
       meta: "Cost per register",
+      untrustedLabel: spendCoverageNote,
       delta: mkDelta(costPerRegister, prevCostPerRegister, false),
       untrusted: costUntrusted,
     },
@@ -1378,9 +1417,10 @@ function HomeDashboard({
     { label: "FTD", value: fmtCount(totals.ftds), icon: CreditCard, meta: periodLabel, delta: mkDelta(totals.ftds, prevTotals?.ftds, true) },
     {
       label: "Cost per FTD",
-      value: costPerFtd === null ? "—" : formatCurrency(costPerFtd),
+      value: costValue(costPerFtd === null ? "—" : formatCurrency(costPerFtd)),
       icon: Wallet,
       meta: "Cost per FTD",
+      untrustedLabel: spendCoverageNote,
       delta: mkDelta(costPerFtd, prevCostPerFtd, false),
       untrusted: costUntrusted,
     },
@@ -1388,14 +1428,20 @@ function HomeDashboard({
       label: "Total Revenue",
       value: formatCurrency(totalRevenue),
       icon: Wallet,
-      meta: "FTD + Redeposit",
+      // Names every part of the number, so the total is checkable against the
+      // Statistics panel by eye instead of being taken on trust.
+      meta:
+        otherRevenueTotal > 0.005
+          ? `${t("FTD")} ${formatCurrency(revenueSplit.ftd)} · ${t("Redeposit")} ${formatCurrency(revenueSplit.redeposit)} · ${t("Other")} ${formatCurrency(otherRevenueTotal)}`
+          : `${t("FTD")} ${formatCurrency(revenueSplit.ftd)} · ${t("Redeposit")} ${formatCurrency(revenueSplit.redeposit)}`,
       delta: mkDelta(totalRevenue, prevTotals?.revenue, true),
     },
     {
       label: "ROI",
-      value: fmtPercent(roi),
+      value: costValue(fmtPercent(roi)),
       icon: BarChart3,
       meta: "Revenue vs Spend",
+      untrustedLabel: spendCoverageNote,
       delta: mkDelta(roi, prevRoi, true),
       untrusted: costUntrusted,
     },
@@ -1614,25 +1660,51 @@ function HomeDashboard({
   );
   const ftdToRedepositStatus = classifyMetric(ftdToRedepositCr, benchmark.ftdToRedepositCr);
 
-  const funnelData = React.useMemo(
-    () => [
+  const funnelData = React.useMemo(() => {
+    const stages = [
       { name: "Clicks", value: totals.clicks, color: "var(--blue)" },
       { name: "Install", value: totals.installs, color: "var(--purple)" },
       { name: "Register", value: totals.registers, color: "var(--green)" },
       { name: "FTD", value: totals.ftds, color: "var(--orange)" },
-    ],
-    [totals]
-  );
-  const funnelMax = Math.max(0, ...funnelData.map((entry) => entry.value || 0));
-  const funnelDomainMax = funnelMax > 0 ? Math.ceil(funnelMax / 50) * 50 : 10;
+    ];
+    // A stage reading zero while later stages do not is not a step everybody
+    // failed — it is a step this business does not track. Casino traffic has
+    // no app installs (0 across all 1,504 rows for 2026-08-01..20), and
+    // keeping the stage drew an empty bar and made the funnel read
+    // Install 0 < Register 2,209, which cannot happen in a funnel.
+    return stages.filter((stage, index) => index === 0 || stage.value > 0);
+  }, [totals]);
+
+  // The counts are not the insight — the drop between them is. 28,430 clicks
+  // next to 209 FTDs on a linear axis put three of four bars under 15px,
+  // which said nothing that "clicks are big" did not already say.
+  const funnelSteps = React.useMemo(() => {
+    const first = funnelData[0]?.value || 0;
+    return funnelData.map((stage, index) => {
+      const prev = index === 0 ? null : funnelData[index - 1]?.value || 0;
+      return {
+        ...stage,
+        ofFirst: first > 0 ? (stage.value / first) * 100 : null,
+        fromPrev: index === 0 || !prev ? null : (stage.value / prev) * 100,
+        prevName: index === 0 ? null : funnelData[index - 1]?.name,
+      };
+    });
+  }, [funnelData]);
 
   const conversionData = React.useMemo(
-    () => [
-      { name: "Click2Install", value: c2i ? Math.round(c2i) : 0, color: "var(--blue)" },
-      { name: "Click2Register", value: c2r ? Math.round(c2r) : 0, color: "var(--purple)" },
-      { name: "Install2Reg", value: i2r ? Math.round(i2r) : 0, color: "var(--green)" },
-      { name: "Reg2Dep", value: r2d ? Math.round(r2d) : 0, color: "var(--orange)" },
-    ],
+    () =>
+      [
+        { name: "Click2Install", value: c2i ? Math.round(c2i) : 0, color: "var(--blue)", rate: c2i },
+        { name: "Click2Register", value: c2r ? Math.round(c2r) : 0, color: "var(--purple)", rate: c2r },
+        { name: "Install2Reg", value: i2r ? Math.round(i2r) : 0, color: "var(--green)", rate: i2r },
+        { name: "Reg2Dep", value: r2d ? Math.round(r2d) : 0, color: "var(--orange)", rate: r2d },
+      ]
+        // Both install rates are structurally zero here — nothing reports an
+        // install — and averaging two real rates with two permanent zeros is
+        // what produced a headline "4% Avg rate" when the two rates that
+        // exist are 7.8% and 9.5%. A stage nobody measures is not a stage
+        // everybody failed, so it is left out rather than counted as zero.
+        .filter((item) => item.rate !== null && item.rate !== undefined && Number.isFinite(item.rate) && item.rate > 0),
     [c2i, c2r, i2r, r2d]
   );
 
@@ -1805,7 +1877,7 @@ function HomeDashboard({
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("cost data incomplete")}
+                  <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
               {stat.sub ? (
@@ -1850,7 +1922,7 @@ function HomeDashboard({
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("cost data incomplete")}
+                  <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
@@ -2455,68 +2527,52 @@ function HomeDashboard({
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Conversion Funnel")}</h3>
-              <p className="panel-subtitle">{t("Stage counts for the selected period")}</p>
+              <p className="panel-subtitle">{t("Stage counts and drop-off for the selected period")}</p>
             </div>
           </div>
-          <div className="chart chart-surface">
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart
-                data={funnelData}
-                barSize={28}
-                barCategoryGap="28%"
-                margin={{ top: 12, right: 8, left: 0, bottom: 4 }}
-              >
-                <defs>
-                  {funnelData.map((entry) => (
-                    <linearGradient
-                      key={entry.name}
-                      id={`funnel-${toGradientId(entry.name)}`}
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="rgba(255,255,255,0.9)" stopOpacity="0.18" />
-                      <stop offset="12%" stopColor={entry.color} stopOpacity="1" />
-                      <stop offset="100%" stopColor={entry.color} stopOpacity="0.75" />
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid stroke="rgba(255,255,255,0.05)" vertical={false} />
-                <XAxis dataKey="name" stroke="#7f848f" tickLine={false} axisLine={false} />
-                <YAxis
-                  stroke="#7f848f"
-                  tickLine={false}
-                  axisLine={false}
-                  width={34}
-                  tick={{ fontSize: 11 }}
-                  tickMargin={6}
-                  allowDecimals={false}
-                  domain={[0, funnelDomainMax]}
-                  tickFormatter={(value) => value.toLocaleString()}
-                />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  labelStyle={{ color: "#f4f6fb" }}
-                  itemStyle={{ color: "#d7dde7" }}
-                  formatter={(value) => [Number(value || 0).toLocaleString(), t("Value")]}
-                  cursor={{ fill: "rgba(255,255,255,0.04)" }}
-                />
-                <Bar dataKey="value" radius={[10, 10, 6, 6]} minPointSize={4}>
-                  {funnelData.map((entry) => (
-                    <Cell key={entry.name} fill={`url(#funnel-${toGradientId(entry.name)})`} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="legend">
-              {funnelData.map((item) => (
-                <span className="legend-item" key={item.name}>
-                  <span className="dot" style={{ background: item.color }} />
-                  {t(item.name)}
-                </span>
-              ))}
-            </div>
+          <div className="funnel-rows">
+            {funnelSteps.map((stage, stageIndex) => (
+              <div className="funnel-row" key={stage.name}>
+                <div className="funnel-row-head">
+                  <span className="funnel-stage">
+                    <span className="dot" style={{ background: stage.color }} />
+                    {t(stage.name)}
+                  </span>
+                  <span className="funnel-count">{Number(stage.value || 0).toLocaleString()}</span>
+                </div>
+                <div className="funnel-track">
+                  {/* A stage at 0.7% of the first still has to be visible, so
+                      the fill has a floor. It is a floor on the drawing only —
+                      the number beside it is never rounded up to meet it. */}
+                  <div
+                    className="funnel-fill"
+                    style={{
+                      width: `${Math.max(stage.ofFirst ?? 0, stage.value > 0 ? 1.5 : 0)}%`,
+                      background: stage.color,
+                    }}
+                  />
+                </div>
+                <div className="funnel-row-foot">
+                  <span className="funnel-of-first">
+                    {/* The first stage is trivially 100% of itself; printing
+                        that is noise, so it carries the period instead. */}
+                    {stageIndex === 0
+                      ? periodLabel
+                      : stage.ofFirst === null
+                        ? "—"
+                        : `${stage.ofFirst.toFixed(stage.ofFirst < 10 ? 2 : 1)}% ${t("of")} ${t(funnelSteps[0]?.name || "Clicks")}`}
+                  </span>
+                  {/* At the second stage "from the previous stage" and "of the
+                      first stage" are the same division, so only one of them
+                      is worth printing. */}
+                  {stage.fromPrev === null || stageIndex === 1 ? null : (
+                    <span className="funnel-step" title={t("Conversion from the previous stage")}>
+                      {stage.fromPrev.toFixed(stage.fromPrev < 10 ? 2 : 1)}% {t("from")} {t(stage.prevName)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </motion.div>
 
@@ -12289,7 +12345,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("cost data incomplete")}
+                  <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">
@@ -13931,7 +13987,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("cost data incomplete")}
+                  <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
@@ -23735,7 +23791,7 @@ function ProfileDashboard({ authUser }) {
                   onClick={() => goToView("health")}
                   title={t("Spend is missing for some ad accounts, so this figure is computed from incomplete cost. Open Health to see why.")}
                 >
-                  <AlertTriangle size={11} /> {t("cost data incomplete")}
+                  <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
               <div className="card-meta">{t(stat.meta)}</div>
