@@ -1,5 +1,5 @@
 import React from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import {
   AreaChart,
   Area,
@@ -120,6 +120,7 @@ import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
 import { METRIC_COLORS, RATE_COLORS, STAGE_COLORS } from "./lib/metricColors.js";
 import GeoTreemap, { ACCENT as MAP_ACCENT } from "./components/GeoTreemap.jsx";
+import { rowMotion, stagger, EASE, DURATION } from "./lib/motion.js";
 import {
   DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
@@ -2207,7 +2208,7 @@ function HomeDashboard({
               className="card"
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.08, duration: 0.5 }}
+              transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
             >
               <div className="card-head">
                 <Icon size={20} />
@@ -2533,7 +2534,7 @@ function HomeDashboard({
           className="panel stats"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -2724,7 +2725,7 @@ function HomeDashboard({
           className="panel map"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: DURATION.settle, delay: 0.10, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -2872,7 +2873,7 @@ function HomeDashboard({
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -2946,7 +2947,7 @@ function HomeDashboard({
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -3624,7 +3625,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                   className="card"
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.08, duration: 0.5 }}
+                  transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
                 >
                   <div className="card-head">
                     <Icon size={20} />
@@ -3658,7 +3659,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               className="panel span-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: DURATION.settle, ease: EASE }}
             >
               <div className="panel-head">
                 <div>
@@ -3728,7 +3729,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               className="panel"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.05 }}
+              transition={{ duration: DURATION.settle, delay: 0.05, ease: EASE }}
             >
               <div className="panel-head">
                 <div>
@@ -3798,7 +3799,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               className="panel"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
+              transition={{ duration: DURATION.settle, delay: 0.10, ease: EASE }}
             >
               <div className="panel-head">
                 <div>
@@ -3860,7 +3861,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               className="panel span-2"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.15 }}
+              transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
             >
               <div className="panel-head">
                 <div>
@@ -3941,7 +3942,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
               className="panel span-3"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.2 }}
+              transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
             >
               <div className="panel-head">
                 <div>
@@ -4029,7 +4030,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             className="panel"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: DURATION.settle, ease: EASE }}
           >
             <div className="panel-head">
               <div>
@@ -4093,7 +4094,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             className="panel"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
+            transition={{ duration: DURATION.settle, delay: 0.10, ease: EASE }}
           >
             <div className="panel-head">
               <div>
@@ -4143,7 +4144,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
             className="panel span-2"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.15 }}
+            transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
           >
             <div className="panel-head">
               <div>
@@ -4200,7 +4201,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
           className="panel form-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -5267,7 +5268,7 @@ function TrackingLinksDashboard({ authUser }) {
         className="panel registry-dashboard-panel tracking-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: DURATION.settle, ease: EASE }}
       >
         <div className="panel-head">
           <div className="panel-head-title">
@@ -6168,7 +6169,7 @@ function HealthDashboard({ authUser }) {
 
   return (
     <section className="form-section">
-      <motion.div className="panel registry-dashboard-panel health-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+      <motion.div className="panel registry-dashboard-panel health-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: DURATION.settle, ease: EASE }}>
         <div className="panel-head">
           <div className="panel-head-title">
             <span className="panel-icon-badge"><HealthIcon size={20} /></span>
@@ -7856,7 +7857,7 @@ function MyFlowsDashboard({ authUser }) {
         ) : null}
       </AnimatePresence>
 
-      <motion.div className="panel registry-dashboard-panel flows-registry-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+      <motion.div className="panel registry-dashboard-panel flows-registry-panel" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: DURATION.settle, ease: EASE }}>
         <div className="panel-head">
           <div className="panel-head-title">
             <span className="panel-icon-badge"><FlowsIcon size={20} /></span>
@@ -8721,7 +8722,7 @@ function UtmBuilder() {
           className="panel form-panel utm-registry-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div className="panel-head-title">
@@ -10092,7 +10093,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
             className="card"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.08, duration: 0.5 }}
+            transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
           >
             <div className="card-head">{stat.label}</div>
             <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
@@ -10511,7 +10512,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -10595,7 +10596,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: DURATION.settle, delay: 0.10, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -10689,7 +10690,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
+          transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -11212,7 +11213,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
             className="card"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.08, duration: 0.5 }}
+            transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
           >
             <div className="card-head">{t(stat.label)}</div>
             <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
@@ -11236,7 +11237,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -11280,7 +11281,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08 }}
+          transition={{ duration: DURATION.settle, delay: 0.08, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -11299,7 +11300,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
           className="panel span-2 placement-conversion"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.16 }}
+          transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -11337,7 +11338,7 @@ function PlacementsDashboard({ period, setPeriod, customRange, onCustomChange, f
           className="panel form-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -13722,7 +13723,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
             className="card"
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.08, duration: 0.5 }}
+            transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
           >
             <div className="card-head">{t(stat.label)}</div>
             <div className={`card-value${stat.untrusted ? " is-untrusted" : ""}`}>{stat.value}</div>
@@ -13804,7 +13805,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -13854,7 +13855,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08 }}
+          transition={{ duration: DURATION.settle, delay: 0.08, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -13875,7 +13876,7 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
           className="panel form-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -14352,7 +14353,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
               className="card"
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.08, duration: 0.5 }}
+              transition={{ delay: stagger(idx), duration: DURATION.settle, ease: EASE }}
             >
               <div className="card-head">
                 {stat.iconNode || (Icon ? <Icon size={18} /> : null)}
@@ -14380,7 +14381,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
           className="panel span-2"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -14416,7 +14417,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.08 }}
+          transition={{ duration: DURATION.settle, delay: 0.08, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -14446,7 +14447,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.16 }}
+          transition={{ duration: DURATION.settle, delay: 0.12, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -14465,7 +14466,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
           className="panel form-panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: DURATION.settle, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -15234,7 +15235,7 @@ function GoalsDashboard({ authUser }) {
           className="panel"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
+          transition={{ duration: DURATION.settle, delay: 0.10, ease: EASE }}
         >
           <div className="panel-head">
             <div>
@@ -16544,7 +16545,7 @@ function DomainsDashboard({ authUser }) {
         className="panel registry-dashboard-panel domain-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: DURATION.settle, ease: EASE }}
       >
         <div className="panel-head">
           <div className="panel-head-title">
@@ -16832,8 +16833,9 @@ function DomainsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
+                <AnimatePresence mode="popLayout" initial={false}>
                 {pagedDomainRows.map(({ domain, ownerLabel, countries }) => (
-                  <tr key={domain.id}>
+                  <motion.tr key={domain.id} {...rowMotion}>
                     <td>
                       <span className="flow-pill" title={domain.domain}>
                         <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
@@ -16929,8 +16931,9 @@ function DomainsDashboard({ authUser }) {
                         </div>
                       ) : null}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
+                </AnimatePresence>
               </tbody>
             </table>
             </div>
@@ -18414,7 +18417,7 @@ function PixelsDashboard({ authUser }) {
         className="panel registry-dashboard-panel pixel-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: DURATION.settle, ease: EASE }}
       >
         <div className="panel-head">
           <div className="panel-head-title">
@@ -18713,8 +18716,12 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
+                {/* popLayout takes the leaving row out of flow immediately, so
+                    the rows below start closing the gap while it fades rather
+                    than jumping the moment it unmounts. */}
+                <AnimatePresence mode="popLayout" initial={false}>
                 {pagedPixelTableRows.map(({ pixel, ownerLabel, geos, flows }) => (
-                  <tr key={pixel.id}>
+                  <motion.tr key={pixel.id} {...rowMotion}>
                     <td className="mono row-index-cell">{pixel.id}</td>
                     <td className="copy-cell">
                       <div className="copy-inline">
@@ -18870,8 +18877,9 @@ function PixelsDashboard({ authUser }) {
                         </div>
                       ) : null}
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
+                </AnimatePresence>
               </tbody>
             </table>
             </div>
@@ -20351,7 +20359,7 @@ function AccountsDashboard({ authUser }) {
         className="panel registry-dashboard-panel accounts-registry-panel"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        transition={{ duration: DURATION.settle, ease: EASE }}
       >
         <div className="panel-head">
           <div className="panel-head-title">
@@ -26741,7 +26749,10 @@ export default function App() {
     return `${Math.max(1, Math.floor(seconds / 60))}${t("m left")}`;
   }, [authUser?.exp, t]);
 
+  // reducedMotion="user" makes every framer animation in the app honour the OS
+  // setting, rather than each component having to remember to check.
   return (
+    <MotionConfig reducedMotion="user">
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
       <ConfirmHost />
       <div className={`app${mobileNavOpen ? " mobile-nav-open" : ""}${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
@@ -28159,5 +28170,6 @@ export default function App() {
       </AnimatePresence>
     </div>
     </LanguageContext.Provider>
+    </MotionConfig>
   );
 }
