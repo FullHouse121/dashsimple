@@ -23136,7 +23136,9 @@ select option,
    under each name. At full width the map takes a fixed column and the rest
    goes to a table that can show the numbers the ranking is made of. */
 .map-grid {
-  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  /* Wider than the map needed: the treemap's smallest tiles are a fixed share
+     of its area, so every pixel given to the column is area they get too. */
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   /* Stretch, not start: the table is ~150px taller than the map, and a short
      card hanging from the top of a tall column reads as unfinished. The map
      centres inside the full height instead (.map-visual justifies centre). */
@@ -23260,134 +23262,6 @@ select option,
 @media (max-width: 1080px) {
   .map-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* ── GEO value map ────────────────────────────────────────────────────────
-   Outlines and squares, not a choropleth.
-   The filled version read as a different kind of object from everything
-   around it — this page is tables, bars and sparklines, and a shaded landmass
-   sat outside that language however well it was drawn. The geography is a
-   hairline backdrop now; a square per country in the same green as the bars,
-   sized by area, carries the value. */
-.geo-map {
-  display: block;
-  width: 100%;
-  border-radius: 12px;
-}
-
-.geo-map-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-  font-size: 12px;
-  border-radius: 12px;
-  background: rgba(12, 14, 18, 0.5);
-}
-
-.geo-map-base path {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.07);
-  stroke-width: 0.5;
-  vector-effect: non-scaling-stroke;
-}
-
-/* A country that produced something gets a slightly firmer outline, so the
-   shape is legible under its marker without being filled in. */
-.geo-map-base path.is-producing {
-  stroke: rgba(255, 255, 255, 0.2);
-  stroke-width: 0.7;
-}
-
-.geo-map-marker rect {
-  transition: transform 0.16s ease;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.geo-map-marker {
-  cursor: pointer;
-}
-
-.geo-map-marker:hover rect {
-  transform: scale(1.18);
-}
-
-.geo-map-marker.is-active rect {
-  stroke: #f2f2f4;
-  stroke-width: 1.4;
-  vector-effect: non-scaling-stroke;
-}
-
-/* The same 10px uppercase the table headers and card labels use. */
-.geo-map-labels text {
-  paint-order: stroke fill;
-  stroke: rgba(10, 12, 15, 0.9);
-  stroke-width: 2.4px;
-  stroke-linejoin: round;
-  pointer-events: none;
-}
-
-.geo-map-label-name {
-  fill: rgba(242, 242, 244, 0.9);
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.geo-map-label-value {
-  fill: var(--muted);
-  font-size: 9.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Size is the scale now, so the legend shows sizes rather than a gradient. */
-.geo-map-scale {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.geo-map-ramp {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.geo-map-ramp::before,
-.geo-map-ramp::after {
-  content: "";
-  background: var(--green);
-  border-radius: 1.5px;
-}
-
-.geo-map-ramp::before {
-  width: 5px;
-  height: 5px;
-}
-
-.geo-map-ramp::after {
-  width: 13px;
-  height: 13px;
-}
-
-.geo-dot {
-  background: var(--green);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .geo-map-marker rect {
-    transition: none;
   }
 }
 
@@ -23519,6 +23393,78 @@ select option,
 
 @media (prefers-reduced-motion: reduce) {
   .cvr-stage-bar > span {
+    transition: none;
+  }
+}
+
+/* ── GEO treemap ──────────────────────────────────────────────────────────
+   Area is the value; there is no outside.
+   A world projection could frame Latin America and lose Nigeria off the edge,
+   or frame the globe and make the rest illegible — a country in the table
+   could not be found on it. Every producing country is a tile here, and the
+   smallest is still on screen. */
+.geo-tree {
+  display: block;
+  width: 100%;
+}
+
+.geo-tree-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+  border-radius: 12px;
+  background: rgba(12, 14, 18, 0.5);
+}
+
+.geo-tile {
+  cursor: pointer;
+}
+
+.geo-tile rect {
+  transition: fill-opacity 0.16s ease;
+}
+
+.geo-tile:hover rect {
+  fill-opacity: 1;
+}
+
+.geo-tile.is-active rect {
+  stroke: #f2f2f4;
+  stroke-width: 1.5;
+}
+
+.geo-tile text {
+  pointer-events: none;
+}
+
+/* The same 9.5px uppercase the table headers use. */
+.geo-tile-name {
+  fill: #0b0f0c;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.geo-tile-value {
+  fill: rgba(11, 15, 12, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.geo-tree-note {
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .geo-tile rect {
     transition: none;
   }
 }

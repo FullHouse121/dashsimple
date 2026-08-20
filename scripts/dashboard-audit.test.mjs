@@ -24,7 +24,7 @@ const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const app = read("src/App.jsx");
 const css = read("src/styles.css");
 const colors = read("src/lib/metricColors.js");
-const geoMap = read("src/components/GeoValueMap.jsx");
+const geoTree = read("src/components/GeoTreemap.jsx");
 
 // The home dashboard only — App.jsx holds several dashboards, and a check that
 // scanned all of them would pass or fail for the wrong reasons.
@@ -158,37 +158,33 @@ check(
   /const geoMapRows = React\.useMemo\(/.test(app) &&
     /\.filter\(\(geo\) => \(Number\(geo\[geoMetric\]\) \|\| 0\) > 0\)/.test(app)
 );
+// The map became a treemap. A world projection could frame Latin America and
+// drop Nigeria off the edge, or frame the globe and make the rest illegible —
+// a country listed in the table could not be found beside it. These assert the
+// property that failure was really about: nothing with a value is off-figure.
 check(
   3,
-  "the projection fits itself to the data",
-  /\.fitExtent\(/.test(geoMap),
-  "a hand-tuned scale and centre clipped coastlines whenever the data moved"
+  "every country with a value gets a tile",
+  /export const squarify/.test(geoTree) &&
+    /queue = \[\.\.\.items\]\.filter\(\(i\) => Number\(i\.value\) > 0\)/.test(geoTree),
+  "a projection has an outside; a treemap does not"
 );
 check(
   3,
-  "no hand-tuned projection constants remain",
-  !/MAP_FRAME_W|MAP_WORLD_SCALE|MAP_COUNTRY_EXTENT_PAD/.test(app)
+  "no projection is left to frame, clip or tune",
+  !/fitExtent|MAP_FRAME_W|MAP_WORLD_SCALE|geoMercator|properties\.ISO_A3/.test(app)
 );
 check(
   3,
-  "countries are matched on a property the atlas actually carries",
-  !/properties\.ISO_A3/.test(app) && !/properties\.ISO_A3/.test(geoMap),
-  "world-atlas@2 exposes only `name`, so ISO_A3 was always undefined"
-);
-// The panel moved from a colour ramp to one accent with size carrying the
-// value, so the assertion follows the property rather than the mechanism:
-// value must be encoded by magnitude, and hue must not be per-country.
-check(
-  3,
-  "map and table share one accent",
-  /export const MAP_ACCENT/.test(geoMap) && /background: MAP_ACCENT/.test(app),
+  "figure and table share one accent",
+  /export const ACCENT/.test(geoTree) && /background: MAP_ACCENT/.test(app),
   "a colour-per-country palette gave Colombia and Mexico the same purple"
 );
 check(
   3,
-  "map markers encode value by area, not by side",
-  /Math\.sqrt\(Math\.max\(0, Math\.min\(1, weight/.test(geoMap),
-  "sizing the side by value makes a 4x country look 16x bigger"
+  "tiles are laid out squarified, not in plain rows",
+  /worstRatio/.test(geoTree),
+  "plain rows turn a 0.4% country into a strip too thin to hover or read"
 );
 check(
   3,

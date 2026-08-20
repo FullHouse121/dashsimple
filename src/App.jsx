@@ -118,7 +118,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
 import { METRIC_COLORS, RATE_COLORS, STAGE_COLORS } from "./lib/metricColors.js";
-import GeoValueMap, { MAP_ACCENT } from "./components/GeoValueMap.jsx";
+import GeoTreemap, { ACCENT as MAP_ACCENT } from "./components/GeoTreemap.jsx";
 import {
   DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
@@ -1965,7 +1965,13 @@ function HomeDashboard({
     () =>
       geoMetrics
         .filter((geo) => (Number(geo[geoMetric]) || 0) > 0)
-        .map((geo) => ({ name: geo.name, iso: geo.iso, value: Number(geo[geoMetric]) || 0 })),
+        .map((geo) => ({
+          key: geo.iso,
+          label: geo.name,
+          name: geo.name,
+          iso: geo.iso,
+          value: Number(geo[geoMetric]) || 0,
+        })),
     [geoMetrics, geoMetric]
   );
 
@@ -2664,23 +2670,18 @@ function HomeDashboard({
             </div>
             <div className="map-grid">
               <div className="map-visual">
-                <GeoValueMap
+                <GeoTreemap
                   rows={geoMapRows}
-                  activeName={focusGeo?.name || null}
-                  onHover={(entry) => (entry ? handleGeoEnter(entry.iso) : handleGeoLeave())}
-                  onSelect={(entry) => handleGeoToggle(entry.iso)}
+                  activeKey={focusGeo?.iso || null}
+                  onHover={(tile) => (tile ? handleGeoEnter(tile.key) : handleGeoLeave())}
+                  onSelect={(tile) => handleGeoToggle(tile.key)}
                   formatValue={formatGeoMetric}
-                  height={420}
+                  height={460}
                   emptyLabel={t("No countries in range")}
-                  loadingLabel={t("Loading map…")}
                 />
-                {/* The ramp is the legend: the map is one colour at varying
-                    depth, so two ends and the metric's name say all of it. */}
-                <div className="geo-map-scale">
-                  <span>{t("Less")}</span>
-                  <span className="geo-map-ramp" aria-hidden="true" />
-                  <span>{t("More")}</span>
-                </div>
+                <p className="geo-tree-note">
+                  {t("Every country with activity, sized by share")}
+                </p>
               </div>
               <div className="geo-board">
                 <div className="map-info-card">
