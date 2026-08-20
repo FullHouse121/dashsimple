@@ -514,6 +514,9 @@ export const translations = {
     FTD: "FTD",
     // Revenue the tracker attributes to neither an FTD nor a redeposit.
     Other: "Diğer",
+    "Each handoff, and how it moved": "Her aşama geçişi ve nasıl değiştiği",
+    "low": "en düşük",
+    "peak": "en yüksek",
     click: "tıklama",
     "per click": "tıklama başına",
     "Rev / click": "Tıklama başına gelir",

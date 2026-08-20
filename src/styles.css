@@ -23081,3 +23081,142 @@ select option,
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
+
+/* ── Conversion handoffs ──────────────────────────────────────────────────
+   What used to be a donut. Click→Register and Register→Deposit are ratios
+   over different denominators, so a ring — which promises parts of a whole —
+   sized each arc by its share of a sum that means nothing, and printed the
+   average of two unrelated rates in the middle. Each handoff now gets its own
+   line: the period rate, and the shape of that rate day by day. */
+.handoff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px;
+}
+
+.handoff {
+  background: linear-gradient(180deg, rgba(20, 22, 27, 0.55), rgba(14, 16, 20, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.handoff-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.handoff-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.handoff-rate {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.handoff-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.sparkline {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  display: block;
+}
+
+.handoff-range {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The funnel's fills matched the flat treatment of the old donut; the area
+   charts on the same screen use a gradient. One fill language. */
+.funnel-fill {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
+}
+
+/* ── Chart panel proportion and series chips ──────────────────────────────
+   The global .panel floor of 380px is right for the chart panels, but the
+   funnel and handoff panels carry ~290px of content and were left with 87px
+   and 107px of dead space under them. Following the same escape the campaign
+   and placement grids already use, this row sizes to its content and the grid
+   equalises the two. */
+.panels.extra .panel {
+  min-height: 0;
+}
+
+/* Choosing a series is one job, so it gets one control.
+   The Overview chart used a pill (999px, bordered, 12px) and the Statistics
+   legend used a flat 8px chip at 13.3px, side by side on the same screen. */
+.legend-item.is-interactive {
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 14, 18, 0.76);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  gap: 7px;
+  transition: all 0.18s ease;
+}
+
+.legend-item.is-interactive:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.legend-item.is-interactive.is-active {
+  border-color: var(--green);
+  background: rgba(54, 208, 124, 0.08);
+  color: var(--text);
+}
+
+/* The revenue block's heading said "daily revenue trend" above three summary
+   cards and no trend. */
+.revenue-trend {
+  background: linear-gradient(180deg, rgba(20, 22, 27, 0.55), rgba(14, 16, 20, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px 14px 10px;
+}
+
+.revenue-trend .sparkline {
+  width: 100%;
+  height: 54px;
+}
+
+.revenue-trend-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

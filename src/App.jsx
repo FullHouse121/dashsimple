@@ -118,6 +118,7 @@ import { Pager, PAGE_SIZE, usePagination } from "./components/Pager.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
+import { METRIC_COLORS, RATE_COLORS, STAGE_COLORS } from "./lib/metricColors.js";
 import {
   DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
@@ -750,11 +751,55 @@ const formatShortDate = (value) => {
   return `${parts[2]} ${month}`;
 };
 
+// A 120x28 trace of one series. Hand-drawn rather than a fifth Recharts
+// container: at this size the axis machinery costs more than the line.
+function Sparkline({ values, color, width = 120, height = 28 }) {
+  if (!Array.isArray(values) || values.length < 2) return null;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const stepX = width / (values.length - 1);
+  // 2px of padding top and bottom so the endpoint dot is never clipped.
+  const y = (v) => height - 2 - ((v - min) / span) * (height - 4);
+  const points = values.map((v, i) => `${(i * stepX).toFixed(2)},${y(v).toFixed(2)}`);
+  const lastX = (values.length - 1) * stepX;
+  const lastY = y(values[values.length - 1]);
+  const gradientId = `spark-${String(color).replace(/[^a-z0-9]/gi, "")}`;
+  return (
+    <svg
+      className="sparkline"
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      role="img"
+      aria-hidden="true"
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,${height} ${points.join(" ")} ${lastX},${height}`} fill={`url(#${gradientId})`} />
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx={lastX} cy={lastY} r="2.4" fill={color} />
+    </svg>
+  );
+}
+
 const homeChartSeries = [
-  { key: "c2i", label: "Click2Install", color: "var(--blue)", width: 2.2 },
-  { key: "c2r", label: "Click2Register", color: "var(--purple)", width: 2 },
-  { key: "i2r", label: "Install2Reg", color: "var(--green)", width: 2 },
-  { key: "r2d", label: "Reg2Dep", color: "var(--orange)", width: 2 },
+  { key: "c2i", label: "Click2Install", color: RATE_COLORS.c2i, width: 2.2 },
+  { key: "c2r", label: "Click2Register", color: RATE_COLORS.c2r, width: 2 },
+  { key: "i2r", label: "Install2Reg", color: RATE_COLORS.i2r, width: 2 },
+  { key: "r2d", label: "Reg2Dep", color: RATE_COLORS.r2d, width: 2 },
 ];
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -1515,12 +1560,12 @@ function HomeDashboard({
 
   const overviewMetricOptions = React.useMemo(
     () => [
-      { key: "clicks", label: "Clicks", color: "var(--blue)", type: "count" },
-      { key: "registrations", label: "Registration", color: "var(--purple)", type: "count" },
-      { key: "ftds", label: "FTDs", color: "var(--green)", type: "count" },
-      { key: "redeposits", label: "Redeposits", color: "var(--teal)", type: "count" },
-      { key: "roi", label: "ROI", color: "var(--orange)", type: "percent" },
-      { key: "revenue", label: "Revenue", color: "#f7d06b", type: "currency" },
+      { key: "clicks", label: "Clicks", color: METRIC_COLORS.clicks, type: "count" },
+      { key: "registrations", label: "Registration", color: METRIC_COLORS.registration, type: "count" },
+      { key: "ftds", label: "FTDs", color: METRIC_COLORS.ftd, type: "count" },
+      { key: "redeposits", label: "Redeposits", color: METRIC_COLORS.redeposit, type: "count" },
+      { key: "roi", label: "ROI", color: METRIC_COLORS.roi, type: "percent" },
+      { key: "revenue", label: "Revenue", color: METRIC_COLORS.revenue, type: "currency" },
     ],
     []
   );
@@ -1665,10 +1710,10 @@ function HomeDashboard({
 
   const funnelData = React.useMemo(() => {
     const stages = [
-      { name: "Clicks", value: totals.clicks, color: "var(--blue)" },
-      { name: "Install", value: totals.installs, color: "var(--purple)" },
-      { name: "Register", value: totals.registers, color: "var(--green)" },
-      { name: "FTD", value: totals.ftds, color: "var(--orange)" },
+      { name: "Clicks", value: totals.clicks, color: STAGE_COLORS.Clicks },
+      { name: "Install", value: totals.installs, color: STAGE_COLORS.Install },
+      { name: "Register", value: totals.registers, color: STAGE_COLORS.Register },
+      { name: "FTD", value: totals.ftds, color: STAGE_COLORS.FTD },
     ];
     // A stage reading zero while later stages do not is not a step everybody
     // failed — it is a step this business does not track. Casino traffic has
@@ -1697,10 +1742,10 @@ function HomeDashboard({
   const conversionData = React.useMemo(
     () =>
       [
-        { name: "Click2Install", value: c2i ? Math.round(c2i) : 0, color: "var(--blue)", rate: c2i },
-        { name: "Click2Register", value: c2r ? Math.round(c2r) : 0, color: "var(--purple)", rate: c2r },
-        { name: "Install2Reg", value: i2r ? Math.round(i2r) : 0, color: "var(--green)", rate: i2r },
-        { name: "Reg2Dep", value: r2d ? Math.round(r2d) : 0, color: "var(--orange)", rate: r2d },
+        { key: "c2i", name: "Click2Install", value: c2i ? Math.round(c2i) : 0, color: RATE_COLORS.c2i, rate: c2i },
+        { key: "c2r", name: "Click2Register", value: c2r ? Math.round(c2r) : 0, color: RATE_COLORS.c2r, rate: c2r },
+        { key: "i2r", name: "Install2Reg", value: i2r ? Math.round(i2r) : 0, color: RATE_COLORS.i2r, rate: i2r },
+        { key: "r2d", name: "Reg2Dep", value: r2d ? Math.round(r2d) : 0, color: RATE_COLORS.r2d, rate: r2d },
       ]
         // Both install rates are structurally zero here — nothing reports an
         // install — and averaging two real rates with two permanent zeros is
@@ -1785,6 +1830,33 @@ function HomeDashboard({
   // and it is stated in the UI rather than applied silently.
   // Dots are scaled by area, not radius: radius-scaling makes an 8x value look
   // 64x bigger. Anything with a coordinate and a non-zero metric is drawn.
+  // Each handoff as a rate plus the shape of that rate over the period.
+  //
+  // This replaces a donut. A ring says "parts of a whole", but Click→Register
+  // and Register→Deposit are independent ratios over different denominators —
+  // they sum to nothing, so sizing each arc by its share of that sum encoded a
+  // quantity that does not exist, and the figure in the middle averaged two
+  // unrelated rates into "9%".
+  //
+  // The period rate is computed from period totals, not by averaging the daily
+  // rates: a day with 4 clicks would otherwise weigh as much as a day with
+  // 4,000. The sparkline shows the daily values behind it.
+  const handoffRates = React.useMemo(
+    () =>
+      conversionData.map((item) => {
+        const daily = chartData
+          .map((point) => {
+            const value = Number(point?.[item.key]);
+            return Number.isFinite(value) ? value : null;
+          })
+          .filter((value) => value !== null);
+        const peak = daily.length ? Math.max(...daily) : null;
+        const trough = daily.length ? Math.min(...daily) : null;
+        return { ...item, daily, peak, trough };
+      }),
+    [conversionData, chartData]
+  );
+
   const geoPlotted = React.useMemo(() => {
     const withCoords = geoMetrics.filter(
       (geo) => Array.isArray(geo.coordinates) && Number(geo[geoMetric]) > 0
@@ -2062,6 +2134,12 @@ function HomeDashboard({
                       tickLine={false}
                       axisLine={false}
                       tick={{ fill: "#8b909a", fontSize: 11 }}
+                      // Every day was labelled, which put 20 labels almost
+                      // touching across a 20-day range while the Statistics
+                      // chart below drew 10 over the same dates. Thin to a
+                      // readable count and let the tooltip carry the rest.
+                      interval={overviewData.length > 12 ? Math.ceil(overviewData.length / 10) - 1 : 0}
+                      minTickGap={8}
                     />
                     <YAxis
                       yAxisId="left"
@@ -2305,8 +2383,11 @@ function HomeDashboard({
                   stroke="#7f848f"
                   tickLine={false}
                   axisLine={false}
-                  width={30}
+                  width={38}
                   tick={{ fill: "#8b909a", fontSize: 11 }}
+                  // This chart plots rates. Without the unit it is styled
+                  // identically to the Overview chart, which plots counts.
+                  tickFormatter={(value) => `${value}%`}
                 />
                 <Tooltip
                   content={(props) => (
@@ -2378,6 +2459,26 @@ function HomeDashboard({
                   <strong>{formatCurrency(revenueTotals.revenue)}</strong>
                 </div>
               </div>
+              {/* The heading promised a daily trend and the section showed three
+                  summary cards. This is that trend. */}
+              {revenueSeries.length > 1 ? (
+                <div className="revenue-trend">
+                  <Sparkline
+                    values={revenueSeries.map((item) => item.revenue)}
+                    color={METRIC_COLORS.revenue}
+                    width={560}
+                    height={54}
+                  />
+                  <div className="revenue-trend-foot">
+                    <span>{formatShortDate(revenueSeries[0].date)}</span>
+                    <span>
+                      {t("peak")}{" "}
+                      {formatCurrency(Math.max(...revenueSeries.map((item) => item.revenue)))}
+                    </span>
+                    <span>{formatShortDate(revenueSeries[revenueSeries.length - 1].date)}</span>
+                  </div>
+                </div>
+              ) : null}
               <div className="revenue-grid">
                 <div className={`revenue-card ${ftdRevenueStatus.tone}`}>
                   <div className="revenue-card-head">
@@ -2716,57 +2817,39 @@ function HomeDashboard({
           <div className="panel-head">
             <div>
               <h3 className="panel-title">{t("Conversion Rates")}</h3>
-              <p className="panel-subtitle">{t("Average rate across each handoff")}</p>
+              <p className="panel-subtitle">{t("Each handoff, and how it moved")}</p>
             </div>
           </div>
-          <div className="chart chart-center chart-surface">
-            <div className="donut-wrap">
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie
-                    data={conversionData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={68}
-                    outerRadius={98}
-                    paddingAngle={4}
-                    cornerRadius={8}
-                    startAngle={90}
-                    endAngle={-270}
-                    stroke="rgba(12, 14, 17, 0.9)"
-                    strokeWidth={2}
-                    onMouseEnter={(_, index) => setActiveRateIndex(index)}
-                    onMouseLeave={() => setActiveRateIndex(null)}
-                    activeIndex={activeRateIndex ?? undefined}
-                  >
-                    {conversionData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<RateTooltip />} wrapperStyle={{ zIndex: 40 }} cursor={false} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="donut-center">
-                <div className="donut-value">{donutValue}</div>
-                <div className="donut-label">{donutLabel}</div>
+          <div className="handoff-list">
+            {handoffRates.map((item) => (
+              <div className="handoff" key={item.key}>
+                <div className="handoff-head">
+                  <span className="handoff-name">
+                    <span className="dot" style={{ background: item.color }} />
+                    {t(item.name)}
+                  </span>
+                  <span className="handoff-rate">
+                    {item.rate === null || item.rate === undefined ? "—" : `${item.rate.toFixed(2)}%`}
+                  </span>
+                </div>
+                <div className="handoff-body">
+                  {/* Each rate gets its own 0-to-its-own-peak track, because
+                      the two are not comparable on a shared scale. */}
+                  <Sparkline values={item.daily} color={item.color} />
+                  <div className="handoff-range">
+                    <span>
+                      {t("low")} {item.trough === null ? "—" : `${item.trough.toFixed(1)}%`}
+                    </span>
+                    <span>
+                      {t("peak")} {item.peak === null ? "—" : `${item.peak.toFixed(1)}%`}
+                    </span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="legend">
-              {conversionData.map((item, index) => (
-                <button
-                  type="button"
-                  className={`legend-item is-interactive${
-                    activeRateIndex === index ? " is-active" : ""
-                  }`}
-                  key={item.name}
-                  onMouseEnter={() => setActiveRateIndex(index)}
-                  onMouseLeave={() => setActiveRateIndex(null)}
-                >
-                  <span className="dot" style={{ background: item.color }} />
-                  {item.name}
-                </button>
-              ))}
-            </div>
+            ))}
+            {handoffRates.length === 0 ? (
+              <div className="empty-state">{t("No conversion data available.")}</div>
+            ) : null}
           </div>
         </motion.div>
       </section>
