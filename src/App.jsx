@@ -26358,6 +26358,19 @@ export default function App() {
       .filter((section) => section.items.length > 0);
   }, [allowedNavItems]);
 
+  // Each nav item's position in the rail, counted across sections rather than
+  // within one, so expanding cascades down the whole sidebar instead of
+  // restarting the count at every group heading. Feeds --nav-i, which the
+  // stylesheet turns into a per-item delay.
+  const navItemOrder = React.useMemo(() => {
+    const order = new Map();
+    let index = 0;
+    navSectionsToRender.forEach((section) => {
+      section.items.forEach((key) => order.set(key, index++));
+    });
+    return order;
+  }, [navSectionsToRender]);
+
   React.useEffect(() => {
     if (!authUser) return;
     const allowedViews = allowedNavItems.map((item) => item.key).concat(["profile", "docs"]);
@@ -26877,6 +26890,7 @@ export default function App() {
                   <a
                     key={item.label}
                     className={`nav-item${isActive ? " active" : ""}`}
+                    style={{ "--nav-i": navItemOrder.get(key) ?? 0 }}
                     title={sidebarCollapsed ? t(item.label) : undefined}
                     href={item.href || "#"}
                     target={isExternal ? "_blank" : undefined}
@@ -26905,6 +26919,10 @@ export default function App() {
           <button
             className={`action-pill sidebar-docs${isDocs ? " is-active" : ""}`}
             type="button"
+            /* Last in the rail, so last in the cascade — without this it
+               inherits --nav-i: 0 and arrives with the topmost nav item,
+               which reads as the sidebar filling in from both ends. */
+            style={{ "--nav-i": navItemOrder.size }}
             onClick={() => { setActiveView("docs"); setMobileNavOpen(false); }}
             title={sidebarCollapsed ? t("Documentation") : undefined}
           >

@@ -19723,13 +19723,13 @@ select option,
    the movement, and the labels get out of its way. */
 @media (min-width: 861px) {
   .app {
-    transition: grid-template-columns 0.38s var(--ease-smooth);
+    transition: grid-template-columns 0.52s var(--ease-smooth);
   }
 
   .app.sidebar-collapsed { grid-template-columns: 78px 1fr; }
 
   .sidebar {
-    transition: padding 0.38s var(--ease-smooth);
+    transition: padding 0.52s var(--ease-smooth);
   }
 
   .sidebar.is-collapsed { padding: 32px 14px; }
@@ -19739,8 +19739,8 @@ select option,
   .brand,
   .lang-switch {
     overflow: hidden;
-    transition: opacity 0.2s ease, max-height 0.38s var(--ease-smooth),
-      transform 0.32s var(--ease-smooth);
+    transition: opacity 0.28s ease 0.1s, max-height 0.5s var(--ease-smooth),
+      transform 0.46s var(--ease-spring) 0.06s;
     max-height: 120px;
     transform-origin: left center;
   }
@@ -19759,8 +19759,9 @@ select option,
      rail — the idea was already here, it just had no easing. */
   .nav-section-title {
     overflow: hidden;
-    transition: height 0.3s var(--ease-smooth), margin 0.3s var(--ease-smooth),
-      padding 0.3s var(--ease-smooth), color 0.18s ease, background 0.3s ease;
+    transition: height 0.42s var(--ease-smooth), margin 0.42s var(--ease-smooth),
+      padding 0.42s var(--ease-smooth), color 0.26s ease 0.08s,
+      background 0.4s ease;
     background: transparent;
   }
 
@@ -19776,7 +19777,7 @@ select option,
   .nav-item,
   .action-pill.sidebar-docs {
     transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease,
-      gap 0.38s var(--ease-smooth), padding 0.38s var(--ease-smooth);
+      gap 0.52s var(--ease-smooth), padding 0.52s var(--ease-smooth);
   }
 
   .nav-item svg,
@@ -19784,6 +19785,13 @@ select option,
     flex-shrink: 0;
   }
 
+  /* Opening cascades. Each item leaves on --nav-i, its position counted down
+     the whole rail, so the labels arrive one after another instead of the
+     sidebar performing a single uniform widening. The delay is small enough
+     per item (18ms) that it reads as one gesture with a direction rather than
+     twenty separate ones, and the last item is moving while the rail is still
+     settling — which is what makes the whole thing feel animated rather than
+     merely eased. */
   .nav-item-label {
     white-space: nowrap;
     overflow: hidden;
@@ -19791,9 +19799,11 @@ select option,
        given less room to occupy, so nothing has to be measured in JS. */
     max-width: 180px;
     opacity: 1;
-    transition: max-width 0.38s var(--ease-smooth), opacity 0.26s ease 0.06s,
-      transform 0.34s var(--ease-smooth);
     transform: translateX(0);
+    transition:
+      max-width 0.44s var(--ease-smooth) calc(var(--nav-i, 0) * 12ms),
+      opacity 0.34s ease calc(70ms + var(--nav-i, 0) * 12ms),
+      transform 0.46s var(--ease-spring) calc(var(--nav-i, 0) * 12ms);
   }
 
   .sidebar.is-collapsed .nav-item,
@@ -19803,14 +19813,18 @@ select option,
     padding: 12px 0;
   }
 
+  /* Closing does not cascade nearly as much. A long stagger on the way out
+     would leave the last labels still visible in a rail that had already
+     narrowed past them — the squeeze this whole change exists to avoid. They
+     go together, quickly, and the rail follows them down. */
   .sidebar.is-collapsed .nav-item-label {
     max-width: 0;
     opacity: 0;
-    /* Out faster than the rail closes, so the words are gone before the space
-       they were in has finished disappearing. */
-    transition: max-width 0.3s var(--ease-smooth), opacity 0.14s ease,
-      transform 0.3s var(--ease-smooth);
-    transform: translateX(-6px);
+    transform: translateX(-10px);
+    transition:
+      max-width 0.34s var(--ease-smooth) calc(var(--nav-i, 0) * 5ms),
+      opacity 0.16s ease calc(var(--nav-i, 0) * 5ms),
+      transform 0.34s var(--ease-smooth) calc(var(--nav-i, 0) * 5ms);
   }
 }
 
