@@ -2521,7 +2521,10 @@ select {
     0 24px 50px rgba(0, 0, 0, 0.5),
     inset 0 1px rgba(255, 255, 255, 0.04);
   overflow: hidden;
-  animation: deus-dropdown-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top center;
+  /* Matches menuMotion in src/lib/motion.js — a <details> menu cannot use
+     AnimatePresence, but it can keep the same curve and distance. */
+  animation: deus-dropdown-in 0.2s var(--ease-smooth);
 }
 
 .deus-date-menu::before {
@@ -11346,12 +11349,12 @@ select option,
 }
 
 @keyframes deus-dropdown-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.97); }
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes deus-dropdown-up-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 

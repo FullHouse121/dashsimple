@@ -60,6 +60,43 @@ export const rowMotion = {
 export const stagger = (index, step = 0.05, max = 0.24) =>
   Math.min(index * step, max);
 
+// Dialogs.
+//
+// Fourteen modals were animating with framer's defaults and no shared easing:
+// five specified `duration: 0.2` and nothing else, nine specified nothing at
+// all. A 0.2s tween with the default curve on a panel that size arrives like a
+// flash rather than opening, which is why the filters modal read as having no
+// animation even though it had one.
+//
+// The overlay and the panel are one gesture and share a clock — the overlay
+// carries the dimming, the panel arrives on top of it — but not one duration:
+// the dimming should be underway before the panel lands, or the panel appears
+// to drag the background in with it.
+export const overlayMotion = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+  transition: { duration: DURATION.quick, ease: EASE },
+};
+
+export const dialogMotion = {
+  initial: { opacity: 0, y: 16, scale: 0.97 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: 8, scale: 0.98 },
+  transition: { duration: DURATION.settle, ease: EASE },
+};
+
+// Menus and popovers summoned by a click.
+//
+// `dropUp` flips the direction so a menu that opens upward still grows out of
+// its trigger rather than sliding across it.
+export const menuMotion = (dropUp = false) => ({
+  initial: { opacity: 0, y: dropUp ? 10 : -10, scale: 0.96 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: dropUp ? 6 : -6, scale: 0.98 },
+  transition: { duration: DURATION.quick, ease: EASE },
+});
+
 // Cards and tiles that appear as a group.
 export const cardIn = (index) => ({
   initial: { opacity: 0, y: 12 },

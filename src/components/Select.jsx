@@ -1,5 +1,6 @@
 import React from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { menuMotion } from "../lib/motion.js";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { CountryFlag } from "./flags.jsx";
 
@@ -202,10 +203,8 @@ export function CountryDropdownPicker({
           <motion.div
             className="country-select-menu"
             role="listbox"
-            initial={{ opacity: 0, y: dropUp ? 8 : -8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: dropUp ? 6 : -6, scale: 0.98 }}
-            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            {...menuMotion(dropUp)}
+            style={{ transformOrigin: dropUp ? "bottom center" : "top center" }}
           >
         <div className="country-select-search-wrap">
           <input

@@ -120,7 +120,7 @@ import { ImportCampaignsModal } from "./components/ImportCampaigns.jsx";
 import { useCostIntegrity } from "./lib/costIntegrity.js";
 import { METRIC_COLORS, RATE_COLORS, STAGE_COLORS } from "./lib/metricColors.js";
 import GeoTreemap, { ACCENT as MAP_ACCENT } from "./components/GeoTreemap.jsx";
-import { rowMotion, stagger, EASE, DURATION } from "./lib/motion.js";
+import { rowMotion, overlayMotion, dialogMotion, stagger, EASE, DURATION } from "./lib/motion.js";
 import {
   DashIcon, GeoIcon, GoalIcon, StatsIcon, ClicksIcon, ConversionIcon,
   CampaignIcon, PlacementIcon, BehaviorIcon, DeviceIcon, ReportIcon,
@@ -4992,17 +4992,12 @@ function TrackingLinksDashboard({ authUser }) {
         {filterModalOpen ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={() => setFilterModalOpen(false)}
           >
             <motion.div
               className="modal pixel-edit-modal tracking-filter-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -5118,13 +5113,10 @@ function TrackingLinksDashboard({ authUser }) {
 
       <AnimatePresence>
         {details.open ? (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetails({ open: false, link: null, verify: null, verifying: false, error: null })}>
+          <motion.div className="modal-overlay" {...overlayMotion} onClick={() => setDetails({ open: false, link: null, verify: null, verifying: false, error: null })}>
             <motion.div
               className="modal pixel-edit-modal tracking-details-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -5214,13 +5206,10 @@ function TrackingLinksDashboard({ authUser }) {
 
       <AnimatePresence>
         {editModal.open ? (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditModal((p) => ({ ...p, open: false }))}>
+          <motion.div className="modal-overlay" {...overlayMotion} onClick={() => setEditModal((p) => ({ ...p, open: false }))}>
             <motion.div
               className="modal pixel-edit-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -7307,13 +7296,10 @@ function MyFlowsDashboard({ authUser }) {
     <section className="form-section">
       <AnimatePresence>
         {bindModal.open ? (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setBindModal((p) => ({ ...p, open: false }))}>
+          <motion.div className="modal-overlay" {...overlayMotion} onClick={() => setBindModal((p) => ({ ...p, open: false }))}>
             <motion.div
               className="modal pixel-edit-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -7371,10 +7357,7 @@ function MyFlowsDashboard({ authUser }) {
           <motion.div className="modal-overlay modal-overlay-scroll" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeFlowEdit}>
             <motion.div
               className="modal pixel-edit-modal flow-edit-modal edit-modal-accent flow-edit-accent"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               {(() => {
@@ -7634,13 +7617,10 @@ function MyFlowsDashboard({ authUser }) {
 
       <AnimatePresence>
         {detail.open ? (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setDetail({ open: false, link: null, domain: null, pixels: [] })}>
+          <motion.div className="modal-overlay" {...overlayMotion} onClick={() => setDetail({ open: false, link: null, domain: null, pixels: [] })}>
             <motion.div
               className="modal flow-detail-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               {(() => {
@@ -7781,13 +7761,10 @@ function MyFlowsDashboard({ authUser }) {
 
       <AnimatePresence>
         {flowViz.open ? (
-          <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFlowViz({ open: false, link: null })}>
+          <motion.div className="modal-overlay" {...overlayMotion} onClick={() => setFlowViz({ open: false, link: null })}>
             <motion.div
               className="modal traffic-flow-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               {(() => {
@@ -13267,9 +13244,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
         {spendEditor ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={() => setSpendEditor(null)}
           >
             <motion.div
@@ -17039,10 +17014,7 @@ function DomainsDashboard({ authUser }) {
           >
             <motion.div
               className="modal pixel-edit-modal edit-modal-accent domain-edit-accent"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -17288,17 +17260,12 @@ function DomainsDashboard({ authUser }) {
         {ogDebug.open ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={closeOgDebug}
           >
             <motion.div
               className="modal og-debug-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -18296,17 +18263,12 @@ function PixelsDashboard({ authUser }) {
         {commentModal.open ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={closeCommentModal}
           >
             <motion.div
               className="modal comment-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -18346,17 +18308,12 @@ function PixelsDashboard({ authUser }) {
         {pixelEdit.open ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={closePixelEdit}
           >
             <motion.div
               className="modal pixel-edit-modal edit-modal-accent pixel-edit-accent"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -20228,17 +20185,12 @@ function AccountsDashboard({ authUser }) {
         {editModal.open ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={closeEditModal}
           >
             <motion.div
               className="modal accounts-modal edit-modal-accent accounts-edit-accent"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -21889,17 +21841,12 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
         {canManage && commentModal.open ? (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={closeCommentModal}
           >
             <motion.div
               className="modal comment-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
             >
               <div className="modal-head">
@@ -23835,9 +23782,13 @@ function RolesDashboard({ authUser }) {
       </section>
       ) : null}
 
+      {/* The one dialog that never animated at all — a plain div outside
+          AnimatePresence, so it appeared and vanished in a single frame while
+          the other thirteen faded. */}
+      <AnimatePresence>
       {pwModal ? (
-        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closePwModal(); }}>
-          <div className="modal pw-modal" role="dialog" aria-modal="true">
+        <motion.div className="modal-overlay" {...overlayMotion} onMouseDown={(e) => { if (e.target === e.currentTarget) closePwModal(); }}>
+          <motion.div className="modal pw-modal" {...dialogMotion} role="dialog" aria-modal="true">
             <div className="modal-head pw-modal-head">
               <div className="pw-modal-title">
                 <span className="pw-modal-icon"><Lock size={18} /></span>
@@ -23929,9 +23880,10 @@ function RolesDashboard({ authUser }) {
                 </div>
               </form>
             )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       ) : null}
+      </AnimatePresence>
     </>
   );
 }
@@ -27632,17 +27584,12 @@ export default function App() {
         {filtersOpen && showFilters && (
           <motion.div
             className="modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            {...overlayMotion}
             onClick={() => setFiltersOpen(false)}
           >
             <motion.div
               className="modal dashboard-filters-modal"
-              initial={{ opacity: 0, y: 20, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
+              {...dialogMotion}
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-modal="true"
