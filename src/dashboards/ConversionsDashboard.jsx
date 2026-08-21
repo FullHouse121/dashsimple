@@ -333,12 +333,18 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     URL.revokeObjectURL(url);
   };
 
+  // Three of these five were toned green on a "greater than zero" test and the
+  // other two were pinned to "none", so the row read green / white / green /
+  // white / green for no reason a viewer could infer — 1 FTD was green while 7
+  // redeposits were not. Colour now says one thing: money. Everything else is
+  // neutral, and a zero where there should not be one still raises the alarm,
+  // which is the only case where the tone was carrying information.
   const healthCards = [
     {
       label: "Conversions",
       value: `${convCount.toLocaleString()}${plus}`,
       meta: isCapped ? "newest 1,000 loaded — older rows not counted" : "in window",
-      tone: convCount > 0 ? "ok" : "bad",
+      tone: convCount > 0 ? "none" : "bad",
     },
     {
       label: "Registrations",
@@ -350,7 +356,7 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
       label: "FTDs",
       value: ftds.toLocaleString(),
       meta: registrations ? `${((ftds / registrations) * 100).toFixed(1)}% Reg → FTD` : "no registrations",
-      tone: ftds > 0 ? "ok" : "none",
+      tone: "none",
     },
     {
       label: "Redeposits",

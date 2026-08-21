@@ -26783,22 +26783,11 @@ export default function App() {
           <img src={logo} alt="Deus Affiliates" />
         </div>
 
-        {/* One identity block instead of a caption above a pill that repeated
-            the name. The trophy said nothing about the role — a Junior Media
-            Buyer got the same cup as the Boss — so the role is now stated,
-            in its own colour. */}
-        <div className="sidebar-section">
-          <div className="ident" style={{ "--ident-color": profileRoleColor }}>
-            <span className="ident-avatar" aria-hidden="true">{profileInitials}</span>
-            <span className="ident-text">
-              <span className="ident-name">{profileName}</span>
-              <span className="ident-role">
-                <span className="ident-role-dot" aria-hidden="true" />
-                {t(profileRole)}
-              </span>
-            </span>
-          </div>
-        </div>
+        {/* The identity used to be stated twice at once — here and in the
+            topbar — on every screen at every width. The topbar is the
+            conventional home for it, it survives the sidebar collapsing, and
+            it is the only one on mobile, so that is the copy that stayed. The
+            sidebar now opens straight into navigation. */}
 
         <nav className="nav">
           {navSectionsToRender.map((section) => (
