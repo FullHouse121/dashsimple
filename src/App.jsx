@@ -20824,11 +20824,6 @@ const KEITARO_ERROR_MAP = {
   "third_party_integration.errors.account": "Ad account not accessible by this token",
   "third_party_integration.errors.permissions": "Token missing ad-account permissions",
   "third_party_integration.errors.rate_limit": "Facebook rate limit — try again later",
-  // Unmapped, this fell to the generic humaniser and rendered as "Update
-  // cost" — which reads as an instruction sitting in a column of failures,
-  // next to a button. It is the cost-update run failing, not a thing to go
-  // and do. Seen live on account 1423270089615634.
-  "third_party_integration.errors.update_cost": "Cost update failed in Keitaro",
 };
 const friendlyKeitaroError = (raw) => {
   const key = String(raw || "").trim();
