@@ -9,6 +9,8 @@
 // client is exactly how the chart colours drifted before someone had to go and
 // reconcile them (see src/lib/metricColors.js). One parser, imported by both.
 
+import { REGIONS, regionForCountry } from "./regions.js";
+
 export const CAMPAIGN_SEGMENT_COUNT = 5;
 
 // A campaign that does not follow the house convention has no buyer segment to
@@ -50,22 +52,52 @@ export const campaignGeoCodes = (name) => {
     .filter((token) => token.length === 2);
 };
 
+// A geo segment naming a region rather than a country, e.g. "LATAM".
+//
+// "EU" is deliberately not an alias: it is two letters, so campaignGeoCodes
+// claims it as an ISO code before this is ever consulted. No live campaign
+// uses it, and inventing a rule for a case that does not exist is how the
+// exceptions start.
+const REGION_BY_GEO_TOKEN = new Map(
+  REGIONS.map((region) => [region.replace(/\s+/g, "").toLowerCase(), region])
+);
+
+// The whole-world tokens. These broaden without bound, by design.
+const GLOBAL_GEO_TOKENS = new Set(["global", "ww", "worldwide", "all"]);
+
 // Does this campaign run in this country, as far as its name can say?
 //
-// An exact code match is a yes. The interesting case is the campaign whose geo
-// segment names no country at all — 8 of the 312 live campaigns, "GLOBAL" on
-// seven of them and "LATAM" on one. A GLOBAL campaign plainly does run in
-// Brazil, so hiding it from a Brazil filter would be asserting something the
-// name does not say. Absence of a country is a wildcard, not an exclusion, and
-// the honest answer is to keep it in the list.
+// Most campaigns name one country and the answer is an exact code match. The
+// rest are the broad-match campaigns — one campaign opened to run across
+// several countries at once — and there are two kinds of those:
 //
-// The cost is that "LATAM" also survives a filter for Germany. That is the
-// safe direction to be wrong in: a flow that should not have been offered can
-// be ignored, while one that was wrongly hidden cannot be found at all.
-export const campaignServesCountry = (name, iso) => {
+//   GLOBAL  runs everywhere, so it belongs in every country's list.
+//   LATAM   runs across Latin America, so it belongs under Brazil and Mexico
+//           but not under Germany.
+//
+// Region membership comes from shared/regions.js, the same table that decides
+// which countries inherit a LATAM rate — so a country is in LATAM here exactly
+// when it is priced as LATAM, and the two cannot drift apart.
+//
+// A token that is neither a country, a region, nor a global word is kept
+// rather than dropped: it cannot be shown NOT to serve this country, and that
+// is the safe direction to be wrong in. A flow offered that should not have
+// been can be ignored; one wrongly hidden cannot be found at all.
+export const campaignServesCountry = (name, { iso, country } = {}) => {
   const target = String(iso || "").trim().toLowerCase();
-  if (!target) return true;
+  if (!target && !country) return true;
+
   const codes = campaignGeoCodes(name);
-  if (!codes.length) return true;
-  return codes.includes(target);
+  if (codes.length) return target ? codes.includes(target) : true;
+
+  const { geo } = parseCampaignName(name);
+  // Digits are kept: stripping non-letters turned "TIER1" into "tier" and it
+  // stopped matching the region it names.
+  const token = String(geo || "").replace(/[^A-Za-z0-9]+/g, "").toLowerCase();
+  if (!token) return true;
+  if (GLOBAL_GEO_TOKENS.has(token)) return true;
+
+  const region = REGION_BY_GEO_TOKEN.get(token);
+  if (region && country) return regionForCountry(country) === region;
+  return true;
 };

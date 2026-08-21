@@ -26157,9 +26157,9 @@ export default function App() {
   // choosing one of them produces a filter that can only ever return nothing —
   // a Brazil + Colombian-flow query matches no rows.
   //
-  // A name whose geo segment names no country — "GLOBAL", "LATAM" — is kept,
-  // because a global campaign does run in Brazil and hiding it would assert
-  // something the name never said. See campaignServesCountry.
+  // Broad-match flows — one campaign opened to run across several countries —
+  // are kept where they genuinely run: GLOBAL under every country, LATAM under
+  // Brazil and Mexico but not Germany. See campaignServesCountry.
   //
   // Buyer scoping stays the server's job (it forces non-leadership to their own
   // campaigns); this narrows what the server returned, never widens it.
@@ -26170,8 +26170,10 @@ export default function App() {
   );
   const modalCampaignsForCountry = React.useMemo(() => {
     if (!modalCountryIso) return modalCampaigns;
-    return modalCampaigns.filter((c) => campaignServesCountry(c?.name, modalCountryIso));
-  }, [modalCampaigns, modalCountryIso]);
+    return modalCampaigns.filter((c) =>
+      campaignServesCountry(c?.name, { iso: modalCountryIso, country: filters.country })
+    );
+  }, [modalCampaigns, modalCountryIso, filters.country]);
 
   // Selected campaigns belong to the picked buyer — clear them when the buyer
   // changes so stale selections don't silently empty the view.
@@ -26198,7 +26200,9 @@ export default function App() {
     setFilters((prev) => {
       const cur = Array.isArray(prev.statsCampaign) ? prev.statsCampaign : [];
       if (!cur.length) return prev;
-      const kept = cur.filter((name) => campaignServesCountry(name, iso));
+      const kept = cur.filter((name) =>
+        campaignServesCountry(name, { iso, country: filters.country })
+      );
       return kept.length === cur.length ? prev : { ...prev, statsCampaign: kept };
     });
   }, [filters.country]);

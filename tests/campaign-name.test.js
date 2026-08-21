@@ -47,31 +47,55 @@ describe("campaignGeoCodes", () => {
 describe("campaignServesCountry", () => {
   const br = "Karen | ZMAPPS | Ice Fishing | BR | JASINO";
   const global = "Akku | PWA.GROUP | Chicken Road | GLOBAL | JASINO";
+  const latam = "Leo | ZMAPPS | Joker Jewels | LATAM | JASINO";
 
   it("matches its own country and no other", () => {
-    expect(campaignServesCountry(br, "br")).toBe(true);
-    expect(campaignServesCountry(br, "mx")).toBe(false);
+    expect(campaignServesCountry(br, { iso: "br", country: "Brazil" })).toBe(true);
+    expect(campaignServesCountry(br, { iso: "mx", country: "Mexico" })).toBe(false);
   });
 
   it("is case-insensitive about the target", () => {
-    expect(campaignServesCountry(br, "BR")).toBe(true);
+    expect(campaignServesCountry(br, { iso: "BR", country: "Brazil" })).toBe(true);
   });
 
   it("matches any one of a multi-geo campaign's codes", () => {
     const multi = "Leo | ZMAPPS | Game | BR/MX | JASINO";
-    expect(campaignServesCountry(multi, "br")).toBe(true);
-    expect(campaignServesCountry(multi, "mx")).toBe(true);
-    expect(campaignServesCountry(multi, "ar")).toBe(false);
+    expect(campaignServesCountry(multi, { iso: "br", country: "Brazil" })).toBe(true);
+    expect(campaignServesCountry(multi, { iso: "mx", country: "Mexico" })).toBe(true);
+    expect(campaignServesCountry(multi, { iso: "ar", country: "Argentina" })).toBe(false);
   });
 
-  it("keeps a campaign whose geo names no country — absence is a wildcard", () => {
-    // A GLOBAL campaign does run in Brazil; hiding it would assert otherwise.
-    expect(campaignServesCountry(global, "br")).toBe(true);
-    expect(campaignServesCountry(global, "de")).toBe(true);
+  it("runs a GLOBAL broad match everywhere", () => {
+    expect(campaignServesCountry(global, { iso: "br", country: "Brazil" })).toBe(true);
+    expect(campaignServesCountry(global, { iso: "de", country: "Germany" })).toBe(true);
+    expect(campaignServesCountry(global, { iso: "vn", country: "Vietnam" })).toBe(true);
+  });
+
+  it("holds a LATAM broad match to Latin America", () => {
+    expect(campaignServesCountry(latam, { iso: "br", country: "Brazil" })).toBe(true);
+    expect(campaignServesCountry(latam, { iso: "mx", country: "Mexico" })).toBe(true);
+    expect(campaignServesCountry(latam, { iso: "co", country: "Colombia" })).toBe(true);
+    // The point of resolving the region rather than treating it as a wildcard.
+    expect(campaignServesCountry(latam, { iso: "de", country: "Germany" })).toBe(false);
+    expect(campaignServesCountry(latam, { iso: "jp", country: "Japan" })).toBe(false);
+  });
+
+  it("resolves the other region tokens the same way", () => {
+    const mena = "Leo | ZMAPPS | Game | MENA | JASINO";
+    expect(campaignServesCountry(mena, { iso: "tr", country: "Turkey" })).toBe(true);
+    expect(campaignServesCountry(mena, { iso: "br", country: "Brazil" })).toBe(false);
+    const tier1 = "Leo | ZMAPPS | Game | TIER1 | JASINO";
+    expect(campaignServesCountry(tier1, { iso: "de", country: "Germany" })).toBe(true);
+    expect(campaignServesCountry(tier1, { iso: "br", country: "Brazil" })).toBe(false);
+  });
+
+  it("keeps a token it cannot read rather than hiding the flow", () => {
+    const odd = "Leo | ZMAPPS | Game | XYZZY | JASINO";
+    expect(campaignServesCountry(odd, { iso: "br", country: "Brazil" })).toBe(true);
   });
 
   it("keeps everything when no country is being filtered on", () => {
-    expect(campaignServesCountry(br, "")).toBe(true);
-    expect(campaignServesCountry(br, null)).toBe(true);
+    expect(campaignServesCountry(br, {})).toBe(true);
+    expect(campaignServesCountry(br)).toBe(true);
   });
 });
