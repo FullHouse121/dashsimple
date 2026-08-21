@@ -16,30 +16,12 @@
 
 import { normalizeBuyerName } from "./scoping.js";
 
-export const CAMPAIGN_SEGMENT_COUNT = 5;
-
-// "Buyer | Tool | Game | Geo | Brand". A campaign that does not follow the
-// house convention has no buyer segment to attribute it by, so it is not
-// importable — better to leave it out than to guess an owner.
-export const parseCampaignName = (name) => {
-  const raw = String(name || "").trim();
-  const segments = raw ? raw.split("|").map((s) => s.trim()) : [];
-  const slot = (i) => {
-    const v = segments[i] || "";
-    return v === "-" ? "" : v;
-  };
-  return {
-    raw,
-    segments,
-    isFormatted:
-      segments.length === CAMPAIGN_SEGMENT_COUNT && segments.every((s) => s.length > 0),
-    buyer: slot(0),
-    tool: slot(1),
-    game: slot(2),
-    geo: slot(3),
-    brand: slot(4),
-  };
-};
+// "Buyer | Tool | Game | Geo | Brand" now lives in shared/, because the Flow
+// picker in the browser needs to read a geo out of a name too and cannot
+// import from server/. Re-exported here so this module's public surface — and
+// its tests — are unchanged by the move.
+export { CAMPAIGN_SEGMENT_COUNT, parseCampaignName } from "../../shared/campaign-name.js";
+import { parseCampaignName } from "../../shared/campaign-name.js";
 
 // The buyer segment is the authority on ownership, not the Keitaro group.
 // The two agree almost everywhere, and where they disagree the name is what

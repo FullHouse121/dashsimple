@@ -129,6 +129,7 @@ import {
   AwardIcon, TriggerIcon,
 } from "./components/icons.jsx";
 import { REGIONS, regionForCountry, resolveCpa } from "../shared/regions.js";
+import { campaignServesCountry } from "../shared/campaign-name.js";
 import {
   PlacementMatrix,
   PlacementFunnel,
@@ -26150,6 +26151,28 @@ export default function App() {
     };
   }, [filtersOpen, isLeadership, filters.buyer]);
 
+  // A flow runs in one country, and the name says which ("… | BR | JASINO").
+  // Offering every flow after a country is picked means scrolling past the
+  // CO, MX and AR builds of the same game to reach the Brazilian one, and
+  // choosing one of them produces a filter that can only ever return nothing —
+  // a Brazil + Colombian-flow query matches no rows.
+  //
+  // A name whose geo segment names no country — "GLOBAL", "LATAM" — is kept,
+  // because a global campaign does run in Brazil and hiding it would assert
+  // something the name never said. See campaignServesCountry.
+  //
+  // Buyer scoping stays the server's job (it forces non-leadership to their own
+  // campaigns); this narrows what the server returned, never widens it.
+  const modalCountryIso = React.useMemo(
+    () =>
+      filters.country && filters.country !== "All" ? resolveCountryIso(filters.country) : null,
+    [filters.country]
+  );
+  const modalCampaignsForCountry = React.useMemo(() => {
+    if (!modalCountryIso) return modalCampaigns;
+    return modalCampaigns.filter((c) => campaignServesCountry(c?.name, modalCountryIso));
+  }, [modalCampaigns, modalCountryIso]);
+
   // Selected campaigns belong to the picked buyer — clear them when the buyer
   // changes so stale selections don't silently empty the view.
   const prevBuyerRef = React.useRef(filters.buyer);
@@ -26161,6 +26184,24 @@ export default function App() {
       );
     }
   }, [filters.buyer]);
+
+  // Same reasoning for country: a flow picked under Brazil is not a flow that
+  // survives switching to Mexico. Only selections that no longer belong to the
+  // new country are dropped, so changing country does not silently throw away
+  // a choice that is still valid.
+  const prevCountryRef = React.useRef(filters.country);
+  React.useEffect(() => {
+    if (prevCountryRef.current === filters.country) return;
+    prevCountryRef.current = filters.country;
+    const iso = filters.country && filters.country !== "All" ? resolveCountryIso(filters.country) : null;
+    if (!iso) return;
+    setFilters((prev) => {
+      const cur = Array.isArray(prev.statsCampaign) ? prev.statsCampaign : [];
+      if (!cur.length) return prev;
+      const kept = cur.filter((name) => campaignServesCountry(name, iso));
+      return kept.length === cur.length ? prev : { ...prev, statsCampaign: kept };
+    });
+  }, [filters.country]);
 
   const toggleStatsCampaign = React.useCallback((name) => {
     setFilters((prev) => {
@@ -27774,13 +27815,20 @@ export default function App() {
                           removable
                           values={Array.isArray(filters.statsCampaign) ? filters.statsCampaign : []}
                           onToggle={toggleStatsCampaign}
-                          options={modalCampaigns.map((c) => ({ value: c.name, label: c.name, search: c.name }))}
+                          options={modalCampaignsForCountry.map((c) => ({ value: c.name, label: c.name, search: c.name }))}
                           placeholder={
                             modalCampaignsLoading
                               ? t("Loading flows…")
-                              : modalCampaigns.length
-                                ? (filters.buyer && filters.buyer !== "All" ? t("All {buyer} flows", { buyer: filters.buyer }) : t("All flows"))
-                                : t("No flows found")
+                              : modalCampaignsForCountry.length
+                                ? (filters.buyer && filters.buyer !== "All"
+                                    ? t("All {buyer} flows", { buyer: filters.buyer })
+                                    : t("All flows"))
+                                : modalCountryIso
+                                  // Naming the country matters: an empty list here
+                                  // is a fact about the account ("nobody is running
+                                  // Brazil"), not a failure to load.
+                                  ? t("No flows in {country}", { country: filters.country })
+                                  : t("No flows found")
                           }
                           searchPlaceholder={t("Find flow")}
                           emptyResultsLabel={t("No flows found.")}

@@ -678,6 +678,7 @@ export const translations = {
     "Loading flows…": "Akışlar yükleniyor…",
     "All flows": "Tüm akışlar",
     "All {buyer} flows": "Tüm {buyer} akışları",
+    "No flows in {country}": "{country} için akış yok",
     "No flows found": "Akış bulunamadı",
     "No flows found.": "Akış bulunamadı.",
     "Find flow": "Akış bul",
