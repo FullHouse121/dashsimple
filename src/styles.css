@@ -19708,42 +19708,125 @@ select option,
   background: #23262c;
 }
 
+/* ── Collapsing the sidebar ───────────────────────────────────────────────
+   Every part of this used to change instantly. The grid column had no
+   transition, so the rail jumped 182px in one frame; the brand and the
+   language switch were display:none, which cannot be eased; and the labels
+   were killed with font-size: 0, so the words disappeared between frames
+   while everything else was still moving. Each piece was individually
+   reasonable and together they read as a flinch.
+
+   It is one movement now, on --ease-smooth, which decelerates hard at the end
+   so the rail arrives rather than stops. The parts are deliberately not all
+   on the same clock: the labels leave faster than the rail closes and arrive
+   slower than it opens, so text is never caught mid-squeeze — the width is
+   the movement, and the labels get out of its way. */
 @media (min-width: 861px) {
+  .app {
+    transition: grid-template-columns 0.38s var(--ease-smooth);
+  }
+
   .app.sidebar-collapsed { grid-template-columns: 78px 1fr; }
 
-  .sidebar.is-collapsed { padding: 32px 14px; }
-  .sidebar.is-collapsed .brand { display: none; }
-  .sidebar.is-collapsed .sidebar-section .section-title { display: none; }
-  .sidebar.is-collapsed .ident {
-    justify-content: center;
-    padding: 10px 0;
-    background: transparent;
-    border-color: transparent;
+  .sidebar {
+    transition: padding 0.38s var(--ease-smooth);
   }
-  .sidebar.is-collapsed .ident-text { display: none; }
+
+  .sidebar.is-collapsed { padding: 32px 14px; }
+
+  /* The brand and the language switch fold rather than vanish: height and
+     opacity carry them out, and the gap they leave closes with them. */
+  .brand,
+  .lang-switch {
+    overflow: hidden;
+    transition: opacity 0.2s ease, max-height 0.38s var(--ease-smooth),
+      transform 0.32s var(--ease-smooth);
+    max-height: 120px;
+    transform-origin: left center;
+  }
+
+  .sidebar.is-collapsed .brand,
+  .sidebar.is-collapsed .lang-switch {
+    opacity: 0;
+    max-height: 0;
+    transform: translateX(-8px);
+    pointer-events: none;
+  }
+
+  .sidebar.is-collapsed .sidebar-section .section-title { display: none; }
+
+  /* Section headings become the hairline that keeps the groups readable as a
+     rail — the idea was already here, it just had no easing. */
+  .nav-section-title {
+    overflow: hidden;
+    transition: height 0.3s var(--ease-smooth), margin 0.3s var(--ease-smooth),
+      padding 0.3s var(--ease-smooth), color 0.18s ease, background 0.3s ease;
+    background: transparent;
+  }
+
   .sidebar.is-collapsed .nav-section-title {
     height: 1px;
     margin: 6px 8px;
     padding: 0;
-    overflow: hidden;
     color: transparent;
     background: rgba(255, 255, 255, 0.06);
   }
-  /* labels are bare text nodes — collapse them with font-size: 0 */
-  .sidebar.is-collapsed .nav-item {
+
+  /* The icon holds its place while the label clears out around it. */
+  .nav-item,
+  .action-pill.sidebar-docs {
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease,
+      gap 0.38s var(--ease-smooth), padding 0.38s var(--ease-smooth);
+  }
+
+  .nav-item svg,
+  .action-pill.sidebar-docs svg {
+    flex-shrink: 0;
+  }
+
+  .nav-item-label {
+    white-space: nowrap;
+    overflow: hidden;
+    /* max-width, not width: the label keeps its natural size and is simply
+       given less room to occupy, so nothing has to be measured in JS. */
+    max-width: 180px;
+    opacity: 1;
+    transition: max-width 0.38s var(--ease-smooth), opacity 0.26s ease 0.06s,
+      transform 0.34s var(--ease-smooth);
+    transform: translateX(0);
+  }
+
+  .sidebar.is-collapsed .nav-item,
+  .sidebar.is-collapsed .action-pill.sidebar-docs {
     justify-content: center;
     gap: 0;
-    font-size: 0;
     padding: 12px 0;
   }
-  .sidebar.is-collapsed .nav-item svg { flex-shrink: 0; }
-  .sidebar.is-collapsed .sidebar-docs {
-    justify-content: center;
-    gap: 0;
-    font-size: 0;
-    padding: 12px 0;
+
+  .sidebar.is-collapsed .nav-item-label {
+    max-width: 0;
+    opacity: 0;
+    /* Out faster than the rail closes, so the words are gone before the space
+       they were in has finished disappearing. */
+    transition: max-width 0.3s var(--ease-smooth), opacity 0.14s ease,
+      transform 0.3s var(--ease-smooth);
+    transform: translateX(-6px);
   }
-  .sidebar.is-collapsed .lang-switch { display: none; }
+}
+
+/* A collapse is a layout change, and someone who has asked for less motion
+   should get the new layout, not a slower version of the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .app,
+  .sidebar,
+  .brand,
+  .lang-switch,
+  .nav-section-title,
+  .nav-item,
+  .action-pill.sidebar-docs,
+  .nav-item-label {
+    transition: none;
+  }
 }
 
 @media (max-width: 860px) {

@@ -26889,7 +26889,11 @@ export default function App() {
                     }}
                   >
                     <Icon size={18} />
-                    {t(item.label)}
+                    {/* Wrapped so collapsing can animate it. As a bare text
+                        node the only handle was font-size: 0, which cannot be
+                        eased — the words vanished between one frame and the
+                        next while the rail was still moving. */}
+                    <span className="nav-item-label">{t(item.label)}</span>
                   </a>
                 );
               })}
@@ -26905,7 +26909,7 @@ export default function App() {
             title={sidebarCollapsed ? t("Documentation") : undefined}
           >
             <BookOpen size={16} />
-            {t("Documentation")}
+            <span className="nav-item-label">{t("Documentation")}</span>
           </button>
           <LanguageSwitcher language={language} setLanguage={setLanguage} />
         </div>
