@@ -343,7 +343,12 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
     {
       label: "Conversions",
       value: `${convCount.toLocaleString()}${plus}`,
-      meta: isCapped ? "newest 1,000 loaded — older rows not counted" : "in window",
+      // The cap is a server-side limit that has moved; this card was still
+      // announcing 1,000 while the banner on the log below it — reading the
+      // same response — said 5,000. Two numbers for one fetch, on one screen.
+      meta: isCapped
+        ? `newest ${Number(meta?.returned || 0).toLocaleString()} loaded — older rows not counted`
+        : "in window",
       tone: convCount > 0 ? "none" : "bad",
     },
     {
@@ -691,7 +696,6 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                                 title={`${row.clickId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.clickId, e); }}
                               >
-                                <i className="lc-id-dot lc-id-dot-click" aria-hidden="true" />
                                 <span>{row.clickId}</span>
                               </button>
                             ) : (
@@ -706,7 +710,6 @@ export default function ConversionsDashboard({ authUser, viewerBuyer }) {
                                 title={`${row.externalId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.externalId, e); }}
                               >
-                                <i className="lc-id-dot lc-id-dot-ext" aria-hidden="true" />
                                 <span>{row.externalId}</span>
                               </button>
                             ) : (

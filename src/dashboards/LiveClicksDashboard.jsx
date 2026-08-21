@@ -676,7 +676,6 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 title={`${row.clickId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.clickId, e); }}
                               >
-                                <i className="lc-id-dot lc-id-dot-click" aria-hidden="true" />
                                 <span>{row.clickId}</span>
                               </button>
                             ) : (
@@ -691,7 +690,6 @@ export default function LiveClicksDashboard({ authUser, viewerBuyer }) {
                                 title={`${row.externalId} — click to copy`}
                                 onClick={(e) => { e.stopPropagation(); copyText(row.externalId, e); }}
                               >
-                                <i className="lc-id-dot lc-id-dot-ext" aria-hidden="true" />
                                 <span>{row.externalId}</span>
                               </button>
                             ) : (

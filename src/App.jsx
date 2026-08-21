@@ -839,6 +839,25 @@ const formatShortDate = (value) => {
   return `${parts[2]} ${month}`;
 };
 
+// The period chip sits in the topbar, which on a phone has one row to spend on
+// everything. "2026-08-01 → 2026-08-21" measures 215px there and forced the bar
+// back to two rows — undoing the row it had just been given back. The parts
+// that repeat are the ones dropped: a year that is the same at both ends is
+// stated once, a month that is the same is stated once, and a single day is
+// just a day. Nothing is lost that the full range does not still say.
+const formatPeriodChip = (from, to) => {
+  if (!from || !to) return from || to || "";
+  const a = String(from).split("-");
+  const b = String(to).split("-");
+  if (a.length < 3 || b.length < 3) return from === to ? from : `${from} → ${to}`;
+  const day = (p) => String(Number(p[2]));
+  const mon = (p) => shortMonths[Number(p[1]) - 1] ?? p[1];
+  if (from === to) return `${day(a)} ${mon(a)} ${a[0]}`;
+  if (a[0] !== b[0]) return `${day(a)} ${mon(a)} ${a[0]} → ${day(b)} ${mon(b)} ${b[0]}`;
+  if (a[1] !== b[1]) return `${day(a)} ${mon(a)} → ${day(b)} ${mon(b)} ${b[0]}`;
+  return `${day(a)}–${day(b)} ${mon(b)} ${b[0]}`;
+};
+
 // A 120x28 trace of one series. Hand-drawn rather than a fifth Recharts
 // container: at this size the axis machinery costs more than the line.
 function Sparkline({ values, color, width = 120, height = 28 }) {
@@ -1467,6 +1486,15 @@ function HomeDashboard({
         ? `${periodRange.from} → ${periodRange.to}`
         : t(period);
 
+  // The period now sits in the topbar, where it is true for the whole page.
+  // Repeating it under three cards said the same thing four times on one
+  // screen and pushed every card taller to do it. The caption survives for the
+  // case it was actually useful in — when this card is NOT on the page period
+  // — and says nothing when it would only be echoing the chip.
+  const globalPeriodLabel =
+    filters?.dateFrom && filters?.dateTo ? `${filters.dateFrom} → ${filters.dateTo}` : "";
+  const periodMetaIfOverride = periodLabel === globalPeriodLabel ? "" : periodLabel;
+
   // ── Compare to previous period ──────────────────────────────────────────
   // The fetch (loadHomeStats) already pulled the prior window's rows when the
   // toggle is on, so we just bucket + aggregate them the same way.
@@ -1572,7 +1600,7 @@ function HomeDashboard({
       label: "FTD",
       value: fmtCount(totals.ftds),
       icon: CreditCard,
-      meta: periodLabel,
+      meta: periodMetaIfOverride,
       delta: mkDelta(totals.ftds, prevTotals?.ftds, true),
     },
     {
@@ -1591,7 +1619,7 @@ function HomeDashboard({
       label: "Clicks",
       value: fmtCount(totals.clicks),
       icon: MousePointerClick,
-      meta: periodLabel,
+      meta: periodMetaIfOverride,
       sub: totals.uniqueClicks > 0 ? { value: fmtCount(totals.uniqueClicks), label: "Unique clicks" } : null,
       delta: mkDelta(totals.clicks, prevTotals?.clicks, true),
     },
@@ -1599,7 +1627,7 @@ function HomeDashboard({
       label: "Register",
       value: fmtCount(totals.registers),
       icon: UserPlus,
-      meta: periodLabel,
+      meta: periodMetaIfOverride,
       delta: mkDelta(totals.registers, prevTotals?.registers, true),
     },
     {
@@ -2238,7 +2266,7 @@ function HomeDashboard({
                   <span className="card-sub-label">{t(stat.sub.label)}</span>
                 </div>
               ) : null}
-              <div className="card-meta">{t(stat.meta)}</div>
+              {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
             </motion.div>
           );
         })}
@@ -2276,7 +2304,7 @@ function HomeDashboard({
                   <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
-              <div className="card-meta">{t(stat.meta)}</div>
+              {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
             </motion.div>
           );
         })}
@@ -3642,7 +3670,7 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
                       <AlertTriangle size={11} /> {t("cost data incomplete")}
                     </button>
                   ) : null}
-                  <div className="card-meta">{t(stat.meta)}</div>
+                  {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
                 </motion.div>
               );
             })}
@@ -12596,7 +12624,7 @@ function CampaignsDashboard({ period, setPeriod, customRange, onCustomChange, fi
                       <AlertTriangle size={11} /> {t("cost data incomplete")}
                     </button>
                   ) : null}
-                  <div className="card-meta">{t(stat.meta)}</div>
+                  {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
                 </div>
               );
             })}
@@ -13744,9 +13772,9 @@ function UserBehaviorDashboard({ period, setPeriod, customRange, onCustomChange,
                 <CopyId value={stat.user.externalId} full />
                 <span>{t(stat.meta)}</span>
               </div>
-            ) : (
+            ) : stat.meta ? (
               <div className="card-meta">{t(stat.meta)}</div>
-            )}
+            ) : null}
           </motion.div>
         ))}
       </section>
@@ -14370,7 +14398,7 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
                   <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
-              <div className="card-meta">{t(stat.meta)}</div>
+              {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
             </motion.div>
           );
         })}
@@ -24202,7 +24230,7 @@ function ProfileDashboard({ authUser }) {
                   <AlertTriangle size={11} /> {stat.untrustedLabel || t("cost data incomplete")}
                 </button>
               ) : null}
-              <div className="card-meta">{t(stat.meta)}</div>
+              {stat.meta ? <div className="card-meta">{t(stat.meta)}</div> : null}
             </div>
           );
         })}
@@ -26901,14 +26929,35 @@ export default function App() {
                   <button
                     className={`action-pill filters-trigger${activeCount > 0 ? " has-active" : ""}`}
                     type="button"
+                    aria-label={t("Filters")}
                     onClick={() => setFiltersOpen(true)}
                   >
                     <SlidersHorizontal size={18} />
-                    {t("Filters")}
+                    {/* The label is dropped on a phone, where the icon and the
+                        period chip beside it cannot both fit a single row and
+                        the chip is the one carrying information. aria-label
+                        above keeps the button named either way. */}
+                    <span className="filters-trigger-label">{t("Filters")}</span>
                     {activeCount > 0 ? (
                       <span className="filters-trigger-count">{activeCount}</span>
                     ) : null}
                   </button>
+                  {/* The period every panel inherits, stated where it applies.
+                      It was only ever visible inside the Filters dialog and
+                      spelled out in the KPI card captions, so a page where
+                      Statistics and Top GEO carry their own "This Month"
+                      pickers gave no way to tell which panels those pickers
+                      were overriding and which were following the global
+                      range. Not clearable: a report always has a period. */}
+                  {filters.dateFrom && filters.dateTo ? (
+                    <span
+                      className="topbar-period-chip"
+                      title={`${t("All panels use this period unless they carry their own")}: ${filters.dateFrom} → ${filters.dateTo}`}
+                    >
+                      <CalendarIcon size={12} />
+                      {formatPeriodChip(filters.dateFrom, filters.dateTo)}
+                    </span>
+                  ) : null}
                   {chips.map((chip) => (
                     <span className="topbar-filter-chip" key={chip.key} title={chip.label}>
                       <span className="topbar-filter-chip-label">{chip.label}</span>

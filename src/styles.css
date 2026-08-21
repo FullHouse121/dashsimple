@@ -683,7 +683,14 @@ select {
   gap: 12px;
 }
 
-.sidebar-docs {
+/* This was written as a quiet outlined button and had never once rendered as
+   one. It is declared here, at line ~686; .action-pill — solid green gradient,
+   green glow — is declared at ~1060. Same specificity, later wins, so the
+   footer button came out louder than the active navigation item above it, and
+   Documentation was the brightest thing in the sidebar. Qualifying with
+   .action-pill takes the specificity from (0,1,0) to (0,2,0) so the intent
+   that was always in the file finally reaches the screen. */
+.action-pill.sidebar-docs {
   width: 100%;
   justify-content: center;
   border-radius: 14px;
@@ -693,11 +700,13 @@ select {
   box-shadow: 0 12px 24px rgba(100, 184, 255, 0.12);
 }
 
-.sidebar-docs:hover {
+.action-pill.sidebar-docs:hover {
+  filter: none;
+  background: rgba(100, 184, 255, 0.1);
   box-shadow: 0 16px 28px rgba(100, 184, 255, 0.22);
 }
 
-.sidebar-docs.is-active {
+.action-pill.sidebar-docs.is-active {
   background: rgba(100, 184, 255, 0.16);
   border-color: rgba(100, 184, 255, 0.75);
 }
@@ -1312,20 +1321,22 @@ select {
   padding: 0 6px;
   border-radius: 999px;
   border: 2px solid var(--bg, #121315);
-  background: var(--green);
-  color: #0a0f0c;
+  /* Green is this product's word for money — it is what the chart series, the
+     revenue card and the positive delta all mean by it. An unread count is not
+     money, and spending the one loaded colour on it makes the colour mean less
+     everywhere else. The badge is legible without borrowing that. */
+  background: var(--stroke-strong);
+  color: var(--text);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: -0.02em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  animation: notif-badge-pulse 2.2s ease-in-out infinite;
-}
-
-@keyframes notif-badge-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(54, 208, 124, 0.5); }
-  60% { box-shadow: 0 0 0 6px rgba(54, 208, 124, 0); }
+  /* It also pulsed on a 2.2s loop, forever, with no reduced-motion guard —
+     for a figure that has read "99+" the whole time. A pulse is a way of
+     saying something changed; on a constant it is just movement in the corner
+     of the eye that can never be satisfied. */
 }
 
 .notifications-menu {
@@ -4425,6 +4436,20 @@ select option,
   border: 1px solid rgba(54, 208, 124, 0.45); background: rgba(54, 208, 124, 0.08);
   font-size: 12px; font-weight: 600; color: var(--text);
 }
+/* Same chip shape as an applied filter, deliberately not the same colour: the
+   green ones are choices someone made and can take back, this one is the
+   period the page is reporting on and is always present. Reading as context
+   rather than as a filter someone forgot to clear is the whole point of it. */
+.topbar-period-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--stroke-strong); background: var(--panel-soft);
+  font-size: 12px; font-weight: 600; color: var(--muted-strong);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.topbar-period-chip svg { color: var(--faint); flex-shrink: 0; }
+
 .topbar-filter-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-filter-chip-clear {
   display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
@@ -19225,14 +19250,13 @@ select option,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lc-id-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 auto;
-}
-.lc-id-dot-click { background: #6ad6ff; }
-.lc-id-dot-ext { background: #9085e9; }
+/* The click-id and external-id pills each carried a coloured dot that was the
+   same colour on every row — decoration on an identifier, in a table row that
+   already holds a status dot, a country flag and an OS glyph, all of which
+   mean something. Worse than noise: #6ad6ff and #9085e9 are near-misses for
+   --blue and --purple, which this product has already decided mean clicks and
+   registration, so a purple dot on an external id quietly asserted something
+   untrue. The column header says which id it is. Removed. */
 .live-click-sub,
 .live-click-sub-bad {
   max-width: 130px;
@@ -19755,14 +19779,19 @@ select option,
   font-size: 12px;
   color: var(--muted);
 }
-@media (min-width: 1100px) {
-  .conversions-toolbar {
-    grid-template-columns: minmax(260px, 1fr) 200px 180px 200px;
-  }
-  /* Custom range visible: dates get their own wide track */
-  .conversions-toolbar.has-custom-range {
-    grid-template-columns: minmax(200px, 1fr) 180px 250px 180px 200px;
-  }
+/* Four tracks were declared for five fields — six once the custom range shows
+   its dates — so Flow always wrapped onto a row of its own AND inherited the
+   wide search track, landing alone at twice the width of the controls it
+   belongs to. Hand-counted tracks have to be recounted every time a field is
+   added, and this one was not.
+
+   The base rule is already repeat(auto-fit, minmax(220px, 1fr)); letting it do
+   the counting means a wrapped field is always the same width as its
+   neighbours. Search keeps its extra width by spanning two of those equal
+   tracks rather than by being a bespoke one, so the row stays even however
+   many fields the view decides to render. */
+.conversions-toolbar {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
 /* Sub column headers carry their team meaning under the slot number */
@@ -24074,6 +24103,17 @@ select option,
   .topbar {
     gap: 10px;
     flex-wrap: nowrap;
+  }
+
+  /* Icon-only: the menu toggle, Filters, the period chip and the identity do
+     not fit 355px with the word "Filters" in it, and of those four the chip is
+     the only one saying something the viewer cannot otherwise find. */
+  .filters-trigger-label {
+    display: none;
+  }
+
+  .filters-trigger {
+    padding: 10px;
   }
 
   .profile .profile-text {
