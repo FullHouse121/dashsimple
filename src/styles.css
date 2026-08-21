@@ -19783,10 +19783,22 @@ select option,
   .sidebar.is-collapsed { padding: 32px 14px; }
 
   /* The brand and the language switch fold rather than vanish: height and
-     opacity carry them out, and the gap they leave closes with them. */
+     opacity carry them out, and the gap they leave closes with them.
+     
+     Clipping is what makes a fold read as a fold, but it cannot be left on
+     once open: .lang-menu is absolutely positioned at bottom: calc(100% + 8px)
+     — entirely above this box — so a standing overflow: hidden opened the
+     language menu straight into a clipped region and the button did nothing.
+     Measured: the menu rendered 92px tall, 100px above a 38px container.
+
+     So overflow is hidden only in the collapsed rule below. It is not a
+     transitionable property, so it flips the instant the class changes rather
+     than easing — which is fine in this direction: max-height passes the
+     content's own 38px within the first frames of expanding, so there is no
+     moment where anything is seen spilling out of a shorter box. */
   .brand,
   .lang-switch {
-    overflow: hidden;
+    overflow: visible;
     transition: opacity 0.28s ease 0.1s, max-height 0.5s var(--ease-smooth),
       transform 0.46s var(--ease-spring) 0.06s;
     max-height: 120px;
@@ -19797,8 +19809,12 @@ select option,
   .sidebar.is-collapsed .lang-switch {
     opacity: 0;
     max-height: 0;
+    /* No delay on the way in — clip immediately, before the height moves. */
+    overflow: hidden;
     transform: translateX(-8px);
     pointer-events: none;
+    transition: opacity 0.28s ease 0.1s, max-height 0.5s var(--ease-smooth),
+      transform 0.46s var(--ease-spring) 0.06s;
   }
 
   .sidebar.is-collapsed .sidebar-section .section-title { display: none; }
