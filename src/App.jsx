@@ -5651,8 +5651,12 @@ function TrackingLinksDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
+                {/* popLayout takes the leaving row out of flow immediately, so the
+                    rows below start closing the gap while it fades rather than
+                    jumping the moment it unmounts. */}
+                <AnimatePresence mode="popLayout" initial={false}>
                 {sortedLinks.map((link) => (
-                  <tr key={link.id}>
+                  <motion.tr key={link.id} {...rowMotion}>
                     <td>
                       <span className="tracking-name" title={link.name}>
                         {link.name}
@@ -5759,8 +5763,9 @@ function TrackingLinksDashboard({ authUser }) {
                         </button>
                       </div>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
+                </AnimatePresence>
               </tbody>
             </table>
             </div>
@@ -15617,10 +15622,14 @@ function GoalsDashboard({ authUser }) {
                             </tr>
                           </thead>
                           <tbody>
+                            {/* popLayout takes the leaving row out of flow immediately, so the
+                                rows below start closing the gap while it fades rather than
+                                jumping the moment it unmounts. */}
+                            <AnimatePresence mode="popLayout" initial={false}>
                             {filtered.sort(byUrgency).map(({ goal, info }) => {
                               const { totals, ftdProgress, r2dActual, r2dProgress, statusLabel, status, market, marketProgress, timing, forecast } = info;
                               return (
-                                <tr key={goal.id} className={`goal-row-tr status-${status}`}>
+                                <motion.tr key={goal.id} className={`goal-row-tr status-${status}`} {...rowMotion}>
                                   {isLeadership ? (
                                     <td className="goal-td-buyer">{goal.buyer}</td>
                                   ) : null}
@@ -15739,9 +15748,10 @@ function GoalsDashboard({ authUser }) {
                                       </div>
                                     </td>
                                   ) : null}
-                                </tr>
+                                </motion.tr>
                               );
                             })}
+                            </AnimatePresence>
                           </tbody>
                         </table>
                       </div>
@@ -18745,9 +18755,9 @@ function PixelsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
-                {/* popLayout takes the leaving row out of flow immediately, so
-                    the rows below start closing the gap while it fades rather
-                    than jumping the moment it unmounts. */}
+                {/* popLayout takes the leaving row out of flow immediately, so the
+                    rows below start closing the gap while it fades rather than
+                    jumping the moment it unmounts. */}
                 <AnimatePresence mode="popLayout" initial={false}>
                 {pagedPixelTableRows.map(({ pixel, ownerLabel, geos, flows }) => (
                   <motion.tr key={pixel.id} {...rowMotion}>
@@ -20678,12 +20688,16 @@ function AccountsDashboard({ authUser }) {
                 </tr>
               </thead>
               <tbody>
+                {/* popLayout takes the leaving row out of flow immediately, so the
+                    rows below start closing the gap while it fades rather than
+                    jumping the moment it unmounts. */}
+                <AnimatePresence mode="popLayout" initial={false}>
                 {sortedAccountRows.map(({ row, ownerLabel, countries }) => {
                   const integrationState = resolveIntegrationState(row);
                   const checkResult = integrationCheckResult[row.id];
                   const rowCanManage = canManageRow(row);
                   return (
-                    <tr key={row.id} className={`accounts-row acc-row-${String(row.status || "").toLowerCase()}`}>
+                    <motion.tr key={row.id} className={`accounts-row acc-row-${String(row.status || "").toLowerCase()}`} {...rowMotion}>
                       <td className="accounts-account-number">
                         <span className="flow-pill" title={row.account_number}>
                           <span className="cs-dot" style={{ background: "#6ad6ff" }} aria-hidden="true" />
@@ -20834,9 +20848,10 @@ function AccountsDashboard({ authUser }) {
                           ) : null}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
+                </AnimatePresence>
               </tbody>
             </table>
             </div>
@@ -23460,12 +23475,16 @@ function RolesDashboard({ authUser }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* popLayout takes the leaving row out of flow immediately, so the
+                      rows below start closing the gap while it fades rather than
+                      jumping the moment it unmounts. */}
+                  <AnimatePresence mode="popLayout" initial={false}>
                   {visibleUsers.map((user) => {
                     const buyerName = user.buyer_id ? buyerMap[user.buyer_id] || "" : "";
                     const linkedBuyer = user.buyer_id ? buyers.find((b) => b.id === user.buyer_id) : null;
                     const buyerTag = resolveBuyerTag(user.username, linkedBuyer);
                     return (
-                      <tr key={user.id}>
+                      <motion.tr key={user.id} {...rowMotion}>
                         <td><UserIdent name={user.username} role={user.role} /></td>
                         <td><RoleChip role={user.role} label={t(user.role)} /></td>
                         <td>
@@ -23504,9 +23523,10 @@ function RolesDashboard({ authUser }) {
                             </div>
                           ) : null}
                         </td>
-                      </tr>
+                      </motion.tr>
                     );
                   })}
+                  </AnimatePresence>
                 </tbody>
               </table>
             </div>
@@ -23731,8 +23751,12 @@ function RolesDashboard({ authUser }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* popLayout takes the leaving row out of flow immediately, so the
+                      rows below start closing the gap while it fades rather than
+                      jumping the moment it unmounts. */}
+                  <AnimatePresence mode="popLayout" initial={false}>
                   {visibleBuyers.map((member) => (
-                    <tr key={member.id}>
+                    <motion.tr key={member.id} {...rowMotion}>
                       <td><UserIdent name={member.name} role={member.role} /></td>
                       <td>
                         {member.keitaro_name ? (
@@ -23797,8 +23821,9 @@ function RolesDashboard({ authUser }) {
                           </div>
                         ) : null}
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
+                  </AnimatePresence>
                 </tbody>
               </table>
             </div>
