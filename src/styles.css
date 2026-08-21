@@ -4796,10 +4796,6 @@ select option,
   min-height: 96px;
 }
 
-.cards.secondary .card-value {
-  font-size: 22px;
-}
-
 .stats-kpi-card {
   min-height: 92px;
   padding: 14px 18px;
@@ -23473,9 +23469,18 @@ select option,
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
-.cards.secondary .card-value {
-  font-size: 20px;
-}
+/* The supporting row used to shrink its figure to 20px — declared twice, at
+   22px and then 20px, so the 22 never rendered and nobody noticed. It made a
+   208x176 card hold a number smaller than the label above it, in a row whose
+   height is set by the cost tiles' three-line spend notice, so the tile read
+   as mostly empty.
+   No size of its own now. Clicks and Register are not lesser figures than FTD
+   beside them — they are peers, and the only true headline on this page is the
+   revenue card. Two steps, 38 and 30, instead of three. */
+/* No .cards.secondary .card-value rule on purpose — the base .card-value
+   (30px) applies. font-size: inherit was tried here and is wrong: it takes the
+   parent .card's 16px rather than falling back to the less specific rule, so
+   the figures came out smaller than the 20px they were replacing. */
 
 @media (max-width: 1180px) {
   .cards.hero {
@@ -24235,7 +24240,7 @@ select option,
 
   .cards .card-value,
   .cards.secondary .card-value {
-    font-size: 20px;
+    font-size: 22px;
   }
 
   .cards.hero > *:first-child .card-value {
