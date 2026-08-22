@@ -207,7 +207,11 @@ const secondaryLabels = (arraySlice("homeSecondaryStats").match(/^\s{6}label: "(
 check(4, "the rail leads with three outcome cards", primaryLabels === 3, `found ${primaryLabels}`);
 check(4, "the supporting row holds the remaining five", secondaryLabels === 5, `found ${secondaryLabels}`);
 check(4, "the hero card is wider than its neighbours", /\.cards\.hero \{\s*grid-template-columns: 2fr 1fr 1fr;/.test(css));
-check(4, "the hero figure is larger than the rest", /\.cards\.hero > \*:first-child \.card-value \{\s*font-size: 38px;/.test(css));
+check(
+  4,
+  "the hero figure is larger than the rest",
+  /\.cards\.hero > \*:first-child \.card-value \{\s*font-size: var\(--text-38\);/.test(css)
+);
 check(4, "supporting cards are denser", /\.cards\.secondary \{\s*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);/.test(css));
 
 // ── 5. Density and redundancy ────────────────────────────────────────────
@@ -274,8 +278,8 @@ check(12, "motion can be turned off", reducedMotionBlocks > 0, `${reducedMotionB
 check(
   13,
   "series chips use one treatment",
-  /\.legend-item\.is-interactive \{[^}]*border-radius: 999px;/s.test(css),
-  "a 999px pill in one panel and a flat 8px chip in the other"
+  /\.legend-item\.is-interactive \{[^}]*border-radius: var\(--radius-pill\);/s.test(css),
+  "a pill in one panel and a flat 8px chip in the other"
 );
 
 // ── Report ───────────────────────────────────────────────────────────────
