@@ -21,34 +21,37 @@ const dropSquareFlags = {
 // (log in again — a local API signs tokens with the local AUTH_SECRET).
 const API_TARGET = process.env.VITE_API_TARGET || "https://dashsimple.onrender.com";
 
-export default defineConfig({
-  plugins: [dropSquareFlags, react()],
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target: API_TARGET,
-        changeOrigin: true,
-        secure: true,
-        ws: false,
-        timeout: 30000,
-        proxyTimeout: 30000,
-        configure: (proxy) => {
-          proxy.on("error", (err, _req, res) => {
-            const code = err?.code || "ERR";
-             
-            console.warn(`[proxy ${code}] ${_req?.url || ""}`);
-            if (res && !res.headersSent) {
-              try {
-                res.writeHead(502, { "Content-Type": "application/json" });
-                res.end(JSON.stringify({ error: `Upstream unreachable (${code})` }));
-              } catch (e) { /* ignore */ }
-            }
-          });
-        },
-      },
+// Shared by dev and preview. `npm run preview` serves the real production
+// bundle, which is the only way to check what Netlify will ship — but it read
+// no proxy config, so every /api call 404'd and the build looked broken when
+// it was not.
+const apiProxy = {
+  "/api": {
+    target: API_TARGET,
+    changeOrigin: true,
+    secure: true,
+    ws: false,
+    timeout: 30000,
+    proxyTimeout: 30000,
+    configure: (proxy) => {
+      proxy.on("error", (err, _req, res) => {
+        const code = err?.code || "ERR";
+        console.warn(`[proxy ${code}] ${_req?.url || ""}`);
+        if (res && !res.headersSent) {
+          try {
+            res.writeHead(502, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `Upstream unreachable (${code})` }));
+          } catch (e) { /* ignore */ }
+        }
+      });
     },
   },
+};
+
+export default defineConfig({
+  plugins: [dropSquareFlags, react()],
+  server: { port: 5173, proxy: apiProxy },
+  preview: { port: 4173, proxy: apiProxy },
   build: {
     target: "es2020",
     // Default behaviour inlines anything under 4 kB as a data: URI, which put
