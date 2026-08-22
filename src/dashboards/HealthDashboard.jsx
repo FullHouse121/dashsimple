@@ -2,6 +2,7 @@ import React from "react";
 import { HealthActionItem } from "../components/HealthActionItem.jsx";
 import { HealthIcon } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import { formatCurrency } from "../lib/format.js";
 import { ACTION_META, healthAction } from "../lib/health.js";
 import { useLanguage } from "../lib/i18n/language.jsx";
@@ -27,9 +28,7 @@ export default function HealthDashboard({ authUser }) {
   const fetchAlerts = React.useCallback(async (status) => {
     try {
       setAlertState((prev) => ({ ...prev, loading: true, error: null }));
-      const response = await apiFetch(`/api/alerts?status=${status}`);
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to load alerts.");
+      const data = await apiJson(`/api/alerts?status=${status}`, "Failed to load alerts.");
       setAlertState({ loading: false, error: null, data });
       // The server started a re-evaluation because this list was stale. Come
       // back for the result rather than leaving fixed work on screen.
@@ -54,9 +53,7 @@ export default function HealthDashboard({ authUser }) {
   const fetchCost = React.useCallback(async () => {
     try {
       setCostState({ loading: true, error: null, data: null });
-      const response = await apiFetch("/api/cost-health");
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to read the cost pipeline.");
+      const data = await apiJson("/api/cost-health", "Failed to read the cost pipeline.");
       setCostState({ loading: false, error: null, data });
     } catch (error) {
       setCostState({ loading: false, error: error.message || "Failed to read the cost pipeline.", data: null });
@@ -65,9 +62,7 @@ export default function HealthDashboard({ authUser }) {
   const fetchSetup = React.useCallback(async () => {
     try {
       setSetupState((prev) => ({ ...prev, loading: true, error: null }));
-      const response = await apiFetch("/api/integrity");
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Integrity scan failed.");
+      const data = await apiJson("/api/integrity", "Integrity scan failed.");
       setSetupState({ loading: false, error: null, data });
     } catch (error) {
       setSetupState({ loading: false, error: error.message || "Integrity scan failed.", data: null });

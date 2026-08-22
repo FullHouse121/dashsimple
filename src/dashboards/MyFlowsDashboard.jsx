@@ -9,6 +9,7 @@ import { CountryFlag } from "../components/flags.jsx";
 import { FlowsIcon } from "../components/glyphs.jsx";
 import { ImportIcon } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import {
   buyerOptions,
   countryNameFromIso,
@@ -566,35 +567,29 @@ export default function MyFlowsDashboard({ authUser }) {
       // The endpoint routes on which keys are present, so identity and state
       // have to go as two calls.
       if (identityChanged) {
-        const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+        await apiJson(`/api/tracking-links/${link.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ buyer: f.buyer, game: f.game, geo: f.geo, brand: f.brand, offerId: f.offerId }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Failed to save the campaign.");
+        }, "Failed to save the campaign.");
       }
       const stateBefore = String(link.state || "active") === "active" ? "active" : "disabled";
       if (f.state !== stateBefore) {
-        const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+        await apiJson(`/api/tracking-links/${link.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ state: f.state }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Failed to change the state.");
+        }, "Failed to change the state.");
       }
       const domainsBefore = (domainsByLink.get(link.id) || []).map((d) => String(d.id));
       const sameDomains =
         domainsBefore.length === f.domainIds.length && domainsBefore.every((id) => f.domainIds.includes(id));
       if (!sameDomains) {
-        const response = await apiFetch(`/api/tracking-links/${link.id}/domains`, {
+        const data = await apiJson(`/api/tracking-links/${link.id}/domains`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ domainIds: f.domainIds }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Failed to save the domains.");
+        }, "Failed to save the domains.");
       }
       await fetchAll();
       closeFlowEdit();

@@ -3,6 +3,7 @@ import { CountryDropdownPicker, Select } from "../components/Select.jsx";
 import { CountryFlag } from "../components/flags.jsx";
 import { MetaGlyph } from "../components/glyphs.jsx";
 import { apiFetch } from "../lib/api.js";
+import { useResource } from "../lib/useResource.js";
 import { appConfirm } from "../lib/confirm.jsx";
 import { countryOptions, normalizeCountryListValue, normalizeDomainInputList } from "../lib/constants.js";
 import { downloadCsv } from "../lib/format.js";
@@ -32,12 +33,24 @@ import {
 export default function PixelsDashboard({ authUser }) {
   const { t } = useLanguage();
   const canManagePixels = isLeadershipRole(authUser?.role);
-  const [pixels, setPixels] = React.useState([]);
-  const [pixelState, setPixelState] = React.useState({ loading: true, error: null });
-  const [domains, setDomains] = React.useState([]);
-  const [domainState, setDomainState] = React.useState({ loading: true, error: null });
-  const [users, setUsers] = React.useState([]);
-  const [userState, setUserState] = React.useState({ loading: true, error: null });
+  const {
+    data: pixels,
+    loading: pixelsLoading,
+    error: pixelsError,
+    reload: reloadPixels,
+    setData: setPixels,
+    setError: setPixelsError,
+  } = useResource("/api/pixels?limit=200", { initial: [], errorMessage: "Failed to load pixels." });
+  const {
+    data: domains,
+    loading: domainsLoading,
+    error: domainsError,
+  } = useResource("/api/domains?limit=5000", { initial: [], errorMessage: "Failed to load domains." });
+  const { data: users, error: usersError } = useResource("/api/users?limit=200", {
+    initial: [],
+    enabled: canManagePixels,
+    errorMessage: "Failed to load users.",
+  });
   const [showForm, setShowForm] = React.useState(false);
   const [tableBuyerFilter, setTableBuyerFilter] = React.useState([]);
   const [tableGeoFilter, setTableGeoFilter] = React.useState([]);
@@ -125,57 +138,6 @@ export default function PixelsDashboard({ authUser }) {
     });
   }, []);
 
-  const fetchPixels = React.useCallback(async () => {
-    try {
-      setPixelState({ loading: true, error: null });
-      const response = await apiFetch("/api/pixels?limit=200");
-      if (!response.ok) {
-        throw new Error("Failed to load pixels.");
-      }
-      const data = await response.json();
-      setPixels(data);
-      setPixelState({ loading: false, error: null });
-    } catch (error) {
-      setPixelState({ loading: false, error: error.message || "Failed to load pixels." });
-    }
-  }, []);
-
-  const fetchDomains = React.useCallback(async () => {
-    try {
-      setDomainState({ loading: true, error: null });
-      const response = await apiFetch("/api/domains?limit=5000");
-      if (!response.ok) {
-        throw new Error("Failed to load domains.");
-      }
-      const data = await response.json();
-      setDomains(data);
-      setDomainState({ loading: false, error: null });
-    } catch (error) {
-      setDomainState({ loading: false, error: error.message || "Failed to load domains." });
-    }
-  }, []);
-
-  const fetchUsers = React.useCallback(async () => {
-    if (!canManagePixels) return;
-    try {
-      setUserState({ loading: true, error: null });
-      const response = await apiFetch("/api/users?limit=200");
-      if (!response.ok) {
-        throw new Error("Failed to load users.");
-      }
-      const data = await response.json();
-      setUsers(data);
-      setUserState({ loading: false, error: null });
-    } catch (error) {
-      setUserState({ loading: false, error: error.message || "Failed to load users." });
-    }
-  }, [canManagePixels]);
-
-  React.useEffect(() => {
-    fetchPixels();
-    fetchDomains();
-    fetchUsers();
-  }, [fetchPixels, fetchDomains, fetchUsers]);
 
   React.useEffect(() => {
     return () => {
@@ -218,11 +180,11 @@ export default function PixelsDashboard({ authUser }) {
     const normalizedFlows = normalizeDomainInputList(pixelForm.flows);
     const normalizedGeos = normalizeCountryListValue(pixelForm.geos);
     if (!normalizedFlows.length) {
-      setPixelState({ loading: false, error: "At least one domain is required." });
+      setPixelsError("At least one domain is required.");
       return;
     }
     if (!normalizedGeos.length) {
-      setPixelState({ loading: false, error: "At least one GEO is required." });
+      setPixelsError("At least one GEO is required.");
       return;
     }
     try {
@@ -242,10 +204,10 @@ export default function PixelsDashboard({ authUser }) {
         const data = await response.json().catch(() => ({}));
         throw new Error(data?.error || "Failed to save pixel.");
       }
-      await fetchPixels();
+      await reloadPixels();
       resetPixelForm();
     } catch (error) {
-      setPixelState({ loading: false, error: error.message || "Failed to save pixel." });
+      setPixelsError(error.message || "Failed to save pixel.");
     }
   };
 
@@ -261,9 +223,9 @@ export default function PixelsDashboard({ authUser }) {
       if (!response.ok) {
         throw new Error("Failed to delete pixel.");
       }
-      await fetchPixels();
+      await reloadPixels();
     } catch (error) {
-      setPixelState({ loading: false, error: error.message || "Failed to delete pixel." });
+      setPixelsError(error.message || "Failed to delete pixel.");
     }
   };
 
@@ -277,9 +239,9 @@ export default function PixelsDashboard({ authUser }) {
       if (!response.ok) {
         throw new Error("Failed to update pixel status.");
       }
-      await fetchPixels();
+      await reloadPixels();
     } catch (error) {
-      setPixelState({ loading: false, error: error.message || "Failed to update pixel status." });
+      setPixelsError(error.message || "Failed to update pixel status.");
     }
   };
 
@@ -379,7 +341,7 @@ export default function PixelsDashboard({ authUser }) {
         const detail = await response.json().catch(() => ({}));
         throw new Error(detail?.error || "Failed to update pixel.");
       }
-      await fetchPixels();
+      await reloadPixels();
       closePixelEdit();
     } catch (error) {
       setPixelEdit((prev) => ({ ...prev, saving: false, error: error.message || "Failed to update pixel." }));
@@ -434,10 +396,10 @@ export default function PixelsDashboard({ authUser }) {
           )
         );
       }
-      await fetchPixels();
+      await reloadPixels();
       closeCommentModal();
     } catch (error) {
-      setPixelState({ loading: false, error: error.message || "Failed to update comment." });
+      setPixelsError(error.message || "Failed to update comment.");
     }
   };
 
@@ -1079,7 +1041,7 @@ export default function PixelsDashboard({ authUser }) {
                 onToggle={togglePixelFlow}
                 options={flowDropdownOptions}
                 placeholder={
-                  domainState.loading
+                  domainsLoading
                     ? t("Loading...")
                     : flowDropdownOptions.length
                       ? t("No domains selected")
@@ -1132,10 +1094,10 @@ export default function PixelsDashboard({ authUser }) {
           </form>
         ) : null}
 
-        {pixelState.loading ? (
+        {pixelsLoading ? (
           <div className="empty-state">{t("Loading entries…")}</div>
-        ) : pixelState.error ? (
-          <div className="empty-state error">{pixelState.error}</div>
+        ) : pixelsError ? (
+          <div className="empty-state error">{pixelsError}</div>
         ) : pixelTableRows.length === 0 ? (
           <div className="empty-state">{t("No pixels added yet.")}</div>
         ) : (

@@ -7,6 +7,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { Copy, Trash2, Link2, FileText, RefreshCw } from "lucide-react";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import ExecutiveReport from "./ExecutiveReport.jsx";
 import { DeusDatePicker, Select } from "./Select.jsx";
 
@@ -24,9 +25,7 @@ export default function ExecutiveReportPanel({ t }) {
   const load = React.useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      const res = await apiFetch(`/api/reports/executive?from=${range.from}&to=${range.to}`);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error || "Failed to build the report.");
+      const body = await apiJson(`/api/reports/executive?from=${range.from}&to=${range.to}`, "Failed to build the report.");
       setState({ loading: false, error: null, report: body });
     } catch (error) {
       setState({ loading: false, error: error.message, report: null });

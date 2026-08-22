@@ -6,6 +6,7 @@ import { CountryDropdownPicker, DeusDatePicker } from "../components/Select.jsx"
 import { MiniSparkline } from "../components/Sparkline.jsx";
 import { CountryFlag } from "../components/flags.jsx";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import { supportedCountryOptions } from "../lib/constants.js";
 import { useCostIntegrity } from "../lib/costIntegrity.js";
 import { getPeriodDateRange, isDateInRange, normalizeDateRange } from "../lib/date.js";
@@ -803,13 +804,11 @@ export default function CampaignsDashboard({ period, setPeriod, customRange, onC
     setStateBusyId(row.campaignId);
     setActionError(null);
     try {
-      const response = await apiFetch(`/api/keitaro/campaigns/${row.campaignId}/state`, {
+      await apiJson(`/api/keitaro/campaigns/${row.campaignId}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: nextState }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to update campaign state.");
+      }, "Failed to update campaign state.");
       setCampaignStates((prev) => ({ ...prev, [String(row.campaignId)]: nextState }));
     } catch (error) {
       setActionError(error.message || "Failed to update campaign state.");
@@ -827,13 +826,11 @@ export default function CampaignsDashboard({ period, setPeriod, customRange, onC
     }
     setSpendEditor((prev) => ({ ...prev, saving: true, error: null }));
     try {
-      const response = await apiFetch("/api/campaign-spend", {
+      const data = await apiJson("/api/campaign-spend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaign: spendEditor.campaign, date: spendEditor.date, amount }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to save spend.");
+      }, "Failed to save spend.");
       setSpendEditor(null);
       fetchSpend();
     } catch (error) {

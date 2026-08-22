@@ -6,6 +6,7 @@ import { CountryFlag } from "../components/flags.jsx";
 import { FlowsIcon } from "../components/glyphs.jsx";
 import { DomainIcon } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import { countryOptions, normalizeCountryListValue, normalizeDomainInputList, roleOptions } from "../lib/constants.js";
 import { downloadCsv } from "../lib/format.js";
 import { useLanguage } from "../lib/i18n/language.jsx";
@@ -295,9 +296,7 @@ export default function DomainsDashboard({ authUser }) {
   const handleScrapeAll = async () => {
     setScrapeAll({ loading: true, message: "", error: false });
     try {
-      const response = await apiFetch("/api/domains/og-debug/scrape-all", { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Scrape failed.");
+      const data = await apiJson("/api/domains/og-debug/scrape-all", { method: "POST" }, "Scrape failed.");
       setScrapeAll({
         loading: false,
         error: false,

@@ -6,6 +6,7 @@ import { CountryFlag } from "../components/flags.jsx";
 import { TelegramGlyph } from "../components/glyphs.jsx";
 import { LinkIcon } from "../components/icons.jsx";
 import { apiFetch } from "../lib/api.js";
+import { apiJson } from "../lib/useResource.js";
 import { appConfirm } from "../lib/confirm.jsx";
 import { useLanguage } from "../lib/i18n/language.jsx";
 import { DURATION, EASE, dialogMotion, overlayMotion, rowMotion } from "../lib/motion.js";
@@ -123,9 +124,7 @@ export default function TrackingLinksDashboard({ authUser }) {
     let cancelled = false;
     (async () => {
       try {
-        const response = await apiFetch("/api/keitaro/resources");
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || "Failed to load Keitaro resources.");
+        const data = await apiJson("/api/keitaro/resources", "Failed to load Keitaro resources.");
         if (!cancelled) {
           setResources({
             domains: data.domains || [],
@@ -292,9 +291,7 @@ export default function TrackingLinksDashboard({ authUser }) {
   const handlePush = (id) => async () => {
     setPushingId(id);
     try {
-      const response = await apiFetch(`/api/tracking-links/${id}/push`, { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Push failed.");
+      await apiJson(`/api/tracking-links/${id}/push`, { method: "POST" }, "Push failed.");
       await fetchLinks();
     } catch (error) {
       setLinkState((prev) => ({ ...prev, error: error.message || "Push failed." }));
@@ -311,9 +308,7 @@ export default function TrackingLinksDashboard({ authUser }) {
     });
     if (!confirmed) return;
     try {
-      const response = await apiFetch(`/api/tracking-links/${id}`, { method: "DELETE" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to delete link.");
+      await apiJson(`/api/tracking-links/${id}`, { method: "DELETE" }, "Failed to delete link.");
       await fetchLinks();
     } catch (error) {
       setLinkState((prev) => ({ ...prev, error: error.message || "Failed to delete link." }));
@@ -325,13 +320,11 @@ export default function TrackingLinksDashboard({ authUser }) {
     const next = String(link.state || "active") === "active" ? "disabled" : "active";
     setTogglingId(link.id);
     try {
-      const response = await apiFetch(`/api/tracking-links/${link.id}`, {
+      await apiJson(`/api/tracking-links/${link.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ state: next }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to update status.");
+      }, "Failed to update status.");
       await fetchLinks();
     } catch (error) {
       setLinkState((prev) => ({ ...prev, error: error.message || "Failed to update status." }));
@@ -351,9 +344,7 @@ export default function TrackingLinksDashboard({ authUser }) {
   const runVerify = async (id) => {
     setDetails((prev) => ({ ...prev, verifying: true, error: null }));
     try {
-      const response = await apiFetch(`/api/tracking-links/${id}/verify`);
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Verify failed.");
+      const data = await apiJson(`/api/tracking-links/${id}/verify`, "Verify failed.");
       setDetails((prev) => ({ ...prev, verify: data, verifying: false }));
     } catch (error) {
       setDetails((prev) => ({ ...prev, verifying: false, error: error.message || "Verify failed." }));
@@ -379,13 +370,11 @@ export default function TrackingLinksDashboard({ authUser }) {
     if (!editModal.link) return;
     setEditModal((prev) => ({ ...prev, saving: true, error: null }));
     try {
-      const response = await apiFetch(`/api/tracking-links/${editModal.link.id}`, {
+      const data = await apiJson(`/api/tracking-links/${editModal.link.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editModal.form),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to save.");
+      }, "Failed to save.");
       setEditModal({ open: false, link: null, saving: false, error: null, form: { buyer: "", game: "", geo: "", brand: "" } });
       await fetchLinks();
     } catch (error) {
