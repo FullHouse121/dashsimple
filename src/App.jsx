@@ -39,24 +39,8 @@ import logo from "./assets/logo.png";
 import { BrandMark, resolveBrandLogo, BRAND_LOGOS, normalizeBrandKey } from "./components/BrandMark.jsx";
 import keitaroLogo from "./assets/brands/keitaro.svg";
 
-// Canonical single-path Telegram glyph (tint-able via currentColor) — used in
-// place of the heavy multi-shade source logo for small inline UI.
-// Stable fallback so views' row-filter memos don't recompute when the global
-// flow filter is unset (a fresh [] every render would break memoization).
-const EMPTY_FLOW_FILTER = [];
 
-const TelegramGlyph = ({ size = 14 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M23.91 3.79L20.3 20.84c-.25 1.21-.98 1.5-2 .94l-5.5-4.07-2.66 2.57c-.3.3-.55.56-1.13.56l.41-5.75 10.42-9.42c.45-.4-.1-.63-.7-.23L6.36 12.79l-5.4-1.68c-1.16-.36-1.19-1.17.24-1.73L22.5 2.24c.98-.36 1.83.22 1.41 1.55z" />
-  </svg>
-);
 
-// Meta infinity mark (lobehub mono, single path) — tint-able via currentColor.
-const MetaGlyph = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" aria-hidden="true">
-    <path d="M6.897 4c1.915 0 3.516.932 5.43 3.376l.282-.373c.19-.246.383-.484.58-.71l.313-.35C14.588 4.788 15.792 4 17.225 4c1.273 0 2.469.557 3.491 1.516l.218.213c1.73 1.765 2.917 4.71 3.053 8.026l.011.392.002.25c0 1.501-.28 2.759-.818 3.7l-.14.23-.108.153c-.301.42-.664.758-1.086 1.009l-.265.142-.087.04a3.493 3.493 0 01-.302.118 4.117 4.117 0 01-1.33.208c-.524 0-.996-.067-1.438-.215-.614-.204-1.163-.56-1.726-1.116l-.227-.235c-.753-.812-1.534-1.976-2.493-3.586l-1.43-2.41-.544-.895-1.766 3.13-.343.592C7.597 19.156 6.227 20 4.356 20c-1.21 0-2.205-.42-2.936-1.182l-.168-.184c-.484-.573-.837-1.311-1.043-2.189l-.067-.32a8.69 8.69 0 01-.136-1.288L0 14.468c.002-.745.06-1.49.174-2.23l.1-.573c.298-1.53.828-2.958 1.536-4.157l.209-.34c1.177-1.83 2.789-3.053 4.615-3.16L6.897 4zm-.033 2.615l-.201.01c-.83.083-1.606.673-2.252 1.577l-.138.199-.01.018c-.67 1.017-1.185 2.378-1.456 3.845l-.004.022a12.591 12.591 0 00-.207 2.254l.002.188c.004.18.017.36.04.54l.043.291c.092.503.257.908.486 1.208l.117.137c.303.323.698.492 1.17.492 1.1 0 1.796-.676 3.696-3.641l2.175-3.4.454-.701-.139-.198C9.11 7.3 8.084 6.616 6.864 6.616zm10.196-.552l-.176.007c-.635.048-1.223.359-1.82.933l-.196.198c-.439.462-.887 1.064-1.367 1.807l.266.398c.18.274.362.56.55.858l.293.475 1.396 2.335.695 1.114c.583.926 1.03 1.6 1.408 2.082l.213.262c.282.326.529.54.777.673l.102.05c.227.1.457.138.718.138.176.002.35-.023.518-.073.338-.104.61-.32.813-.637l.095-.163.077-.162c.194-.459.29-1.06.29-1.785l-.006-.449c-.08-2.871-.938-5.372-2.2-6.798l-.176-.189c-.67-.683-1.444-1.074-2.27-1.074z" />
-  </svg>
-);
 
 
 
@@ -256,32 +240,80 @@ import {
   isDateInRange,
   previousRangeOf,
 } from "./lib/date.js";
+import {
+  AndroidIcon,
+  AppleIcon,
+  WindowsIcon,
+  LinuxIcon,
+  ChromeIcon,
+  DesktopIcon,
+  MobileIcon,
+  TabletIcon,
+  UnknownIcon,
+  getOsIconComponent,
+  getOsAccent,
+} from "./lib/os-icons.jsx";
+import { TelegramGlyph, MetaGlyph, FlowsIcon } from "./components/glyphs.jsx";
+import { STATUS_DOT_COLOR, STATUS_VALUES, buildStatusOptions } from "./lib/status.js";
+import { KEITARO_ERROR_MAP, friendlyKeitaroError } from "./lib/keitaro-errors.js";
+import { scorePassword, generatePasswordValue } from "./lib/password.js";
+import {
+  TRACKING_SOURCE_SHORTCODES,
+  trackingSourceShortcode,
+  TRACKING_GEO_PRIORITY,
+  TRACKING_GEO_PRESETS,
+  TRACKING_GEO_NAMES,
+  ALLOWED_TRACKING_DOMAINS,
+  normalizeTrackingHost,
+  DEFAULT_TRACKING_PARAMS,
+  DEFAULT_EXTERNAL_ID_MACRO,
+  TRACKING_TOOL_EXTERNAL_ID,
+  externalIdMacroForTool,
+  applyExternalIdMacro,
+  TRACKING_FILTER_CATALOG,
+  TRACKING_FILTER_BY_NAME,
+} from "./lib/tracking.js";
+import {
+  defaultKeitaroOverallPayloadObject,
+  defaultKeitaroDevicePayloadObject,
+  stringifyKeitaroPayload,
+  defaultKeitaroPayloadByTarget,
+  defaultKeitaroPayload,
+} from "./lib/keitaro-payloads.js";
+import { _confirmSet, _confirmResolve, appConfirm, ConfirmHost } from "./lib/confirm.jsx";
+import { HEALTH_ACTIONS, healthAction, ACTION_META, HEALTH_DESTINATION_FILTER } from "./lib/health.js";
+import { goToView } from "./lib/navigation.js";
+import {
+  ROLE_IDENT_COLORS,
+  roleIdentColor,
+  initialsOf,
+  UserIdent,
+  RoleChip,
+  describeUserAgent,
+  PROFILE_BADGES,
+  BADGE_TIERS,
+  BadgeMedal,
+} from "./lib/identity.jsx";
+import { Sparkline, FlowSparkline, MiniSparkline } from "./components/Sparkline.jsx";
+import { formatShortDate, formatPeriodChip, PeriodSelect } from "./components/PeriodSelect.jsx";
+import { CurrencyTooltip, RateTooltip, ShareTooltip, ChartTooltip } from "./components/ChartTooltip.jsx";
+import { TagInput } from "./components/TagInput.jsx";
+import { EntityHistory } from "./components/EntityHistory.jsx";
+import { HealthActionItem } from "./components/HealthActionItem.jsx";
+import { StatsFunnelFlow } from "./components/StatsFunnelFlow.jsx";
+import {
+  EMPTY_FLOW_FILTER,
+  homeChartSeries,
+  geoReference,
+  geoPalette,
+  maskEaagToken,
+  IMPORT_DEFAULT_BRANDS,
+  formatGoalRange,
+} from "./lib/view-helpers.js";
 
 // API client moved to ./lib/api.js (Phase 1 extraction — retry, timeout, fallback all live there)
 // SWR cache helpers moved to ./lib/cache.js (Phase 1 extraction)
 
-// Custom "My Flows" glyph — a source node branching into two, mirroring the
-// tracking link → domains fan-out. Lucide-style (24 grid, currentColor).
-const FlowsIcon = ({ size = 18, strokeWidth = 2, ...props }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    {...props}
-  >
-    <circle cx="5" cy="12" r="2.4" />
-    <circle cx="19" cy="5.5" r="2.4" />
-    <circle cx="19" cy="18.5" r="2.4" />
-    <path d="M7.3 11.1c3-1.4 5-2.6 9.2-4.2" />
-    <path d="M7.3 12.9c3 1.4 5 2.6 9.2 4.2" />
-  </svg>
-);
 
 // Every entry now has its own glyph. The stock set had ShieldCheck on both
 // Roles and Health, CreditCard on Conversions, Meta Token and Profile, and
@@ -324,18 +356,6 @@ const navSections = [
 
 // Static option arrays + country/domain normalizers moved to ./lib/constants.js (Phase 1)
 
-// Status → dot colour, for the flat status dropdowns (pixels/domains/accounts).
-const STATUS_DOT_COLOR = {
-  active: "#36d07c",
-  pending: "#ffc94d",
-  paused: "#ffb37a",
-  expired: "#8a93a3",
-  blocked: "#ff8a7a",
-};
-const STATUS_VALUES = ["Active", "Pending", "Paused", "Expired", "Blocked"];
-const buildStatusOptions = (t) =>
-  STATUS_VALUES.map((s) => ({ value: s, label: t(s), dot: STATUS_DOT_COLOR[s.toLowerCase()] || "#8a93a3" }));
-
 const FlagEN = () => (
   <svg viewBox="0 0 36 36" aria-hidden="true">
     <rect width="36" height="36" fill="#012169" rx="6" />
@@ -368,130 +388,16 @@ const FlagTR = () => (
   </svg>
 );
 
-const AndroidIcon = ({ size = 18, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    aria-hidden="true"
-    className={className}
-    style={style}
-  >
-    <rect x="12" y="24" width="40" height="26" rx="8" fill="currentColor" />
-    <rect x="16" y="10" width="32" height="16" rx="8" fill="currentColor" />
-    <rect x="4" y="24" width="8" height="24" rx="4" fill="currentColor" />
-    <rect x="52" y="24" width="8" height="24" rx="4" fill="currentColor" />
-    <rect x="20" y="50" width="8" height="10" rx="4" fill="currentColor" />
-    <rect x="36" y="50" width="8" height="10" rx="4" fill="currentColor" />
-    <circle cx="24" cy="20" r="2" fill="#0b0f0c" />
-    <circle cx="40" cy="20" r="2" fill="#0b0f0c" />
-    <path d="M20 6 L12 0" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    <path d="M44 6 L52 0" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-  </svg>
-);
 
-const AppleIcon = ({ size = 18, className, style }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 64 64"
-    aria-hidden="true"
-    className={className}
-    style={style}
-  >
-    <path
-      fill="currentColor"
-      d="M44.2 34.4c0 8.1-5.6 15.6-11.4 15.6-2.6 0-3.8-1.4-6.8-1.4-3.1 0-4.5 1.4-6.9 1.4-5.3 0-11.4-6.5-11.4-14.8 0-5.8 3.6-10.9 9-10.9 2.8 0 5.1 1.5 6.8 1.5 1.7 0 4.4-1.7 7.2-1.7 1.3 0 5.4.2 8.3 4.1-.2.1-4.9 2.6-4.9 8.4 0 6.5 5.7 8.4 7.1 8.8z"
-    />
-    <path
-      fill="currentColor"
-      d="M38.8 11.8c-1.4 1.8-3.9 3.3-6.2 3.1-.3-2.3.8-4.6 2.2-6.3 1.5-1.7 4-3 6.3-3.1.2 2.3-.7 4.7-2.3 6.3z"
-    />
-  </svg>
-);
 
-const WindowsIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="3" y="3" width="8" height="8" fill="currentColor" />
-    <rect x="13" y="3" width="8" height="8" fill="currentColor" />
-    <rect x="3" y="13" width="8" height="8" fill="currentColor" />
-    <rect x="13" y="13" width="8" height="8" fill="currentColor" />
-  </svg>
-);
 
-const LinuxIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="8" r="4" fill="currentColor" />
-    <rect x="7" y="12" width="10" height="8" rx="4" fill="currentColor" />
-    <circle cx="10" cy="7.5" r="0.8" fill="#0b0f0c" />
-    <circle cx="14" cy="7.5" r="0.8" fill="#0b0f0c" />
-  </svg>
-);
 
-const ChromeIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
-    <circle cx="12" cy="12" r="4" fill="currentColor" />
-  </svg>
-);
 
-const DesktopIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="3" y="4" width="18" height="12" rx="2" fill="currentColor" />
-    <rect x="9" y="18" width="6" height="2" fill="currentColor" />
-  </svg>
-);
 
-const MobileIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="7" y="3" width="10" height="18" rx="2" fill="currentColor" />
-    <circle cx="12" cy="18" r="1" fill="#0b0f0c" />
-  </svg>
-);
 
-const TabletIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <rect x="5" y="3" width="14" height="18" rx="2" fill="currentColor" />
-    <circle cx="12" cy="18" r="1" fill="#0b0f0c" />
-  </svg>
-);
 
-const UnknownIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="9" fill="currentColor" />
-    <path
-      d="M12 7c-1.6 0-2.6.9-2.6 2.2h1.8c.1-.5.4-.8.9-.8.6 0 1 .4 1 1 0 .7-.6 1-1.3 1.4-.8.4-1.3.9-1.3 2v.4h1.8v-.3c0-.6.4-.8 1-.9.8-.2 1.8-.7 1.8-2.4 0-1.7-1.3-2.6-3.1-2.6zm-.9 8.5c0 .6.5 1.1 1.1 1.1s1.1-.5 1.1-1.1-.5-1.1-1.1-1.1-1.1.5-1.1 1.1z"
-      fill="#0b0f0c"
-    />
-  </svg>
-);
 
-const getOsIconComponent = (value) => {
-  const label = String(value || "").toLowerCase();
-  if (label.includes("android")) return AndroidIcon;
-  if (label.includes("ios") || label.includes("iphone") || label.includes("ipad") || label.includes("mac")) return AppleIcon;
-  if (label.includes("windows")) return WindowsIcon;
-  if (label.includes("linux")) return LinuxIcon;
-  if (label.includes("chrome")) return ChromeIcon;
-  if (label.includes("tablet")) return TabletIcon;
-  if (label.includes("mobile") || label.includes("phone")) return MobileIcon;
-  if (label.includes("desktop")) return DesktopIcon;
-  return UnknownIcon;
-};
 
-const getOsAccent = (value) => {
-  const label = String(value || "").toLowerCase();
-  if (label.includes("android")) return "#A4C639";
-  if (label.includes("ios") || label.includes("iphone") || label.includes("ipad") || label.includes("mac"))
-    return "#E3E3E3";
-  if (label.includes("windows")) return "#00A4EF";
-  if (label.includes("linux")) return "#F5C451";
-  if (label.includes("chrome")) return "#E84D2D";
-  if (label.includes("tablet")) return "#8AA4FF";
-  if (label.includes("mobile") || label.includes("phone")) return "#7ED957";
-  if (label.includes("desktop")) return "#9AA0A6";
-  return "#B0B3B8";
-};
 
 const languageOptions = [
   { code: "EN", label: "English", Flag: FlagEN },
@@ -632,172 +538,12 @@ function LanguageSwitcher({ language, setLanguage }) {
   );
 }
 
-// App-wide styled confirm dialog — replaces native window.confirm() so system
-// prompts carry the app's design. appConfirm({...}) returns a Promise<boolean>.
-let _confirmSet = null;
-let _confirmResolve = null;
-function appConfirm(opts = {}) {
-  return new Promise((resolve) => {
-    if (typeof _confirmSet !== "function") {
-      resolve(window.confirm(opts.message || opts.title || "")); // fallback if host unmounted
-      return;
-    }
-    _confirmResolve = resolve;
-    _confirmSet({
-      open: true,
-      tone: "danger",
-      title: "Are you sure?",
-      message: "",
-      confirmLabel: "Confirm",
-      cancelLabel: "Cancel",
-      ...opts,
-    });
-  });
-}
-function ConfirmHost() {
-  const [state, setState] = React.useState({ open: false });
-  React.useEffect(() => {
-    _confirmSet = setState;
-    return () => { _confirmSet = null; };
-  }, []);
-  const finish = (result) => {
-    setState((s) => ({ ...s, open: false }));
-    const r = _confirmResolve;
-    _confirmResolve = null;
-    if (r) r(result);
-  };
-  React.useEffect(() => {
-    if (!state.open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") finish(false);
-      else if (e.key === "Enter") finish(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [state.open]);
-  return (
-    <AnimatePresence>
-      {state.open ? (
-        <motion.div
-          className="confirm-overlay"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.16 }}
-          onClick={() => finish(false)}
-        >
-          <motion.div
-            className={`confirm-dialog tone-${state.tone || "danger"}`}
-            role="alertdialog"
-            aria-modal="true"
-            initial={{ opacity: 0, y: 14, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="confirm-icon"><AlertTriangle size={20} /></div>
-            <div className="confirm-body">
-              <h3 className="confirm-title">{state.title}</h3>
-              {state.message ? <p className="confirm-message">{state.message}</p> : null}
-            </div>
-            <div className="confirm-actions">
-              <button type="button" className="ghost" onClick={() => finish(false)}>{state.cancelLabel}</button>
-              <button type="button" className="confirm-confirm" onClick={() => finish(true)} autoFocus>{state.confirmLabel}</button>
-            </div>
-          </motion.div>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  );
-}
 
 
-const defaultKeitaroOverallPayloadObject = {
-  dimensions: ["day", "campaign", "country", "city", "sub_id_1", "source", "sub_id_3", "sub_id_4", "sub_id_5"],
-  measures: [
-    "clicks",
-    "regs",
-    "custom_conversion_8",
-    "custom_conversion_7",
-    "custom_conversion_8_revenue",
-    "custom_conversion_7_revenue",
-    "cost",
-  ],
-  range: { interval: "first_day_of_this_month", timezone: "Asia/Dubai" },
-  filters: [
-    {
-      name: "campaign",
-      operator: "MATCH_REGEXP",
-      expression: "(Leo|Leticia|Carvalho|Akku|Enzo|Matheus|Sara|ZM ?apps|ZMAPPS)",
-    },
-  ],
-  limit: 1000,
-  offset: 0,
-  sort: [],
-  summary: true,
-  extended: true,
-};
 
-const defaultKeitaroDevicePayloadObject = {
-  dimensions: ["day", "campaign", "country", "device_type", "os", "os_version"],
-  measures: [
-    "clicks",
-    "regs",
-    "custom_conversion_8",
-    "custom_conversion_7",
-    "custom_conversion_8_revenue",
-    "custom_conversion_7_revenue",
-    "cost",
-  ],
-  range: { interval: "last_7_days", timezone: "Asia/Dubai" },
-  filters: [
-    {
-      name: "campaign",
-      operator: "MATCH_REGEXP",
-      expression: "(Leo|Leticia|Carvalho|Akku|Enzo|Matheus|Sara|ZM ?apps|ZMAPPS)",
-    },
-  ],
-  limit: 1000,
-  offset: 0,
-  sort: [],
-  summary: true,
-  extended: true,
-};
 
-const stringifyKeitaroPayload = (value) => JSON.stringify(value, null, 2);
 
-const defaultKeitaroPayloadByTarget = {
-  overall: stringifyKeitaroPayload(defaultKeitaroOverallPayloadObject),
-  device: stringifyKeitaroPayload(defaultKeitaroDevicePayloadObject),
-  user_behavior: stringifyKeitaroPayload({
-    dimensions: ["day", "campaign", "country", "region", "city", "sub_id_1", "external_id"],
-    measures: [
-      "clicks",
-      "regs",
-      "custom_conversion_8",
-      "custom_conversion_7",
-      "custom_conversion_8_revenue",
-      "custom_conversion_7_revenue",
-      "cost",
-    ],
-    range: { interval: "last_7_days", timezone: "Asia/Dubai" },
-    filters: [
-      {
-        name: "campaign",
-        operator: "MATCH_REGEXP",
-        expression: "(Leo|Leticia|Carvalho|Akku|Enzo|Matheus|Sara|ZM ?apps|ZMAPPS)",
-      },
-    ],
-    limit: 1000,
-    offset: 0,
-    sort: [],
-    summary: true,
-    extended: true,
-  }),
-};
 
-const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
 
   const defaultKeitaroMapping = {
     dateField: "day",
@@ -828,357 +574,15 @@ const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
   deviceModelField: "device_model",
 };
 
-// Format utilities moved to ./lib/format.js (Phase 1 extraction — see import at top of file)
-// Date utilities moved to ./lib/date.js (Phase 1 extraction)
-// Permissions, filters, and sort helpers moved to ./lib/{permissions,filters,sort}.js (Phase 1)
-const formatShortDate = (value) => {
-  if (!value) return "";
-  const parts = value.split("-");
-  if (parts.length < 3) return value;
-  const monthIndex = Number(parts[1]) - 1;
-  const month = shortMonths[monthIndex] ?? parts[1];
-  return `${parts[2]} ${month}`;
-};
 
-// The period chip sits in the topbar, which on a phone has one row to spend on
-// everything. "2026-08-01 → 2026-08-21" measures 215px there and forced the bar
-// back to two rows — undoing the row it had just been given back. The parts
-// that repeat are the ones dropped: a year that is the same at both ends is
-// stated once, a month that is the same is stated once, and a single day is
-// just a day. Nothing is lost that the full range does not still say.
-const formatPeriodChip = (from, to) => {
-  if (!from || !to) return from || to || "";
-  const a = String(from).split("-");
-  const b = String(to).split("-");
-  if (a.length < 3 || b.length < 3) return from === to ? from : `${from} → ${to}`;
-  const day = (p) => String(Number(p[2]));
-  const mon = (p) => shortMonths[Number(p[1]) - 1] ?? p[1];
-  if (from === to) return `${day(a)} ${mon(a)} ${a[0]}`;
-  if (a[0] !== b[0]) return `${day(a)} ${mon(a)} ${a[0]} → ${day(b)} ${mon(b)} ${b[0]}`;
-  if (a[1] !== b[1]) return `${day(a)} ${mon(a)} → ${day(b)} ${mon(b)} ${b[0]}`;
-  return `${day(a)}–${day(b)} ${mon(b)} ${b[0]}`;
-};
 
-// A 120x28 trace of one series. Hand-drawn rather than a fifth Recharts
-// container: at this size the axis machinery costs more than the line.
-function Sparkline({ values, color, width = 120, height = 28 }) {
-  if (!Array.isArray(values) || values.length < 2) return null;
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = max - min || 1;
-  const stepX = width / (values.length - 1);
-  // 2px of padding top and bottom so the endpoint dot is never clipped.
-  const y = (v) => height - 2 - ((v - min) / span) * (height - 4);
-  const points = values.map((v, i) => `${(i * stepX).toFixed(2)},${y(v).toFixed(2)}`);
-  const lastX = (values.length - 1) * stepX;
-  const lastY = y(values[values.length - 1]);
-  const gradientId = `spark-${String(color).replace(/[^a-z0-9]/gi, "")}`;
-  return (
-    <svg
-      className="sparkline"
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      role="img"
-      aria-hidden="true"
-      preserveAspectRatio="none"
-    >
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <polygon points={`0,${height} ${points.join(" ")} ${lastX},${height}`} fill={`url(#${gradientId})`} />
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx={lastX} cy={lastY} r="2.4" fill={color} />
-    </svg>
-  );
-}
 
-const homeChartSeries = [
-  { key: "c2i", label: "Click2Install", color: RATE_COLORS.c2i, width: 2.2 },
-  { key: "c2r", label: "Click2Register", color: RATE_COLORS.c2r, width: 2 },
-  { key: "i2r", label: "Install2Reg", color: RATE_COLORS.i2r, width: 2 },
-  { key: "r2d", label: "Reg2Dep", color: RATE_COLORS.r2d, width: 2 },
-];
 
-const geoReference = {
-  Argentina: { iso: "ARG", coordinates: [-63.6167, -38.4161] },
-  Australia: { iso: "AUS", coordinates: [133.7751, -25.2744] },
-  Azerbaijan: { iso: "AZE", coordinates: [47.5769, 40.1431] },
-  Albania: { iso: "ALB", coordinates: [20.1683, 41.1533] },
-  Algeria: { iso: "DZA", coordinates: [1.6596, 28.0339] },
-  Bolivia: { iso: "BOL", coordinates: [-63.5887, -16.2902] },
-  Brazil: { iso: "BRA", coordinates: [-51.9253, -14.235] },
-  Canada: { iso: "CAN", coordinates: [-106.3468, 56.1304] },
-  Chile: { iso: "CHL", coordinates: [-71.543, -35.6751] },
-  Colombia: { iso: "COL", coordinates: [-74.2973, 4.5709] },
-  "Costa Rica": { iso: "CRI", coordinates: [-83.7534, 9.7489] },
-  Ecuador: { iso: "ECU", coordinates: [-78.1834, -1.8312] },
-  Egypt: { iso: "EGY", coordinates: [30.8025, 26.8206] },
-  Estonia: { iso: "EST", coordinates: [25.0136, 58.5953] },
-  France: { iso: "FRA", coordinates: [2.2137, 46.2276] },
-  Germany: { iso: "DEU", coordinates: [10.4515, 51.1657] },
-  India: { iso: "IND", coordinates: [78.9629, 20.5937] },
-  Iran: { iso: "IRN", coordinates: [53.688, 32.4279] },
-  Iraq: { iso: "IRQ", coordinates: [43.6793, 33.2232] },
-  Japan: { iso: "JPN", coordinates: [138.2529, 36.2048] },
-  Morocco: { iso: "MAR", coordinates: [-7.0926, 31.7917] },
-  "New Zealand": { iso: "NZL", coordinates: [174.8859, -40.9006] },
-  Mexico: { iso: "MEX", coordinates: [-102.5528, 23.6345] },
-  Nigeria: { iso: "NGA", coordinates: [8.6753, 9.082] },
-  Norway: { iso: "NOR", coordinates: [8.4689, 60.472] },
-  Paraguay: { iso: "PRY", coordinates: [-58.4438, -23.4425] },
-  Peru: { iso: "PER", coordinates: [-75.0152, -9.19] },
-  Poland: { iso: "POL", coordinates: [19.1451, 51.9194] },
-  Romania: { iso: "ROU", coordinates: [24.9668, 45.9432] },
-  Russia: { iso: "RUS", coordinates: [105.3188, 61.524] },
-  "South Korea": { iso: "KOR", coordinates: [127.7669, 35.9078] },
-  Sweden: { iso: "SWE", coordinates: [18.6435, 60.1282] },
-  Switzerland: { iso: "CHE", coordinates: [8.2275, 46.8182] },
-  Tunisia: { iso: "TUN", coordinates: [9.5375, 33.8869] },
-  Ukraine: { iso: "UKR", coordinates: [31.1656, 48.3794] },
-  "United States": { iso: "USA", coordinates: [-98.5795, 39.8283] },
-  Venezuela: { iso: "VEN", coordinates: [-66.5897, 6.4238] },
-  Vietnam: { iso: "VNM", coordinates: [108.2772, 14.0583] },
-  China: { iso: "CHN", coordinates: [104.1954, 35.8617] },
-  Turkey: { iso: "TUR", coordinates: [35.2433, 38.9637] },
-  Guyana: { iso: "GUY", coordinates: [-58.9302, 4.8604] },
-  Netherlands: { iso: "NLD", coordinates: [5.2913, 52.1326] },
-  "United Arab Emirates": { iso: "ARE", coordinates: [53.8478, 23.4241] },
-};
-const geoPalette = [
-  "var(--green)",
-  "var(--blue)",
-  "var(--purple)",
-  "var(--yellow)",
-  "var(--pink)",
-  "var(--orange)",
-];
 
-function CurrencyTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
 
-  return (
-    <div className="chart-tooltip" style={tooltipStyle}>
-      <p className="tooltip-label">{label}</p>
-      {payload.map((item) => (
-        <div className="tooltip-row" key={item.dataKey}>
-          <span
-            className="tooltip-dot"
-            style={{ background: item.color || item.fill || item.stroke }}
-          />
-          <span>{item.name}</span>
-          <span className="tooltip-value">{formatCurrency(item.value)}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
-function RateTooltip({ active, payload }) {
-  const { t } = useLanguage();
-  if (!active || !payload?.length) return null;
-  const item = payload[0];
 
-  return (
-    <div className="chart-tooltip rate-tooltip" style={tooltipStyle}>
-      <p className="tooltip-label">{item.name}</p>
-      <div className="tooltip-row">
-        <span className="tooltip-dot" style={{ background: item.color }} />
-        <span>{t("Rate")}</span>
-        <span className="tooltip-value">{item.value}%</span>
-      </div>
-    </div>
-  );
-}
 
-function ShareTooltip({ active, payload }) {
-  const { t } = useLanguage();
-  if (!active || !payload?.length) return null;
-  const item = payload[0];
-
-  return (
-    <div className="chart-tooltip rate-tooltip" style={tooltipStyle}>
-      <p className="tooltip-label">{item.name}</p>
-      <div className="tooltip-row">
-        <span className="tooltip-dot" style={{ background: item.color }} />
-        <span>{t("Share")}</span>
-        <span className="tooltip-value">{item.value}%</span>
-      </div>
-    </div>
-  );
-}
-
-function PeriodSelect({ value, onChange, customRange, onCustomChange }) {
-  const { t } = useLanguage();
-  const [open, setOpen] = React.useState(false);
-  const [showCustom, setShowCustom] = React.useState(false);
-  const containerRef = React.useRef(null);
-  const normalizedCustomRange = React.useMemo(
-    () => normalizeDateRange(customRange?.from, customRange?.to),
-    [customRange?.from, customRange?.to]
-  );
-  const canApplyCustomRange = Boolean(normalizedCustomRange.from && normalizedCustomRange.to);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const handleOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        setOpen(false);
-        setShowCustom(false);
-      }
-    };
-    window.addEventListener("mousedown", handleOutside);
-    return () => window.removeEventListener("mousedown", handleOutside);
-  }, [open]);
-
-  const handleSelect = (option) => {
-    onChange(option);
-    setShowCustom(false);
-    setOpen(false);
-  };
-
-  const handleCustomToggle = () => {
-    setOpen(true);
-    setShowCustom(true);
-  };
-
-  const handleApplyCustom = () => {
-    if (!canApplyCustomRange) return;
-    if (customRange?.from !== normalizedCustomRange.from) {
-      onCustomChange("from", normalizedCustomRange.from);
-    }
-    if (customRange?.to !== normalizedCustomRange.to) {
-      onCustomChange("to", normalizedCustomRange.to);
-    }
-    onChange("Custom range");
-    setOpen(false);
-  };
-
-  return (
-    <div className="period-select" ref={containerRef}>
-      <button
-        className="select"
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-      >
-        {t(value)}
-        <span className="chev">▾</span>
-      </button>
-      {open && (
-        <div className="period-menu">
-          {periodOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`period-option${value === option ? " is-active" : ""}`}
-              onClick={() => handleSelect(option)}
-            >
-              {t(option)}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={`period-option${value === "Custom range" ? " is-active" : ""}`}
-            onClick={handleCustomToggle}
-          >
-            {t("Custom range")}
-          </button>
-          {showCustom && (
-            <div className="period-custom">
-              <div className="field-row">
-                <DeusDatePicker
-                  value={customRange.from}
-                  onChange={(v) => onCustomChange("from", v)}
-                />
-                <span className="field-sep">{t("to")}</span>
-                <DeusDatePicker
-                  value={customRange.to}
-                  onChange={(v) => onCustomChange("to", v)}
-                />
-              </div>
-              <div className="period-actions">
-                <button className="ghost" type="button" onClick={() => setShowCustom(false)}>
-                  {t("Cancel")}
-                </button>
-                <button
-                  className="action-pill"
-                  type="button"
-                  onClick={handleApplyCustom}
-                  disabled={!canApplyCustomRange}
-                >
-                  {t("Apply")}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChartTooltip({ active, payload, label, visibleKeys }) {
-  if (!active || !payload?.length) return null;
-  const filtered = visibleKeys
-    ? payload.filter((item) => visibleKeys.includes(item.dataKey))
-    : payload;
-  const formatValue = (value) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return "—";
-    return numeric.toFixed(2);
-  };
-  const formatCount = (value) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) return "—";
-    return Math.round(numeric).toLocaleString();
-  };
-  const getRateContext = (item) => {
-    const row = item?.payload || {};
-    switch (item?.dataKey) {
-      case "c2i":
-        return { num: row.installs, den: row.clicks };
-      case "c2r":
-        return { num: row.registers, den: row.clicks };
-      case "i2r":
-        return { num: row.registers, den: row.installs };
-      case "r2d":
-        return { num: row.ftds, den: row.registers };
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <div className="chart-tooltip" style={tooltipStyle}>
-      <p className="tooltip-label">{label}</p>
-      {filtered.map((item) => {
-        const context = getRateContext(item);
-        return (
-          <div className="tooltip-row" key={item.dataKey}>
-            <span className="tooltip-dot" style={{ background: item.stroke }} />
-            <span>{item.name}</span>
-            <span className="tooltip-value">
-              {formatValue(item.value)}
-              %
-              {context ? ` (${formatCount(context.num)} / ${formatCount(context.den)})` : ""}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function HomeDashboard({
   period,
@@ -4330,157 +3734,8 @@ function GeosDashboard({ filters, authUser, viewerBuyer }) {
   );
 }
 
-// ── Tracking Links ────────────────────────────────────────────────────
-// Compose Keitaro campaigns from the dashboard: Buyer | Tool | Game |
-// Geo | Brand naming, domain/alias?params link, optional push to the
-// Keitaro Admin API — stored locally either way.
-// Keitaro traffic-source name → short code used in the campaign-name Tool segment.
-const TRACKING_SOURCE_SHORTCODES = {
-  "pwa.group": "PWA.GROUP",
-  "linki.group": "LINKI.GROUP",
-  "zm.app": "ZMAPPS",
-  "skakapp.com": "SKAK",
-  "facebook.com": "FB",
-  "pwa partners": "PWA PARTNERS",
-  "trafficjunky.com": "TRAFFIC JUNKY",
-  "youtarget.com": "YOUTARGET",
-  "google ads": "GOOGLE",
-  "tiktok.com": "TIKTOK",
-};
-const trackingSourceShortcode = (name) => {
-  const key = String(name || "").trim().toLowerCase();
-  return TRACKING_SOURCE_SHORTCODES[key] || String(name || "").trim().toUpperCase();
-};
-// Frequent geos stay pinned on top; every other country follows alphabetically.
-const TRACKING_GEO_PRIORITY = [
-  "GLOBAL", "MX", "BR", "TR", "AR", "CL", "CO", "PE", "EC", "PY",
-  "DE", "FR", "GB", "IT", "CA", "AU", "NZ", "NO", "SE", "CH", "JP", "PL", "RO",
-];
-const TRACKING_GEO_PRESETS = [
-  ...TRACKING_GEO_PRIORITY,
-  ...ALL_COUNTRIES.map(([, iso]) => iso.toUpperCase())
-    .filter((code) => !TRACKING_GEO_PRIORITY.includes(code))
-    .sort(),
-];
-const TRACKING_GEO_NAMES = Object.fromEntries(
-  ALL_COUNTRIES.map(([name, iso]) => [iso.toUpperCase(), name])
-);
-// Only these Keitaro tracking/redirect domains may back a tracking link
-// (everyone sees exactly this list). PWA landing domains are never used here.
-const ALLOWED_TRACKING_DOMAINS = [
-  "tracker.deusmachine-trk.com",
-  "go.deuskt.click",
-  "deuskt.click",
-];
-const normalizeTrackingHost = (name) =>
-  String(name || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-const DEFAULT_TRACKING_PARAMS =
-  "external_id={external_id}&sub1={sub1}&sub2={sub2}&sub3={sub3}&sub4={sub4}&sub5={sub5}&adset_id={{adset.id}}&sub7={sub7}&sub8={sub8}&sub9={sub9}&sub10={sub10}&sub11={sub11}&fbclid={{fbclid}}";
 
-// Each traffic tool passes its click identifier under a different macro, so the
-// external_id value must follow the selected tool (keyed by shortcode).
-// Before a tool is picked, the neutral {external_id} placeholder stays put —
-// picking a tool swaps in that source's real macro from its Keitaro config.
-const DEFAULT_EXTERNAL_ID_MACRO = "{external_id}";
-const TRACKING_TOOL_EXTERNAL_ID = {
-  "PWA.GROUP": "{USER_ID}",
-  "PWA PARTNERS": "{user_id}",
-  "LINKI.GROUP": "{client_id}",
-  "ZMAPPS": "{exid}",
-  "SKAK": "{clickId}",
-};
-const externalIdMacroForTool = (tool) =>
-  TRACKING_TOOL_EXTERNAL_ID[String(tool || "").trim().toUpperCase()] || DEFAULT_EXTERNAL_ID_MACRO;
-// Swap only the external_id value in a params string, preserving any custom subs.
-const applyExternalIdMacro = (params, tool) => {
-  const macro = externalIdMacroForTool(tool);
-  const s = String(params || "");
-  if (/(?:^|&)external_id=/i.test(s)) {
-    return s.replace(/((?:^|&)external_id=)[^&]*/i, `$1${macro}`);
-  }
-  return `external_id=${macro}${s ? `&${s}` : ""}`;
-};
 
-// Keitaro stream filter catalog. name = API filter name; bool = no values.
-const TRACKING_FILTER_CATALOG = [
-  { group: "Traffic", name: "keyword", label: "Keyword" },
-  { group: "Traffic", name: "search_engine", label: "Search engine", bool: true },
-  { group: "Traffic", name: "ad_campaign_id", label: "Ad campaign ID" },
-  { group: "Traffic", name: "creative_id", label: "Creative ID" },
-  { group: "Traffic", name: "empty_referrer", label: "Empty referer", bool: true },
-  { group: "Traffic", name: "referrer", label: "Referrer" },
-  { group: "Geo", name: "country", label: "Country / GEO" },
-  { group: "Geo", name: "region", label: "Region" },
-  { group: "Geo", name: "city", label: "City" },
-  { group: "Geo", name: "language", label: "Language" },
-  { group: "Geo", name: "connection_type", label: "Connection type" },
-  { group: "Geo", name: "isp", label: "ISP / Carrier" },
-  { group: "Security", name: "bot", label: "Bot", bool: true },
-  { group: "Security", name: "proxy", label: "Proxy detected", bool: true },
-  { group: "Security", name: "ipv_6", label: "IPv6", bool: true },
-  { group: "Security", name: "unique_click", label: "Unique click", bool: true },
-  { group: "Device", name: "device_type", label: "Device type", options: ["mobile", "desktop", "tablet", "tv"] },
-  { group: "Device", name: "os", label: "OS" },
-  { group: "Device", name: "os_version", label: "OS version" },
-  { group: "Device", name: "browser", label: "Browser" },
-  { group: "Device", name: "browser_version", label: "Browser version" },
-  ...Array.from({ length: 11 }, (_, i) => ({
-    group: "Sub IDs",
-    name: `sub_id_${i + 1}`,
-    label: `Sub ID ${i + 1}`,
-  })),
-];
-const TRACKING_FILTER_BY_NAME = Object.fromEntries(TRACKING_FILTER_CATALOG.map((f) => [f.name, f]));
-
-// Chip/tag input — Enter or comma commits a value, Backspace on empty pops.
-function TagInput({ values, onChange, placeholder, options }) {
-  const [draft, setDraft] = React.useState("");
-  const commit = (raw) => {
-    const parts = String(raw).split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
-    if (!parts.length) return;
-    const next = [...values];
-    parts.forEach((p) => {
-      if (!next.includes(p)) next.push(p);
-    });
-    onChange(next);
-    setDraft("");
-  };
-  return (
-    <div className="tag-input">
-      {values.map((v) => (
-        <span className="tag-chip" key={v}>
-          {v}
-          <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label="Remove">
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        className="tag-input-field"
-        value={draft}
-        list={options ? "tag-opts" : undefined}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            commit(draft);
-          } else if (e.key === "Backspace" && !draft && values.length) {
-            onChange(values.slice(0, -1));
-          }
-        }}
-        onBlur={() => commit(draft)}
-        placeholder={values.length ? "" : placeholder}
-      />
-      {options ? (
-        <datalist id="tag-opts">
-          {options.map((o) => (
-            <option value={o} key={o} />
-          ))}
-        </datalist>
-      ) : null}
-    </div>
-  );
-}
 
 function TrackingLinksDashboard({ authUser }) {
   const { t } = useLanguage();
@@ -5768,132 +5023,8 @@ function TrackingLinksDashboard({ authUser }) {
   );
 }
 
-// ── Per-entity change history ─────────────────────────────────────────
-// The audit trail already records who changed what; this reads one
-// entity's slice of it so "why did this drop on the 12th" is answerable
-// next to the thing that dropped, not in a global log.
-function EntityHistory({ type, id, limit = 12 }) {
-  const { t } = useLanguage();
-  const [state, setState] = React.useState({ loading: true, error: null, rows: [] });
-  const [expanded, setExpanded] = React.useState(false);
 
-  React.useEffect(() => {
-    if (!type || !id) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        setState({ loading: true, error: null, rows: [] });
-        const response = await apiFetch(`/api/logs/entity?type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}&limit=40`);
-        if (response.status === 403) {
-          if (!cancelled) setState({ loading: false, error: null, rows: [] });
-          return;
-        }
-        const data = await response.json().catch(() => []);
-        if (!response.ok) throw new Error(data?.error || "Failed to load history.");
-        if (!cancelled) setState({ loading: false, error: null, rows: Array.isArray(data) ? data : [] });
-      } catch (error) {
-        if (!cancelled) setState({ loading: false, error: error.message || "Failed to load history.", rows: [] });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [type, id]);
 
-  // The audit row stores the request body; show the fields that changed
-  // rather than raw JSON, since that's the part anyone reads.
-  const describe = (row) => {
-    const details = row.details;
-    if (!details || typeof details !== "object") return null;
-    const keys = Object.keys(details).filter((k) => details[k] !== null && details[k] !== "");
-    if (!keys.length) return null;
-    return keys
-      .slice(0, 4)
-      .map((key) => {
-        const value = details[key];
-        const printed = Array.isArray(value) ? `${value.length}` : String(value);
-        return `${key}: ${printed.length > 28 ? `${printed.slice(0, 28)}…` : printed}`;
-      })
-      .join(" · ");
-  };
-
-  if (state.loading) return <p className="entity-history-empty">{t("Loading history…")}</p>;
-  if (state.error) return <p className="entity-history-empty">{state.error}</p>;
-  if (!state.rows.length) return <p className="entity-history-empty">{t("No changes recorded yet.")}</p>;
-
-  const visible = expanded ? state.rows : state.rows.slice(0, limit);
-  return (
-    <div className="entity-history">
-      {visible.map((row) => {
-        const failed = Number(row.status || 0) >= 400;
-        const summary = describe(row);
-        return (
-          <div className={`entity-history-row${failed ? " is-failed" : ""}`} key={row.id}>
-            <span className={`entity-history-dot is-${String(row.action || "updated")}`} />
-            <div className="entity-history-main">
-              <span className="entity-history-line">
-                <strong>{row.actor_name || t("Unknown")}</strong> {t(String(row.action || "updated"))}
-                {failed ? <span className="entity-history-failed">{t("failed")}</span> : null}
-              </span>
-              {summary ? <span className="entity-history-detail">{summary}</span> : null}
-            </div>
-            <time className="entity-history-time" title={new Date(row.created_at).toLocaleString()}>
-              {new Date(row.created_at).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
-            </time>
-          </div>
-        );
-      })}
-      {state.rows.length > limit ? (
-        <button type="button" className="entity-history-more" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? t("Show less") : `${t("Show all")} (${state.rows.length})`}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-// Shows enough of an EAAG token to recognise it, never enough to use it.
-const maskEaagToken = (value) => {
-  const token = String(value || "");
-  if (!token) return "—";
-  return token.length <= 14 ? token : `${token.slice(0, 8)}••••${token.slice(-4)}`;
-};
-
-// 7-day unique-clicks curve for a flow card — deliberately axis-free: it
-// only has to answer "is this flow climbing, flat, or dying?".
-function FlowSparkline({ values, width = 92, height = 30 }) {
-  const series = Array.isArray(values) && values.length ? values.map((v) => Number(v) || 0) : null;
-  if (!series || series.length < 2) return null;
-  // All zeros: a solid line would read as data. Show a dashed baseline.
-  if (!series.some((v) => v > 0)) {
-    return (
-      <svg className="flow-spark is-empty" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-        <line x1="0" y1={height - 4} x2={width} y2={height - 4} stroke="currentColor" strokeWidth="1.4" strokeDasharray="3 4" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  const max = Math.max(...series, 1);
-  const stepX = width / (series.length - 1);
-  const y = (v) => height - 3 - (v / max) * (height - 7);
-  const points = series.map((v, i) => [i * stepX, y(v)]);
-  const line = points.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join(" ");
-  const area = `${line} L${width},${height} L0,${height} Z`;
-  const [lastX, lastY] = points[points.length - 1];
-  const gradientId = `flow-spark-${series.join("-")}-${width}`;
-  return (
-    <svg className="flow-spark" width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-      <defs>
-        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--green, #36d07c)" stopOpacity="0.32" />
-          <stop offset="100%" stopColor="var(--green, #36d07c)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#${gradientId})`} />
-      <path d={line} fill="none" stroke="var(--green, #36d07c)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={lastX} cy={lastY} r="2.4" fill="var(--green, #36d07c)" />
-    </svg>
-  );
-}
 
 // ── Health ────────────────────────────────────────────────────────────
 // Not a report — a work queue. Every finding is expressed as the action
@@ -5901,110 +5032,7 @@ function FlowSparkline({ values, width = 92, height = 30 }) {
 // there, and a button that lands on the screen where it gets fixed.
 // Buyers should be able to work top-to-bottom without interpreting.
 
-// Each rule/issue code maps to one instruction. `kind` drives the whole
-// visual language, so a buyer can scan for "what do I have to ADD" and
-// ignore everything else.
-const HEALTH_ACTIONS = {
-  // Setup integrity
-  flow_no_domain: { kind: "add", verb: "Bind a PWA domain", cost: "This flow can't receive traffic", view: "flows" },
-  domain_no_pixel: { kind: "add", verb: "Attach a pixel", cost: "Conversions never reach Meta", view: "domains" },
-  domain_dead_but_bound: { kind: "remove", verb: "Unbind this domain", cost: "Traffic is landing on a dead domain", view: "flows" },
-  pixel_orphan_host: { kind: "fix", verb: "Re-attach to a live domain", cost: "The pixel is firing nowhere", view: "pixels" },
-  pixel_unattached: { kind: "add", verb: "Attach it, or archive it", cost: "Registered but unused", view: "pixels" },
-  pixel_duplicate: { kind: "remove", verb: "Delete the duplicates", cost: "Two records claim the same pixel", view: "pixels" },
-  geo_mismatch: { kind: "fix", verb: "Align the pixel's GEO", cost: "Pixel and flow target different markets", view: "pixels" },
-  domains_unbound: { kind: "add", verb: "Bind them, or retire them", cost: "Paid for and doing nothing", view: "domains" },
-  // Alerts
-  meta_token_dead: { kind: "fix", verb: "Replace the token in Keitaro", cost: "No spend data for this ad account", view: "meta_token" },
-  cost_stalled: { kind: "fix", verb: "Restore the cost integration", cost: "Every ROI number is understated", view: "meta_token" },
-  integration_unlinked: { kind: "fix", verb: "Link it to its Keitaro integration", cost: "Meta spend has no route in", view: "meta_token" },
-  flow_traffic_drop: { kind: "check", verb: "Check the campaign", cost: "Traffic collapsed on a live flow", view: "flows" },
-  paused_with_traffic: { kind: "check", verb: "Stop the ads, or re-enable the flow", cost: "Paying for clicks a paused flow won't route", view: "flows" },
-};
-const healthAction = (code) => {
-  if (HEALTH_ACTIONS[code]) return HEALTH_ACTIONS[code];
-  const stripped = String(code || "").replace(/^integrity_/, "");
-  return HEALTH_ACTIONS[stripped] || { kind: "check", verb: "Review this", cost: "", view: null };
-};
-const ACTION_META = {
-  add: { label: "Add", Icon: Plus },
-  remove: { label: "Remove", Icon: Trash2 },
-  fix: { kind: "fix", label: "Fix", Icon: Wrench },
-  check: { label: "Check", Icon: Eye },
-};
-// "Fix it" should land on the work, not just the screen. Where the
-// destination understands a filter, hand it over on the way.
-const HEALTH_DESTINATION_FILTER = {
-  flow_no_domain: "no-domains",
-  domain_no_pixel: "no-pixels",
-};
-const goToView = (view, code) => {
-  if (!view) return;
-  const flag = HEALTH_DESTINATION_FILTER[String(code || "").replace(/^integrity_/, "")];
-  if (flag) {
-    try {
-      sessionStorage.setItem("pending-health-filter", flag);
-    } catch {
-      /* private mode — the view just opens unfiltered */
-    }
-  }
-  window.dispatchEvent(new CustomEvent("dash:navigate", { detail: { view } }));
-};
 
-// One work item. The left gutter is the verb, the body is plain language,
-// the right is the way out of it.
-function HealthActionItem({ item, t, children }) {
-  const action = healthAction(item.code);
-  const meta = ACTION_META[action.kind] || ACTION_META.check;
-  const [open, setOpen] = React.useState(false);
-  const entities = item.entities || [];
-  const shown = open ? entities : entities.slice(0, 4);
-  return (
-    <article className={`hx-item kind-${action.kind} rank-${item.rank || "later"}`}>
-      <div className="hx-gutter">
-        <span className="hx-gutter-icon"><meta.Icon size={14} strokeWidth={2.4} /></span>
-        <span className="hx-gutter-label">{t(meta.label)}</span>
-      </div>
-      <div className="hx-body">
-        <header className="hx-head">
-          <h4>{t(action.verb)}</h4>
-          {(item.count || entities.length) > 1 ? <span className="hx-count">{item.count || entities.length}</span> : null}
-          {item.rank === "now" ? <span className="hx-flag">{t("Blocking")}</span> : null}
-        </header>
-        {/* One target reads as a subject line; many read as a list. Either
-            way the buyer sees WHAT to act on without hunting. */}
-        {entities.length === 1 ? (
-          <p className="hx-target" title={entities[0]}>{entities[0]}</p>
-        ) : null}
-        {action.cost ? (
-          <p className="hx-cost"><AlertTriangle size={11} /> {t(action.cost)}</p>
-        ) : null}
-        <p className="hx-detail">{item.detail}</p>
-        {entities.length > 1 ? (
-          <div className="hx-entities">
-            {shown.map((entity, index) => (
-              <span className="hx-entity" key={`${entity}-${index}`} title={entity}>{entity}</span>
-            ))}
-            {entities.length > 4 ? (
-              <button type="button" className="hx-more" onClick={() => setOpen((v) => !v)}>
-                {open ? t("Show less") : `+${entities.length - 4}`}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {children}
-      </div>
-      <div className="hx-actions">
-        {action.view ? (
-          <button type="button" className="hx-go" onClick={() => goToView(action.view, item.code)}>
-            {t("Fix it")} <ArrowRight size={13} />
-          </button>
-        ) : null}
-        {item.extraActions}
-      </div>
-    </article>
-  );
-}
 
 function HealthDashboard({ authUser }) {
   const { t } = useLanguage();
@@ -6591,10 +5619,6 @@ function HealthDashboard({ authUser }) {
   );
 }
 
-// Brands offered by default in the Keitaro import dialog. Module-level so the
-// array reference is stable — the dialog re-previews when this changes, and an
-// inline literal would make that "every render".
-const IMPORT_DEFAULT_BRANDS = ["JASINO", "ZLOTMX"];
 
 // ── My Flows ──────────────────────────────────────────────────────────
 // Buyer-centric tree: Tracking Link → bound PWA domains → pixels on each
@@ -9086,82 +8110,6 @@ function UtmBuilder() {
   );
 }
 
-// Per-step conversion funnel (Mixpanel-style): each stage is a full-height
-// track card whose fill is the conversion FROM THE PREVIOUS stage, so every
-// step reads clearly no matter how many orders of magnitude the funnel spans.
-// Absolute counts sit on top, step drop-offs live in the gaps, overall rates
-// in the panel footer.
-function StatsFunnelFlow({ stages }) {
-  const compact = (value) => {
-    const abs = Math.abs(value);
-    if (abs >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-    if (abs >= 1000) return `${(value / 1000).toFixed(1)}k`;
-    return `${value}`;
-  };
-  const fmtRate1 = (value) =>
-    value === null || value === undefined || Number.isNaN(value) ? "—" : `${value.toFixed(1)}%`;
-  return (
-    <div className="sfv2">
-      {stages.map((stage, i) => {
-        const stepRate = i === 0 ? 100 : stage.rate;
-        const fillPct = Math.max(0, Math.min(100, Number(stepRate) || 0));
-        const dropped = i > 0 ? stages[i - 1].value - stage.value : 0;
-        return (
-          <React.Fragment key={stage.key}>
-            {i > 0 ? (
-              <div className="sfv2-gap">
-                <span className="sfv2-gap-drop">
-                  {dropped === 0 ? "±0" : dropped > 0 ? `−${compact(dropped)}` : `+${compact(-dropped)}`}
-                </span>
-              </div>
-            ) : null}
-            <div
-              className="sfv2-stage"
-              title={`${stage.label}: ${stage.value.toLocaleString()} · ${fmtRate1(stage.share)} of ${stages[0].label.toLowerCase()}`}
-            >
-              <div
-                className="sfv2-card"
-                style={{
-                  "--stage-color": stage.color,
-                  background: `linear-gradient(180deg, ${stage.color}0e, rgba(255, 255, 255, 0.012) 46%)`,
-                }}
-              >
-                <span
-                  className="sfv2-card-accent"
-                  style={{ background: `linear-gradient(90deg, ${stage.color}, ${stage.color}00)` }}
-                />
-                <div className="sfv2-card-head">
-                  <span className="sfv2-label">
-                    <i style={{ background: stage.color, boxShadow: `0 0 6px ${stage.color}88` }} />
-                    {stage.label}
-                  </span>
-                  <div className="sfv2-count">{stage.value.toLocaleString()}</div>
-                  <div className="sfv2-sub">
-                    {i === 0 ? "entered" : `${fmtRate1(stage.share)} of ${stages[0].label.toLowerCase()}`}
-                  </div>
-                </div>
-                <div className="sfv2-track">
-                  <span className="sfv2-pct">
-                    {fmtRate1(stepRate)}
-                    {i > 0 ? <em>of prev</em> : <em>baseline</em>}
-                  </span>
-                  <div
-                    className="sfv2-fill"
-                    style={{
-                      height: `${fillPct}%`,
-                      background: `linear-gradient(180deg, ${stage.color}d9 0%, ${stage.color}59 55%, ${stage.color}1f 100%)`,
-                      boxShadow: `inset 0 1.5px 0 ${stage.color}, 0 0 18px ${stage.color}33`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
 
 function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOptions = [] }) {
   const { t } = useLanguage();
@@ -14569,25 +13517,6 @@ function DevicesDashboard({ period, setPeriod, customRange, onCustomChange, filt
   );
 }
 
-// "2026-08-01 → 2026-08-31" is 23 characters to say "Aug 1–31". On a card
-// whose subtitle also carries the period, the country and how long is left,
-// the long form crowded out the part a buyer actually reads.
-const formatGoalRange = (from, to) => {
-  const parse = (value) => {
-    const date = new Date(`${value}T00:00:00`);
-    return Number.isNaN(date.getTime()) ? null : date;
-  };
-  const start = parse(from);
-  const end = parse(to);
-  if (!start || !end) return from && to ? `${from} → ${to}` : null;
-  const month = (date) => date.toLocaleDateString("en-US", { month: "short" });
-  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
-    return `${month(start)} ${start.getDate()}–${end.getDate()}`;
-  }
-  const sameYear = start.getFullYear() === end.getFullYear();
-  const tail = sameYear ? "" : ` ${end.getFullYear()}`;
-  return `${month(start)} ${start.getDate()} – ${month(end)} ${end.getDate()}${tail}`;
-};
 
 function GoalsDashboard({ authUser }) {
   const { t } = useLanguage();
@@ -20817,22 +19746,6 @@ function AccountsDashboard({ authUser }) {
   );
 }
 
-// Keitaro returns raw i18n error keys for Facebook-costs failures; map the
-// common ones to human-readable text (raw stays in the cell's tooltip).
-const KEITARO_ERROR_MAP = {
-  "third_party_integration.errors.token": "Invalid or expired Meta token",
-  "third_party_integration.errors.account": "Ad account not accessible by this token",
-  "third_party_integration.errors.permissions": "Token missing ad-account permissions",
-  "third_party_integration.errors.rate_limit": "Facebook rate limit — try again later",
-};
-const friendlyKeitaroError = (raw) => {
-  const key = String(raw || "").trim();
-  if (!key) return "";
-  if (KEITARO_ERROR_MAP[key]) return KEITARO_ERROR_MAP[key];
-  // Turn "third_party_integration.errors.something_here" into "Something here"
-  const tail = key.split(".").pop().replace(/_/g, " ");
-  return /errors?\b/i.test(key) ? tail.charAt(0).toUpperCase() + tail.slice(1) : key;
-};
 
 // ── Audit Logs (Big Boss + Team Leader only) ──────────────────────────
 // Reads the audit_logs trail the API middleware writes: every mutating
@@ -22490,131 +21403,13 @@ function MetaTokenDashboard({ authUser, buyerFilterOptions = [] }) {
   );
 }
 
-// Role identity colors — one hue per role tier, shared by avatars, chips and
-// the role rows so a role is recognizable at a glance across the section.
-const ROLE_IDENT_COLORS = {
-  boss: "#f7c625",
-  teamleader: "#36d07c",
-  mediabuyersenior: "#64b8ff",
-  mediabuyer: "#49e0c4",
-  mediabuyerjunior: "#a15bff",
-};
-const roleIdentColor = (role) => ROLE_IDENT_COLORS[normalizeRoleKey(role)] || "#8b8f98";
 
-const initialsOf = (name) => {
-  const raw = String(name || "").trim();
-  if (!raw) return "?";
-  const parts = raw.split(/\s+/);
-  return ((parts[0][0] || "") + (parts[1]?.[0] || parts[0][1] || "")).toUpperCase();
-};
 
-// Avatar + name, tinted by role — the visual identity used in Users/Team tables.
-const UserIdent = ({ name, role, sub }) => (
-  <span className="user-ident">
-    <span className="user-avatar" style={{ borderColor: roleIdentColor(role), color: roleIdentColor(role) }}>
-      {initialsOf(name)}
-    </span>
-    <span className="user-ident-text">
-      <span className="user-ident-name">{name}</span>
-      {sub ? <span className="user-ident-sub">{sub}</span> : null}
-    </span>
-  </span>
-);
 
-const RoleChip = ({ role, label }) => (
-  <span className="role-chip">
-    <span className="role-chip-dot" style={{ background: roleIdentColor(role) }} />
-    {label}
-  </span>
-);
 
-// Tiny inline trend line for table rows — plain SVG, no axes, one hue.
-const MiniSparkline = ({ values, width = 84, height = 22, stroke = "#199e70" }) => {
-  if (!values || values.length < 2) return <span className="offer-muted">—</span>;
-  const max = Math.max(...values, 1);
-  const step = width / (values.length - 1);
-  const points = values
-    .map((v, i) => `${(i * step).toFixed(1)},${(height - 2 - (v / max) * (height - 4)).toFixed(1)}`)
-    .join(" ");
-  return (
-    <svg width={width} height={height} className="mini-sparkline" aria-hidden="true">
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-};
 
-// "Chrome · macOS" from a raw user-agent string — order matters (Edge/Opera
-// embed "Chrome", Chrome embeds "Safari").
-const describeUserAgent = (ua) => {
-  const s = String(ua || "");
-  if (!s) return "";
-  const os = /iPhone|iPad/i.test(s)
-    ? "iOS"
-    : /Android/i.test(s)
-      ? "Android"
-      : /Mac OS X|Macintosh/i.test(s)
-        ? "macOS"
-        : /Windows/i.test(s)
-          ? "Windows"
-          : /Linux/i.test(s)
-            ? "Linux"
-            : "";
-  const browser = /Edg\//.test(s)
-    ? "Edge"
-    : /OPR\//.test(s)
-      ? "Opera"
-      : /Chrome\//.test(s)
-        ? "Chrome"
-        : /Safari\//.test(s) && /Version\//.test(s)
-          ? "Safari"
-          : /Firefox\//.test(s)
-            ? "Firefox"
-            : "";
-  return [browser, os].filter(Boolean).join(" · ");
-};
 
-// Password quality scoring + generation — shared by the Roles reset modal
-// and the Profile security panel.
-const scorePassword = (pw) => {
-  const v = String(pw || "");
-  if (!v) return { score: 0, label: "", tone: "" };
-  let score = 0;
-  if (v.length >= 8) score += 1;
-  if (v.length >= 12) score += 1;
-  if (/[a-z]/.test(v) && /[A-Z]/.test(v)) score += 1;
-  if (/\d/.test(v)) score += 1;
-  if (/[^A-Za-z0-9]/.test(v)) score += 1;
-  score = Math.min(4, score);
-  const labels = ["Very weak", "Weak", "Fair", "Strong", "Very strong"];
-  const tones = ["danger", "danger", "warning", "success", "success"];
-  return { score, label: labels[score], tone: tones[score] };
-};
 
-// Cryptographically-random 16-char password with all character classes.
-const generatePasswordValue = () => {
-  const sets = [
-    "abcdefghijkmnpqrstuvwxyz",
-    "ABCDEFGHJKLMNPQRSTUVWXYZ",
-    "23456789",
-    "!@#$%^&*-_=+",
-  ];
-  const all = sets.join("");
-  const rand = (n) => {
-    if (window.crypto?.getRandomValues) {
-      const a = new Uint32Array(1);
-      window.crypto.getRandomValues(a);
-      return a[0] % n;
-    }
-    return Math.floor(Math.random() * n);
-  };
-  let chars = sets.map((s) => s[rand(s.length)]);
-  while (chars.length < 16) chars.push(all[rand(all.length)]);
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = rand(i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join("");
-};
 
 function RolesDashboard({ authUser }) {
   const { t } = useLanguage();
@@ -23888,62 +22683,8 @@ function RolesDashboard({ authUser }) {
   );
 }
 
-// Achievement badges — unlocked on lifetime totals across all of a buyer's
-// links. Two tracks (FTDs + revenue), rising tiers. Kept data-driven so tiers
-// are easy to tune.
-const PROFILE_BADGES = [
-  { id: "ftd-100", track: "ftds", label: "Century", req: 100, Icon: Medal, hint: "100 FTDs", tier: "bronze" },
-  { id: "ftd-500", track: "ftds", label: "High Roller", req: 500, Icon: Flame, hint: "500 FTDs", tier: "silver" },
-  { id: "ftd-1k", track: "ftds", label: "Rainmaker", req: 1000, Icon: Trophy, hint: "1,000 FTDs", tier: "gold" },
-  { id: "ftd-5k", track: "ftds", label: "Whale Hunter", req: 5000, Icon: Crown, hint: "5,000 FTDs", tier: "emerald" },
-  { id: "ftd-10k", track: "ftds", label: "Legend", req: 10000, Icon: Gem, hint: "10,000 FTDs", tier: "diamond" },
-  { id: "rev-1k", track: "revenue", label: "$1K Club", req: 1000, Icon: DollarSign, hint: "$1,000 revenue", tier: "bronze" },
-  { id: "rev-10k", track: "revenue", label: "$10K Club", req: 10000, Icon: Award, hint: "$10,000 revenue", tier: "silver" },
-  { id: "rev-50k", track: "revenue", label: "$50K Club", req: 50000, Icon: Rocket, hint: "$50,000 revenue", tier: "gold" },
-  { id: "rev-100k", track: "revenue", label: "$100K Club", req: 100000, Icon: Sparkles, hint: "$100,000 revenue", tier: "diamond" },
-];
 
-// Metallic tier palettes [highlight, mid, shadow] for the SVG medal coins.
-const BADGE_TIERS = {
-  bronze: ["#f4d0a4", "#cd7f32", "#7a4318"],
-  silver: ["#f7f9fc", "#c3c8d2", "#7c8290"],
-  gold: ["#ffe9a3", "#f7c625", "#a9781a"],
-  emerald: ["#bff7db", "#36d07c", "#15683f"],
-  diamond: ["#e9fbff", "#8fe0ff", "#3f9fd6"],
-};
 
-// Quality SVG medal coin: notched rim, metallic radial bevel, gloss highlight.
-// The tier glyph is overlaid separately (in .badge-glyph). Greys out when locked.
-const BadgeMedal = ({ badgeId, tier, locked }) => {
-  const [c1, c2, c3] = locked ? ["#3b3e45", "#2b2e34", "#1f2125"] : (BADGE_TIERS[tier] || BADGE_TIERS.gold);
-  const gid = `bm-${badgeId}${locked ? "-l" : ""}`;
-  const notches = [];
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
-    notches.push([32 + Math.cos(a) * 29, 32 + Math.sin(a) * 29]);
-  }
-  return (
-    <svg viewBox="0 0 64 64" className="badge-svg" aria-hidden="true">
-      <defs>
-        <radialGradient id={`${gid}-c`} cx="50%" cy="32%" r="72%">
-          <stop offset="0%" stopColor={c1} />
-          <stop offset="52%" stopColor={c2} />
-          <stop offset="100%" stopColor={c3} />
-        </radialGradient>
-        <linearGradient id={`${gid}-s`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity={locked ? 0.1 : 0.55} />
-          <stop offset="55%" stopColor="#ffffff" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {notches.map(([x, y], i) => (
-        <circle key={i} cx={x} cy={y} r="2.4" fill={c2} opacity={locked ? 0.5 : 0.92} />
-      ))}
-      <circle cx="32" cy="32" r="26" fill={`url(#${gid}-c)`} stroke="rgba(255,255,255,0.32)" strokeWidth="1" />
-      <circle cx="32" cy="32" r="20.5" fill="none" stroke="rgba(0,0,0,0.24)" strokeWidth="1.4" />
-      <ellipse cx="32" cy="22" rx="15" ry="8" fill={`url(#${gid}-s)`} />
-    </svg>
-  );
-};
 
 function ProfileDashboard({ authUser }) {
   const { t, language, setLanguage } = useLanguage();
