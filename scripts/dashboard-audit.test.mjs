@@ -21,19 +21,22 @@ import { fileURLToPath } from "url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 
-const app = read("src/App.jsx");
+// App.jsx used to hold every dashboard, so these checks scanned one file.
+// The views live in src/dashboards/ now; the corpus is the same code.
+const app = [
+  read("src/App.jsx"),
+  ...fs
+    .readdirSync(path.join(root, "src/dashboards"))
+    .filter((f) => f.endsWith(".jsx"))
+    .map((f) => read(path.join("src/dashboards", f))),
+].join("\n");
 const css = read("src/styles.css");
 const colors = read("src/lib/metricColors.js");
 const geoTree = read("src/components/GeoTreemap.jsx");
 
-// The home dashboard only — App.jsx holds several dashboards, and a check that
-// scanned all of them would pass or fail for the wrong reasons.
-const homeSlice = (() => {
-  const start = app.indexOf("const homePrimaryStats = [");
-  const end = app.indexOf("function GeosDashboard(");
-  if (start < 0 || end < 0) throw new Error("could not locate the home dashboard in App.jsx");
-  return app.slice(start, end);
-})();
+// The home dashboard only — a check that scanned every view would pass or fail
+// for the wrong reasons. It is its own module now, so no slicing required.
+const homeSlice = read("src/dashboards/HomeDashboard.jsx");
 
 const results = [];
 const check = (row, name, condition, detail = "") =>

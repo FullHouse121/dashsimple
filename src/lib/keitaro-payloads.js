@@ -83,3 +83,34 @@ export const defaultKeitaroPayloadByTarget = {
 };
 
 export const defaultKeitaroPayload = defaultKeitaroPayloadByTarget.overall;
+
+// Column defaults for the Keitaro report builder — the mapping a fresh
+// session starts from before the view overrides any field.
+export const defaultKeitaroMapping = {
+  dateField: "day",
+  buyerField: "campaign",
+  campaignField: "campaign",
+  countryField: "country",
+  cityField: "city",
+  regionField: "region",
+  placementField: "sub_id_1",
+  domainField: "source",
+  campaignNameField: "sub_id_3",
+  adsetNameField: "sub_id_4",
+  adNameField: "sub_id_5",
+  externalIdField: "external_id",
+  spendField: "cost",
+  revenueField: "revenue",
+  ftdRevenueField: "custom_conversion_8_revenue",
+  redepositRevenueField: "custom_conversion_7_revenue",
+clicksField: "clicks",
+installsField: "installs",
+registersField: "regs",
+ftdsField: "custom_conversion_8",
+redepositsField: "custom_conversion_7",
+deviceField: "device_type",
+osField: "os",
+osVersionField: "os_version",
+osIconField: "os_icon",
+deviceModelField: "device_model",
+};
