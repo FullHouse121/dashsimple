@@ -1,7 +1,9 @@
 name: CI
 on:
+  # Every branch, deliberately. The old allow-list (main, ux/**, feat/**,
+  # fix/**) silently skipped anything named differently — design/** work
+  # went 115 commits without a lint run and shipped a rules-of-hooks error.
   push:
-    branches: [main, "ux/**", "feat/**", "fix/**"]
   pull_request:
 
 jobs:

@@ -361,7 +361,7 @@ export function DeusDatePicker({ value, onChange, placeholder = "Pick a date", m
     if (selected) {
       setViewMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [value]);
 
   const detailsRef = React.useRef(null);

@@ -22,7 +22,7 @@ export default defineConfig({
         configure: (proxy) => {
           proxy.on("error", (err, _req, res) => {
             const code = err?.code || "ERR";
-            // eslint-disable-next-line no-console
+             
             console.warn(`[proxy ${code}] ${_req?.url || ""}`);
             if (res && !res.headersSent) {
               try {

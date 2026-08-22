@@ -6790,7 +6790,7 @@ function MyFlowsDashboard({ authUser }) {
       /* ignore */
     }
     if (pending) setFilters({ ...EMPTY_FLOW_FILTERS, flags: [pending] });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // domain host (lowercased) → pixels attached via their flows list
@@ -10018,7 +10018,7 @@ function StatisticsDashboard({ authUser, viewerBuyer, filters, buyerFilterOption
     setStatsTableSort((prev) =>
       statsColumns.some((col) => col.key === prev.key) ? prev : { key: "ftds", dir: "desc" }
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [hasSpendData, hasInstallData]);
 
   const statsRowCells = (row) => {
@@ -26709,7 +26709,7 @@ export default function App() {
     if (filtersOpen) {
       initialFiltersRef.current = JSON.stringify(filters);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [filtersOpen]);
 
   React.useEffect(() => {
@@ -26778,6 +26778,23 @@ export default function App() {
     });
   };
 
+  // The token carries its own expiry and nothing ever showed it, so a session
+  // ending was something you discovered by being logged out mid-task.
+  // Declared above the logged-out early return: a hook after it would make the
+  // hook count differ between the login screen and the app, and React throws
+  // "Rendered more hooks than during the previous render" the moment you log in.
+  const sessionExpiryLabel = React.useMemo(() => {
+    const exp = Number(authUser?.exp);
+    if (!Number.isFinite(exp) || exp <= 0) return null;
+    const seconds = exp - Math.floor(Date.now() / 1000);
+    if (seconds <= 0) return t("expired");
+    const days = Math.floor(seconds / 86400);
+    if (days >= 1) return `${days}${t("d left")}`;
+    const hours = Math.floor(seconds / 3600);
+    if (hours >= 1) return `${hours}${t("h left")}`;
+    return `${Math.max(1, Math.floor(seconds / 60))}${t("m left")}`;
+  }, [authUser?.exp, t]);
+
   if (!authUser) {
     return (
       <LanguageContext.Provider value={{ language, setLanguage, t }}>
@@ -26795,22 +26812,9 @@ export default function App() {
   // Both badges were hardcoded green, so a Boss and a Junior Media Buyer wore
   // the Team Leader's colour and the role tint meant nothing outside Roles.
   const profileRoleColor = roleIdentColor(profileRole);
-  // The token carries its own expiry and nothing ever showed it, so a session
-  // ending was something you discovered by being logged out mid-task.
   // The row is a toggle, so it advertises where it takes you, not where you are.
   const nextLanguage =
     languageOptions.find((item) => item.code !== language) || languageOptions[0];
-  const sessionExpiryLabel = React.useMemo(() => {
-    const exp = Number(authUser?.exp);
-    if (!Number.isFinite(exp) || exp <= 0) return null;
-    const seconds = exp - Math.floor(Date.now() / 1000);
-    if (seconds <= 0) return t("expired");
-    const days = Math.floor(seconds / 86400);
-    if (days >= 1) return `${days}${t("d left")}`;
-    const hours = Math.floor(seconds / 3600);
-    if (hours >= 1) return `${hours}${t("h left")}`;
-    return `${Math.max(1, Math.floor(seconds / 60))}${t("m left")}`;
-  }, [authUser?.exp, t]);
 
   // reducedMotion="user" makes every framer animation in the app honour the OS
   // setting, rather than each component having to remember to check.
